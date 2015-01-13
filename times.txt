@@ -1,0 +1,38 @@
+##-- ngdb-NN
+$ time ./ti-ngrams2db.perl -pk='N*' -pv='N' kern01.ti.ng5 -o=kern01.ti.ng5.db-NN
+real	3m5.363s
+user	3m1.855s
+sys	0m1.976s
+: db size = 1112068096 = 1.1G
+
+$ time ./ti-ngramdb-apply.perl -pk='N*' -pv='N' kern01.ti.ng5.db-NN test-100k.i5 -o=/dev/null
+real	0m1.265s
+user	0m1.052s
+sys	0m0.208s
+: lookup = 79051 op/sec ~ 79k op/sec ~ 12.65 usec/op
+
+##-- ngdb-ww
+$ time ./ti-ngrams2db.perl -pk='w*' -pv='w' kern01.ti.ng5 -o=kern01.ti.ng5.db-ww
+real	4m0.295s
+user	3m44.302s
+sys	0m2.020s
+: db size = 981983232 = 938M
+
+$ time ./ti-ngramdb-apply.perl -pk='w*' -pv='w' kern01.ti.ng5.db-ww test-100k.i5 -o=/dev/null
+real	0m1.314s
+user	0m1.048s
+sys	0m0.260s
+: lookup = 76103 op/sec ~ 76k op/sec ~  13.14 usec/op
+
+##-- bin-NN
+$ time ./ti-ngrams2bin.perl -pk='N5' -pv='N' kern01.ti.ng5 -o=kern01.ti.ng5.bin-NN
+real	1m40.058s
+user	1m38.874s
+sys	0m0.852s
+: db size = 724950768 = 693M
+
+$ time ./ti-ngrambin-apply.perl -n=5 kern01.ti.ng5.bin-NN test-100k.i5 -o=/dev/null
+real	0m7.229s
+user	0m3.336s
+sys	0m3.868s
+: lookup = 13833 op/sec ~ 14k op/sec ~ 72.29 usec/op
