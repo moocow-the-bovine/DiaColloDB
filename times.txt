@@ -1,9 +1,15 @@
+##-- reference: kern01
+ntoks = 32002213 ~ 32M # echo `du -b kern/index/kern01/kern01._storage_Token  | cut -f1`/4 | bc
+size(ddc index) = 1.3G # du -h kern/index/kern01
+size(xml_txt)   = 324M # ssh kira du -hs dstar/corpora/kern/build/xml_txt
+size(xml_ddc)   = 5.2G # ssh kira du -hs dstar/corpora/kern/build/ddc_xml
+
 ##-- ngdb-NN
 $ time ./ti-ngrams2db.perl -pk='N*' -pv='N' kern01.ti.ng5 -o=kern01.ti.ng5.db-NN
 real	3m5.363s
 user	3m1.855s
 sys	0m1.976s
-: db size = 1112068096 = 1.1G
+: db size[5] = 1112068096 = 1.1G
 
 $ time ./ti-ngramdb-apply.perl -pk='N*' -pv='N' kern01.ti.ng5.db-NN test-100k.i5 -o=/dev/null
 real	0m1.265s
@@ -11,14 +17,68 @@ user	0m1.052s
 sys	0m0.208s
 : lookup = 79051 op/sec ~ 79k op/sec ~ 12.65 usec/op
 
+##-- ngdb-NN : project
+$ for N in 4 3 2 1 ; do let n="$N+1"; echo "n=$n --> N=$N"; time ./ti-ngramdb-project.perl -N=$N kern01.ti.ng${n}.db-NN -o=kern01.ti.ng${N}.db-NN ; done
+n=5 --> N=4
+real	2m56.310s
+user	2m17.309s
+sys	0m2.612s
+: db size[4] ~ 874418176 ~ 835M
+n=4 --> N=3
+real	2m27.425s
+user	1m53.415s
+sys	0m1.988s
+: db size[3] ~ 546394112 ~ 522M
+n=3 --> N=2
+real	1m6.692s
+user	1m5.296s
+sys	0m0.628s
+: db size[2] ~ 191492096 ~ 183M
+n=2 --> N=1
+real	0m21.692s
+user	0m21.137s
+sys	0m0.064s
+: db size[1] ~ 17326080 ~ 17M
+: total size = 2741698560 ~ 2.6G
+
+##-- ngdb-NN : best neighbors (2nd run)
+$ time ./ti-ngramdb-kbest.perl kern01.ti.ng5.db-NN test-100k.i4 >/dev/null
+real	10m30.944s # first run : 158 ops/sec ~ 6309 usec/op
+real	0m2.148s
+user	0m1.836s
+sys	0m0.308s
+: 46554 ops/sec ~ 21.48 usec/op
+
+$ time ./ti-ngramdb-kbest.perl kern01.ti.ng4.db-NN test-100k.i3 >/dev/null
+real[0]	9m57.176s # first run : 167 ops/sec ~ 5971 usec/op
+real	0m2.309s
+user	0m1.956s
+sys	0m0.220s
+: 43308 ops/sec ~ 23.09 usec/op
+
+$ time ./ti-ngramdb-kbest.perl kern01.ti.ng3.db-NN test-100k.i2 >/dev/null
+real[0] 5m31.264s # first run : 301 ops/sec ~ 3312 usec/op
+real	0m2.485s
+user	0m2.240s
+sys	0m0.236s
+: 40241 ops/sec ~ 24.85 usec/op
+
+$ time ./ti-ngramdb-kbest.perl kern01.ti.ng2.db-NN test-100k.i1 >/dev/null
+real[0] 1m6.204s # first run : 1510 ops/sec ~ 662 usec/op
+real	0m5.374s
+user	0m4.012s
+sys	0m0.204s
+: 18608 ops/sec ~ 53.74 usec/op
+
 ##-- ngdb-ww
 $ time ./ti-ngrams2db.perl -pk='w*' -pv='w' kern01.ti.ng5 -o=kern01.ti.ng5.db-ww
 real	4m0.295s
 user	3m44.302s
 sys	0m2.020s
-: db size = 981983232 = 938M
+: db size[5] = 981983232 = 938M
 
 $ time ./ti-ngramdb-apply.perl -pk='w*' -pv='w' kern01.ti.ng5.db-ww test-100k.i5 -o=/dev/null
+real[0] 1m6.204s # first run
 real	0m1.314s
 user	0m1.048s
 sys	0m0.260s
@@ -29,10 +89,89 @@ $ time ./ti-ngrams2bin.perl -pk='N5' -pv='N' kern01.ti.ng5 -o=kern01.ti.ng5.bin-
 real	1m40.058s
 user	1m38.874s
 sys	0m0.852s
-: db size = 724950768 = 693M
+: db size[5] = 724950768 = 693M
 
 $ time ./ti-ngrambin-apply.perl -n=5 kern01.ti.ng5.bin-NN test-100k.i5 -o=/dev/null
 real	0m7.229s
 user	0m3.336s
 sys	0m3.868s
 : lookup = 13833 op/sec ~ 14k op/sec ~ 72.29 usec/op
+
+##-- bin-NN : project
+$ for N in 4 3 2 1 ; do let n="$N+1"; echo "n=$n --> N=$N"; time ./ti-ngrambin-project.perl -n=$n -N=$N kern01.ti.ng${n}.bin-NN -o=kern01.ti.ng${N}.bin-NN ; done
+n=5 --> N=4
+real	0m45.216s
+user	0m40.143s
+sys	0m0.796s
+: db size[4] = 518373376 = 511M
+n=4 --> N=3
+real	0m35.787s
+user	0m35.222s
+sys	0m0.468s
+: db size[3] = 305502032 = 292M
+n=3 --> N=2
+real	0m21.312s
+user	0m20.821s
+sys	0m0.236s
+: db size[2] = 93741420 = 90M
+n=2 --> N=1
+real	0m7.401s
+user	0m7.308s
+sys	0m0.048s
+: db size[1] = 6800872 = 6.5M
+: total size = 1665521532 = 1.6G
+
+##-- bin-NN : best neighbors (2nd run)
+$ time ./ti-ngrambin-kbest.perl -n=5 kern01.ti.ng5.bin-NN test-100k.i4 >/dev/null
+real	0m7.913s
+user	0m4.076s
+sys	0m3.812s
+: 1263 ops/sec ~ 791 usec/op
+
+$ time ./ti-ngrambin-kbest.perl -n=4 kern01.ti.ng4.bin-NN test-100k.i3 >/dev/null
+real	0m8.458s
+user	0m4.160s
+sys	0m4.268s
+: 1182 ops/sec ~ 846 usec/op
+
+$ time ./ti-ngrambin-kbest.perl -n=3 kern01.ti.ng3.bin-NN test-100k.i2 >/dev/null
+real	0m7.915s
+user	0m4.192s
+sys	0m3.696s
+: 1263 ops/sec ~ 792 usec/op
+
+$ time ./ti-ngrambin-kbest.perl -n=2 kern01.ti.ng2.bin-NN test-100k.i1 >/dev/null
+real	0m9.068s
+user	0m5.252s
+sys	0m3.788s
+: 1102 ops/sec ~ 907 usec/op
+
+##-- bin-NN-mmap : best neighbors (2nd run)
+$ for i in 1 2; do time ./ti-ngrambin-kbest-mmap.perl -n=5 kern01.ti.ng5.bin-NN test-100k.i4 >/dev/null; done
+real	0m56.944s # first run : 1756 ops/sec ~ 569 usec/op
+real	0m2.882s
+user	0m2.724s
+sys	0m0.148s
+: 34698 ops/sec ~ 28.82 usec/op
+
+$ for i in 1 2; do time ./ti-ngrambin-kbest-mmap.perl -n=4 kern01.ti.ng4.bin-NN test-100k.i3 >/dev/null; done
+real	0m33.513s # first run : 2983 ops/sec ~ 335 usec/op
+real	0m2.860s
+user	0m2.756s
+sys	0m0.092s
+: 34965 ops/sec ~ 28.60 usec/op
+
+$ for i in 1 2; do time ./ti-ngrambin-kbest-mmap.perl -n=3 kern01.ti.ng3.bin-NN test-100k.i2 >/dev/null; done
+real	0m2.929s # first run : 34141 ops/sec ~ 29.29 usec/op
+real	0m2.928s
+user	0m2.876s
+sys	0m0.040s
+: 34153 ops/sec ~ 29.28 usec/op
+
+$ for i in 1 2; do time ./ti-ngrambin-kbest-mmap.perl -n=2 kern01.ti.ng2.bin-NN test-100k.i1 >/dev/null; done
+real	0m9.156s # first run : 10921 ops/sec ~ 91.56 usec/op
+real	0m4.020s
+user	0m3.984s
+sys	0m0.024s
+: 24875 ops/sec ~ 91.56 usec/op
+

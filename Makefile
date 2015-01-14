@@ -122,10 +122,10 @@ ngramdb-ti: $(dst).ti.ng$(nglen).db
 	./ti-ngrams2db.perl -pk='N$(nglen)' -pv='N' -o=$@ $<
 
 ##--------------------------------------------------------------
-## n-gram bin (vec()-style)
+## n-gram bin (vec()-style, for DIY binary search on filehandle)
 
 ngbin-ti: ngrambin-ti
 ti-ngbin: ngrambin-ti
-ngrambin-ti: $(dst).ti.ng(nglen).bin
+ngrambin-ti: $(dst).ti.ng$(nglen).bin
 %.ti.ng$(nglen).bin: %.ti.ng$(nglen)
-	./ti-ngrams2db.perl -pk='N$(nglen)' -pv='N' -o=$@ $<
+	./ti-ngrams2bin.perl -pk='N$(nglen)' -pv='N' -o=$@ $<
