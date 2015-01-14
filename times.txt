@@ -228,10 +228,10 @@ ti-ngramsql-create.sh: all done; db size = 8985 MB
 ##-- psql : best neighbors (2nd run)
 $ for i in 1 2; do time ./ti-ngramsql-kbest.perl -n=5 ngrams test-100k.i4 >/dev/null; done
 real	25m36.225s # first run : 65 op/sec ~ 15362 usec/op
-real	10m53.084s
-user	0m7.032s
-sys	0m1.692s
-: 153 op/sec ~ 6530 usec/op
+real	11m56.861s
+user	0m6.732s
+sys	0m1.752s
+: 139 op/sec ~ 7168 usec/op
 
 $ for i in 1 2; do time ./ti-ngramsql-kbest.perl -n=4 ngrams test-100k.i3 >/dev/null; done
 real	10m44.892s # first run : 155 op/sec ~ 6448 usec/op
