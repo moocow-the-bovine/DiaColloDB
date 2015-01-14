@@ -1,0 +1,6 @@
+#METHOD		#DBSIZE[1-5]	#CREATE_TIME	#LOOKUP_RATE5	#KBEST_RATE:1st-run	#KBEST_RATE:2nd-run
+ddc		1.3G		n/a		n/a		n/a			n/a
+db-NN		2.6G		9:57		79051		534			37177
+bin-NN		1.6G		3:29		13833		6161			12030
+bin-NN:mmap	1.6G		3:29		13833		12450			32172
+psql		8.9G		9:39		n/a		

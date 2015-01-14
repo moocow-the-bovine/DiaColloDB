@@ -3,6 +3,7 @@ ntoks = 32002213 ~ 32M # echo `du -b kern/index/kern01/kern01._storage_Token  | 
 size(ddc index) = 1.3G # du -h kern/index/kern01
 size(xml_txt)   = 324M # ssh kira du -hs dstar/corpora/kern/build/xml_txt
 size(xml_ddc)   = 5.2G # ssh kira du -hs dstar/corpora/kern/build/ddc_xml
+n(1-grams)      = 
 
 ##-- ngdb-NN
 $ time ./ti-ngrams2db.perl -pk='N*' -pv='N' kern01.ti.ng5 -o=kern01.ti.ng5.db-NN
@@ -40,6 +41,7 @@ user	0m21.137s
 sys	0m0.064s
 : db size[1] ~ 17326080 ~ 17M
 : total size = 2741698560 ~ 2.6G
+: total time = 597 sec = 9m57s
 
 ##-- ngdb-NN : best neighbors (2nd run)
 $ time ./ti-ngramdb-kbest.perl kern01.ti.ng5.db-NN test-100k.i4 >/dev/null
@@ -120,31 +122,36 @@ user	0m7.308s
 sys	0m0.048s
 : db size[1] = 6800872 = 6.5M
 : total size = 1665521532 = 1.6G
+: total time ~ 209.7 sec ~ 3m29s
 
 ##-- bin-NN : best neighbors (2nd run)
-$ time ./ti-ngrambin-kbest.perl -n=5 kern01.ti.ng5.bin-NN test-100k.i4 >/dev/null
+$ for i in 1 2; do time ./ti-ngrambin-kbest.perl -n=5 kern01.ti.ng5.bin-NN test-100k.i4 >/dev/null; done
+real	2m6.380s # first run : 791 op/sec ~ 1263 usec/op
 real	0m7.913s
 user	0m4.076s
 sys	0m3.812s
-: 1263 ops/sec ~ 791 usec/op
+: 12637 ops/sec ~ 79 usec/op
 
-$ time ./ti-ngrambin-kbest.perl -n=4 kern01.ti.ng4.bin-NN test-100k.i3 >/dev/null
+$ for i in 1 2; do time ./ti-ngrambin-kbest.perl -n=4 kern01.ti.ng4.bin-NN test-100k.i3 >/dev/null; done
+real	1m23.691s # first run : 1194 op/sec ~ 836 usec/op
 real	0m8.458s
 user	0m4.160s
 sys	0m4.268s
-: 1182 ops/sec ~ 846 usec/op
+: 11823 ops/sec ~ 84 usec/op
 
-$ time ./ti-ngrambin-kbest.perl -n=3 kern01.ti.ng3.bin-NN test-100k.i2 >/dev/null
+$ for i in 1 2; do time ./ti-ngrambin-kbest.perl -n=3 kern01.ti.ng3.bin-NN test-100k.i2 >/dev/null; done
+real	0m51.573s # first run : 1938 op/sec ~ 515 usec/op
 real	0m7.915s
 user	0m4.192s
 sys	0m3.696s
-: 1263 ops/sec ~ 792 usec/op
+: 12634 ops/sec ~ 79 usec/op
 
-$ time ./ti-ngrambin-kbest.perl -n=2 kern01.ti.ng2.bin-NN test-100k.i1 >/dev/null
+$ for i in 1 2; do time ./ti-ngrambin-kbest.perl -n=2 kern01.ti.ng2.bin-NN test-100k.i1 >/dev/null; done
+real	0m16.230s # first run : 6161 op/sec ~ 162 usec/op
 real	0m9.068s
 user	0m5.252s
 sys	0m3.788s
-: 1102 ops/sec ~ 907 usec/op
+: 11027 ops/sec ~ 90 usec/op
 
 ##-- bin-NN-mmap : best neighbors (2nd run)
 $ for i in 1 2; do time ./ti-ngrambin-kbest-mmap.perl -n=5 kern01.ti.ng5.bin-NN test-100k.i4 >/dev/null; done
@@ -175,3 +182,74 @@ user	0m3.984s
 sys	0m0.024s
 : 24875 ops/sec ~ 91.56 usec/op
 
+##-- psql : create
+./ti-ngramsql-create.sh: creating database 'ngrams'...
+./ti-ngramsql-create.sh: populating ngrams.lex from kern01.types ...
+./ti-ngramsql-create.sh: populating ngram tables for db 'ngrams' ...
+...
+\copy ng5 from 'kern01.ti.ng5'
+Time: 121265.326 ms
+create unique index ng5_i12345 on ng5 (i1,i2,i3,i4,i5);
+Time: 69966.856 ms
+create index ng5_i1234f on ng5 (i1,i2,i3,i4,f desc);
+Time: 103969.579 ms
+insert into ng4 ...
+INSERT 0 26726322
+Time: 167415.499 ms
+create unique index ng4_i1234 on ng4 (i1,i2,i3,i4);
+Time: 64281.714 ms
+create index ng4_i123f on ng4 (i1,i2,i3,f desc);
+Time: 87677.889 ms
+insert into ng3 ...
+INSERT 0 19093877
+Time: 113951.223 ms
+create unique index ng3_i123 on ng3 (i1,i2,i3);
+Time: 32207.596 ms
+create index ng3_i12f on ng3 (i1,i2,f desc);
+Time: 44235.165 ms
+insert into ng2 ...
+INSERT 0 7811785
+Time: 53797.833 ms
+create unique index ng2_i12 on ng2 (i1,i2);
+Time: 12683.215 ms
+create index ng2_i1f on ng2 (i1,f desc);
+Time: 17495.781 ms
+insert into ng1 ...
+INSERT 0 850109
+Time: 6940.676 ms
+create unique index ng1_i1 on ng1 (i1);
+Time: 1750.225 ms
+create index ng1_f on ng1 (f desc);
+Time: 2553.848 ms
+select pg_size_pretty(pg_database_size('ngrams'));
+ti-ngramsql-create.sh: all done; db size = 8985 MB
+: total time ~ 835.9 sec = 13m55s
+
+##-- psql : best neighbors (2nd run)
+$ for i in 1 2; do time ./ti-ngramsql-kbest.perl -n=5 ngrams test-100k.i4 >/dev/null; done
+real	25m36.225s # first run : 65 op/sec ~ 15362 usec/op
+real	10m53.084s
+user	0m7.032s
+sys	0m1.692s
+: 153 op/sec ~ 6530 usec/op
+
+$ for i in 1 2; do time ./ti-ngramsql-kbest.perl -n=4 ngrams test-100k.i3 >/dev/null; done
+real	10m44.892s # first run : 155 op/sec ~ 6448 usec/op
+real	3m15.463s
+user	0m6.284s
+sys	0m1.576s
+: 511 op/sec ~ 1954 usec/op
+
+$ for i in 1 2; do time ./ti-ngramsql-kbest.perl -n=3 ngrams test-100k.i2 >/dev/null; done
+real	4m20.980s # first run : 835 op/sec ~ 2609 usec/op
+real	0m12.156s
+user	0m3.236s
+sys	0m0.864s
+: 8226 op/sec ~ 121 usc/op
+
+$ for i in 1 2; do time ./ti-ngramsql-kbest.perl -n=2 ngrams test-100k.i1 >/dev/null; done
+real	0m12.625s # first run : 7920 op/sec ~ 126 usec/op
+real	0m12.817s
+user	0m3.484s
+sys	0m0.884s
+: 7802 op/sec ~ 128 usec/op
