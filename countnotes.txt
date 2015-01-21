@@ -1,0 +1,39 @@
+##----------------------------------------------------------------------
+$ time ./bin/ddc_simple test/corpus1.con 'count(*) #by[$w]' -limit -1 >corpus1.1g-count
+real	0m0.464s
+TOTAL: count/corpus1: 0.464s
+
+$ time ./bin/ddc_dump -f -t test/corpus1.con -o corpus1.d
+real	0m1.169s
+$ time perl -i -pe 's/\t.*//;' corpus1.d/*.tabs
+real	0m0.245s
+$ time tt-1grams.perl -nosort -glob 'corpus1.d/*.tabs' >corpus1.1g-dump
+real	0m0.257s
+TOTAL: dump+tt-1grams/corpus1: 1.671s
+
+##----------------------------------------------------------------------
+$ time ./bin/ddc_simple index/kern01/kern01.con 'count(* #sep) #by[$w]' -limit -1 >kern01.1g-count
+real	1m17.268s
+TOTAL: count/kern01: 1m17s
+
+$ time ./bin/ddc_dump -f -t index/kern01/kern01.con -o kern01.d
+real	1m6.492s
+$ time perl -i -pe 's/\t.*//;' kern01.d/*.tabs
+real	0m22.854s
+$ time tt-1grams.perl -nosort -glob 'kern01.d/*.tabs' >kern01.1g-dump
+real	0m20.529s
+TOTAL: dump+tt-1grams/kern01: 109.875s = 1m49s
+
+##----------------------------------------------------------------------
+$ time ./bin/ddc_simple index/kern01/kern01.con 'count(* #sep) #by[$w +0, $w +1]' -limit -1 >kern01.2g-count
+real	2m26.168s
+TOTAL: count/kern01: 2m26s
+
+$ time ./bin/ddc_dump -f -t index/kern01/kern01.con -o kern01.d
+real	1m6.492s
+$ time perl -i -pe 's/\t.*//;' kern01.d/*.tabs
+real	0m22.854s
+$ time tt-ngrams.perl -n=2 -nosort -glob 'kern01.d/*.tabs' >kern01.2g-dump
+real	1m16.992s
+TOTAL: dump+tt-2grams/kern01: 166.338s = 2m46s
+
