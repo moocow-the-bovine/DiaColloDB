@@ -10,7 +10,7 @@ sub test_enum {
   my $base = shift || 'etest';
   my $enum = CollocDB::Enum->new();
   $enum->open($base,"rw") or die("enum->open failed: $!");
-  $enum->addSymbols(qw(a b c foo bar baz));
+  $enum->addSymbols(qw(a b c));
   $enum->close();
   exit 0;
 }
