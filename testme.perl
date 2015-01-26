@@ -26,7 +26,7 @@ sub test_enum_append {
 #test_enum_append(@ARGV);
 
 
-sub test_enum_fromtext {
+sub test_enum_text2db {
   my $base = shift || 'etest';
   my $labs = shift || "$base.lab";
   my $enum = CollocDB::Enum->new();
@@ -34,17 +34,25 @@ sub test_enum_fromtext {
   $enum->loadTextFile($labs) or die("loadTextFile() failed for '$labs': $!");
   $enum->close();
 }
-#test_enum_fromtext(@ARGV);
+#test_enum_text2db(@ARGV);
 
-sub test_enum_memload {
+sub test_enum_text2mem {
   my $base = shift || 'etest';
   my $labs = shift || "$base.lab";
   my $enum = CollocDB::Enum->new();
   #$enum->open($base,"rw") or die("enum->open failed: $!");
   $enum->loadTextFile($labs) or die("loadTextFile() failed for '$labs': $!");
+}
+#test_enum_text2mem(@ARGV);
+
+sub test_enum_text2mem2db {
+  my $base = shift || 'etest';
+  my $labs = shift || "$base.lab";
+  my $enum = CollocDB::Enum->new();
+  $enum->loadTextFile($labs) or die("loadTextFile() failed for '$labs': $!");
   $enum->saveDbFile($base) or die ("enum->saveDbFile() failed for '$base': $!");
 }
-test_enum_memload(@ARGV);
+test_enum_text2mem2db(@ARGV);
 
 
 ##==============================================================================

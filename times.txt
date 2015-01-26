@@ -253,3 +253,14 @@ real	0m12.817s
 user	0m3.484s
 sys	0m0.884s
 : 7802 op/sec ~ 128 usec/op
+
+
+##-----
+$ time ./testme.perl ekern kern01.labs  # test_enum_text2db
+real	0m13.223s ; 47M
+
+$ time ./testme.perl ekern kern01.labs  # test_enum_text2mem
+real	0m4.302s ; 16M
+
+$ time ./testme.perl ekern kern01.labs  # test_enum_text2mem2db
+real	0m14.776s ; 47M
