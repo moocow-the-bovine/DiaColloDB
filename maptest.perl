@@ -178,7 +178,26 @@ sub test_ngrams {
   print STDERR "$0: done\n";
   return;
 }
-test_ngrams(@ARGV);
+#test_ngrams(@ARGV);
+
+##--------------------------------------------------------------
+sub test_map_unigrams {
+  my $file = shift || 'mapme.bin';
+  print STDERR "map:in\n";
+  my $size = (-s $file);
+  my $p    = mapfraw($file, {ReadOnly=>1, Creat=>0, Dims=>[$size/4], Datatype=>PDL::long});
+
+  print STDERR "ng_cofreq\n";
+  my ($f,$fw) = ng_cofreq($p->slice("*1,"));
+
+  print STDERR "map:out\n";
+  my $ofile = "$file.ug";
+  my $opdl  = mapfraw($ofile, {Creat=>1, Dims=>[$fw->max+1], Datatype=>PDL::long});
+  $opdl->index($fw->flat) .= $f;
+
+  print STDERR "done.\n";
+}
+test_map_unigrams(@ARGV);
 
 ##==============================================================
 ## MAIN

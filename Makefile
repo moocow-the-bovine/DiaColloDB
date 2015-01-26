@@ -14,49 +14,73 @@ csort ?= env -i LC_ALL=C sort
 cuniq ?= env -i LC_ALL=C uniq
 
 ##--------------------------------------------------------------
-## dump (ddc)
-dump: dump-ddc
-dump-ddc: $(dst).dump-ddc.files
-$(dst).dump-ddc.files: $(con)
+## dump (ddc-json)
+#dump: dump-ddc-json
+dump-ddc-json: $(dst).dump-ddc-json.files
+$(dst).dump-ddc-json.files: $(con)
 	rm -rf $(@:.files=.d)
 	mkdir -p $(@:.files=.d)
 	$(RML)/bin/ddc_dump -f $(con) -o $(@:.files=.d)
 	find $(@:.files=.d) -maxdepth 1 -name '*.json' | $(csort) -t/ -nk2 >$@
 
+#afiles ?= $(notdir $(patsubst %.json,%,$(shell cat $(dst).dump-ddc.files)))
 
 ##--------------------------------------------------------------
-files ?= $(notdir $(patsubst %.json,%,$(shell cat $(dst).dump-ddc.files)))
+## dump (ddc-tabs)
+dump: dump-ddc-tabs
+dump-ddc-tabs: $(dst).dump-ddc-tabs.files
+$(dst).dump-ddc-tabs.files: $(con)
+	rm -rf $(@:.files=.d)
+	mkdir -p $(@:.files=.d)
+	$(RML)/bin/ddc_dump -t -f $(con) -o $(@:.files=.d)
+	find $(@:.files=.d) -maxdepth 1 -name '*.tabs' | $(csort) -t/ -nk2 >$@
 
+files ?= $(notdir $(patsubst %.tabs,%,$(shell cat $(dst).dump-ddc-tabs.files)))
+
+##--------------------------------------------------------------
 config:
 	@echo "files=$(wordlist 1,10,$(files)) ..."
 
 ##--------------------------------------------------------------
-## dump (tj)
-dump: dump-tj
+## dump (json->tj)
+#dump: dump-tj
 dump-tj: $(dst).dump-tj.files
-$(dst).dump-tj.files: $(dst).dump-ddc.files
+$(dst).dump-tj.files: $(dst).dump-ddc-json.files
 	rm -rf $(@:.files=.d)
 	mkdir -p $(@:.files=.d)
 	$(MAKE) dump-tj-files
 	find $(@:.files=.d) -maxdepth 1 -name '*.tj' | $(csort) -t/ -nk2 >$@
 
 dump-tj-files: $(addprefix $(dst).dump-tj.d/,$(files:=.tj))
-$(dst).dump-tj.d/%.tj: $(dst).dump-ddc.d/%.json
+$(dst).dump-tj.d/%.tj: $(dst).dump-ddc-json.d/%.json
 	ddc-dump2tj.perl $< -o=$@
 
 ##--------------------------------------------------------------
-## dump (text)
-dump: dump-t
+## dump (tabs->text)
+#dump: dump-t
 dump-t: $(dst).dump-t.files
-$(dst).dump-t.files: $(dst).dump-tj.files
+$(dst).dump-t.files: $(dst).dump-ddc-tabs.files
 	rm -rf $(@:.files=.d)
 	mkdir -p $(@:.files=.d)
 	$(MAKE) dump-t-files
 	find $(@:.files=.d) -maxdepth 1 -name '*.t' | $(csort) -t/ -nk2 >$@
 
 dump-t-files: $(addprefix $(dst).dump-t.d/,$(files:=.t))
-$(dst).dump-t.d/%.t: $(dst).dump-tj.d/%.tj
+$(dst).dump-t.d/%.t: $(dst).dump-ddc-tabs.d/%.tabs
 	tt-cut.awk '$$1' $< >$@
+
+##--------------------------------------------------------------
+## dump (tabs->wld)
+dump-dwl: $(dst).dump-dwl.files
+$(dst).dump-dwl.files: $(dst).dump-ddc-tabs.files
+	rm -rf $(@:.files=.d)
+	mkdir -p $(@:.files=.d)
+	$(MAKE) dump-dwl-files
+	find $(@:.files=.d) -maxdepth 1 -name '*.t' | $(csort) -t/ -nk2 >$@
+
+dump-dwl-files: $(addprefix $(dst).dump-dwl.d/,$(files:=.dwl))
+$(dst).dump-dwl.d/%.dwl: $(dst).dump-ddc-tabs.d/%.tabs
+	./tabs2dwl.perl $< > $@
 
 
 ##--------------------------------------------------------------

@@ -264,3 +264,24 @@ real	0m4.302s ; 16M
 
 $ time ./testme.perl ekern kern01.labs  # test_enum_text2mem2db
 real	0m14.776s ; 47M
+
+
+##-----
+$ time ./testme.perl corpus1.dump-ddc-tabs.files corpus1.ituples.d
+real	0m3.770s ; 4.9M (+1.3M tokens.bin)
+
+$ time ./testme.perl corpus1.dump-ddc-tabs.files corpus1.xtuples.d
+real	0m2.552s ; 4.9M (+1.3M tokens.bin)
+
+##---- (2nd run)
+$ time ./testme.perl kern01.dump-ddc-tabs.files kern01.ituples.d
+real	2m42.648s ; 269M (+128M tokens.bin)
+: nw=850109 ~ 850k; nl=690208 ~ 690k ; nd=27 ; nx=2534911 ~ 2.5M; ntok=33508987 (33M)
+: kern01 is ~ 1/4 size of kerncorpus, and roughly 1/100 size of alle_zeitungen
+  -> linear growth (if that's what we get) would put is in the neighborhood of 250M tuple-types for alle_zeitungen
+     : that's still well within the range of an (unsigned) int
+     : max(signed)   = 2**31-1 = 2147483647 = 2G
+     : max(unsinged) = 2**32-1 = 4294967295 = 4G
+
+$ time ./testme.perl kern01.dump-ddc-tabs.files kern01.xtuples.d
+real	3m21.857s ; 267M (+128M tokens.bin)
