@@ -2,6 +2,7 @@
 
 use lib qw(.);
 use CollocDB;
+use CollocDB::Utils qw(:sort);
 use PDL;
 use File::Path qw(make_path remove_tree);
 use File::Find;
@@ -265,7 +266,20 @@ sub test_createdb_ituples {
   print STDERR "$0: finished (ituples)\n";
   exit 0;
 }
-test_createdb_ituples(@ARGV);
+#test_createdb_ituples(@ARGV);
+
+##==============================================================================
+## test: csort
+
+sub test_csort_sub {
+  print map {"sorted: $_"} @_;
+}
+
+sub test_csort {
+  my $infile = shift || 'sortme.txt';
+  csort([$infile],\&test_csort_sub);
+}
+test_csort(@ARGV);
 
 ##==============================================================================
 ## MAIN
