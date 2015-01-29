@@ -16,12 +16,9 @@ our $prog       = basename($0);
 our $verbose    = 1;
 our ($help,$version);
 
-our $dbdir        = undef;
-
-our $globargs = 1; ##-- glob @ARGV?
-our $listargs = 0; ##-- args are file-lists?
-our %corpus   = (dclass=>'DDCTabs');
-our %coldb    = (index_w=>1, index_l=>1, pack_id=>'N', pack_date=>'n', pack_f=>'N');
+our $dbdir      = undef;
+our $outdir     = undef;
+our %coldb      = (flags=>'r');
 
 ##----------------------------------------------------------------------
 ## Command-line processing
@@ -32,22 +29,11 @@ GetOptions(##-- general
 	   'verbose|v=i' => \$verbose,
 
 	   ##-- I/O
-	   'glob|g!' => \$globargs,
-	   'list|l!' => \$listargs,
-	   'document-class|dclass|dc=s' => \$corpus{dclass},
-	   'output|outdir|od|o=s' => \$dbdir,
-
-	   ##-- coldb options
-	   'index-words|words|iw!' => \$coldb{index_w},
-	   'index-lemmata|index-lemmas|lemmata|lemmas|il!' => \$coldb{index_l},
-	   'pack-id|pi=s' => \$coldb{pack_id},
-	   'pack-date|pd=s' => \$coldb{pack_date},
-	   'pack-frequency|pf=s' => \$coldb{pack_f},
-	   '64bit|64|quad|Q!'   => sub { $coldb{pack_id}=$coldb{pack_f}=($_[1] ? 'Q' : 'N') },
-	   '32bit|32|long|L|N!' => sub { $coldb{pack_id}=$coldb{pack_f}=($_[1] ? 'N' : 'Q') },
+	   'output-directory|outdir|odir|od|o=s' => \$outdir
 	  );
 
 pod2usage({-exitval=>0,-verbose=>0}) if ($help);
+pod2usage({-exitval=>1,-verbose=>0,-msg=>"$prog: ERROR: no DBDIR specified!"}) if (!@ARGV);
 
 if ($version || $verbose >= 2) {
   print STDERR "$prog version $CollocDB::VERSION by Bryan Jurish\n";
@@ -62,18 +48,18 @@ if ($version || $verbose >= 2) {
 ##-- setup logger
 CollocDB::Logger->ensureLog();
 
-##-- setup corpus
-push(@ARGV,'-') if (!@ARGV);
-my $corpus = CollocDB::Corpus->new(%corpus);
-$corpus->open(\@ARGV, 'glob'=>$globargs, 'list'=>$listargs)
-  or die("$prog: failed to open corpus: $!");
-
-##-- create colloc-db
+##-- open colloc-db
+$dbdir = shift(@ARGV);
+$dbdir =~ s{/$}{};
 my $coldb = CollocDB->new(%coldb)
   or die("$prog: failed to create new CollocDB object: $!");
-$coldb->create($corpus, dbdir=>$dbdir)
-  or die("$prog: CollocDB::create() failed: $!");
+$coldb->open($dbdir)
+  or die("$prog: CollocDB::open() failed for '$dbdir': $!");
 
+##-- export
+$outdir //= "$dbdir.export";
+$coldb->export($outdir)
+  or die("$prog: CollocDB::export() failed to '$outdir': $!");
 
 __END__
 
@@ -85,33 +71,19 @@ __END__
 
 =head1 NAME
 
-coldb-create.perl - create a CollocDB collocation database from a corpus dump
+coldb-export.perl - export a text representation of a CollocDB index
 
 =head1 SYNOPSIS
 
- coldb-create.perl [OPTIONS] [INPUT(s)...]
+ coldb-export.perl [OPTIONS] DBDIR
 
  General Options:
    -help
    -version
    -verbose LEVEL
 
- Corpus Options:
-   -list , -nolist      ##-- INPUT(s) are/aren't file-lists (default=no)
-   -glob , -noglob      ##-- do/don't glob INPUT(s) argument(s) (default=do)
-   -dclass CLASS        ##-- set corpus document class (default=DDCTabs)
-
- CollocDB Options:
-   -[no]index-w         ##-- do/don't index words (default=do)
-   -[no]index-l         ##-- do/don't index lemmata (default=do)
-   -pack-id PACKFMT     ##-- use PACKFMT to pack IDs (default=N)
-   -pack-date PACKFMT   ##-- use PACKFMT to pack dates (default=n)
-   -pack-freq PACKFMT   ##-- use PACKFMT to pack frequencies (default=N)
-   -64bit               ##-- use 64-bit quads where available
-   -32bit               ##-- use 32-bit integers where available
-
  I/O Options:
-   -output DIR          ##-- output directory (required)
+   -output DIR          ##-- dump directory (default=DBDIR.export)
 
 =cut
 

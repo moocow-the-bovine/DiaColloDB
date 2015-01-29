@@ -279,7 +279,36 @@ sub test_csort {
   my $infile = shift || 'sortme.txt';
   csort([$infile],\&test_csort_sub);
 }
-test_csort(@ARGV);
+#test_csort(@ARGV);
+
+##==============================================================================
+## test: PackedFile
+
+sub test_pf_create {
+  my $pfile = shift || 'pf.bin';
+  my $pf = CollocDB::PackedFile->new(reclen=>4,packas=>'N')
+    or die("$0: failed to create CollocDB::PackedFile object: $!");
+  $pf->open($pfile,'rw')
+    or die("$0: failed to open '$pfile': $!");
+  $pf->push($_) foreach (1..10);
+  ##-- dump
+  $pf->saveTextFile(\*STDOUT);
+  $pf->close();
+}
+#test_pf_create(@ARGV); exit 0;
+
+sub test_pf_load {
+  my $pfile = shift || 'pf.bin';
+  my $tfile = shift || 'pf.dat';
+  my $pf = CollocDB::PackedFile->new(reclen=>4,packas=>'N')
+    or die("$0: failed to create CollocDB::PackedFile object: $!");
+  $pf->open($pfile,'rw')
+    or die("$0: failed to open '$pfile': $!");
+  $pf->loadTextFile($tfile, gaps=>1);
+  $pf->saveTextFile(\*STDOUT);
+  $pf->close();
+}
+#test_pf_load(@ARGV); exit 0;
 
 ##==============================================================================
 ## MAIN
