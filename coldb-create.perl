@@ -21,7 +21,7 @@ our $dbdir        = undef;
 our $globargs = 1; ##-- glob @ARGV?
 our $listargs = 0; ##-- args are file-lists?
 our %corpus   = (dclass=>'DDCTabs');
-our %coldb    = (index_w=>1, index_l=>1, pack_id=>'N', pack_date=>'n', pack_f=>'N');
+our %coldb    = (index_w=>0, index_l=>1, pack_id=>'N', pack_date=>'n', pack_f=>'N');
 
 ##----------------------------------------------------------------------
 ## Command-line processing
@@ -38,11 +38,11 @@ GetOptions(##-- general
 	   'output|outdir|od|o=s' => \$dbdir,
 
 	   ##-- coldb options
+	   'max-distance|maxd|dmax|n=i' => \$coldb{dmax},
 	   'index-words|words|iw!' => \$coldb{index_w},
 	   'index-lemmata|index-lemmas|lemmata|lemmas|il!' => \$coldb{index_l},
-	   'pack-id|pi=s' => \$coldb{pack_id},
-	   'pack-date|pd=s' => \$coldb{pack_date},
-	   'pack-frequency|pf=s' => \$coldb{pack_f},
+	   'nofilters|F' => sub { $coldb{$_}=undef foreach (qw(pgood pbad wgood wbad lgood lbad)); },
+	   'option|O=s%' => \%coldb,
 	   '64bit|64|quad|Q!'   => sub { $coldb{pack_id}=$coldb{pack_f}=($_[1] ? 'Q' : 'N') },
 	   '32bit|32|long|L|N!' => sub { $coldb{pack_id}=$coldb{pack_f}=($_[1] ? 'N' : 'Q') },
 	  );
@@ -104,11 +104,18 @@ coldb-create.perl - create a CollocDB collocation database from a corpus dump
  CollocDB Options:
    -[no]index-w         ##-- do/don't index words (default=do)
    -[no]index-l         ##-- do/don't index lemmata (default=do)
-   -pack-id PACKFMT     ##-- use PACKFMT to pack IDs (default=N)
-   -pack-date PACKFMT   ##-- use PACKFMT to pack dates (default=n)
-   -pack-freq PACKFMT   ##-- use PACKFMT to pack frequencies (default=N)
+   -nofilters           ##-- disable default regex-filters
    -64bit               ##-- use 64-bit quads where available
    -32bit               ##-- use 32-bit integers where available
+   -dmax DIST           ##-- maximum distance for collocation-frequencies (default=5)
+   -option OPT=VAL      ##-- set arbitrary CollocDB option, e.g.
+                        ##   pack_id=PACKFMT    # pack-format for IDs
+                        ##   pack_f=PACKFMT     # pack-format for frequencies
+                        ##   pack_date=PACKFMT  # pack-format for dates
+                        ##   bos=STR            # bos string
+                        ##   eos=STR            # eos string
+                        ##   (p|w|l)good=REGEX  # positive regex for (postags|words|lemmata)
+                        ##   (p|w|l)bad=REGEX   # negative regex for (postags|words|lemmata)
 
  I/O Options:
    -output DIR          ##-- output directory (required)

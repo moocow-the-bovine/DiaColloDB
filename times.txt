@@ -1,9 +1,26 @@
 ##-- reference: kern01
+nfiles = 15947   ~ 16k # wc -l kern01/kern01.con
 ntoks = 32002213 ~ 32M # echo `du -b kern/index/kern01/kern01._storage_Token  | cut -f1`/4 | bc
-size(ddc index) = 1.3G # du -h kern/index/kern01
+size(ddc_index) = 1.3G # du -h kern/index/kern01 # = 1264 MB = 1293632 KB = 1323040793 B
 size(xml_txt)   = 324M # ssh kira du -hs dstar/corpora/kern/build/xml_txt
 size(xml_ddc)   = 5.2G # ssh kira du -hs dstar/corpora/kern/build/ddc_xml
-n(1-grams)      = 
+: size(ddc_index) ~ 41 bytes/tok
+
+##-- reference: kern01-1k
+nfiles = 1000 ~ 1k	 # wc -l kern01-1k.files
+ntoks  = 2277906 ~ 2.27M # (while read f ; do tt-words.sh $f ; done < kern01-1k.files) | wc -l
+size(ddc_index)  ~ 90M   # echo "$ntoks_kern01_1k/$ntoks_kern01 * $ddcsize_kern01" | bc -l	# 94173567 B = 91966 kb = 89.8M
+size(xml_txt)    ~ 23M   # echo "$ntoks_kern01_1k/$ntoks_kern01 * $size_xml_txt_kern01" | bc -l
+size(xml_ddc)    ~ 370M  # echo "$ntoks_kern01_1k/$ntoks_kern01 * $size_xml_ddc_kern01" | bc -l
+: size(ddc_index) ~ 41 bytes/tok
+
+##-- reference: corpus1
+nfiles = 6		 # wc -l corpus1.dump-ddc-tabs.files
+ntoks  = 323559  ~ 324k  # (while read f ; do tt-words.sh $f ; done < corpus1.dump-ddc-tabs.files) | wc -l
+size(ddc_index)  ~ 32M   # du -hsc ../corpus1._* # = 32208 kb = 32554373 B
+size(xml_txt)    ~ ?     #
+size(xml_ddc)    ~ 28M   # (cd ..; du -msc `cat corpus1.con`)
+: size(ddc_index) ~ 100 bytes/tok
 
 ##-- ngdb-NN
 $ time ./ti-ngrams2db.perl -pk='N*' -pv='N' kern01.ti.ng5 -o=kern01.ti.ng5.db-NN
@@ -285,3 +302,144 @@ real	2m42.648s ; 269M (+128M tokens.bin)
 
 $ time ./testme.perl kern01.dump-ddc-tabs.files kern01.xtuples.d
 real	3m21.857s ; 267M (+128M tokens.bin)
+
+
+##---- prepare cofreq relations / corpus1
+# CODE: dbdir=corpus1.d; outbase="$dbdir/cof"; for i in 1 2 3 4 5 ; do cmd=(./test-coldb2drel.perl -n=$i $dbdir); echo -en "\$ time" "${cmd[@]}\t";  real=`(time "${cmd[@]}") 2>&1 | grep real`; sz=`du -hsc ${outbase}${i}* | grep total | cut -f1`; echo "# $real : $sz"; done
+$ time ./test-coldb2rel.perl -n=1 corpus1.d	# real	0m09.116s : 2492 kb
+$ time ./test-coldb2rel.perl -n=2 corpus1.d	# real	0m16.936s : 4640 kb
+$ time ./test-coldb2rel.perl -n=3 corpus1.d	# real	0m24.132s : 6432 kb
+$ time ./test-coldb2rel.perl -n=4 corpus1.d	# real	0m29.541s : 7988 kb
+$ time ./test-coldb2rel.perl -n=5 corpus1.d	# real	0m34.321s : 9376 kb
+# TOTAL TIME = 1:54 , TOTAL SIZE = 30.9M = 95x ntoks = 0.95x ddcsize
+
+##---- prepare cofreq + distance relation / corpus1
+$ time ./test-coldb2drel.perl -n=1 corpus1.d	# real	0m9.818s : 2876 kb
+  #: read + sort + uniq          : 2.885s
+  #: read + sort + uniq + write  : 9.851s
+  #: read + sort + uniq + file   : 2.862s
+  #: read + sort + uniq + file +write  : 3.741s !!!!!
+$ time ./test-coldb2drel.perl -n=2 corpus1.d	# real	0m19.788s : 5972 kb
+$ time ./test-coldb2drel.perl -n=3 corpus1.d	# real	0m30.309s : 9096 kb
+$ time ./test-coldb2drel.perl -n=4 corpus1.d	# real	0m39.998s : 12160 kb
+$ time ./test-coldb2drel.perl -n=5 corpus1.d	# real	0m49.580s : 15140 kb
+# TOTAL TIME (==time(n=5)) = 50s , TOTAL SIZE = 15.1M = 47x ntoks = 0.46x ddcsize
+
+##---- prepare cofreq + distance relation, in-memory counting / corpus1
+$ time ./test-coldb2drel+mem.perl -n=1 corpus1.d	# real	0m02.263s : 2876 kb
+$ time ./test-coldb2drel+mem.perl -n=2 corpus1.d	# real	0m04.174s : 5972 kb
+$ time ./test-coldb2drel+mem.perl -n=3 corpus1.d	# real	0m06.194s : 9096 kb
+$ time ./test-coldb2drel+mem.perl -n=4 corpus1.d	# real	0m08.143s : 12160 kb
+$ time ./test-coldb2drel+mem.perl -n=5 corpus1.d	# real	0m10.207s : 15140 kb
+# TOTAL TIME (==time(n=5)) = 10s , TOTAL SIZE = 15.1M = 47x ntoks = 0.46x ddcsize
+
+##---- prepare cofreq + distance relation, bdb counting / corpus1
+$ time ./test-coldb2drel+mem.perl -bdb -n=1 corpus1.d	# real	0m10.046s : 2876 kb
+$ time ./test-coldb2drel+mem.perl -bdb -n=2 corpus1.d	# real	0m20.192s : 5972 kb
+$ time ./test-coldb2drel+mem.perl -bdb -n=3 corpus1.d	# real	0m32.622s : 9096 kb
+$ time ./test-coldb2drel+mem.perl -bdb -n=4 corpus1.d	# real	0m45.266s : 12160 kb
+$ time ./test-coldb2drel+mem.perl -bdb -n=5 corpus1.d	# real	1m27.383s : 15140 kb
+
+##---- prepare cofreq + distance relation, +tempfile / corpus1
+$ time ./test-coldb2drel+tmp.perl -n=1 corpus1.d	# real	0m03.747s : 2876 kb
+$ time ./test-coldb2drel+tmp.perl -n=2 corpus1.d	# real	0m05.969s : 5972 kb
+$ time ./test-coldb2drel+tmp.perl -n=3 corpus1.d	# real	0m09.791s : 9096 kb
+$ time ./test-coldb2drel+tmp.perl -n=4 corpus1.d	# real	0m11.774s : 12160 kb
+$ time ./test-coldb2drel+tmp.perl -n=5 corpus1.d	# real	0m14.115s : 15140 kb
+
+##---- prepare cofreq + distance relation, flat / corpus1
+$ time ./test-coldb2drel-flat.perl -n=1 corpus1.d	# real	0m11.097s : 4192 kb  : 1.45x tiered-size
+$ time ./test-coldb2drel-flat.perl -n=2 corpus1.d	# real	0m20.688s : 8660 kb  : 1.45x tiered-size
+$ time ./test-coldb2drel-flat.perl -n=3 corpus1.d	# real	0m31.097s : 13172 kb : 1.45x tiered-size
+$ time ./test-coldb2drel-flat.perl -n=4 corpus1.d	# real	0m40.963s : 17604 kb : 1.45x tiered-size
+$ time ./test-coldb2drel-flat.perl -n=5 corpus1.d	# real	0m51.680s : 21904 kb : 1.45x tiered-size
+
+##---- prepare cofreq + distance relation / kern01-1k
+$ time ./test-coldb2drel.perl -n=1 kern01-1k.d	# real	1m22.143s : 25 Mb
+$ time ./test-coldb2drel.perl -n=2 kern01-1k.d	# real	2m44.623s : 51 Mb
+$ time ./test-coldb2drel.perl -n=3 kern01-1k.d	# real	4m05.433s : 76 Mb
+$ time ./test-coldb2drel.perl -n=4 kern01-1k.d	# real	5m26.204s : 100 Mb
+$ time ./test-coldb2drel.perl -n=5 kern01-1k.d	# real	6m48.737s : 124 Mb
+# TOTAL TIME (==time(n=5)) = 50s , TOTAL SIZE = 15.1M = 6.6x ntoks = 0.16x ddcsize
+
+##---- prepare cofreq + distance relation, +tempfile / kern01-1k
+$ time ./test-coldb2drel+tmp.perl -n=1 kern01-1k.d	# real	0m26.927s : 25584 kb
+$ time ./test-coldb2drel+tmp.perl -n=2 kern01-1k.d	# real	0m47.041s : 51112 kb
+$ time ./test-coldb2drel+tmp.perl -n=3 kern01-1k.d	# real	1m07.340s : 76312 kb
+$ time ./test-coldb2drel+tmp.perl -n=4 kern01-1k.d	# real	1m26.855s : 100604 kb
+$ time ./test-coldb2drel+tmp.perl -n=5 kern01-1k.d	# real	1m44.417s : 123952 kb
+
+##---- prepare cofreq + distance relation, +tempfile / kern01
+## ntok=32002213~32M ; size(tokens.dat)=257k ; size(ddcdir)=1.3G
+$ time ./test-coldb2drel+tmp.perl -n=1 kern01.d		# real	 6m18.288s : 266 Mb 
+$ time ./test-coldb2drel+tmp.perl -n=2 kern01.d		# real	13m21.128s : 552 Mb
+$ time ./test-coldb2drel+tmp.perl -n=3 kern01.d		# real	19m45.925s : 837 Mb
+$ time ./test-coldb2drel+tmp.perl -n=4 kern01.d		# real	25m17.009s : 1.1 Gb
+$ time ./test-coldb2drel+tmp.perl -n=5 kern01.d		# real	30m47.828s : 1.4 Gb
+# TOTAL TIME (==time(n=5)) = 30m48s , TOTAL SIZE = 1.4G = 43x ntoks = 1.1x ddcsize
+
+##==============================================================
+## + filters
+#CODE: dbdir=corpus1.d; outbase="$dbdir/cof"; for i in 1 2 3 4 5 ; do cmd=(./test-coldb2rel+tmp.perl -n=$i $dbdir); echo -en "\$ time" "${cmd[@]}\t";  real=`(time "${cmd[@]}") 2>&1 | grep real`; sz=`du -hsc ${outbase}${i}* | grep total | cut -f1`; echo "# $real : $sz"; done
+
+##---- prepare cof -dist / corpus1 + filters
+$ time ./test-coldb2rel+tmp.perl -n=1 corpus1.d	# real	0m0.992s : 1.2M
+$ time ./test-coldb2rel+tmp.perl -n=2 corpus1.d	# real	0m1.557s : 2.0M
+$ time ./test-coldb2rel+tmp.perl -n=3 corpus1.d	# real	0m2.065s : 2.7M
+$ time ./test-coldb2rel+tmp.perl -n=4 corpus1.d	# real	0m2.474s : 3.2M
+$ time ./test-coldb2rel+tmp.perl -n=5 corpus1.d	# real	0m2.886s : 3.6M ~ 112k tok/sec ; 
+# TOTAL: TIME = 9.9s , SIZE = 12.7M ~  32k tok/sec , 39 bytes/tok
+# FIXED: TIME = 2.8s , SIZE =  3.6M ~ 112k tok/sec , 11 bytes/tok
+
+##---- prepare cof -dist / kern01-1k + filters
+$ time ./test-coldb2rel+tmp.perl -n=1 kern01-1k.d	# real	0m8.347s : 12M
+$ time ./test-coldb2rel+tmp.perl -n=2 kern01-1k.d	# real	0m15.127s : 20M
+$ time ./test-coldb2rel+tmp.perl -n=3 kern01-1k.d	# real	0m20.532s : 28M
+$ time ./test-coldb2rel+tmp.perl -n=4 kern01-1k.d	# real	0m24.239s : 34M
+$ time ./test-coldb2rel+tmp.perl -n=5 kern01-1k.d	# real	0m27.842s : 39M
+# TOTAL: TIME = 1:36.087 , SIZE = 133M ~ 23.7k tok/sec , 58 bytes/tok
+# FIXED: TIME =   27.842 , SIZE =  39M ~ 81.8k tok/sec , 17 bytes/tok
+
+##---- prepare cof -dist / kern01 + filters
+$ time ./test-coldb2rel+tmp.perl -n=1 kern01.d	# real	1m56.065s : 138M
+$ time ./test-coldb2rel+tmp.perl -n=2 kern01.d	# real	3m24.365s : 243M
+$ time ./test-coldb2rel+tmp.perl -n=3 kern01.d	# real	4m43.557s : 331M
+$ time ./test-coldb2rel+tmp.perl -n=4 kern01.d	# real	5m11.975s : 404M
+$ time ./test-coldb2rel+tmp.perl -n=5 kern01.d	# real	6m04.759s : 465M ~ 888 tok/sec
+# TOTAL: TIME = 21:20.721 , SIZE = 1.58G ~ 24.9k tok/sec , 49 bytes/tok
+# FIXED: TIME =  6:04.759 , SIZE =  465M ~ 87.7k tok/sec , 15 bytes/tok
+
+##-- projection for alle_zeitungen using 80k tok/sec, 20 bytes/tok
+##   ntok=3470364249 ~ 3.47G
+##   : EST TIME = 12:02:59 , EST SIZE = 69407284980 bytes = 69G
+##
+## : for comparison, total ddc index size on data = 175G
+
+##==============================================================
+## +filters, +cc
+$ time ./relcount 5 < corpus1.d/tokens.dat >/dev/null	# real	0m00.300s ,  0.3% mem ~ 1.08M tok/sec
+$ time ./relcount 5 < kern01-1k.d/tokens.dat >/dev/null	# real	0m03.444s ,  3.7% mem ~  661k tok/sec
+$ time ./relcount 5 < kern01.d/tokens.dat >/dev/null	# real	0m57.621s , 45.7% mem ~  555k tok/sec
+
+$ time ./relgen 5 < corpus1.d/tokens.dat >/dev/null	# real	0m00.134s ~ 2.41M tok/sec
+$ time ./relgen 5 < kern01-1k.d/tokens.dat >/dev/null	# real	0m01.104s ~ 2.06M tok/sec
+$ time ./relgen 5 < kern01.d/tokens.dat >/dev/null	# real	0m14.922s ~ 2.14M tok/sec
+
+$ time ./relgen.perl -n=5 corpus1.d/tokens.dat >/dev/null	# real	0m0.719s ~ 450k tok/sec
+$ time ./relgen.perl -n=5 kern01-1k.d/tokens.dat >/dev/null	# real	0m5.123s ~ 445k tok/sec
+$ time ./relgen.perl -n=5 kern01.d/tokens.dat >/dev/null	# real	1m8.743s ~ 466k tok/sec
+
+$ time ./relgen 5 < corpus1.d/tokens.dat   | csort.sh -n -k1 -k2 | cuniq.sh -c >/dev/null	# real	0m00.984s ~ 329k tok/sec
+$ time ./relgen 5 < kern01-1k.d/tokens.dat | csort.sh -n -k1 -k2 | cuniq.sh -c >/dev/null	# real	0m09.320s ~ 244k tok/sec
+$ time ./relgen 5 < kern01.d/tokens.dat | csort.sh -n -k1 -k2 | cuniq.sh -c >/dev/null		# real	2m35.565s ~ 206k tok/sec
+
+$ ./relgen 5 <corpus1.d/tokens.dat >r5.tmp;   time csort.sh -n -k1 -k2 r5.tmp | cuniq.sh -c >/dev/null	# real	0m00.349s
+$ ./relgen 5 <kern01-1k.d/tokens.dat >r5.tmp; time csort.sh -n -k1 -k2 r5.tmp | cuniq.sh -c >/dev/null	# real	0m03.027s
+$ ./relgen 5 <kern01.d/tokens.dat >r5.tmp;    time csort.sh -n -k1 -k2 r5.tmp | cuniq.sh -c >/dev/null	# real	1m01.690s
+#
+#... but sort uses parallel execution if called on a disk file (even via input redirection), so
+#
+# corpus1:   time(csortuc) = time(relgen+csortuc)-time(relgen) = 0m00.850s ~ 381k tok/sec
+# kern01-1k: time(csortuc) = time(relgen+csortuc)-time(relgen) = 0m08.216s ~ 227k tok/sec
+# kern01:    time(csortuc) = time(relgen+csortuc)-time(relgen) = 2m20.643s ~ 228k tok/sec
+

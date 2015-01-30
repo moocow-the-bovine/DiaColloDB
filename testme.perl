@@ -7,6 +7,7 @@ use PDL;
 use File::Path qw(make_path remove_tree);
 use File::Find;
 use File::Basename qw(basename);
+use Benchmark qw(timethese cmpthese);
 
 ##==============================================================================
 ## test: enum
@@ -309,6 +310,28 @@ sub test_pf_load {
   $pf->close();
 }
 #test_pf_load(@ARGV); exit 0;
+
+##==============================================================================
+## bench: file size
+
+
+sub bench_filesize {
+  my $file = shift || "kern01.wl.d/xf.dba";
+  my $pf   = CollocDB::PackedFile->new(file=>$file,flags=>'r',packas=>'N');
+  $pf->{size} = $pf->size();
+  my ($size);
+  cmpthese(1000000,
+	   {
+	    #'-s:FILE' => sub { $size = (-s $file); },
+	    #'-s:FH'   => sub { $size = (-s $pf->{fh}); },
+	    '{size}'  => sub { $size = $pf->{size}; },
+	   });
+  #               Rate -s:FILE   -s:FH  {size}
+  # -s:FILE  2085235/s      --    -47%    -84%  : real=1.040/M ~ 961k op/sec [incl overhead]
+  # -s:FH    3957601/s     90%      --    -69%  : real=0.808/M ~ 124k op/sec [incl overhead]
+  # {size}  12952997/s    521%    227%      --  : real=0.627/M ~ 159k op/sec [incl overhead]
+}
+bench_filesize(@ARGV); exit 0;
 
 ##==============================================================================
 ## MAIN

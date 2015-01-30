@@ -9,6 +9,7 @@ use CollocDB::Enum;
 use CollocDB::DBFile;
 use CollocDB::PackedFile;
 use CollocDB::Unigrams;
+use CollocDB::Cofreqs;
 use CollocDB::Corpus;
 use CollocDB::Utils qw(:fcntl :json :sort :pack);
 use Fcntl;
@@ -22,21 +23,57 @@ use strict;
 our $VERSION = 0.01;
 our @ISA = qw(CollocDB::Logger);
 
+## $PGOOD_DEFAULT
+##  + default positive pos regex for document parsing
+##  + don't use qr// here, since Storable doesn't like pre-compiled Regexps
+our $PGOOD_DEFAULT   = q/^(?:N|TRUNC|VV|ADJ)/; #ITJ|FM|XY
+
+## $PBAD_DEFAULT
+##  + default negative pos regex for document parsing
+our $PBAD_DEFAULT   = undef;
+
+## $WGOOD_DEFAULT
+##  + default positive word regex for document parsing
+our $WGOOD_DEFAULT   = q/[[:alpha:]]/;
+
+## $WBAD_DEFAULT
+##  + default negative word regex for document parsing
+our $WBAD_DEFAULT   = q/[\.]/;
+
+## $LGOOD_DEFAULT
+##  + default positive lemma regex for document parsing
+our $LGOOD_DEFAULT   = undef;
+
+## $WBAD_DEFAULT
+##  + default negative lemma regex for document parsing
+our $LBAD_DEFAULT   = undef;
+
+
 ##==============================================================================
 ## Constructors etc.
 
 ## $coldb = CLASS_OR_OBJECT->new(%args)
 ## + %args, object structure:
 ##   (
-##    ##--options
+##    ##-- options
 ##    dbdir => $dbdir,    ##-- database directory; REQUIRED
 ##    flags => $fcflags,  ##-- fcntl flags or open()-style mode string; default='rw'
-##    index_w => $bool,   ##-- index surface word-forms? (default=1)
+##    index_w => $bool,   ##-- index surface word-forms? (default=0)
 ##    index_l => $bool,   ##-- index lemmata? (default=1)
-##    eos => $eos,        ##-- special string to use for EOS (default='__$')
+##    bos => $bos,        ##-- special string to use for BOS, undef or empty for none (default=undef)
+##    eos => $eos,        ##-- special string to use for EOS, undef or empty for none (default=undef)
 ##    pack_id => $fmt,    ##-- pack-format for IDs (default='N')
 ##    pack_f  => $fmt,    ##-- pack-format for frequencies (default='N')
 ##    pack_date => $fmt,  ##-- pack-format for dates (default='n')
+##    dmax => $dmax,      ##-- maximum distance for collocation-frequencies (default=5)
+##    ##
+##    ##-- filtering
+##    pgood  => $regex,   ##-- positive filter regex for part-of-speech tags
+##    pbad   => $regex,   ##-- negative filter regex for part-of-speech tags
+##    wgood  => $regex,   ##-- positive filter regex for word text
+##    wbad   => $regex,   ##-- negative filter regex for word text
+##    lgood  => $regex,   ##-- positive filter regex for lemma text
+##    lbad   => $regex,   ##-- negative filter regex for lemma text
 ##    ##
 ##    ##-- logging
 ##    logParseFile => $level,   ##-- log-level for corpus file-parsing (default='trace')
@@ -53,6 +90,7 @@ our @ISA = qw(CollocDB::Logger);
 ##    w2x   => $w2x,      ##-- db: word->tuples  ($dbdir/w2x.db) : $wi=>@xis  : N=>N*
 ##    l2x   => $l2x,      ##-- db: lemma->tuples ($dbdir/l2x.db) : $li=>@xis  : N=>N*
 ##    xf    => $xf,       ##-- ug: $xi => $f($xi) : N=>N
+##    cof   => $cof,      ##-- cf: [$i1,$i2] => $f12
 ##   )
 sub new {
   my $that = shift;
@@ -60,13 +98,23 @@ sub new {
 		     ##-- options
 		      dbdir => undef,
 		      flags => 'rw',
-		      index_w => 1,
+		      index_w => 0,
 		      index_l => 1,
-		      eos => '__$',
+		      bos => undef,
+		      eos => undef,
 		      pack_id => 'N',
 		      pack_f  => 'N',
 		      pack_date => 'n',
 		      #pack_x   => 'NNn',
+		      dmax => 5,
+
+		      ##-- filters
+		      pgood => $PGOOD_DEFAULT,
+		      pbad  => $PBAD_DEFAULT,
+		      wgood => $WGOOD_DEFAULT,
+		      wbad  => $WBAD_DEFAULT,
+		      lgood => $LGOOD_DEFAULT,
+		      lbad  => $LBAD_DEFAULT,
 
 		      ##-- logging
 		      logParseFile => 'trace',
@@ -82,12 +130,17 @@ sub new {
 
 		      ##-- data
 		      xf    => undef, #CollocDB::Unigrams->new(packas=>$coldb->{pack_f}),
+		      cof   => undef, #CollocDB::Cofreqs->new(pack_f=>$pack_f, pack_i=>$pack_i, dmax=>$dmax),
 
 		      @_,	##-- user arguments
 		     },
 		     ref($that)||$that);
   $coldb->{pack_x} = ($coldb->{pack_id} x 2) . $coldb->{pack_date};
   return defined($coldb->{dbdir}) ? $coldb->open($coldb->{dbdir}) : $coldb;
+}
+
+sub DESTROY {
+  $_[0]->close() if ($_[0]->opened);
 }
 
 ##==============================================================================
@@ -152,13 +205,17 @@ sub open {
   $coldb->{xf} = CollocDB::Unigrams->new(file=>"$dbdir/xf.dba", flags=>$flags, packas=>$coldb->{pack_f})
     or $coldb->logconfess("open(): failed to open tuple-unigrams $dbdir/xf.dba: $!");
 
+  ##-- open: cof
+  $coldb->{cof} = CollocDB::Cofreqs->new(base=>"$dbdir/cof", flags=>$flags, pack_i=>$coldb->{pack_i}, pack_f=>$coldb->{pack_f}, dmax=>$coldb->{dmax})
+    or $coldb->logconfess("open(): failed to open co-frequency file $dbdir/cof.*: $!");
+
   ##-- all done
   return $coldb;
 }
 
 ## @dbkeys = $coldb->dbkeys()
 sub dbkeys {
-  return qw(wenum lenum xenum w2x l2x xf);
+  return qw(wenum lenum xenum w2x l2x xf cof);
 }
 
 ## $coldb_or_undef = $coldb->close()
@@ -178,7 +235,7 @@ sub close {
 sub opened {
   my $coldb = shift;
   return (defined($coldb->{dbdir})
-	  && !grep {!$_->opened} @$coldb{$coldb->dbkeys}
+	  && !grep {!$_->opened} grep {defined($_)} @$coldb{$coldb->dbkeys}
 	 );
 }
 
@@ -225,32 +282,72 @@ sub create {
   my $xs2i  = $xenum->{s2i}{data};
   my $nx    = 0;
 
-  ##-- initialize: corpus token-storage (temporary)
+  ##-- initialize: corpus token-list (temporary)
   my $tokfile =  "$dbdir/tokens.dat";
   CORE::open(my $tokfh, ">$tokfile")
     or $coldb->logconfess("$0: open failed for $tokfile: $!");
   #my $tokpack = substr($PDL::Types::pack[$PDL::Types::typehash{PDL_L}{numval}],0,1);
   #my $tokpack = 'L';
 
+  ##-- initialize: filter regexes
+  my $pgood = $coldb->{pgood} ? qr{$coldb->{pgood}} : undef;
+  my $pbad  = $coldb->{pbad}  ? qr{$coldb->{pbad}}  : undef;
+  my $wgood = $coldb->{wgood} ? qr{$coldb->{wgood}} : undef;
+  my $wbad  = $coldb->{wbad}  ? qr{$coldb->{wbad}}  : undef;
+  my $lgood = $coldb->{lgood} ? qr{$coldb->{lgood}} : undef;
+  my $lbad  = $coldb->{lbad}  ? qr{$coldb->{lbad}}  : undef;
+
   ##-- initialize: enums
   $coldb->vlog($coldb->{logCreate},"create(): processing corpus files");
-  my $eos = $coldb->{eos};
-  my ($doc, $date,$tok,$w,$l,$wi,$li,$x,$xi);
+  my ($bos,$eos) = @$coldb{qw(bos eos)};
+  my ($doc, $date,$tok,$w,$p,$l,$wi,$li,$x,$xi);
+  my ($last_was_eos,$bosxi,$eosxi);
   for ($corpus->ibegin(); $corpus->iok; $corpus->inext) {
     $coldb->vlog($coldb->{logParseFile}, "create(): processing file ", $corpus->ifile);
     $doc  = $corpus->idocument();
     $date = $doc->{date};
 
-    foreach $tok (@{$doc->{tokens}}) {
-      ($w,$l) = defined($tok) ? @$tok : ($eos,$eos);
+    ##-- allocate bos,eos
+    undef $bosxi;
+    undef $eosxi;
+    foreach $w (grep {($_//'') ne ''} $bos,$eos) {
       if ($index_w) { $wi = $ws2i->{$w} = ++$nw if (!defined($wi=$ws2i->{$w})); }
-      if ($index_l) { $li = $ls2i->{$l} = ++$nl if (!defined($li=$ls2i->{$l})); }
-
+      if ($index_l) { $li = $ls2i->{$w} = ++$nl if (!defined($li=$ls2i->{$w})); }
       $x=pack($pack_x,($index_w ? $wi : qw()),($index_l ? $li : qw()),$date);
       $xi = $xs2i->{$x} = ++$nx if (!defined($xi=$xs2i->{$x}));
+      $bosxi = $xi if (defined($bos) && $w eq $bos);
+      $eosxi = $xi if (defined($eos) && $w eq $eos);
+    }
 
-      ##-- save to token-fh, including extra newline for EOS
-      $tokfh->print($xi,"\n", (defined($tok) ? qw() : "\n"));
+    ##-- iterate over tokens
+    $last_was_eos = 1;
+    foreach $tok (@{$doc->{tokens}}) {
+      if (defined($tok)) {
+	##-- normal token
+	($w,$p,$l) = @$tok{qw(w p l)};
+
+	##-- apply regex filters
+	next if ((defined($pgood)    && $p !~ $pgood)
+		 || (defined($pbad)  && $p =~ $pbad)
+		 || (defined($wgood) && $w !~ $wgood)
+		 || (defined($wbad)  && $w =~ $wbad)
+		 || (defined($lgood) && $l !~ $lgood)
+		 || (defined($lbad)  && $l =~ $lbad));
+
+	if ($index_w) { $wi = $ws2i->{$w} = ++$nw if (!defined($wi=$ws2i->{$w})); }
+	if ($index_l) { $li = $ls2i->{$l} = ++$nl if (!defined($li=$ls2i->{$l})); }
+
+	$x  = pack($pack_x,($index_w ? $wi : qw()),($index_l ? $li : qw()),$date);
+	$xi = $xs2i->{$x} = ++$nx if (!defined($xi=$xs2i->{$x}));
+
+	$tokfh->print(($last_was_eos && defined($bosxi) ? ($bosxi,"\n") : qw()), $xi,"\n");
+	$last_was_eos = 0;
+      }
+      elsif (!$last_was_eos) {
+	##-- eos
+	$tokfh->print((defined($eosxi) ? ($eosxi,"\n") : qw()), "\n");
+	$last_was_eos = 1;
+      }
     }
   }
 
@@ -330,6 +427,13 @@ sub create {
     or $coldb->logconfess("create(): could not set unigram db size = $xenum->{size}: $!");
   $xfdb->create($tokfile)
     or $coldb->logconfess("create(): failed to create unigram db: $!");
+
+  ##-- compute collocation frequencies
+  $coldb->info("creating co-frequency db $dbdir/cof.*");
+  my $cof = $coldb->{cof} = CollocDB::Cofreqs->new(base=>"$dbdir/cof", flags=>$flags, pack_i=>$pack_id, pack_f=>$pack_f)
+    or $coldb->logconfess("create(): failed to open co-frequency db $dbdir/cof.*: $!");
+  $cof->create($tokfile, dmax=>$coldb->{dmax})
+    or $coldb->logconfess("create(): failed to create co-frequency db: $!");
 
   ##-- save header
   $coldb->saveHeader()
@@ -415,7 +519,7 @@ sub export {
   }
 
   ##-- dump: tuple-enum
-  $coldb->vlog($coldb->{logExport}, "export(): exporting tuple-enum file $outdir/xenum.dat");
+  $coldb->vlog($coldb->{logExport}, "export(): exporting tuple-enum file(s) $outdir/xenum.*dat");
 
   ##-- dump tuple-enum (raw)
   my $pack_x = $coldb->{pack_x};
@@ -463,6 +567,13 @@ sub export {
     $coldb->{xf}->saveTextFile("$outdir/xf.dat", keys=>1)
       or $coldb->logconfess("export failed for $outdir/xf.dat");
     $coldb->{xf}->setFilters();
+  }
+
+  ##-- dump: cof
+  if ($coldb->{cof}) {
+    $coldb->vlog($coldb->{logExport}, "export(): exporting co-frequency db $outdir/cof.dat");
+    $coldb->{cof}->saveTextFile("$outdir/cof.dat")
+      or $coldb->logconfess("export failed for $outdir/cof.dat");
   }
 
   ##-- all done
