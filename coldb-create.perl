@@ -21,7 +21,7 @@ our $dbdir        = undef;
 our $globargs = 1; ##-- glob @ARGV?
 our $listargs = 0; ##-- args are file-lists?
 our %corpus   = (dclass=>'DDCTabs');
-our %coldb    = (index_w=>0, index_l=>1, pack_id=>'N', pack_date=>'n', pack_f=>'N');
+our %coldb    = (index_w=>0, index_l=>1, pack_id=>'N', pack_date=>'n', pack_f=>'N', dmax=>5);
 
 ##----------------------------------------------------------------------
 ## Command-line processing
