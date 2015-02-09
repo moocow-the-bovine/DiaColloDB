@@ -443,3 +443,22 @@ $ ./relgen 5 <kern01.d/tokens.dat >r5.tmp;    time csort.sh -n -k1 -k2 r5.tmp | 
 # kern01-1k: time(csortuc) = time(relgen+csortuc)-time(relgen) = 0m08.216s ~ 227k tok/sec
 # kern01:    time(csortuc) = time(relgen+csortuc)-time(relgen) = 2m20.643s ~ 228k tok/sec
 
+##==============================================================
+## profiling
+##
+## $ ./coldb-export.perl kern01.d -o kern01.export
+## $ tt-dictapply.perl kern01.export/xenum.sdat kern01.export/xf.dat | tt-cut.awk '$2,$3' | tt-1grams.perl -union - >kern01.export/lf.dat
+## $ tt-eval.perl -noprint 'print "$_[1]\n" if ($_[0]>=100);' kern01.export/lf.dat > kern01.export/lf100+.dat
+## $ shuf -n 100   kern01.export/l+100.dat >test-100.l
+## $ shuf -n 1000  kern01.export/l+100.dat >test-1k.l
+## $ shuf -n 10000 kern01.export/l+100.dat >test-10k.l
+## $ sudo sh -c 'echo 1 > /proc/sys/vm/drop_caches'   # clear filesystem cache
+
+$ time ./test-profile.perl kern01.d test-100.l 		# real	0m2.587s ~ 387  ops/sec (1k, 1st run)
+$ time ./test-profile.perl kern01.d test-100.l 		# real	0m0.121s ~ 8.3k ops/sec (1k, 2nd run)
+
+$ time ./test-profile.perl kern01.d test-1k.l 		# real	0m6.631s ~   151  ops/sec (1k, 1st run)
+$ time ./test-profile.perl kern01.d test-1k.l 		# real	0m0.133s ~  7.52k ops/sec (1k, 2nd run)
+
+$ time ./test-profile.perl kern01.d test-10k.l 		# real	0m7.464s ~  1.34k ops/sec (10k, 1st run)
+$ time ./test-profile.perl kern01.d test-10k.l 		# real	0m0.276s ~ 36.23k ops/sec (10k, 2nd run)
