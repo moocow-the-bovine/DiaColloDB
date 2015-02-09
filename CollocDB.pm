@@ -357,7 +357,7 @@ sub create {
 
   ##-- compile: wenum
   if ($index_w) {
-    $coldb->vlog($coldb->{logCreate}, "create(): creating word-enum DB $dbdir/wenum.*\n");
+    $coldb->vlog($coldb->{logCreate}, "create(): creating word-enum DB $dbdir/wenum.*");
     @{$wenum->{i2s}{data}}{values %$ws2i} = keys %$ws2i;
     $wenum->{size} = $nw;
     $wenum->saveDbFile("$dbdir/wenum")
@@ -368,7 +368,7 @@ sub create {
 
   ##-- compile: lenum
   if ($index_l) {
-    $coldb->vlog($coldb->{logCreate},"create(): creating lemma-enum DB $dbdir/lenum.*\n");
+    $coldb->vlog($coldb->{logCreate},"create(): creating lemma-enum DB $dbdir/lenum.*");
     @{$lenum->{i2s}{data}}{values %$ls2i} = keys %$ls2i;
     $lenum->{size} = $nl;
     $lenum->saveDbFile("$dbdir/lenum")
@@ -378,9 +378,9 @@ sub create {
   }
 
   ##-- compile: xenum
-  $coldb->vlog($coldb->{logCreate}, "create(): creating tuple-enum DB $dbdir/xenum.*\n");
+  $coldb->vlog($coldb->{logCreate}, "create(): creating tuple-enum DB $dbdir/xenum.*");
   @{$xenum->{i2s}{data}}{values %$xs2i} = keys %$xs2i;
-  $xenum->{size} = $nx;
+  $xenum->{size}   = $nx;
   $xenum->saveDbFile("$dbdir/xenum")
     or $coldb->logconfess("create(): failed to save $dbdir/xenum: $!");
 
