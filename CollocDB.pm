@@ -76,6 +76,7 @@ our $LBAD_DEFAULT   = undef;
 ##    lbad   => $regex,   ##-- negative filter regex for lemma text
 ##    ##
 ##    ##-- logging
+##    logOpen => $level,        ##-- log-level for open/close (default='info')
 ##    logParseFile => $level,   ##-- log-level for corpus file-parsing (default='trace')
 ##    logCreate => $level,      ##-- log-level for create messages (default='info')
 ##    logExport => $level,      ##-- log-level for export messages (default='trace')
@@ -117,6 +118,7 @@ sub new {
 		      lbad  => $LBAD_DEFAULT,
 
 		      ##-- logging
+		      logOpen => 'info',
 		      logParseFile => 'trace',
 		      logCreate => 'info',
 		      logExport => 'trace',
@@ -157,6 +159,7 @@ sub open {
   $coldb->close() if ($coldb->opened);
   $coldb->{dbdir} = $dbdir;
   my $flags = fcflags($coldb->{flags});
+  $coldb->vlog($coldb->{logOpen}, "open($dbdir)");
 
   ##-- open: truncate
   if (($flags&O_TRUNC) == O_TRUNC) {
@@ -222,6 +225,7 @@ sub dbkeys {
 sub close {
   my $coldb = shift;
   return $coldb if (!ref($coldb));
+  $coldb->vlog($coldb->{logOpen}, "close()");
   foreach ($coldb->dbkeys) {
     next if (!defined($coldb->{$_}));
     return undef if (!$coldb->{$_}->close());

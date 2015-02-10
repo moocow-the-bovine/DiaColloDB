@@ -36,6 +36,7 @@ GetOptions(##-- general
 	   'version|V' => \$version,
 	   'verbose|v=i' => \$verbose,
 
+	   ##-- local
 	   'strings|s!' => \$want_strings,
 	   'mi|m!' => \$want_mi,
 	   'logdice|dice|ld|d!' => \$want_ld,

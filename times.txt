@@ -462,3 +462,61 @@ $ time ./test-profile.perl kern01.d test-1k.l 		# real	0m0.133s ~  7.52k ops/sec
 
 $ time ./test-profile.perl kern01.d test-10k.l 		# real	0m7.464s ~  1.34k ops/sec (10k, 1st run)
 $ time ./test-profile.perl kern01.d test-10k.l 		# real	0m0.276s ~ 36.23k ops/sec (10k, 2nd run)
+#... no substantial change in speed by adding -[no]mi -[no]ld -[no]strings
+
+# BUT:
+  $ time ./coldb-profile.perl kern01.d Haus | sort -nrk5 | head	# real	0m31.878s ~ 0.031 ops/sec (1, 1st run)
+  $ time ./coldb-profile.perl kern01.d Haus | sort -nrk5 | head	# real	0m02.647s ~ 0.377 ops/sec (1, 2nd run)
+# ... looks like we need to check test consistency and/or have a look at the profiler!
+
+# first runs:
+$ time ./coldb-profile.perl kern01.d Haus -nostrings -nomi -nold -noout >/dev/null	# real	0m02.956s ~ 0.338 ops/sec (base)
+$ time ./coldb-profile.perl kern01.d Haus -nostrings -nomi -nold -text  >/dev/null	# real	0m03.101s ~ 0.322 ops/sec (text: 6.89 ops/sec)
+$ time ./coldb-profile.perl kern01.d Haus -nostrings -nomi -nold -json  >/dev/null	# real	0m04.219s ~ 0.237 ops/sec (json: 0.792 ops/sec)
+$ time ./coldb-profile.perl kern01.d Haus -nostrings -nomi -ld   -noout >/dev/null	# real	0m04.478s ~ 0.223 ops/sec (dice: 0.657 ops/sec)
+$ time ./coldb-profile.perl kern01.d Haus -nostrings -mi   -nold -noout >/dev/null	# real	0m04.944s ~ 0.202 ops/sec (milf: 0.503 ops/sec)
+$ time ./coldb-profile.perl kern01.d Haus -strings   -nomi -nold -noout >/dev/null	# real	0m34.390s ~ 0.029 ops/sec (stringify: .0318 ops/sec)
+
+#-- new pure-file enum (test:i2s)
+$ time ./enum-i2s.perl lenum enum-10k.dat >/dev/null	# real	0m0.891s ~  11k ops/sec (n=10k, 1st run)
+$ time ./enum-i2s.perl lenum enum-10k.dat >/dev/null	# real	0m0.090s ~ 111k ops/sec (n=10k, 2nd run)
+--
+$ time ./enum-i2s.perl lenum enum-100.dat >/dev/null	# real	0m0.446s ~  224  ops/sec (n=100, 1st run)
+$ time ./enum-i2s.perl lenum enum-100.dat >/dev/null	# real	0m0.008s ~ 12.5k ops/sec (n=100, 2nd run)
+##
+##-- new pure-file enum (test:s2i)
+$ time ./enum-s2i.perl lenum enum-10k.rdat >/dev/null	# real	0m3.506s ~ 2.85k ops/sec (n=10k, 1st run)
+$ time ./enum-s2i.perl lenum enum-10k.rdat >/dev/null	# real	0m1.181s ~ 8.46k ops/sec (n=10k, 2nd run)
+--
+$ time ./enum-s2i.perl lenum enum-100.rdat >/dev/null	# real	0m0.976s ~  102  ops/sec (n=100, 1st run)
+$ time ./enum-s2i.perl lenum enum-100.rdat >/dev/null	# real	0m0.022s ~ 4.54k ops/sec (n=100, 1nd run)
+
+#-- pure-file EnumFile (test:i2s)
+$ time ./ef-i2s.perl lef enum-10k.dat >/dev/null	# real	0m2.388s ~  4.18k ops/sec (n=10k, 1st run)
+$ time ./ef-i2s.perl lef enum-10k.dat >/dev/null	# real	0m0.180s ~ 55.5k  ops/sec (n=10k, 2nd run)
+$ time ./ef-i2s.perl lef enum-100.dat >/dev/null	# real	0m1.262s ~ 79.2  ops/sec (n=100, 1st run)
+$ time ./ef-i2s.perl lef enum-100.dat >/dev/null	# real  0m0.074s ~ 1.35k ops/sec (n=100, 2nd run)
+##
+##-- pure-file EnumFile (test:s2i)
+$ time ./ef-s2i.perl lef enum-10k.rdat >/dev/null	# real	0m6.270s ~ 1.59k ops/sec (n=10k, 1st run)
+$ time ./ef-s2i.perl lef enum-10k.rdat >/dev/null	# real	0m1.258s ~ 7.95k ops/sec (n=10k, 2nd run)
+$ time ./ef-s2i.perl lef enum-100.rdat >/dev/null	# real	0m4.235s ~ 23.6  ops/sec (n=100, 1st run)
+$ time ./ef-s2i.perl lef enum-100.rdat >/dev/null	# real	0m0.087s ~ 1.15k ops/sec (n=100, 2nd run)
+
+##-- vs old db-based enum (cache=32M, psize=4k)
+$ time ./edb-i2s.perl kern01.d/lenum enum-10k.dat >/dev/null	# real	0m7.648s ~  1.30k ops/sec (n=10k, psize=4k, 1st run) ~ 3.2  ef
+$ time ./edb-i2s.perl kern01.d/lenum enum-10k.dat >/dev/null	# real	0m0.171s ~ 58.4 k ops/sec (n=10k, psize=4k, 2nd run) ~ 0.95 ef
+$ time ./edb-i2s.perl kern01.d/lenum enum-100.dat >/dev/null	# real	0m2.295s ~  4.35k ops/sec (n=100, psize=4k, 1st run) ~ 1.8  ef
+$ time ./edb-i2s.perl kern01.d/lenum enum-100.dat >/dev/null	# real	0m0.077s ~ 130  k ops/sec (n=100, psize=4k, 2nd run) ~ 1.0  ef
+##
+##-- vs old db-based enum (cache=32M, psize=32k)
+$ time ./edb-i2s.perl kern01.d1/lenum enum-10k.dat >/dev/null	# real	0m2.078s ~  4.8k ops/sec (n=10k, psize=32k, 1st run) ~ 0.87 ef
+$ time ./edb-i2s.perl kern01.d1/lenum enum-10k.dat >/dev/null	# real	0m0.162s ~ 61.7k ops/sec (n=10k, psize=32k, 2nd run) ~ 0.90 ef
+$ time ./edb-i2s.perl kern01.d1/lenum enum-100.dat >/dev/null	# real	0m2.111s ~ 47.3  ops/sec (n=100, psize=32k, 1st run) ~ 1.6  ef
+$ time ./edb-i2s.perl kern01.d1/lenum enum-100.dat >/dev/null	# real	0m0.079s ~ 1.26k ops/sec (n=100, psize=32k, 2nd run) ~ 1.1  ef
+##
+##-- vs old db-based enum (cache=32M, psize=64k=max)
+$ time ./edb-i2s.perl kern01.d1/lenum enum-10k.dat >/dev/null	# real	0m2.146s ~  4.7k ops/sec (n=10k, psize=64k, 1st run) ~ .90 ef
+$ time ./edb-i2s.perl kern01.d1/lenum enum-10k.dat >/dev/null	# real	0m0.163s ~ 61.3k ops/sec (n=10k, psize=64k, 2nd run) ~ .91 ef
+$ time ./edb-i2s.perl kern01.d1/lenum enum-100.dat >/dev/null	# real	0m1.473s ~ 67.8  ops/sec (n=100, psize=64k, 1st run) ~ 1.2 ef
+$ time ./edb-i2s.perl kern01.d1/lenum enum-100.dat >/dev/null	# real	0m0.076s ~ 1.3k  ops/sec (n=100, psize=64k, 2nd run) ~ 1.0 ef
