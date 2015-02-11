@@ -78,7 +78,7 @@ my @lemmas = @ARGV;
 my ($l,$li,$lxids,@xids);
 my $lenum = $coldb->{lenum};
 foreach $l (@lemmas) {
-  if (!defined($li=$lenum->{s2i}{data}{$l})) {
+  if (!defined($li=$lenum->s2i($l))) {
     warn("$0: ignoring unknown lemma '$l'");
     next;
   }
@@ -98,8 +98,8 @@ if ($want_strings) {
   my $xenum = $coldb->{xenum};
   my ($xi2,$wi2,$li2,$d2,$l2,$key2);
   foreach my $xi2 (keys %{$prf->{f2}}) {
-    ($wi2,$li2,$d2) = (($coldb->{index_w} ? qw() : undef), unpack($coldb->{pack_x}, $xenum->{i2s}{data}{$xi2}));
-    $l2   = $lenum->{i2s}{data}{$li2};
+    ($wi2,$li2,$d2) = (($coldb->{index_w} ? qw() : undef), unpack($coldb->{pack_x}, $xenum->i2s($xi2)));
+    $l2   = $lenum->i2s($li2);
     $key2 = "$d2\t$l2";
     $sprf->{f2}{$key2}  = $prf->{f2}{$xi2};
     $sprf->{f12}{$key2} = $prf->{f12}{$xi2};

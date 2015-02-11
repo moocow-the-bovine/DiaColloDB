@@ -6,6 +6,9 @@
 package CollocDB;
 use CollocDB::Logger;
 use CollocDB::Enum;
+use CollocDB::EnumFile;
+use CollocDB::EnumFile::MMap;
+use CollocDB::EnumFile::FixedLen;
 use CollocDB::DBFile;
 use CollocDB::PackedFile;
 use CollocDB::Unigrams;
@@ -48,6 +51,13 @@ our $LGOOD_DEFAULT   = undef;
 ##  + default negative lemma regex for document parsing
 our $LBAD_DEFAULT   = undef;
 
+## $ECLASS
+##  + enum class
+our $ECLASS = 'CollocDB::EnumFile::MMap';
+
+## $XECLASS
+##  + fixed-length enum class
+our $XECLASS = 'CollocDB::EnumFile::FixedLen';
 
 ##==============================================================================
 ## Constructors etc.
@@ -65,6 +75,8 @@ our $LBAD_DEFAULT   = undef;
 ##    pack_id => $fmt,    ##-- pack-format for IDs (default='N')
 ##    pack_f  => $fmt,    ##-- pack-format for frequencies (default='N')
 ##    pack_date => $fmt,  ##-- pack-format for dates (default='n')
+##    pack_off => $fmt,   ##-- pack-format for file offsets (default='N')
+##    pack_len => $len,   ##-- pack-format for string lengths (default='n')
 ##    dmax => $dmax,      ##-- maximum distance for collocation-frequencies (default=5)
 ##    ##
 ##    ##-- filtering
@@ -106,6 +118,8 @@ sub new {
 		      pack_id => 'N',
 		      pack_f  => 'N',
 		      pack_date => 'n',
+		      pack_off => 'N',
+		      pack_len =>'n',
 		      #pack_x   => 'NNn',
 		      dmax => 5,
 
@@ -124,9 +138,9 @@ sub new {
 		      logExport => 'trace',
 
 		      ##-- enums
-		      wenum => undef, #CollocDB::Enum->new(pack_i=>$coldb->{pack_id}),
-		      lenum => undef, #CollocDB::Enum->new(pack_i=>$coldb->{pack_id}),
-		      xenum => undef, #CollocDB::Enum->new(pack_i=>$coldb->{pack_id}, pack_s=>$coldb->{pack_x}),
+		      wenum => undef, #CollocDB::EnumFile->new(pack_i=>$coldb->{pack_id}, pack_o=>$coldb->{pack_off}, pack_l=>$coldb->{pack_len}),
+		      lenum => undef, #CollocDB::EnumFile->new(pack_i=>$coldb->{pack_id}, pack_o=>$coldb->{pack_off}, pack_l=>$coldb->{pack_len}),
+		      xenum => undef, #CollocDB::EnumFile::FixedLen->new(pack_i=>$coldb->{pack_id}, pack_s=>$coldb->{pack_x}),
 		      w2x   => undef, #CollocDB::DBFile->new(pack_key=>$coldb->{pack_id}, pack_val=>"$coldb->{pack_id}*"),
 		      l2x   => undef, #CollocDB::DBFile->new(pack_key=>$coldb->{pack_id}, pack_val=>"$coldb->{pack_id}*"),
 
@@ -183,9 +197,10 @@ sub open {
     or $coldb->logconfess("open(): failed to load header");
 
   ##-- open: w*
+  my %efopts = (flags=>$flags, pack_i=>$coldb->{pack_id}, pack_o=>$coldb->{pack_off}, pack_l=>$coldb->{pack_len});
   delete @$coldb{qw(wenum w2x)};
   if ($coldb->{index_w}) {
-    $coldb->{wenum} = CollocDB::Enum->new(base=>"$dbdir/wenum", flags=>$flags, pack_i=>$coldb->{pack_id})
+    $coldb->{wenum} = $ECLASS->new(base=>"$dbdir/wenum", %efopts)
       or $coldb->logconfess("open(): failed to open word-enum $dbdir/wenum.*: $!");
     $coldb->{w2x} = CollocDB::DBFile->new(file=>"$dbdir/w2x.db", flags=>$flags, pack_key=>$coldb->{pack_id}, pack_val=>"$coldb->{pack_id}*")
       or $coldb->logconfess("open(): failed to open word-expansion map $dbdir/w2x.db.*: $!");
@@ -194,14 +209,14 @@ sub open {
   ##-- open: l*
   delete @$coldb{qw(lenum l2x)};
   if ($coldb->{index_l}) {
-    $coldb->{lenum} = CollocDB::Enum->new(base=>"$dbdir/lenum", flags=>$flags, pack_i=>$coldb->{pack_id})
+    $coldb->{lenum} = $ECLASS->new(base=>"$dbdir/lenum", %efopts)
       or $coldb->logconfess("open(): failed to open lemma-enum $dbdir/lenum.*: $!");
     $coldb->{l2x} = CollocDB::DBFile->new(file=>"$dbdir/l2x.db", flags=>$flags, pack_key=>$coldb->{pack_id}, pack_val=>"$coldb->{pack_id}*")
       or $coldb->logconfess("open(): failed to open lemma-expansion map $dbdir/l2x.db.*: $!");
   }
 
   ##-- open: xenum
-  $coldb->{xenum} = CollocDB::Enum->new(base=>"$dbdir/xenum", flags=>$flags, pack_i=>$coldb->{pack_id}, pack_s=>$coldb->{pack_x})
+  $coldb->{xenum} = $XECLASS->new(base=>"$dbdir/xenum", %efopts, pack_s=>$coldb->{pack_x})
       or $coldb->logconfess("open(): failed to open tuple-enum $dbdir/xenum.*: $!");
 
   ##-- open: xf
@@ -274,16 +289,17 @@ sub create {
   my $pack_x     = $coldb->{pack_x} = ($index_w ? $pack_id : '').($index_l ? $pack_id : '').$pack_date;
 
   ##-- initialize: enums
-  my $wenum = $coldb->{wenum} = CollocDB::Enum->new(flags=>$flags, pack_i=>$coldb->{pack_id});
-  my $ws2i  = $wenum->{s2i}{data};
+  my %efopts = (flags=>$flags, pack_i=>$coldb->{pack_id}, pack_o=>$coldb->{pack_off}, pack_l=>$coldb->{pack_len});
+  my $wenum = $coldb->{wenum} = $ECLASS->new(%efopts);
+  my $ws2i  = $wenum->{s2i};
   my $nw    = 0;
   #
-  my $lenum = $coldb->{lenum} = CollocDB::Enum->new(flags=>$flags, pack_i=>$coldb->{pack_id});
-  my $ls2i  = $lenum->{s2i}{data};
+  my $lenum = $coldb->{lenum} = $ECLASS->new(%efopts);
+  my $ls2i  = $lenum->{s2i};
   my $nl    = 0;
   #
-  my $xenum = $coldb->{xenum} = CollocDB::Enum->new(flags=>$flags, pack_i=>$coldb->{pack_id}); #pack_s=>$coldb->{pack_x}
-  my $xs2i  = $xenum->{s2i}{data};
+  my $xenum = $coldb->{xenum} = $XECLASS->new(%efopts, pack_s=>$coldb->{pack_x});
+  my $xs2i  = $xenum->{s2i};
   my $nx    = 0;
 
   ##-- initialize: corpus token-list (temporary)
@@ -362,9 +378,8 @@ sub create {
   ##-- compile: wenum
   if ($index_w) {
     $coldb->vlog($coldb->{logCreate}, "create(): creating word-enum DB $dbdir/wenum.*");
-    @{$wenum->{i2s}{data}}{values %$ws2i} = keys %$ws2i;
-    $wenum->{size} = $nw;
-    $wenum->saveDbFile("$dbdir/wenum")
+    $wenum->fromHash($ws2i);
+    $wenum->save("$dbdir/wenum")
       or $coldb->logconfess("create(): failed to save $dbdir/wenum: $!");
   } else {
     delete $coldb->{wenum};
@@ -373,9 +388,8 @@ sub create {
   ##-- compile: lenum
   if ($index_l) {
     $coldb->vlog($coldb->{logCreate},"create(): creating lemma-enum DB $dbdir/lenum.*");
-    @{$lenum->{i2s}{data}}{values %$ls2i} = keys %$ls2i;
-    $lenum->{size} = $nl;
-    $lenum->saveDbFile("$dbdir/lenum")
+    $lenum->fromHash($ls2i);
+    $lenum->save("$dbdir/lenum")
       or $coldb->logconfess("create(): failed to save $dbdir/lenum: $!");
   } else {
     delete $coldb->{lenum};
@@ -383,9 +397,8 @@ sub create {
 
   ##-- compile: xenum
   $coldb->vlog($coldb->{logCreate}, "create(): creating tuple-enum DB $dbdir/xenum.*");
-  @{$xenum->{i2s}{data}}{values %$xs2i} = keys %$xs2i;
-  $xenum->{size}   = $nx;
-  $xenum->saveDbFile("$dbdir/xenum")
+  $xenum->fromHash($xs2i);
+  $xenum->save("$dbdir/xenum")
     or $coldb->logconfess("create(): failed to save $dbdir/xenum: $!");
 
   ##-- expansion map: w2x
@@ -527,24 +540,20 @@ sub export {
 
   ##-- dump tuple-enum (raw)
   my $pack_x = $coldb->{pack_x};
-  $coldb->{xenum}->setFilters(pack_s=>$coldb->{pack_x}, pack_i=>$coldb->{pack_id});
-  $coldb->{xenum}->saveTextFile("$outdir/xenum.idat")
+  $coldb->{xenum}->saveTextFile("$outdir/xenum.idat", pack_s=>$pack_x)
     or $coldb->logconfess("export failed for $outdir/xenum.idat");
 
   ##-- dump interpolated tuple-enum
   my (@x);
-  my @ai2s  = (($coldb->{index_w} ? $coldb->{wenum}{i2s}{data} : qw()),
-	       ($coldb->{index_l} ? $coldb->{lenum}{i2s}{data} : qw()),
+  my @ai2s  = (($coldb->{index_w} ? $coldb->{wenum}->toArray : qw()),
+	       ($coldb->{index_l} ? $coldb->{lenum}->toArray : qw()),
 	      );
-  $coldb->{xenum}->setFilters(pack_s=>[undef,sub {
-					 @x = unpack($pack_x,$_);
-					 $_ = join("\t", (map {$ai2s[$_]{$x[$_]}} (0..$#ai2s)),$x[$#x]);
-				       }]);
-  $coldb->{xenum}->saveTextFile("$outdir/xenum.sdat")
+  $coldb->{xenum}->saveTextFile("$outdir/xenum.sdat",
+				pack_s => sub {
+				  @x = unpack($pack_x,$_);
+				  return join("\t", (map {$ai2s[$_][$x[$_]//0]} (0..$#ai2s)),$x[$#x]//'');
+				})
     or $coldb->logconfess("export() failed for $outdir/xenum.sdat");
-
-  ##-- xenum: reset filters
-  $coldb->{xenum}->setFilters();
 
   ##-- dump: w2x
   if ($coldb->{w2x}) {

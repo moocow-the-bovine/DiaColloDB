@@ -21,11 +21,15 @@ our $dbdir        = undef;
 our $globargs = 1; ##-- glob @ARGV?
 our $listargs = 0; ##-- args are file-lists?
 our %corpus   = (dclass=>'DDCTabs');
-our %coldb    = (index_w=>0, index_l=>1, pack_id=>'N', pack_date=>'n', pack_f=>'N', dmax=>5);
+our %coldb    = (index_w=>0, index_l=>1, pack_id=>'N', pack_date=>'n', pack_f=>'N', pack_off=>'N', pack_len=>'n', dmax=>5);
 
 ##----------------------------------------------------------------------
 ## Command-line processing
 ##----------------------------------------------------------------------
+sub pack64 {
+  $coldb{$_}=($_[1] ? 'Q' : 'N') foreach qw(pack_id pack_f pack_off);
+  $coldb{pack_l}=($_[1] ? 'n' : 'N');
+}
 GetOptions(##-- general
 	   'help|h' => \$help,
 	   'version|V' => \$version,
@@ -43,8 +47,8 @@ GetOptions(##-- general
 	   'index-lemmata|index-lemmas|lemmata|lemmas|il!' => \$coldb{index_l},
 	   'nofilters|F' => sub { $coldb{$_}=undef foreach (qw(pgood pbad wgood wbad lgood lbad)); },
 	   'option|O=s%' => \%coldb,
-	   '64bit|64|quad|Q!'   => sub { $coldb{pack_id}=$coldb{pack_f}=($_[1] ? 'Q' : 'N') },
-	   '32bit|32|long|L|N!' => sub { $coldb{pack_id}=$coldb{pack_f}=($_[1] ? 'N' : 'Q') },
+	   '64bit|64|quad|Q!'   => sub { pack64( $_[1]); },
+	   '32bit|32|long|L|N!' => sub { pack64(!$_[1]); },
 	  );
 
 pod2usage({-exitval=>0,-verbose=>0}) if ($help);

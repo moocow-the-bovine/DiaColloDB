@@ -548,18 +548,34 @@ $ time ./edb-i2s.perl kern01.d1/lenum enum-10k.dat >/dev/null	# real	0m0.162s ~ 
 $ time ./edb-i2s.perl kern01.d1/lenum enum-100.dat >/dev/null	# real	0m1.782s ~  56k   ops/sec (n=100, psize=64k, 1st run) ~ 1.4  ef
 $ time ./edb-i2s.perl kern01.d1/lenum enum-100.dat >/dev/null	# real	0m0.082s ~   1.2k ops/sec (n=100, psize=64k, 2nd run) ~ 1.1  ef
 
-##-- concrete tests
+##-- concrete tests: dbenum
 $ time ./coldb-profile.perl kern01.d1 Haus -strings -nomi -nold -noout		# real	0m8.491s (n=58k, 1st run)
 $ time ./coldb-profile.perl kern01.d1 Haus -strings -nomi -nold -noout		# real	0m1.428s (n=58k, 2nd run)
 --
-$ time ./coldb-profile.perl kern01.d1 Mann -strings -nomi -nold -noout		# real	0m9.332s (n=76k, 1st run) [-str=2.899s] ~ tstr=6.433 : 11.8k ops/sec
-$ time ./coldb-profile.perl kern01.d1 Mann -strings -nomi -nold -noout		# real	0m1.846s (n=76k, 2nd run) [-str=0.780s] ~ tstr=1.066 : 71.3k ops/sec
+$ time ./coldb-profile.perl kern01.d1 Mann -strings -nomi -nold -noout		# real	0m9.332s (n=76k, 1st run) [-str=2.899s] ~ 11.8k str/sec
+$ time ./coldb-profile.perl kern01.d1 Mann -strings -nomi -nold -noout		# real	0m1.846s (n=76k, 2nd run) [-str=0.780s] ~ 71.3k str/sec
 --
-$ time ./coldb-profile.perl kern01.d1 Blatt -strings -nomi -nold -noout		# real	0m9.003s (n=23k, 1st run) [-str=2.985s] ~ tstr=6.018 : 3.8k ops/sec
-$ time ./coldb-profile.perl kern01.d1 Blatt -strings -nomi -nold -noout		# real  0m0.670s (n=23k, 2nd run) [-str=0.315s] ~ tstr=.355 : 64.7k ops/sec
+$ time ./coldb-profile.perl kern01.d1 Blatt -strings -nomi -nold -noout		# real	0m9.003s (n=23k, 1st run) [-str=2.985s] ~ 3.8k str/sec
+$ time ./coldb-profile.perl kern01.d1 Blatt -strings -nomi -nold -noout		# real  0m0.670s (n=23k, 2nd run) [-str=0.315s] ~ 64.7k str/sec
 --
-$ time ./coldb-profile.perl kern01.d1 Hund -strings -nomi -nold -noout		# real	0m7.740s (n=8.5k, 1st run) [-str=3.312s] ~ tstr=4.428 : 1.9k ops/sec
-$ time ./coldb-profile.perl kern01.d1 Hund -strings -nomi -nold -noout		# real	0m0.335s (n=8.5k, 2nd run) [-str=0.195s] ~ tstr=.139 : 61.1k ops/sec
+$ time ./coldb-profile.perl kern01.d1 Hund -strings -nomi -nold -noout		# real	0m7.740s (n=8.5k, 1st run) [-str=3.312s] ~ 1.9k str/sec
+$ time ./coldb-profile.perl kern01.d1 Hund -strings -nomi -nold -noout		# real	0m0.335s (n=8.5k, 2nd run) [-str=0.195s] ~ 61.1k str/sec
 --
-$ time ./coldb-profile.perl kern01.d1 Maus -strings -nomi -nold -noout		# real	0m7.181s (n=1.4k, 1st run) [-str=3.091s] ~ tstr=4.090 : 342  ops/sec
-$ time ./coldb-profile.perl kern01.d1 Maus -strings -nomi -nold -noout		# real	0m0.186s (n=1.4k, 2nd run) [-str=0.136s] ~ tstr=.050 :   28k ops/sec
+$ time ./coldb-profile.perl kern01.d1 Maus -strings -nomi -nold -noout		# real	0m7.181s (n=1.4k, 1st run) [-str=3.091s] ~ 342  str/sec
+$ time ./coldb-profile.perl kern01.d1 Maus -strings -nomi -nold -noout		# real	0m0.186s (n=1.4k, 2nd run) [-str=0.136s] ~ 28k str/sec
+
+##-- concrete tests: EnumFile::MMap
+$ time ./coldb-profile.perl kern01.de Haus -strings -nomi -nold -noout		# real	0m6.436s (n=58k, 1st run) ~   9.0k ops/sec : 0.75 dbe
+$ time ./coldb-profile.perl kern01.de Haus -strings -nomi -nold -noout		# real	0m1.048s (n=58k, 2nd run) ~  55.3k ops/sec : 0.72 dbe
+--
+$ time ./coldb-profile.perl kern01.de Mann -strings -nomi -nold -noout		# real	0m7.383s (n=76k, 1st run) ~  10.3k ops/sec : 0.79 dbe
+$ time ./coldb-profile.perl kern01.de Mann -strings -nomi -nold -noout		# real	0m1.320s (n=76k, 1st run) ~  57.6k ops/sec : 0.71 dbe
+--
+$ time ./coldb-profile.perl kern01.de Blatt -strings -nomi -nold -noout		# real	0m5.586s (n=23k, 1st run) ~   4.1k ops/sec : 0.62 dbe
+$ time ./coldb-profile.perl kern01.de Blatt -strings -nomi -nold -noout		# real	0m0.475s (n=23k, 2nd run) ~  48.4k ops/sec : 0.71 dbe
+--
+$ time ./coldb-profile.perl kern01.de Hund -strings -nomi -nold -noout		# real	0m5.552s (n=8.5k, 1st run) ~   1.5k ops/sec : 0.71 dbe
+$ time ./coldb-profile.perl kern01.de Hund -strings -nomi -nold -noout		# real	0m0.265s (n=8.5k, 2nd run) ~  32.1k ops/sec : 0.79 dbe
+--
+$ time ./coldb-profile.perl kern01.de Maus -strings -nomi -nold -noout		# real	0m4.868s (n=1.4k, 1st run) ~ 287.6  ops/sec : 0.68 dbe
+$ time ./coldb-profile.perl kern01.de Maus -strings -nomi -nold -noout		# real	0m0.148s (n=1.4k, 2nd run) ~   9.5k ops/sec : 0.79 dbe
