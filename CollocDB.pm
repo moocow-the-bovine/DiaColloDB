@@ -459,7 +459,7 @@ sub create {
 ##  + keys to save as header
 sub headerKeys {
   my $coldb = shift;
-  return grep {!ref($coldb->{$_})} keys %$coldb;
+  return grep {!ref($coldb->{$_}) && $_ !~ m{^(?:dbdir$|flags$|perms$|log)}} keys %$coldb;
 }
 
 ## $bool = $coldb->loadHeader()

@@ -492,6 +492,8 @@ $ time ./enum-s2i.perl lenum enum-100.rdat >/dev/null	# real	0m0.976s ~  102  op
 $ time ./enum-s2i.perl lenum enum-100.rdat >/dev/null	# real	0m0.022s ~ 4.54k ops/sec (n=100, 1nd run)
 
 #-- pure-file EnumFile (test:i2s)
+$ time ./ef-i2s.perl lef enum-60k.dat >/dev/null	# real	0m2.784s ~ 21.5k ops/sec (n=60k, 1st run)
+$ time ./ef-i2s.perl lef enum-60k.dat >/dev/null	# real	0m0.731s ~ 82.1k ops/sec (n=60k, 2nd run)
 $ time ./ef-i2s.perl lef enum-10k.dat >/dev/null	# real	0m2.388s ~  4.18k ops/sec (n=10k, 1st run)
 $ time ./ef-i2s.perl lef enum-10k.dat >/dev/null	# real	0m0.180s ~ 55.5k  ops/sec (n=10k, 2nd run)
 $ time ./ef-i2s.perl lef enum-100.dat >/dev/null	# real	0m1.262s ~ 79.2  ops/sec (n=100, 1st run)
@@ -502,6 +504,22 @@ $ time ./ef-s2i.perl lef enum-10k.rdat >/dev/null	# real	0m6.270s ~ 1.59k ops/se
 $ time ./ef-s2i.perl lef enum-10k.rdat >/dev/null	# real	0m1.258s ~ 7.95k ops/sec (n=10k, 2nd run)
 $ time ./ef-s2i.perl lef enum-100.rdat >/dev/null	# real	0m4.235s ~ 23.6  ops/sec (n=100, 1st run)
 $ time ./ef-s2i.perl lef enum-100.rdat >/dev/null	# real	0m0.087s ~ 1.15k ops/sec (n=100, 2nd run)
+
+#-- pure-file EnumFile::MMap (test:i2s)
+# size = 13914360 bytes ~ 14M / 32M tok = 0.43 bytes/tok --> 0.43 * 3.47G = 1.5G
+# ... but Heaps' Law can be expected to apply (log-linear growth: ntyp = K*ntok^beta ) [TODO: estimate params!]
+$ time ./ef-i2s.perl -map lef enum-60k.dat >/dev/null	# real	0m1.662s ~  36.1k ops/sec (n=60k, 1st run) ~ 0.60 ef !!
+$ time ./ef-i2s.perl -map lef enum-60k.dat >/dev/null	# real	0m0.340s ~ 176.5k ops/sec (n=60k, 2nd run) ~ 0.47 ef !!
+$ time ./ef-i2s.perl -map lef enum-10k.dat >/dev/null	# real	0m2.369s ~  4.22k ops/sec (n=10k, 1st run) ~ 0.99 ef
+$ time ./ef-i2s.perl -map lef enum-10k.dat >/dev/null	# real	0m0.125s ~ 80.0 k ops/sec (n=10k, 2nd run) ~ 0.69 ef
+$ time ./ef-i2s.perl -map lef enum-100.dat >/dev/null	# real	0m1.245s ~    80  ops/sec (n=100, 1st run) ~ 0.98 ef
+$ time ./ef-i2s.perl -map lef enum-100.dat >/dev/null	# real	0m0.080s ~  1.25k ops/sec (n=100, 2nd run) ~ 1.08 ef
+##
+##-- pure-file EnumFile::MMap (test:s2i)
+$ time ./ef-s2i.perl -map lef enum-10k.rdat >/dev/null	# real	0m2.305s ~   4.3k ops/sec (n=10k, 1st run) ~ 0.36 ef
+$ time ./ef-s2i.perl -map lef enum-10k.rdat >/dev/null	# real	0m0.343s ~ 291k   ops/sec (n=10k, 2nd run) ~ 0.27 ef
+$ time ./ef-s2i.perl -map lef enum-100.rdat >/dev/null	# real	0m2.095s ~  47    ops/sec (n=100, 1st run) ~ 0.49 ef
+$ time ./ef-s2i.perl -map lef enum-100.rdat >/dev/null	# real	0m0.080s ~ 1.3k   ops/sec (n=100, 2nd run) ~ 0.92 ef
 
 ##-- vs old db-based enum (cache=32M, psize=4k)
 $ time ./edb-i2s.perl kern01.d/lenum enum-10k.dat >/dev/null	# real	0m7.648s ~  1.30k ops/sec (n=10k, psize=4k, 1st run) ~ 3.2  ef
@@ -515,8 +533,33 @@ $ time ./edb-i2s.perl kern01.d1/lenum enum-10k.dat >/dev/null	# real	0m0.162s ~ 
 $ time ./edb-i2s.perl kern01.d1/lenum enum-100.dat >/dev/null	# real	0m2.111s ~ 47.3  ops/sec (n=100, psize=32k, 1st run) ~ 1.6  ef
 $ time ./edb-i2s.perl kern01.d1/lenum enum-100.dat >/dev/null	# real	0m0.079s ~ 1.26k ops/sec (n=100, psize=32k, 2nd run) ~ 1.1  ef
 ##
-##-- vs old db-based enum (cache=32M, psize=64k=max)
+##-- vs old db-based enum (cache=32M, psize=64k=max) / hacked
 $ time ./edb-i2s.perl kern01.d1/lenum enum-10k.dat >/dev/null	# real	0m2.146s ~  4.7k ops/sec (n=10k, psize=64k, 1st run) ~ .90 ef
 $ time ./edb-i2s.perl kern01.d1/lenum enum-10k.dat >/dev/null	# real	0m0.163s ~ 61.3k ops/sec (n=10k, psize=64k, 2nd run) ~ .91 ef
 $ time ./edb-i2s.perl kern01.d1/lenum enum-100.dat >/dev/null	# real	0m1.473s ~ 67.8  ops/sec (n=100, psize=64k, 1st run) ~ 1.2 ef
 $ time ./edb-i2s.perl kern01.d1/lenum enum-100.dat >/dev/null	# real	0m0.076s ~ 1.3k  ops/sec (n=100, psize=64k, 2nd run) ~ 1.0 ef
+##
+##-- vs old db-based enum (cache=32M, psize=64k=max)
+# times(ef) : 60k=(2.784 0.731), 10k=(2.388 0.180), 100=(1.262 0.074)
+$ time ./edb-i2s.perl kern01.d1/lenum enum-60k.dat >/dev/null	# real	0m3.621s ~  16k   ops/sec (n=60k, psize=64k, 1st run) ~ 1.3  ef
+$ time ./edb-i2s.perl kern01.d1/lenum enum-60k.dat >/dev/null	# real	0m0.552s ~ 109k   ops/sec (n=60k, psize=64k, 2nd run) ~ 0.76 ef
+$ time ./edb-i2s.perl kern01.d1/lenum enum-10k.dat >/dev/null	# real	0m3.026s ~   3.3k ops/sec (n=10k, psize=64k, 1st run) ~ 1.3  ef
+$ time ./edb-i2s.perl kern01.d1/lenum enum-10k.dat >/dev/null	# real	0m0.162s ~  62k   ops/sec (n=10k, psize=64k, 2nd run) ~ 0.9  ef
+$ time ./edb-i2s.perl kern01.d1/lenum enum-100.dat >/dev/null	# real	0m1.782s ~  56k   ops/sec (n=100, psize=64k, 1st run) ~ 1.4  ef
+$ time ./edb-i2s.perl kern01.d1/lenum enum-100.dat >/dev/null	# real	0m0.082s ~   1.2k ops/sec (n=100, psize=64k, 2nd run) ~ 1.1  ef
+
+##-- concrete tests
+$ time ./coldb-profile.perl kern01.d1 Haus -strings -nomi -nold -noout		# real	0m8.491s (n=58k, 1st run)
+$ time ./coldb-profile.perl kern01.d1 Haus -strings -nomi -nold -noout		# real	0m1.428s (n=58k, 2nd run)
+--
+$ time ./coldb-profile.perl kern01.d1 Mann -strings -nomi -nold -noout		# real	0m9.332s (n=76k, 1st run) [-str=2.899s] ~ tstr=6.433 : 11.8k ops/sec
+$ time ./coldb-profile.perl kern01.d1 Mann -strings -nomi -nold -noout		# real	0m1.846s (n=76k, 2nd run) [-str=0.780s] ~ tstr=1.066 : 71.3k ops/sec
+--
+$ time ./coldb-profile.perl kern01.d1 Blatt -strings -nomi -nold -noout		# real	0m9.003s (n=23k, 1st run) [-str=2.985s] ~ tstr=6.018 : 3.8k ops/sec
+$ time ./coldb-profile.perl kern01.d1 Blatt -strings -nomi -nold -noout		# real  0m0.670s (n=23k, 2nd run) [-str=0.315s] ~ tstr=.355 : 64.7k ops/sec
+--
+$ time ./coldb-profile.perl kern01.d1 Hund -strings -nomi -nold -noout		# real	0m7.740s (n=8.5k, 1st run) [-str=3.312s] ~ tstr=4.428 : 1.9k ops/sec
+$ time ./coldb-profile.perl kern01.d1 Hund -strings -nomi -nold -noout		# real	0m0.335s (n=8.5k, 2nd run) [-str=0.195s] ~ tstr=.139 : 61.1k ops/sec
+--
+$ time ./coldb-profile.perl kern01.d1 Maus -strings -nomi -nold -noout		# real	0m7.181s (n=1.4k, 1st run) [-str=3.091s] ~ tstr=4.090 : 342  ops/sec
+$ time ./coldb-profile.perl kern01.d1 Maus -strings -nomi -nold -noout		# real	0m0.186s (n=1.4k, 2nd run) [-str=0.136s] ~ tstr=.050 :   28k ops/sec

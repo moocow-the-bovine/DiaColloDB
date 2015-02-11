@@ -331,7 +331,69 @@ sub bench_filesize {
   # -s:FH    3957601/s     90%      --    -69%  : real=0.808/M ~ 124k op/sec [incl overhead]
   # {size}  12952997/s    521%    227%      --  : real=0.627/M ~ 159k op/sec [incl overhead]
 }
-bench_filesize(@ARGV); exit 0;
+#bench_filesize(@ARGV); exit 0;
+
+##==============================================================================
+## bench: substr+unpack
+
+## $s = subunpack1(\$buf, $offset)
+sub subunpack1 {
+  return unpack('n/A', substr(${$_[0]}, $_[1]));
+}
+
+## $s = subunpack2(\$buf, $offset)
+sub subunpack2 {
+  my $len = unpack('n', substr(${$_[0]}, $_[1], 2));
+  return substr(${$_[0]}, $_[1]+2, $len);
+}
+
+## $sub = subunpack2c()
+## $s = $sub->(\$buf,$offset);
+sub subunpack2c {
+  my ($len);
+  return sub {
+    $len = unpack('n', substr(${$_[0]}, $_[1], 2));
+    return substr(${$_[0]}, $_[1]+2, $len);
+  };
+}
+
+sub bench_subunpack {
+  my $sfile = shift || 'lef.s';
+
+  print STDERR "$0: loading $sfile ...\n";
+  open(my $sfh,"<$sfile") or die("$0: open failed for $sfile: $!");
+  read($sfh, (my $sbuf), (-s $sfh));
+  close($sfh);
+
+  use bytes;
+  print STDERR "$0: computing offsets ...\n";
+  my @i2s = unpack("(n/A)*", $sbuf);
+  my @offs = qw();
+  my $off = 0;
+  foreach (@i2s) {
+    push(@offs, $off);
+    $off += length($_) + 2;
+  }
+
+  print STDERR "$0: benchmarking ...\n";
+  my $size   = scalar(@i2s);
+  my $nbench = 100;
+  my @boffs  = map {int(rand($size))} (1..$nbench);
+  my ($s);
+  my $subunpack2c = subunpack2c();
+  cmpthese(-1,
+	   {
+	    subunpack1  => sub { $s=subunpack1(\$sbuf,$_) foreach (@boffs); },
+	    subunpack2  => sub { $s=subunpack2(\$sbuf,$_) foreach (@boffs); },
+	    subunpack2c => sub { $s=$subunpack2c->(\$sbuf,$_) foreach (@boffs); },
+	    #               Rate  subunpack1 subunpack2c  subunpack2
+	    # subunpack1  11.0/s          --       -100%       -100%
+	    # subunpack2c 2669/s      24162%          --         -0%
+	    # subunpack2  2669/s      24162%          0%          --
+	   });
+}
+bench_subunpack(@ARGV);
+
 
 ##==============================================================================
 ## MAIN
