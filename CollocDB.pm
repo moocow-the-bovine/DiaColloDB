@@ -10,6 +10,7 @@ use CollocDB::EnumFile;
 use CollocDB::EnumFile::MMap;
 use CollocDB::EnumFile::FixedLen;
 use CollocDB::EnumFile::FixedMap;
+use CollocDB::MultiMapFile;
 use CollocDB::DBFile;
 use CollocDB::PackedFile;
 use CollocDB::Unigrams;
@@ -62,6 +63,11 @@ our $ECLASS = 'CollocDB::EnumFile::MMap';
 #our $XECLASS = 'CollocDB::EnumFile::FixedLen';
 our $XECLASS = 'CollocDB::EnumFile::FixedMap';
 
+## $MMCLASS
+##  + multimap class
+our $MMCLASS = 'CollocDB::MultiMapFile';
+#our $MMCLASS = 'CollocDB::MultiMapFile::MMap';
+
 ##==============================================================================
 ## Constructors etc.
 
@@ -103,8 +109,8 @@ our $XECLASS = 'CollocDB::EnumFile::FixedMap';
 ##    pack_x => $fmt,     ##-- symbol pack-format for $xenum
 ##    ##
 ##    ##-- data
-##    w2x   => $w2x,      ##-- db: word->tuples  ($dbdir/w2x.db) : $wi=>@xis  : N=>N*
-##    l2x   => $l2x,      ##-- db: lemma->tuples ($dbdir/l2x.db) : $li=>@xis  : N=>N*
+##    w2x   => $w2x,      ##-- multimap: word->tuples  ($dbdir/w2x.*) : $wi=>@xis  : N=>N*
+##    l2x   => $l2x,      ##-- multimap: lemma->tuples ($dbdir/l2x.*) : $li=>@xis  : N=>N*
 ##    xf    => $xf,       ##-- ug: $xi => $f($xi) : N=>N
 ##    cof   => $cof,      ##-- cf: [$i1,$i2] => $f12
 ##   )
@@ -144,8 +150,8 @@ sub new {
 		      wenum => undef, #CollocDB::EnumFile->new(pack_i=>$coldb->{pack_id}, pack_o=>$coldb->{pack_off}, pack_l=>$coldb->{pack_len}),
 		      lenum => undef, #CollocDB::EnumFile->new(pack_i=>$coldb->{pack_id}, pack_o=>$coldb->{pack_off}, pack_l=>$coldb->{pack_len}),
 		      xenum => undef, #CollocDB::EnumFile::FixedLen->new(pack_i=>$coldb->{pack_id}, pack_s=>$coldb->{pack_x}),
-		      w2x   => undef, #CollocDB::DBFile->new(pack_key=>$coldb->{pack_id}, pack_val=>"$coldb->{pack_id}*"),
-		      l2x   => undef, #CollocDB::DBFile->new(pack_key=>$coldb->{pack_id}, pack_val=>"$coldb->{pack_id}*"),
+		      w2x   => undef, #CollocDB::MultiMapFile->new(pack_i=>$coldb->{pack_id}, pack_o=>$coldb->{pack_off}, pack_l=>$coldb->{pack_len}),
+		      l2x   => undef, #CollocDB::MultiMapFile->new(pack_i=>$coldb->{pack_id}, pack_o=>$coldb->{pack_off}, pack_l=>$coldb->{pack_len}),
 
 		      ##-- data
 		      xf    => undef, #CollocDB::Unigrams->new(packas=>$coldb->{pack_f}),
@@ -202,12 +208,13 @@ sub open {
 
   ##-- open: w*
   my %efopts = (flags=>$flags, pack_i=>$coldb->{pack_id}, pack_o=>$coldb->{pack_off}, pack_l=>$coldb->{pack_len});
+  my %mmopts = %efopts;
   delete @$coldb{qw(wenum w2x)};
   if ($coldb->{index_w}) {
     $coldb->{wenum} = $ECLASS->new(base=>"$dbdir/wenum", %efopts)
       or $coldb->logconfess("open(): failed to open word-enum $dbdir/wenum.*: $!");
-    $coldb->{w2x} = CollocDB::DBFile->new(file=>"$dbdir/w2x.db", flags=>$flags, pack_key=>$coldb->{pack_id}, pack_val=>"$coldb->{pack_id}*")
-      or $coldb->logconfess("open(): failed to open word-expansion map $dbdir/w2x.db.*: $!");
+    $coldb->{w2x} = $MMCLASS->new(base=>"$dbdir/w2x", %mmopts)
+      or $coldb->logconfess("open(): failed to open word-expansion multimap $dbdir/w2x.*: $!");
   }
 
   ##-- open: l*
@@ -215,8 +222,8 @@ sub open {
   if ($coldb->{index_l}) {
     $coldb->{lenum} = $ECLASS->new(base=>"$dbdir/lenum", %efopts)
       or $coldb->logconfess("open(): failed to open lemma-enum $dbdir/lenum.*: $!");
-    $coldb->{l2x} = CollocDB::DBFile->new(file=>"$dbdir/l2x.db", flags=>$flags, pack_key=>$coldb->{pack_id}, pack_val=>"$coldb->{pack_id}*")
-      or $coldb->logconfess("open(): failed to open lemma-expansion map $dbdir/l2x.db.*: $!");
+    $coldb->{l2x} = $MMCLASS->new(base=>"$dbdir/l2x", %mmopts)
+      or $coldb->logconfess("open(): failed to open lemma-expansion multimap $dbdir/l2x.*: $!");
   }
 
   ##-- open: xenum
@@ -290,10 +297,14 @@ sub create {
   my $pack_id    = $coldb->{pack_id};
   my $pack_date  = $coldb->{pack_date};
   my $pack_f     = $coldb->{pack_f};
+  my $pack_off   = $coldb->{pack_off};
+  my $pack_len   = $coldb->{pack_len};
   my $pack_x     = $coldb->{pack_x} = ($index_w ? $pack_id : '').($index_l ? $pack_id : '').$pack_date;
+  my $pack_mmb   = "${pack_id}*";
 
   ##-- initialize: enums
   my %efopts = (flags=>$flags, pack_i=>$coldb->{pack_id}, pack_o=>$coldb->{pack_off}, pack_l=>$coldb->{pack_len});
+  my %mmopts = %efopts;
   my $wenum = $coldb->{wenum} = $ECLASS->new(%efopts);
   my $ws2i  = $wenum->{s2i};
   my $nw    = 0;
@@ -407,17 +418,19 @@ sub create {
 
   ##-- expansion map: w2x
   if ($index_w) {
-    $coldb->vlog($coldb->{logCreate},"create(): creating expansion map $dbdir/w2x.db");
+    $coldb->vlog($coldb->{logCreate},"create(): creating word-expansion multimap $dbdir/w2x.*");
     my @w2xi = qw();
     while (($x,$xi)=each %$xs2i) {
       ($wi)       = unpack($pack_id,$x);
       $w2xi[$wi] .= pack($pack_id,$xi);
     }
-    my $w2xdb = $coldb->{w2x} = CollocDB::DBFile->new(file=>"$dbdir/w2x.db", flags=>$flags, pack_key=>$pack_id)
-      or $coldb->logconfess("create(): failed to create $dbdir/w2x.db: $!");
-    my $w2xdata = $w2xdb->{data};
-    $wi = 0;
-    $w2xdata->{$wi++} = ($_//'') foreach (@w2xi);
+    $_ = pack($pack_mmb, sort {$a<=>$b} unpack($pack_mmb,$_//'')) foreach (@w2xi); ##-- ensure multimap target-sets are sorted
+    my $w2x = $coldb->{w2x} = $MMCLASS->new(base=>"$dbdir/w2x", %mmopts)
+      or $coldb->logconfess("create(): failed to create $dbdir/w2x.*: $!");
+    $w2x->fromArray(\@w2xi)
+      or $coldb->logconfess("create(): failed to populate $dbdir/w2x.*: $!");
+    $w2x->flush()
+      or $coldb->logconfess("create(): failed to flush $dbdir/w2x.*: $!");
   } else {
     delete $coldb->{w2x};
   }
@@ -431,11 +444,13 @@ sub create {
       ($li)       = unpack($lpack,$x);
       $l2xi[$li] .= pack($pack_id,$xi);
     }
-    my $l2xdb = $coldb->{l2x} = CollocDB::DBFile->new(file=>"$dbdir/l2x.db", flags=>$flags, pack_key=>$pack_id)
-      or $coldb->logconfess("create(): failed to create $dbdir/l2x.db: $!");
-    my $l2xdata = $l2xdb->{data};
-    $li = 0;
-    $l2xdata->{$li++} = ($_//'') foreach (@l2xi);
+    $_ = pack($pack_mmb, sort {$a<=>$b} unpack($pack_mmb,$_//'')) foreach (@l2xi); ##-- ensure multimap target-sets are sorted
+    my $l2x = $coldb->{l2x} = $MMCLASS->new(base=>"$dbdir/l2x", %mmopts)
+      or $coldb->logconfess("create(): failed to create $dbdir/l2x.*: $!");
+    $l2x->fromArray(\@l2xi)
+      or $coldb->logconfess("create(): failed to populate $dbdir/l2x.*: $!");
+    $l2x->flush()
+      or $coldb->logconfess("create(): failed to flush $dbdir/l2x.*: $!");
   } else {
     delete $coldb->{l2x};
   }
@@ -571,20 +586,16 @@ sub export {
 
   ##-- dump: w2x
   if ($coldb->{w2x}) {
-    $coldb->vlog($coldb->{logExport}, "export(): exporting word-expansion db $outdir/w2x.dat");
-    $coldb->{w2x}->setFilters(pack_key=>$coldb->{pack_id},pack_val=>"$coldb->{pack_id}*");
+    $coldb->vlog($coldb->{logExport}, "export(): exporting word-expansion multimap $outdir/w2x.dat");
     $coldb->{w2x}->saveTextFile("$outdir/w2x.dat")
       or $coldb->logconfess("export() failed for $outdir/w2x.dat");
-    $coldb->{w2x}->setFilters();
   }
 
   ##-- dump: l2x
   if ($coldb->{l2x}) {
-    $coldb->vlog($coldb->{logExport}, "export(): exporting word-expansion db $outdir/l2x.dat");
-    $coldb->{l2x}->setFilters(pack_key=>$coldb->{pack_id},pack_val=>"$coldb->{pack_id}*");
+    $coldb->vlog($coldb->{logExport}, "export(): exporting lemma-expansion multimap $outdir/l2x.dat");
     $coldb->{l2x}->saveTextFile("$outdir/l2x.dat")
       or $coldb->logconfess("export() failed for $outdir/l2x.dat");
-    $coldb->{l2x}->setFilters();
   }
 
   ##-- dump: xf

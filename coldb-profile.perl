@@ -82,7 +82,7 @@ foreach $l (@lemmas) {
     warn("$0: ignoring unknown lemma '$l'");
     next;
   }
-  push(@xids, @{$coldb->{l2x}{data}{$li}});
+  push(@xids, @{$coldb->{l2x}->fetch($li)}); ##-- TODO: CONTINUE HERE -- BUGGY!
 }
 @xids = sort {$a <=> $b} @xids;
 
