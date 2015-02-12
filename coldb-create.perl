@@ -27,8 +27,8 @@ our %coldb    = (index_w=>0, index_l=>1, pack_id=>'N', pack_date=>'n', pack_f=>'
 ## Command-line processing
 ##----------------------------------------------------------------------
 sub pack64 {
-  $coldb{$_}=($_[1] ? 'Q' : 'N') foreach qw(pack_id pack_f pack_off);
-  $coldb{pack_l}=($_[1] ? 'n' : 'N');
+  $coldb{$_}=($_[1] ? 'Q>' : 'N') foreach qw(pack_id pack_f pack_off);
+  $coldb{pack_len}=($_[1] ? 'n' : 'N');
 }
 GetOptions(##-- general
 	   'help|h' => \$help,
