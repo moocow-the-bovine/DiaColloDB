@@ -579,3 +579,12 @@ $ time ./coldb-profile.perl kern01.de Hund -strings -nomi -nold -noout		# real	0
 --
 $ time ./coldb-profile.perl kern01.de Maus -strings -nomi -nold -noout		# real	0m4.868s (n=1.4k, 1st run) ~ 287.6  ops/sec : 0.68 dbe
 $ time ./coldb-profile.perl kern01.de Maus -strings -nomi -nold -noout		# real	0m0.148s (n=1.4k, 2nd run) ~   9.5k ops/sec : 0.79 dbe
+
+##-- multi-timing:
+# ./timeprof.sh Haus Mann Blatt Hund Maus
+Haus	7.27	0.93
+Mann	5.96	1.20
+Blatt	5.24	0.44
+Hund	5.66	0.24
+Maus	5.88	0.14
+

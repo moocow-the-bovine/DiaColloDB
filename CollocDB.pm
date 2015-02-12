@@ -9,6 +9,7 @@ use CollocDB::Enum;
 use CollocDB::EnumFile;
 use CollocDB::EnumFile::MMap;
 use CollocDB::EnumFile::FixedLen;
+use CollocDB::EnumFile::FixedMap;
 use CollocDB::DBFile;
 use CollocDB::PackedFile;
 use CollocDB::Unigrams;
@@ -53,11 +54,13 @@ our $LBAD_DEFAULT   = undef;
 
 ## $ECLASS
 ##  + enum class
+#our $ECLASS = 'CollocDB::EnumFile';
 our $ECLASS = 'CollocDB::EnumFile::MMap';
 
 ## $XECLASS
 ##  + fixed-length enum class
-our $XECLASS = 'CollocDB::EnumFile::FixedLen';
+#our $XECLASS = 'CollocDB::EnumFile::FixedLen';
+our $XECLASS = 'CollocDB::EnumFile::FixedMap';
 
 ##==============================================================================
 ## Constructors etc.
@@ -151,6 +154,7 @@ sub new {
 		      @_,	##-- user arguments
 		     },
 		     ref($that)||$that);
+  $coldb->{class}  = ref($coldb);
   $coldb->{pack_x} = ($coldb->{pack_id} x 2) . $coldb->{pack_date};
   return defined($coldb->{dbdir}) ? $coldb->open($coldb->{dbdir}) : $coldb;
 }
@@ -505,14 +509,21 @@ sub saveHeader {
 ##==============================================================================
 ## Dump
 
-## $bool = $collocdb->export($outdir)
 ## $bool = $collocdb->export()
+## $bool = $collocdb->export($outdir,%opts)
 ##  + $outdir defaults to "$coldb->{dbdir}/export"
+##  + %opts:
+##     export_sdat => $bool,  ##-- whether to export *.sdat (stringified tuple files for debugging; default=0)
+##     export_cof  => $bool,  ##-- do/don't export cof.* (default=do)
 sub export {
-  my ($coldb,$outdir) = @_;
+  my ($coldb,$outdir,%opts) = @_;
   $coldb->logconfess("cannot export() an un-opened DB") if (!$coldb->opened);
   $outdir //= "$coldb->{dbdir}/export";
   $coldb->vlog('info', "export($outdir)");
+
+  ##-- options
+  my $export_sdat = exists($opts{export_sdat}) ? $opts{export_sdat} : 0;
+  my $export_cof  = exists($opts{export_cof}) ? $opts{export_cof} : 1;
 
   ##-- create export directory
   -d $outdir
@@ -535,25 +546,28 @@ sub export {
       or $coldb->logconfess("export() failed for $outdir/lenum.dat");
   }
 
-  ##-- dump: tuple-enum
-  $coldb->vlog($coldb->{logExport}, "export(): exporting tuple-enum file(s) $outdir/xenum.*dat");
-
-  ##-- dump tuple-enum (raw)
+  ##-- dump: tuple-enum: raw
   my $pack_x = $coldb->{pack_x};
-  $coldb->{xenum}->saveTextFile("$outdir/xenum.idat", pack_s=>$pack_x)
-    or $coldb->logconfess("export failed for $outdir/xenum.idat");
+  $coldb->vlog($coldb->{logExport}, "export(): exporting raw tuple-enum file $outdir/xenum.dat");
+  $coldb->{xenum}->saveTextFile("$outdir/xenum.dat", pack_s=>$pack_x)
+    or $coldb->logconfess("export failed for $outdir/xenum.dat");
 
-  ##-- dump interpolated tuple-enum
-  my (@x);
-  my @ai2s  = (($coldb->{index_w} ? $coldb->{wenum}->toArray : qw()),
-	       ($coldb->{index_l} ? $coldb->{lenum}->toArray : qw()),
-	      );
-  $coldb->{xenum}->saveTextFile("$outdir/xenum.sdat",
-				pack_s => sub {
-				  @x = unpack($pack_x,$_);
-				  return join("\t", (map {$ai2s[$_][$x[$_]//0]} (0..$#ai2s)),$x[$#x]//'');
-				})
-    or $coldb->logconfess("export() failed for $outdir/xenum.sdat");
+  ##-- dump: tuple-enum: stringified
+  my (@x,@ai2s); ##-- these are re-used for cof.sdat
+  if ($export_sdat) {
+    $coldb->vlog($coldb->{logExport}, "export(): preparing tuple-stringification structures");
+    @ai2s  = (($coldb->{index_w} ? $coldb->{wenum}->toArray : qw()),
+	      ($coldb->{index_l} ? $coldb->{lenum}->toArray : qw()),
+	     );
+    my $xs2wld = sub {
+      @x = unpack($pack_x,$_[0]);
+      return join("\t", (map {$ai2s[$_][$x[$_]//0]//''} (0..$#ai2s)),$x[$#x]//'');
+    };
+
+    $coldb->vlog($coldb->{logExport}, "export(): exporting stringified tuple-enum file $outdir/xenum.sdat");
+    $coldb->{xenum}->saveTextFile("$outdir/xenum.sdat", pack_s=>$xs2wld)
+      or $coldb->logconfess("export() failed for $outdir/xenum.sdat");
+  }
 
   ##-- dump: w2x
   if ($coldb->{w2x}) {
@@ -583,10 +597,22 @@ sub export {
   }
 
   ##-- dump: cof
-  if ($coldb->{cof}) {
-    $coldb->vlog($coldb->{logExport}, "export(): exporting co-frequency db $outdir/cof.dat");
+  if ($coldb->{cof} && $export_cof) {
+    $coldb->vlog($coldb->{logExport}, "export(): exporting raw co-frequency db $outdir/cof.dat");
     $coldb->{cof}->saveTextFile("$outdir/cof.dat")
       or $coldb->logconfess("export failed for $outdir/cof.dat");
+
+    if ($export_sdat) {
+      $coldb->vlog($coldb->{logExport}, "export(): preparing tuple-stringification index");
+      my $xs2i   = $coldb->{xenum}->toArray;
+      my $xi2wld = sub {
+	@x = unpack($pack_x,$xs2i->[$_[0]]//'');
+	return join("\t", (map {$ai2s[$_][$x[$_]//0]//''} (0..$#ai2s)),$x[$#x]//'');
+      };
+      $coldb->vlog($coldb->{logExport}, "export(): exporting stringified co-frequency db $outdir/cof.sdat");
+      $coldb->{cof}->saveTextFile("$outdir/cof.sdat", i2s=>$xi2wld)
+	or $coldb->logconfess("export failed for $outdir/cof.sdat");
+    }
   }
 
   ##-- all done

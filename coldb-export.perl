@@ -19,6 +19,7 @@ our ($help,$version);
 our $dbdir      = undef;
 our $outdir     = undef;
 our %coldb      = (flags=>'r');
+our %export     = (export_sdat=>1, export_cof=>1);
 
 ##----------------------------------------------------------------------
 ## Command-line processing
@@ -29,6 +30,8 @@ GetOptions(##-- general
 	   'verbose|v=i' => \$verbose,
 
 	   ##-- I/O
+	   'export-sdat|sdat|strings|s!' => \$export{export_sdat},
+	   'export-cof|cof|c!' => \$export{export_cof},
 	   'output-directory|outdir|odir|od|o=s' => \$outdir
 	  );
 
@@ -58,7 +61,7 @@ $coldb->open($dbdir)
 
 ##-- export
 $outdir //= "$dbdir.export";
-$coldb->export($outdir)
+$coldb->export($outdir,%export)
   or die("$prog: CollocDB::export() failed to '$outdir': $!");
 
 __END__
@@ -82,7 +85,9 @@ coldb-export.perl - export a text representation of a CollocDB index
    -version
    -verbose LEVEL
 
- I/O Options:
+ Export Options:
+   -[no]sdat            ##-- do/don't export stringified tuples (*.sdat; default=do)
+   -[no]cof             ##-- do/don't export co-frequency files (cof.*; default=do)
    -output DIR          ##-- dump directory (default=DBDIR.export)
 
 =cut
