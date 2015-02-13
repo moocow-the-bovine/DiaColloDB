@@ -31,6 +31,7 @@ GetOptions(##-- general
 
 	   ##-- I/O
 	   'export-sdat|sdat|strings|s!' => \$export{export_sdat},
+	   'export-raw|raw!' => sub { $export{export_sdat}=!$_[1]; },
 	   'export-cof|cof|c!' => \$export{export_cof},
 	   'output-directory|outdir|odir|od|o=s' => \$outdir
 	  );
@@ -86,6 +87,7 @@ coldb-export.perl - export a text representation of a CollocDB index
    -verbose LEVEL
 
  Export Options:
+   -[no]raw             ##-- inverse of -[no]sdat
    -[no]sdat            ##-- do/don't export stringified tuples (*.sdat; default=do)
    -[no]cof             ##-- do/don't export co-frequency files (cof.*; default=do)
    -output DIR          ##-- dump directory (default=DBDIR.export)

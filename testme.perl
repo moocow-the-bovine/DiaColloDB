@@ -392,7 +392,40 @@ sub bench_subunpack {
 	    # subunpack2  2669/s      24162%          0%          --
 	   });
 }
-bench_subunpack(@ARGV);
+#bench_subunpack(@ARGV);
+
+##==============================================================================
+## test: enum loaded
+
+sub test_enum_loaded {
+  CollocDB::Logger->ensureLog();
+  my $ebase = shift || "corpus1.d/lenum";
+  my $ef    = CollocDB::EnumFile->new(base=>$ebase)
+    or die("$0: could not create EnumFile for $ebase: $!");
+
+  $ef->info("toArray()");
+  my $ea1   = $ef->toArray();
+
+  $ef->info("load()");
+  $ef->load()
+    or die("$0: could not load enum: $!");
+  $ef->info("loaded: ", ($ef->loaded ? "ok" : "NOT ok"));
+  $ef->info("dirty: ", ($ef->dirty ? "NOT ok" : "ok"));
+
+  my $ea2 = $ef->toArray();
+  my $ea3 = $ef->toArray();
+  $ef->info("cached array: ", ($ea2 eq $ea3 ? 'ok' : 'NOT ok'));
+
+  $ef->info("addSymbols()");
+  $ef->addSymbols(qw(foo bar));
+  $ef->info("loaded: ", ($ef->loaded ? "ok": "NOT ok"));
+  $ef->info("dirty: ", ($ef->dirty ? "ok": "NOT ok"));
+  my $ea4 = $ef->toArray();
+  $ef->info("dirty array: ", ($ea4 eq $ea3 ? 'ok' : 'NOT ok'));
+
+  exit 0;
+}
+test_enum_loaded(@ARGV);
 
 
 ##==============================================================================

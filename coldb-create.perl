@@ -41,6 +41,9 @@ GetOptions(##-- general
 	   'document-class|dclass|dc=s' => \$corpus{dclass},
 	   'output|outdir|od|o=s' => \$dbdir,
 
+	   ##-- logging
+	   'log-level|level|ll=s' => sub { $CollocDB::Logger::MIN_LEVEL = uc($_[1]); },
+
 	   ##-- coldb options
 	   'max-distance|maxd|dmax|n=i' => \$coldb{dmax},
 	   'index-words|words|iw!' => \$coldb{index_w},
@@ -121,7 +124,8 @@ coldb-create.perl - create a CollocDB collocation database from a corpus dump
                         ##   (p|w|l)good=REGEX  # positive regex for (postags|words|lemmata)
                         ##   (p|w|l)bad=REGEX   # negative regex for (postags|words|lemmata)
 
- I/O Options:
+ I/O and Logging Options:
+   -log-level LEVEL     ##-- set log-level (default=TRACE)
    -output DIR          ##-- output directory (required)
 
 =cut

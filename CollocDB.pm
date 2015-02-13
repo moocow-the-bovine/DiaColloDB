@@ -61,7 +61,7 @@ our $ECLASS = 'CollocDB::EnumFile::MMap';
 ## $XECLASS
 ##  + fixed-length enum class
 #our $XECLASS = 'CollocDB::EnumFile::FixedLen';
-our $XECLASS = 'CollocDB::EnumFile::FixedMap';
+our $XECLASS = 'CollocDB::EnumFile::FixedLen::MMap';
 
 ## $MMCLASS
 ##  + multimap class
@@ -98,8 +98,9 @@ our $MMCLASS = 'CollocDB::MultiMapFile';
 ##    ##
 ##    ##-- logging
 ##    logOpen => $level,        ##-- log-level for open/close (default='info')
-##    logParseFile => $level,   ##-- log-level for corpus file-parsing (default='trace')
 ##    logCreate => $level,      ##-- log-level for create messages (default='info')
+##    logCorpusFile => $level,  ##-- log-level for corpus file-parsing (default='trace')
+##    logCorpusFileN => $N,     ##-- log corpus file-parsing only for every N files (0 for none; default:undef ~ $corpus->size()/100)
 ##    logExport => $level,      ##-- log-level for export messages (default='trace')
 ##    ##
 ##    ##-- enums
@@ -142,8 +143,9 @@ sub new {
 
 		      ##-- logging
 		      logOpen => 'info',
-		      logParseFile => 'trace',
 		      logCreate => 'info',
+		      logCorpusFile => 'trace',
+		      logCorpusFileN => undef,
 		      logExport => 'trace',
 
 		      ##-- enums
@@ -332,13 +334,22 @@ sub create {
   my $lgood = $coldb->{lgood} ? qr{$coldb->{lgood}} : undef;
   my $lbad  = $coldb->{lbad}  ? qr{$coldb->{lbad}}  : undef;
 
+  ##-- initialize: logging
+  my $logFileN = $coldb->{logCorpusFileN};
+  my $nfiles   = $corpus->size();
+  if (!defined($logFileN)) {
+    $logFileN = int($nfiles / 100);
+    $logFileN = 1 if ($logFileN < 1);
+  }
+
   ##-- initialize: enums
   $coldb->vlog($coldb->{logCreate},"create(): processing corpus files");
   my ($bos,$eos) = @$coldb{qw(bos eos)};
-  my ($doc, $date,$tok,$w,$p,$l,$wi,$li,$x,$xi);
+  my ($doc, $date,$tok,$w,$p,$l,$wi,$li,$x,$xi, $filei);
   my ($last_was_eos,$bosxi,$eosxi);
   for ($corpus->ibegin(); $corpus->iok; $corpus->inext) {
-    $coldb->vlog($coldb->{logParseFile}, "create(): processing file ", $corpus->ifile);
+    $coldb->vlog($coldb->{logCorpusFile}, sprintf("create(): processing files [%3d%%]: %s", 100*$filei/$nfiles, $corpus->ifile))
+      if ($logFileN && ($filei++ % $logFileN)==0);
     $doc  = $corpus->idocument();
     $date = $doc->{date};
 
@@ -548,6 +559,12 @@ sub export {
   ##-- dump: header
   $coldb->saveHeader("$outdir/header.json")
     or $coldb->logconfess("export(): could not export header to $outdir/header.json: $!");
+
+  ##-- dump: load enums
+  $coldb->vlog($coldb->{logExport}, "export(): loading enums to memory");
+  $coldb->{wenum}->load() if ($coldb->{wenum} && !$coldb->{wenum}->loaded);
+  $coldb->{lenum}->load() if ($coldb->{wenum} && !$coldb->{lenum}->loaded);
+  $coldb->{xenum}->load() if ($coldb->{xenum} && !$coldb->{xenum}->loaded);
 
   ##-- dump: enums
   if ($coldb->{wenum}) {
