@@ -21,7 +21,7 @@ our $dbdir        = undef;
 our $globargs = 1; ##-- glob @ARGV?
 our $listargs = 0; ##-- args are file-lists?
 our %corpus   = (dclass=>'DDCTabs');
-our %coldb    = (index_w=>0, index_l=>1, pack_id=>'N', pack_date=>'n', pack_f=>'N', pack_off=>'N', pack_len=>'n', dmax=>5);
+our %coldb    = (pack_id=>'N', pack_date=>'n', pack_f=>'N', pack_off=>'N', pack_len=>'n', dmax=>5, cfmin=>2, keeptmp=>0);
 
 ##----------------------------------------------------------------------
 ## Command-line processing
@@ -46,8 +46,10 @@ GetOptions(##-- general
 
 	   ##-- coldb options
 	   'max-distance|maxd|dmax|n=i' => \$coldb{dmax},
-	   'index-words|words|iw!' => \$coldb{index_w},
-	   'index-lemmata|index-lemmas|lemmata|lemmas|il!' => \$coldb{index_l},
+	   'min-cofrequency|min-cf|mincf|cfmin=i' => \$coldb{cfmin},
+	   #'index-words|words|iw!' => \$coldb{index_w},
+	   #'index-lemmata|index-lemmas|lemmata|lemmas|il!' => \$coldb{index_l},
+	   'keeptmp|keep' => \$coldb{keeptmp},
 	   'nofilters|F' => sub { $coldb{$_}=undef foreach (qw(pgood pbad wgood wbad lgood lbad)); },
 	   'option|O=s%' => \%coldb,
 	   '64bit|64|quad|Q!'   => sub { pack64( $_[1]); },
@@ -109,12 +111,14 @@ coldb-create.perl - create a CollocDB collocation database from a corpus dump
    -dclass CLASS        ##-- set corpus document class (default=DDCTabs)
 
  CollocDB Options:
-   -[no]index-w         ##-- do/don't index words (default=do)
-   -[no]index-l         ##-- do/don't index lemmata (default=do)
+   #-[no]index-w         ##-- do/don't index words (default=don't) : OBSOLETE
+   #-[no]index-l         ##-- do/don't index lemmata (default=do)  : OBSOLETE
+   -[no]keep            ##-- do/ton't keep temporary files (default=don't)
    -nofilters           ##-- disable default regex-filters
    -64bit               ##-- use 64-bit quads where available
    -32bit               ##-- use 32-bit integers where available
    -dmax DIST           ##-- maximum distance for collocation-frequencies (default=5)
+   -cfmin CFMIN         ##-- minimum relation co-occurrence frequency (default=2)
    -option OPT=VAL      ##-- set arbitrary CollocDB option, e.g.
                         ##   pack_id=PACKFMT    # pack-format for IDs
                         ##   pack_f=PACKFMT     # pack-format for frequencies

@@ -24,9 +24,12 @@ our ($help,$version);
 our $dbdir      = undef;
 our %coldb      = (flags=>'r');
 
-our $want_strings = 1;
+our $want_lemmata = 1;
+our $want_dates   = 1;
+our $want_strings = undef; ##-- $want_lemmata || $want_dates
 our $want_mi = 1;
 our $want_ld = 1;
+our $fmin = 0;
 our $outfmt  = 'text';
 
 ##----------------------------------------------------------------------
@@ -38,7 +41,10 @@ GetOptions(##-- general
 	   'verbose|v=i' => \$verbose,
 
 	   ##-- local
-	   'strings|s!' => \$want_strings,
+	   'fmin|f=i' => \$fmin,
+	   'strings|s!' => sub { $want_dates=$want_lemmata=$_[1]; },
+	   'lemmata|lemmas|lemma-strings|ls!' => \$want_lemmata,
+	   'dates|date-strings|ds!' => \$want_dates,
 	   'mi|m!' => \$want_mi,
 	   'logdice|dice|ld|d!' => \$want_ld,
 	   'scores|S!' => sub {$want_mi=$want_ld=$_[1]},
@@ -88,18 +94,19 @@ foreach $l (@lemmas) {
 
 ##-- profile: get co-frequency profile
 $coldb->trace("profile: get co-frequency profile");
-my $prf = $coldb->{cof}->profile(\@xids);
+my $prf = $coldb->{cof}->profile(\@xids, fmin=>$fmin);
 
 ##-- stringify profile
 my $sprf  = $prf;
-if ($want_strings) {
-  $coldb->trace("profile: stringify");
+if ($want_lemmata || $want_dates) {
+  $coldb->trace("profile: stringify [", ($want_dates ? "+" : "-"), "dates, ", ($want_lemmata ? "+" : "-"), "lemmata]");
   $sprf  = $prf->new(N=>$prf->{N},f1=>$prf->{f1});
   my $xenum = $coldb->{xenum};
-  my ($xi2,$wi2,$li2,$d2,$l2,$key2);
+  my $pack_x = $coldb->{pack_x};
+  my ($xi2,$li2,$d2,$l2,$key2);
   foreach my $xi2 (keys %{$prf->{f2}}) {
-    ($wi2,$li2,$d2) = (($coldb->{index_w} ? qw() : undef), unpack($coldb->{pack_x}, $xenum->i2s($xi2)));
-    $l2   = $lenum->i2s($li2);
+    ($li2,$d2) = unpack($pack_x, $xenum->i2s($xi2));
+    $l2   = $want_lemmata ? $lenum->i2s($li2) : $li2;
     $key2 = "$d2\t$l2";
     $sprf->{f2}{$key2}  = $prf->{f2}{$xi2};
     $sprf->{f12}{$key2} = $prf->{f12}{$xi2};
@@ -150,7 +157,9 @@ coldb-profile.perl - get a lemma-profile from a CollocDB
    -verbose LEVEL
 
  Local Options:
-   -[no]strings         # do/don't stringify output (default=do)
+   -[no]dates		# do/don't include dates in output (default=do)
+   -[no]lemmas          # do/don't include lemmata in output (default=do)
+   -[no]strings         # alias for -[no]strings -[no]dates
    -[no]mi              # do/dont't compute MI*logf score (default=do)
    -[no]dice            # do/dont't compute log-Dice score (default=do)
    -[no]scores          # alias for -[no]mi -[no]dice

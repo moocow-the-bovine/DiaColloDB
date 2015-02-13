@@ -581,9 +581,50 @@ $ time ./coldb-profile.perl kern01.de Maus -strings -nomi -nold -noout		# real	0
 $ time ./coldb-profile.perl kern01.de Maus -strings -nomi -nold -noout		# real	0m0.148s (n=1.4k, 2nd run) ~   9.5k ops/sec : 0.79 dbe
 
 ##-- multi-timing +MultiMapFile
-$ ./timeprof.sh kern01.d Haus Mann Blatt Hund Maus
-Haus	4.29	0.86
-Mann	5.45	1.10
-Blatt	5.76	0.41
-Hund	3.67	0.23
-Maus	4.18	0.14
+$ ./timeprof.sh kern01.d1 Haus Mann Blatt Hund Maus
+Haus	6.70	0.87
+Mann	5.15	1.12
+Blatt	3.99	0.41
+Hund	3.19	0.23
+Maus	3.20	0.14
+
+##-- multi-timing, cfmin=1 (dbsize/kern01=515M)
+$ ./timeprof.sh kern01.d2 Haus Mann Blatt Hund Maus
+
+Haus	3.31	0.32
+Mann	3.80	0.41
+Blatt	3.25	0.18
+Hund	4.11	0.14
+Maus	3.91	0.13
+
+##-- multi-timing, cfmin=2 (dbsize/kern01=127M)
+## --> new size estimate = 131961414 bytes /  32002213 tok ~ 127MB / 31Mtok  = 4.12 bytes/tok
+## --> for kern.d        = 494198183 bytes / 122235214 tok ~ 427MB / 116Mtok = 4.04 bytes/tok
+## --> projection for alle_zeitungen (ntok=3470364249 ~ 3.3G): 3.3G tok * 4.12 bytes/tok = 13.6GB
+$ ./timeprof.sh kern01.d2 Haus Mann Blatt Hund Maus
+Haus	3.31	0.32
+Mann	3.80	0.41
+Blatt	3.25	0.18
+Hund	4.11	0.14
+Maus	3.91	0.13
+
+##-- multi-timing, cfmin=4 (dbsize/kern01=74M)
+$ ./timeprof.sh kern01.d4 Haus Mann Blatt Hund Maus
+Haus	3.78	0.18
+Mann	3.72	0.21
+Blatt	3.09	0.13
+Hund	2.52	0.13
+Maus	2.55	0.12
+
+##-- for full kern.d (122M tok, cfmin=2):
+Haus	11.26	0.71
+Mann	14.15	1.06
+Blatt	9.69	0.25
+Hund	8.80	0.20
+Maus	6.14	0.14
+
+
+##-- stringification breakdown (1st runs, kern.d[cfmin=2])
+$ time ./coldb-profile.perl kern01.d Mann -noout -nodates -nolemmas	# real	0m2.630s [+2.630]
+$ time ./coldb-profile.perl kern01.d Mann -noout -dates   -nolemmas 	# real	0m4.423s [+1.793]
+$ time ./coldb-profile.perl kern01.d Mann -noout -dates   -lemmas 	# real	0m5.428s [+1.005]
