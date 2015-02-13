@@ -514,7 +514,7 @@ sub export {
 
   ##-- dump: load enums
   $coldb->vlog($coldb->{logExport}, "export(): loading enums to memory");
-  $coldb->{lenum}->load() if ($coldb->{wenum} && !$coldb->{lenum}->loaded);
+  $coldb->{lenum}->load() if ($coldb->{lenum} && !$coldb->{lenum}->loaded);
   $coldb->{xenum}->load() if ($coldb->{xenum} && !$coldb->{xenum}->loaded);
 
   ##-- dump: enums
