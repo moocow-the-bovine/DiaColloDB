@@ -613,8 +613,25 @@ sub dbimport {
 ##--------------------------------------------------------------
 ## Profiling: Co-Frequencies
 
-## $mprf = $cof->coprofile(%opts)
+## $mprf = $coldb->xfprofile(%opts)
+##  + get unigram frequency profile for selected items as a CollocDB::Profile::Multi object
+##  + really just wraps $coldb->profile('xf', %opts)
+##  + %opts: see profile() method
+sub xfprofile {
+  return $_[0]->profile('xf',@_[1..$#_]);
+}
+
+
+## $mprf = $coldb->coprofile(%opts)
 ##  + get co-frequency profile for selected items as a CollocDB::Profile::Multi object
+##  + really just wraps $coldb->profile('cof', %opts)
+##  + %opts: see profile() method
+sub coprofile {
+  return $_[0]->profile('cof',@_[1..$#_]);
+}
+
+## $mprf = $coldb->profile($relation, %opts)
+##  + get a relation profile for selected items as a CollocDB::Profile::Multi object
 ##  + %opts:
 ##    (
 ##     ##-- selection parameters
@@ -632,8 +649,8 @@ sub dbimport {
 ##     ##
 ##     ##-- profiling and debugging parameters
 ##     strings => $bool,          ##-- do/don't stringify (default=do)
-sub coprofile {
-  my ($coldb,%opts) = @_;
+sub profile {
+  my ($coldb,$rel,%opts) = @_;
 
   ##-- common variables
   my ($logProfile,$lenum,$xenum,$l2x) = @$coldb{qw(logProfile lenum xenum l2x)};
@@ -648,12 +665,16 @@ sub coprofile {
 
   ##-- sanity check(s)
   if ($lemma eq '') {
-    $coldb->logwarn("coprofile(): missing required parameter 'lemma'");
+    $coldb->logwarn("profile(): missing required parameter 'lemma'");
+    return undef;
+  }
+  if (!UNIVERSAL::can($coldb->{$rel},'profile')) {
+    $coldb->logwarn("profile(): unknown relation '$rel'");
     return undef;
   }
 
   ##-- prepare: get target lemmas
-  $coldb->vlog($logProfile, "coprofile(): get target lemmata");
+  $coldb->vlog($logProfile, "profile(): get target lemmata");
   my ($lis);
   if (UNIVERSAL::isa($lemma,'ARRAY')) {
     ##-- lemmas: array
@@ -668,16 +689,16 @@ sub coprofile {
     $lis = [grep {defined($_)} map {$lenum->s2i($_)} grep {($_//'') ne ''} map {s{\\(.)}{$1}g; $_} split(/(?:(?<!\\)[\,\s])+/,$lemma)];
   }
   if (!@$lis) {
-    $coldb->logwarn("coprofile(): no lemmata matching user query '$lemma'");
+    $coldb->logwarn("profile(): no lemmata matching user query '$lemma'");
     return undef;
   }
 
   ##-- prpare: map lemmas => tuple-ids
-  $coldb->vlog($logProfile, "coprofile(): get target tuple IDs");
+  $coldb->vlog($logProfile, "profile(): get target tuple IDs");
   my $xis = [sort {$a<=>$b} map {@{$l2x->fetch($_)}} @$lis];
 
   ##-- prepare: parse and filter tuples
-  $coldb->vlog($logProfile, "coprofile(): parse and filter target tuples");
+  $coldb->vlog($logProfile, "profile(): parse and filter target tuples");
   my $dfilter = undef;
   if ($date && $date =~ /^\//) {
     my $dre  = regex($date);
@@ -704,13 +725,13 @@ sub coprofile {
   }
 
   ##-- profile: get low-level co-frequency profiles
-  $coldb->vlog($logProfile, "coprofile(): get frequency profile(s)");
+  $coldb->vlog($logProfile, "profile(): get frequency profile(s)");
   my $gbsub = sub { unpack($pack_i,$xenum->i2s($_[0])) };
   my $d2prf = {}; ##-- ($dateKey => $profileForDateKey, ...)
-  my $cof   = $coldb->{cof};
+  my $reldb = $coldb->{$rel};
   my ($prf);
   foreach $d (sort {$a<=>$b} keys %$d2xis) {
-    $prf = $cof->profile($d2xis->{$d}, groupby=>$gbsub);
+    $prf = $rel->profile($d2xis->{$d}, groupby=>$gbsub);
     $prf->compile($score);
     $prf->trim(kbest=>$kbest, cutoff=>$cutoff);
     $prf = $prf->stringify($lenum) if ($strings);
