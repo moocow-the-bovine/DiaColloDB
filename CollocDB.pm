@@ -731,7 +731,7 @@ sub profile {
   my $reldb = $coldb->{$rel};
   my ($prf);
   foreach $d (sort {$a<=>$b} keys %$d2xis) {
-    $prf = $rel->profile($d2xis->{$d}, groupby=>$gbsub);
+    $prf = $reldb->profile($d2xis->{$d}, groupby=>$gbsub);
     $prf->compile($score);
     $prf->trim(kbest=>$kbest, cutoff=>$cutoff);
     $prf = $prf->stringify($lenum) if ($strings);

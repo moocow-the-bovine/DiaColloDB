@@ -97,8 +97,8 @@ $coldb->open($dbdir)
 
 ##-- get profile
 $profile{lemma} = join(' ',@ARGV);
-my $mp = $coldb->coprofile(%profile)
-  or die("$prog: profile() failed for lemma(s) '$profile{lemma}': $!");
+my $mp = $coldb->profile($rel, %profile)
+  or die("$prog: profile() failed for relation '$rel', lemma(s) '$profile{lemma}': $!");
 
 ##-- dump stringified profile
 if ($outfmt eq 'text') {
