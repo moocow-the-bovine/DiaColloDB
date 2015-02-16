@@ -15,8 +15,10 @@ use CollocDB::DBFile;
 use CollocDB::PackedFile;
 use CollocDB::Unigrams;
 use CollocDB::Cofreqs;
+use CollocDB::Profile;
+use CollocDB::Profile::Multi;
 use CollocDB::Corpus;
-use CollocDB::Utils qw(:fcntl :json :sort :pack);
+use CollocDB::Utils qw(:fcntl :json :sort :pack :regex);
 use Fcntl;
 use File::Path qw(make_path remove_tree);
 use strict;
@@ -110,7 +112,7 @@ our $MMCLASS = 'CollocDB::MultiMapFile';
 ##    #wenum => $wenum,    ##-- enum: words  ($dbdir/wenum.*) : $w<=>$wi : A*<=>N # DISABLED
 ##    lenum => $wenum,    ##-- enum: lemmas ($dbdir/lenum.*) : $l<=>$li : A*<=>N
 ##    xenum => $xenum,    ##-- enum: tuples ($dbdir/xenum.*) : [$li,$di]<=>$xi : NNn<=>N
-##    #pack_x => $fmt,     ##-- symbol pack-format for $xenum : "${pack_id}${pack_date}"
+##    pack_x => $fmt,     ##-- symbol pack-format for $xenum : "${pack_id}${pack_date}"
 ##    ##
 ##    ##-- data
 ##    #w2x   => $w2x,      ##-- multimap: word->tuples  ($dbdir/w2x.*) : $wi=>@xis  : N=>N* # DISABLED
@@ -168,7 +170,7 @@ sub new {
 		     },
 		     ref($that)||$that);
   $coldb->{class}  = ref($coldb);
-  #$coldb->{pack_x} = $coldb->{pack_id} . $coldb->{pack_date};
+  $coldb->{pack_x} = $coldb->{pack_id} . $coldb->{pack_date};
   return defined($coldb->{dbdir}) ? $coldb->open($coldb->{dbdir}) : $coldb;
 }
 
@@ -607,21 +609,10 @@ sub dbimport {
 ## Profiling
 
 ##--------------------------------------------------------------
-## Profiling: Utils: enum expansion
-
-## $re = $coldb->regex($regex)
-##  + parses and compiles regexes
-sub regex {
-  my ($coldb,$re) = @_;
-}
-
-
-##--------------------------------------------------------------
 ## Profiling: Co-Frequencies
 
-
-## $prf = $cof->cofProfile(%opts)
-##  + get co-frequency profile for selected items
+## $mprf = $cof->coprofile(%opts)
+##  + get co-frequency profile for selected items as a CollocDB::Profile::Multi object
 ##  + %opts:
 ##    (
 ##     ##-- selection parameters
@@ -629,32 +620,102 @@ sub regex {
 ##     date  => $date1,           ##-- string or array or range "MIN-MAX" (inclusive) : default=all
 ##     ##
 ##     ##-- aggregation parameters
-##     groupby => $attrs,         ##-- string or array; ("lemma"|"date"|"date/"SLICE)* : default=lemma,date
+##     #groupby => $attrs,         ##-- string or array; ("lemma"|"date")* : default=lemma,date
+##     slice   => $slice,         ##-- date slice (default=1, 0 for global profile)
 ##     ##
 ##     ##-- scoring and trimming parameters
-##     scoreby => $func,          ##-- scoring function ("f"|"mi"|"ld") : default="f"
-##     kbest   => $k,             ##-- return only $k best collocates per date (slice) : default=all
+##     score   => $func,          ##-- scoring function ("f"|"mi"|"ld") : default="f"
+##     kbest   => $k,             ##-- return only $k best collocates per date (slice) : default=-1:all
 ##     cutoff  => $cutoff,        ##-- minimum score
-##
-sub cofProfile {
+##     ##
+##     ##-- profiling and debugging parameters
+##     strings => $bool,          ##-- do/don't stringify (default=do)
+sub coprofile {
   my ($coldb,%opts) = @_;
 
+  ##-- common variables
+  my ($logProfile,$lenum,$xenum,$l2x) = @$coldb{qw(logProfile lenum xenum l2x)};
+  my ($l,$li,$lxids,@xids);
+  my $lemma   = $opts{lemma} // '';
+  my $date    = $opts{date}  // '';
+  my $slice   = $opts{slice} // 1;
+  my $score   = $opts{score} // 'f';
+  my $kbest   = $opts{kbest} // -1;
+  my $cutoff  = $opts{cutoff};
+  my $strings = $opts{strings} // 1;
+
   ##-- sanity check(s)
-  my $lemmas = $opts{lemmas} // '';
-  if ($lemmas eq '') {
-    $coldb->logwarn("cofProfile(): missing required 'lemmas' parameter");
+  if ($lemma eq '') {
+    $coldb->logwarn("coprofile(): missing required parameter 'lemma'");
     return undef;
   }
 
-  ##-- common variables
-  my ($logProfile,$lenum,$xenum) = @$coldb{qw(logProfilelenum xenum)};
-  my ($l,$li,$lxids,@xids);
+  ##-- prepare: get target lemmas
+  $coldb->vlog($logProfile, "coprofile(): get target lemmata");
+  my ($lis);
+  if (UNIVERSAL::isa($lemma,'ARRAY')) {
+    ##-- lemmas: array
+    $lis = [map {$lenum->s2i($_)} @$lemma];
+  }
+  elsif ($lemma =~ m{^/}) {
+    ##-- lemmas: regex
+    $lis = $lenum->re2i($lemma);
+  }
+  else {
+    ##-- lemmas: space-separated literals
+    $lis = [grep {defined($_)} map {$lenum->s2i($_)} grep {($_//'') ne ''} map {s{\\(.)}{$1}g; $_} split(/(?:(?<!\\)[\,\s])+/,$lemma)];
+  }
+  if (!@$lis) {
+    $coldb->logwarn("coprofile(): no lemmata matching user query '$lemma'");
+    return undef;
+  }
 
-  ##-- profile: get tuple-IDs
-  $coldb->vlog($logProfile, "cofProfile(): get tuple-IDs");
-  my @lemmas = qw();
-#  if
+  ##-- prpare: map lemmas => tuple-ids
+  $coldb->vlog($logProfile, "coprofile(): get target tuple IDs");
+  my $xis = [sort {$a<=>$b} map {@{$l2x->fetch($_)}} @$lis];
 
+  ##-- prepare: parse and filter tuples
+  $coldb->vlog($logProfile, "coprofile(): parse and filter target tuples");
+  my $dfilter = undef;
+  if ($date && $date =~ /^\//) {
+    my $dre  = regex($date);
+    $dfilter = sub { $_[0] =~ $dre };
+  }
+  elsif ($date && $date =~ /^\s*([0-9]+)\s*[\-\:\s]+\s*([0-9]+)\s*$/) {
+    my ($dlo,$dhi) = ($1+0,$2+0);
+    $dfilter = sub { $_[0]>=$dlo && $_[0]<=$dhi };
+  }
+  elsif ($date) {
+    $dfilter = sub { $_[0] == $date };
+  }
+  my $d2xis  = {}; ##-- ($dateKey => \@xis_at_date, ...)
+  my $pack_x = $coldb->{pack_x};
+  my $pack_i = $coldb->{pack_id};
+  my $pack_d = $coldb->{pack_date};
+  my $pack_xd = "@".packsize($pack_i).$pack_d;
+  my ($xi,$d);
+  foreach $xi (@$xis) {
+    $d = unpack($pack_xd, $xenum->i2s($xi));
+    next if ($dfilter && !$dfilter->($d));
+    $d = $slice ? int($d/$slice)*$slice : 0;
+    push(@{$d2xis->{$d}}, $xi);
+  }
+
+  ##-- profile: get low-level co-frequency profiles
+  $coldb->vlog($logProfile, "coprofile(): get frequency profile(s)");
+  my $gbsub = sub { unpack($pack_i,$xenum->i2s($_[0])) };
+  my $d2prf = {}; ##-- ($dateKey => $profileForDateKey, ...)
+  my $cof   = $coldb->{cof};
+  my ($prf);
+  foreach $d (sort {$a<=>$b} keys %$d2xis) {
+    $prf = $cof->profile($d2xis->{$d}, groupby=>$gbsub);
+    $prf->compile($score);
+    $prf->trim(kbest=>$kbest, cutoff=>$cutoff);
+    $prf = $prf->stringify($lenum) if ($strings);
+    $d2prf->{$d} = $prf;
+  }
+
+  return CollocDB::Profile::Multi->new(ps=>$d2prf);
 }
 
 ##==============================================================================
