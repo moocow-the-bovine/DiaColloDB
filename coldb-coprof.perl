@@ -35,6 +35,7 @@ our %profile = (
 	       );
 
 our $outfmt  = 'text'; ##-- output format: 'text' or 'json'
+our $pretty  = 1;
 
 ##----------------------------------------------------------------------
 ## Command-line processing
@@ -63,6 +64,7 @@ GetOptions(##-- general
 	   ##-- I/O
 	   'text|t' => sub {$outfmt='text'},
 	   'json|j' => sub {$outfmt='json'},
+	   'pretty|p!' => sub {$pretty=$_[1]},
 	   'null|noout' => sub {$outfmt=''},
 	  );
 
@@ -102,7 +104,7 @@ if ($outfmt eq 'text') {
 }
 elsif ($outfmt eq 'json') {
   $mp->trace("saveJsonFile()");
-  CollocDB::Utils::saveJsonFile($mp, '-');
+  CollocDB::Utils::saveJsonFile($mp, '-', utf8=>0,pretty=>$pretty,canonical=>$pretty);
 }
 #$coldb->trace("done.");
 
@@ -145,6 +147,7 @@ coldb-coprof.perl - get a co-frequency profile from a CollocDB
  I/O Options:
    -text		# use text output (default)
    -json                # use json output
+   -[no]pretty          # do/don't pretty-print json output (default=do)
    -null                # don't output profile at all
 
 =cut

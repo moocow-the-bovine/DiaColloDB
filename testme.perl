@@ -432,13 +432,13 @@ sub test_enum_loaded {
 
 sub test_enum_expand {
   CollocDB::Logger->ensureLog();
-  my $re    = shift || '/mann$/i';
+  my $re    = shift || '/[[:upper:]]nderung/u';
   my $ebase = shift || "corpus1.d/lenum";
   my ($eclass);
   #$eclass = 'CollocDB::EnumFile';
-  #$eclass = 'CollocDB::EnumFile::MMap';
+  $eclass = 'CollocDB::EnumFile::MMap';
   #$eclass = 'CollocDB::EnumFile::FixedLen';
-  $eclass = 'CollocDB::EnumFile::FixedLen::MMap';
+  #$eclass = 'CollocDB::EnumFile::FixedLen::MMap';
   my $ef    = $eclass->new(base=>$ebase)
     or die("$0: could not create $eclass object for $ebase: $!");
 
