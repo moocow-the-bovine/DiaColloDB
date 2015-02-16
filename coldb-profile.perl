@@ -24,6 +24,7 @@ our ($help,$version);
 our $dbdir      = undef;
 our %coldb      = (flags=>'r');
 
+our $rel = 'cof';
 our %profile = (
 		lemma =>'',	##-- selected lemma(ta)
 		date  =>undef,  ##-- selected date(s)
@@ -50,6 +51,8 @@ GetOptions(##-- general
 	   'option|O=s%' => \%coldb,
 
 	   ##-- local
+	   'collocations|collocs|cofreqs|cof|co' => sub { $rel='cof' },
+	   'unigrams|ug|u' => sub { $rel='xf' },
 	   'date|d=s'   => \$profile{date},
 	   'date-slice|ds=s'  => \$profile{slice},
 	   'mutual-information|mi'    => sub {$profile{score}='mi'},
@@ -57,7 +60,7 @@ GetOptions(##-- general
 	   'frequency|freq|f'         => sub {$profile{score}='f'},
 	   'k-best|kbest|k=i' => \$profile{kbest},
 	   'no-k-best|nokbest|nok' => sub {$profile{kbest}=undef},
-	   'cutoff|c=f' => \$profile{cutoff},
+	   'cutoff|C=f' => \$profile{cutoff},
 	   'no-cutoff|nocutoff|noc' => sub {$profile{cutoff}=undef},
 	   'strings|S!' => \$profile{strings},
 
@@ -119,7 +122,7 @@ __END__
 
 =head1 NAME
 
-coldb-coprof.perl - get a co-frequency profile from a CollocDB
+coldb-profile.perl - get a frequency profile from a CollocDB
 
 =head1 SYNOPSIS
 
@@ -135,6 +138,7 @@ coldb-coprof.perl - get a co-frequency profile from a CollocDB
    -O KEY=VALUE         # set CollocDB option
 
  Profiling Options:
+   -collocs , -unigrams # select profile type (collocations or unigrams; default=-collocs)
    -date DATES          # set target DATE or /REGEX/ or MIN-MAX
    -slice SLICE         # set target date slice (default=1)
    -freq , -mi , -ld    # set scoring function (default=-f)
