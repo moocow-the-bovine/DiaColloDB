@@ -8,8 +8,8 @@ use CollocDB::Logger;
 use CollocDB::Enum;
 use CollocDB::EnumFile;
 use CollocDB::EnumFile::MMap;
-use CollocDB::EnumFile::FixedLen;
-use CollocDB::EnumFile::FixedMap;
+#use CollocDB::EnumFile::FixedLen;
+#use CollocDB::EnumFile::FixedMap;
 use CollocDB::MultiMapFile;
 use CollocDB::DBFile;
 use CollocDB::PackedFile;
@@ -61,7 +61,7 @@ our $ECLASS = 'CollocDB::EnumFile::MMap';
 ## $XECLASS
 ##  + fixed-length enum class
 #our $XECLASS = 'CollocDB::EnumFile::FixedLen';
-our $XECLASS = 'CollocDB::EnumFile::FixedLen::MMap';
+#our $XECLASS = 'CollocDB::EnumFile::FixedLen::MMap';
 
 ## $MMCLASS
 ##  + multimap class
@@ -77,8 +77,6 @@ our $MMCLASS = 'CollocDB::MultiMapFile';
 ##    ##-- options
 ##    dbdir => $dbdir,    ##-- database directory; REQUIRED
 ##    flags => $fcflags,  ##-- fcntl flags or open()-style mode string; default='rw'
-##    #index_w => $bool,   ##-- index surface word-forms? (default=0) : DISABLED
-##    index_l => $bool,   ##-- index lemmata? (default=1) : REDUNDANT
 ##    bos => $bos,        ##-- special string to use for BOS, undef or empty for none (default=undef)
 ##    eos => $eos,        ##-- special string to use for EOS, undef or empty for none (default=undef)
 ##    pack_id => $fmt,    ##-- pack-format for IDs (default='N')
@@ -106,15 +104,11 @@ our $MMCLASS = 'CollocDB::MultiMapFile';
 ##    logExport => $level,      ##-- log-level for export messages (default='trace')
 ##    ##
 ##    ##-- enums
-##    #wenum => $wenum,    ##-- enum: words  ($dbdir/wenum.*) : $w<=>$wi : A*<=>N # DISABLED
 ##    lenum => $wenum,    ##-- enum: lemmas ($dbdir/lenum.*) : $l<=>$wi : A*<=>N
-##    xenum => $xenum,    ##-- enum: tuples ($dbdir/xenum.*) : [$wi,$li,$di]<=>$xi : NNn<=>N
-##    pack_x => $fmt,     ##-- symbol pack-format for $xenum : "${pack_id}${pack_date}"
 ##    ##
 ##    ##-- data
-##    #w2x   => $w2x,      ##-- multimap: word->tuples  ($dbdir/w2x.*) : $wi=>@xis  : N=>N* # DISABLED
-##    l2x   => $l2x,      ##-- multimap: lemma->tuples ($dbdir/l2x.*) : $li=>@xis  : N=>N*
-##    xf    => $xf,       ##-- ug: $xi => $f($xi) : N=>N
+##    #l2x   => $l2x,      ##-- multimap: lemma->tuples ($dbdir/l2x.*) : $li=>@xis  : N=>N*
+##    #xf    => $xf,       ##-- ug: $xi => $f($xi) : N=>N
 ##    cof   => $cof,      ##-- cf: [$i1,$i2] => $f12
 ##   )
 sub new {
@@ -153,21 +147,17 @@ sub new {
 		      logExport => 'trace',
 
 		      ##-- enums
-		      #wenum => undef, #CollocDB::EnumFile->new(pack_i=>$coldb->{pack_id}, pack_o=>$coldb->{pack_off}, pack_l=>$coldb->{pack_len}),
 		      lenum => undef, #CollocDB::EnumFile->new(pack_i=>$coldb->{pack_id}, pack_o=>$coldb->{pack_off}, pack_l=>$coldb->{pack_len}),
-		      xenum => undef, #CollocDB::EnumFile::FixedLen->new(pack_i=>$coldb->{pack_id}, pack_s=>$coldb->{pack_x}),
-		      #w2x   => undef, #CollocDB::MultiMapFile->new(pack_i=>$coldb->{pack_id}, pack_o=>$coldb->{pack_off}, pack_l=>$coldb->{pack_len}),
-		      l2x   => undef, #CollocDB::MultiMapFile->new(pack_i=>$coldb->{pack_id}, pack_o=>$coldb->{pack_off}, pack_l=>$coldb->{pack_len}),
+		      #l2x   => undef, #CollocDB::MultiMapFile->new(pack_i=>$coldb->{pack_id}, pack_o=>$coldb->{pack_off}, pack_l=>$coldb->{pack_len}),
 
 		      ##-- data
-		      xf    => undef, #CollocDB::Unigrams->new(packas=>$coldb->{pack_f}),
+		      #lf    => undef, #CollocDB::Unigrams->new(packas=>$coldb->{pack_f}),
 		      cof   => undef, #CollocDB::Cofreqs->new(pack_f=>$pack_f, pack_i=>$pack_i, dmax=>$dmax, fmin=>$cfmin),
 
 		      @_,	##-- user arguments
 		     },
 		     ref($that)||$that);
   $coldb->{class}  = ref($coldb);
-  $coldb->{pack_x} = ($coldb->{pack_id} x 2) . $coldb->{pack_date};
   return defined($coldb->{dbdir}) ? $coldb->open($coldb->{dbdir}) : $coldb;
 }
 
@@ -219,19 +209,18 @@ sub open {
   ##-- open: l*
   $coldb->{lenum} = $ECLASS->new(base=>"$dbdir/lenum", %efopts)
     or $coldb->logconfess("open(): failed to open lemma-enum $dbdir/lenum.*: $!");
-  $coldb->{l2x} = $MMCLASS->new(base=>"$dbdir/l2x", %mmopts)
-    or $coldb->logconfess("open(): failed to open lemma-expansion multimap $dbdir/l2x.*: $!");
 
-  ##-- open: xenum
-  $coldb->{xenum} = $XECLASS->new(base=>"$dbdir/xenum", %efopts, pack_s=>$coldb->{pack_x})
-      or $coldb->logconfess("open(): failed to open tuple-enum $dbdir/xenum.*: $!");
+=for pod
 
-  ##-- open: xf
-  $coldb->{xf} = CollocDB::Unigrams->new(file=>"$dbdir/xf.dba", flags=>$flags, packas=>$coldb->{pack_f})
-    or $coldb->logconfess("open(): failed to open tuple-unigrams $dbdir/xf.dba: $!");
+  ##-- open: lf : TODO
+  $coldb->{lf} = CollocDB::Unigrams->new(file=>"$dbdir/lf.ug", flags=>$flags, packas=>$coldb->{pack_f})
+    or $coldb->logconfess("open(): failed to open lemma-unigrams $dbdir/lf.ug: $!");
+
+=cut
 
   ##-- open: cof
-  $coldb->{cof} = CollocDB::Cofreqs->new(base=>"$dbdir/cof", flags=>$flags, pack_i=>$coldb->{pack_i}, pack_f=>$coldb->{pack_f}, dmax=>$coldb->{dmax}, fmin=>$coldb->{cfmin})
+  my %cofopts = (flags=>$flags, pack_i=>$coldb->{pack_i}, pack_d=>$coldb->{pack_date}, pack_f=>$coldb->{pack_f}, dmax=>$coldb->{dmax}, fmin=>$coldb->{cfmin});
+  $coldb->{cof} = CollocDB::Cofreqs->new(base=>"$dbdir/cof", %cofopts)
     or $coldb->logconfess("open(): failed to open co-frequency file $dbdir/cof.*: $!");
 
   ##-- all done
@@ -240,7 +229,7 @@ sub open {
 
 ## @dbkeys = $coldb->dbkeys()
 sub dbkeys {
-  return qw(lenum xenum l2x xf cof); #wenum w2x
+  return qw(lenum lf cof); #wenum w2x
 }
 
 ## $coldb_or_undef = $coldb->close()
@@ -294,8 +283,7 @@ sub create {
   my $pack_f     = $coldb->{pack_f};
   my $pack_off   = $coldb->{pack_off};
   my $pack_len   = $coldb->{pack_len};
-  my $pack_x     = $coldb->{pack_x} = $pack_id.$pack_date; ##-- pack("${pack_id}${pack_date}", $li, $date)
-  my $pack_mmb   = "${pack_id}*";
+  my $pack_mmb   = "${pack_id}*";  ##-- multimap pack format
 
   ##-- initialize: enums
   my %efopts = (flags=>$flags, pack_i=>$coldb->{pack_id}, pack_o=>$coldb->{pack_off}, pack_l=>$coldb->{pack_len});
@@ -304,17 +292,11 @@ sub create {
   my $lenum = $coldb->{lenum} = $ECLASS->new(%efopts);
   my $ls2i  = $lenum->{s2i};
   my $nl    = 0;
-  #
-  my $xenum = $coldb->{xenum} = $XECLASS->new(%efopts, pack_s=>$coldb->{pack_x});
-  my $xs2i  = $xenum->{s2i};
-  my $nx    = 0;
 
   ##-- initialize: corpus token-list (temporary)
   my $tokfile =  "$dbdir/tokens.dat";
   CORE::open(my $tokfh, ">$tokfile")
     or $coldb->logconfess("$0: open failed for $tokfile: $!");
-  #my $tokpack = substr($PDL::Types::pack[$PDL::Types::typehash{PDL_L}{numval}],0,1);
-  #my $tokpack = 'L';
 
   ##-- initialize: filter regexes
   my $pgood = $coldb->{pgood} ? qr{$coldb->{pgood}} : undef;
@@ -332,11 +314,11 @@ sub create {
     $logFileN = 1 if ($logFileN < 1);
   }
 
-  ##-- initialize: enums
+  ##-- initialize: enums and temporary tokens.dat
   $coldb->vlog($coldb->{logCreate},"create(): processing $nfiles corpus file(s)");
   my ($bos,$eos) = @$coldb{qw(bos eos)};
-  my ($doc, $date,$tok,$w,$p,$l,$wi,$li,$x,$xi, $filei);
-  my ($last_was_eos,$bosxi,$eosxi);
+  my ($doc, $date,$tok,$w,$p,$l,$li, $filei);
+  my ($last_was_eos,$bosi,$eosi);
   for ($corpus->ibegin(); $corpus->iok; $corpus->inext) {
     $coldb->vlog($coldb->{logCorpusFile}, sprintf("create(): processing files [%3d%%]: %s", 100*$filei/$nfiles, $corpus->ifile))
       if ($logFileN && ($filei++ % $logFileN)==0);
@@ -344,14 +326,12 @@ sub create {
     $date = $doc->{date};
 
     ##-- allocate bos,eos
-    undef $bosxi;
-    undef $eosxi;
+    undef $bosi;
+    undef $eosi;
     foreach $w (grep {($_//'') ne ''} $bos,$eos) {
       $li = $ls2i->{$w} = ++$nl if (!defined($li=$ls2i->{$w}));
-      $x  = pack($pack_x,$li,$date);
-      $xi = $xs2i->{$x} = ++$nx if (!defined($xi=$xs2i->{$x}));
-      $bosxi = $xi if (defined($bos) && $w eq $bos);
-      $eosxi = $xi if (defined($eos) && $w eq $eos);
+      $bosi = $li if (defined($bos) && $w eq $bos);
+      $eosi = $li if (defined($eos) && $w eq $eos);
     }
 
     ##-- iterate over tokens
@@ -371,15 +351,12 @@ sub create {
 
 	$li = $ls2i->{$l} = ++$nl if (!defined($li=$ls2i->{$l}));
 
-	$x  = pack($pack_x, $li,$date);
-	$xi = $xs2i->{$x} = ++$nx if (!defined($xi=$xs2i->{$x}));
-
-	$tokfh->print(($last_was_eos && defined($bosxi) ? ($bosxi,"\n") : qw()), $xi,"\n");
+	$tokfh->print(($last_was_eos && defined($bosi) ? ($date,"\t",$bosi,"\n") : qw()), $date, "\t", $li,"\n");
 	$last_was_eos = 0;
       }
       elsif (!$last_was_eos) {
 	##-- eos
-	$tokfh->print((defined($eosxi) ? ($eosxi,"\n") : qw()), "\n");
+	$tokfh->print((defined($eosi) ? ($date,"\t",$eosi,"\n") : qw()), "\n");
 	$last_was_eos = 1;
       }
     }
@@ -395,28 +372,7 @@ sub create {
   $lenum->save("$dbdir/lenum")
     or $coldb->logconfess("create(): failed to save $dbdir/lenum: $!");
 
-  ##-- compile: xenum
-  $coldb->vlog($coldb->{logCreate}, "create(): creating tuple-enum DB $dbdir/xenum.*");
-  $xenum->fromHash($xs2i);
-  $xenum->save("$dbdir/xenum")
-    or $coldb->logconfess("create(): failed to save $dbdir/xenum: $!");
-
-  ##-- expansion map: l2x
-  {
-    $coldb->vlog($coldb->{logCreate},"create(): creating lemma-expansion multimap $dbdir/l2x.*");
-    my @l2xi  = qw();
-    while (($x,$xi)=each %$xs2i) {
-      ($li)       = unpack($pack_id,$x);
-      $l2xi[$li] .= pack($pack_id,$xi);
-    }
-    $_ = pack($pack_mmb, sort {$a<=>$b} unpack($pack_mmb,$_//'')) foreach (@l2xi); ##-- ensure multimap target-sets are sorted
-    my $l2x = $coldb->{l2x} = $MMCLASS->new(base=>"$dbdir/l2x", %mmopts)
-      or $coldb->logconfess("create(): failed to create $dbdir/l2x.*: $!");
-    $l2x->fromArray(\@l2xi)
-      or $coldb->logconfess("create(): failed to populate $dbdir/l2x.*: $!");
-    $l2x->flush()
-      or $coldb->logconfess("create(): failed to flush $dbdir/l2x.*: $!");
-  }
+=for pod
 
   ##-- compute unigrams
   $coldb->info("creating tuple 1-gram file $dbdir/xf.dba");
@@ -427,9 +383,11 @@ sub create {
   $xfdb->create($tokfile)
     or $coldb->logconfess("create(): failed to create unigram db: $!");
 
+=cut
+
   ##-- compute collocation frequencies
   $coldb->info("creating co-frequency db $dbdir/cof.* [dmax=$coldb->{dmax}, fmin=$coldb->{cfmin}]");
-  my $cof = $coldb->{cof} = CollocDB::Cofreqs->new(base=>"$dbdir/cof", flags=>$flags, pack_i=>$pack_id, pack_f=>$pack_f, keeptmp=>$coldb->{keeptmp})
+  my $cof = $coldb->{cof} = CollocDB::Cofreqs->new(base=>"$dbdir/cof", flags=>$flags, pack_i=>$pack_id, pack_d=>$pack_date, pack_f=>$pack_f, keeptmp=>$coldb->{keeptmp})
     or $coldb->logconfess("create(): failed to open co-frequency db $dbdir/cof.*: $!");
   $cof->create($tokfile, dmax=>$coldb->{dmax}, fmin=>$coldb->{cfmin})
     or $coldb->logconfess("create(): failed to create co-frequency db: $!");
@@ -514,50 +472,25 @@ sub export {
 
   ##-- dump: load enums
   $coldb->vlog($coldb->{logExport}, "export(): loading enums to memory");
-  $coldb->{lenum}->load() if ($coldb->{wenum} && !$coldb->{lenum}->loaded);
-  $coldb->{xenum}->load() if ($coldb->{xenum} && !$coldb->{xenum}->loaded);
+  $coldb->{lenum}->load() if ($coldb->{lenum} && !$coldb->{lenum}->loaded);
 
   ##-- dump: enums
   $coldb->vlog($coldb->{logExport}, "export(): exporting lemma-enum file $outdir/lenum.dat");
   $coldb->{lenum}->saveTextFile("$outdir/lenum.dat")
     or $coldb->logconfess("export() failed for $outdir/lenum.dat");
 
-  ##-- dump: tuple-enum: raw
-  my $pack_x = $coldb->{pack_x};
-  $coldb->vlog($coldb->{logExport}, "export(): exporting raw tuple-enum file $outdir/xenum.dat");
-  $coldb->{xenum}->saveTextFile("$outdir/xenum.dat", pack_s=>$pack_x)
-    or $coldb->logconfess("export failed for $outdir/xenum.dat");
+=for pod
 
-  ##-- dump: tuple-enum: stringified
-  my (@x,$li2s); ##-- these are re-used for cof.sdat
-  if ($export_sdat) {
-    $coldb->vlog($coldb->{logExport}, "export(): preparing tuple-stringification structures");
-    $li2s  = $coldb->{lenum}->toArray;
-    my $xs2wld = sub {
-      @x = unpack($pack_x,$_[0]);
-      return join("\t", $li2s->[$x[0]], $x[1]//'');
-    };
-
-    $coldb->vlog($coldb->{logExport}, "export(): exporting stringified tuple-enum file $outdir/xenum.sdat");
-    $coldb->{xenum}->saveTextFile("$outdir/xenum.sdat", pack_s=>$xs2wld)
-      or $coldb->logconfess("export() failed for $outdir/xenum.sdat");
+  ##-- dump: lf
+  if ($coldb->{lf}) {
+    $coldb->vlog($coldb->{logExport}, "export(): exporting lemma-frequency db $outdir/lf.dat");
+    $coldb->{lf}->setFilters($coldb->{pack_f});
+    $coldb->{lf}->saveTextFile("$outdir/lf.dat", keys=>1)
+      or $coldb->logconfess("export failed for $outdir/lf.dat");
+    $coldb->{lf}->setFilters();
   }
 
-  ##-- dump: l2x
-  if ($coldb->{l2x}) {
-    $coldb->vlog($coldb->{logExport}, "export(): exporting lemma-expansion multimap $outdir/l2x.dat");
-    $coldb->{l2x}->saveTextFile("$outdir/l2x.dat")
-      or $coldb->logconfess("export() failed for $outdir/l2x.dat");
-  }
-
-  ##-- dump: xf
-  if ($coldb->{xf}) {
-    $coldb->vlog($coldb->{logExport}, "export(): exporting tuple-frequency db $outdir/xf.dat");
-    $coldb->{xf}->setFilters($coldb->{pack_f});
-    $coldb->{xf}->saveTextFile("$outdir/xf.dat", keys=>1)
-      or $coldb->logconfess("export failed for $outdir/xf.dat");
-    $coldb->{xf}->setFilters();
-  }
+=cut
 
   ##-- dump: cof
   if ($coldb->{cof} && $export_cof) {
@@ -567,13 +500,9 @@ sub export {
 
     if ($export_sdat) {
       $coldb->vlog($coldb->{logExport}, "export(): preparing tuple-stringification index");
-      my $xs2i   = $coldb->{xenum}->toArray;
-      my $xi2wld = sub {
-	@x = unpack($pack_x,$xs2i->[$_[0]]//'');
-	return join("\t", $li2s->[$x[$_]//0]//'', $x[1]);
-      };
+      my $li2s = $coldb->{lenum}->toArray;
       $coldb->vlog($coldb->{logExport}, "export(): exporting stringified co-frequency db $outdir/cof.sdat");
-      $coldb->{cof}->saveTextFile("$outdir/cof.sdat", i2s=>$xi2wld)
+      $coldb->{cof}->saveTextFile("$outdir/cof.sdat", i2s=>sub {$li2s->[$_[0]//0]//''})
 	or $coldb->logconfess("export failed for $outdir/cof.sdat");
     }
   }
