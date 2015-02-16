@@ -425,7 +425,31 @@ sub test_enum_loaded {
 
   exit 0;
 }
-test_enum_loaded(@ARGV);
+#test_enum_loaded(@ARGV);
+
+##==============================================================================
+## test: enum expand
+
+sub test_enum_expand {
+  CollocDB::Logger->ensureLog();
+  my $re    = shift || '/mann$/i';
+  my $ebase = shift || "corpus1.d/lenum";
+  my ($eclass);
+  #$eclass = 'CollocDB::EnumFile';
+  #$eclass = 'CollocDB::EnumFile::MMap';
+  #$eclass = 'CollocDB::EnumFile::FixedLen';
+  $eclass = 'CollocDB::EnumFile::FixedLen::MMap';
+  my $ef    = $eclass->new(base=>$ebase)
+    or die("$0: could not create $eclass object for $ebase: $!");
+
+  my $is = $ef->re2i($re, '@4n');
+  print map {
+    ($ef->{pack_s} ? join("\t", unpack($ef->{pack_s},$ef->i2s($_))) : $ef->i2s($_))."\n"
+  } @$is;
+
+  exit 0;
+}
+test_enum_expand(@ARGV);
 
 
 ##==============================================================================

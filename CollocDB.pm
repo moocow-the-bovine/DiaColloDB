@@ -103,19 +103,20 @@ our $MMCLASS = 'CollocDB::MultiMapFile';
 ##    logCreate => $level,      ##-- log-level for create messages (default='info')
 ##    logCorpusFile => $level,  ##-- log-level for corpus file-parsing (default='trace')
 ##    logCorpusFileN => $N,     ##-- log corpus file-parsing only for every N files (0 for none; default:undef ~ $corpus->size()/100)
-##    logExport => $level,      ##-- log-level for export messages (default='trace')
+##    logExport => $level,      ##-- log-level for export messages (default='info')
+##    logProfile => $level,     ##-- log-level for verbose profiling messages (default='trace')
 ##    ##
 ##    ##-- enums
 ##    #wenum => $wenum,    ##-- enum: words  ($dbdir/wenum.*) : $w<=>$wi : A*<=>N # DISABLED
-##    lenum => $wenum,    ##-- enum: lemmas ($dbdir/lenum.*) : $l<=>$wi : A*<=>N
-##    xenum => $xenum,    ##-- enum: tuples ($dbdir/xenum.*) : [$wi,$li,$di]<=>$xi : NNn<=>N
-##    pack_x => $fmt,     ##-- symbol pack-format for $xenum : "${pack_id}${pack_date}"
+##    lenum => $wenum,    ##-- enum: lemmas ($dbdir/lenum.*) : $l<=>$li : A*<=>N
+##    xenum => $xenum,    ##-- enum: tuples ($dbdir/xenum.*) : [$li,$di]<=>$xi : NNn<=>N
+##    #pack_x => $fmt,     ##-- symbol pack-format for $xenum : "${pack_id}${pack_date}"
 ##    ##
 ##    ##-- data
 ##    #w2x   => $w2x,      ##-- multimap: word->tuples  ($dbdir/w2x.*) : $wi=>@xis  : N=>N* # DISABLED
 ##    l2x   => $l2x,      ##-- multimap: lemma->tuples ($dbdir/l2x.*) : $li=>@xis  : N=>N*
 ##    xf    => $xf,       ##-- ug: $xi => $f($xi) : N=>N
-##    cof   => $cof,      ##-- cf: [$i1,$i2] => $f12
+##    cof   => $cof,      ##-- cf: [$xi1,$xi2] => $f12
 ##   )
 sub new {
   my $that = shift;
@@ -132,7 +133,6 @@ sub new {
 		      pack_date => 'n',
 		      pack_off => 'N',
 		      pack_len =>'n',
-		      #pack_x   => 'NNn',
 		      dmax => 5,
 		      cfmin => 2,
 		      keeptmp => 0,
@@ -150,7 +150,8 @@ sub new {
 		      logCreate => 'info',
 		      logCorpusFile => 'trace',
 		      logCorpusFileN => undef,
-		      logExport => 'trace',
+		      logExport => 'info',
+		      logProfile => 'trace',
 
 		      ##-- enums
 		      #wenum => undef, #CollocDB::EnumFile->new(pack_i=>$coldb->{pack_id}, pack_o=>$coldb->{pack_off}, pack_l=>$coldb->{pack_len}),
@@ -167,7 +168,7 @@ sub new {
 		     },
 		     ref($that)||$that);
   $coldb->{class}  = ref($coldb);
-  $coldb->{pack_x} = ($coldb->{pack_id} x 2) . $coldb->{pack_date};
+  #$coldb->{pack_x} = $coldb->{pack_id} . $coldb->{pack_date};
   return defined($coldb->{dbdir}) ? $coldb->open($coldb->{dbdir}) : $coldb;
 }
 
@@ -231,7 +232,10 @@ sub open {
     or $coldb->logconfess("open(): failed to open tuple-unigrams $dbdir/xf.dba: $!");
 
   ##-- open: cof
-  $coldb->{cof} = CollocDB::Cofreqs->new(base=>"$dbdir/cof", flags=>$flags, pack_i=>$coldb->{pack_i}, pack_f=>$coldb->{pack_f}, dmax=>$coldb->{dmax}, fmin=>$coldb->{cfmin})
+  $coldb->{cof} = CollocDB::Cofreqs->new(base=>"$dbdir/cof", flags=>$flags,
+					 pack_i=>$coldb->{pack_i}, pack_f=>$coldb->{pack_f},
+					 dmax=>$coldb->{dmax}, fmin=>$coldb->{cfmin},
+					)
     or $coldb->logconfess("open(): failed to open co-frequency file $dbdir/cof.*: $!");
 
   ##-- all done
@@ -305,7 +309,7 @@ sub create {
   my $ls2i  = $lenum->{s2i};
   my $nl    = 0;
   #
-  my $xenum = $coldb->{xenum} = $XECLASS->new(%efopts, pack_s=>$coldb->{pack_x});
+  my $xenum = $coldb->{xenum} = $XECLASS->new(%efopts, pack_s=>$pack_x);
   my $xs2i  = $xenum->{s2i};
   my $nx    = 0;
 
@@ -429,9 +433,13 @@ sub create {
 
   ##-- compute collocation frequencies
   $coldb->info("creating co-frequency db $dbdir/cof.* [dmax=$coldb->{dmax}, fmin=$coldb->{cfmin}]");
-  my $cof = $coldb->{cof} = CollocDB::Cofreqs->new(base=>"$dbdir/cof", flags=>$flags, pack_i=>$pack_id, pack_f=>$pack_f, keeptmp=>$coldb->{keeptmp})
+  my $cof = $coldb->{cof} = CollocDB::Cofreqs->new(base=>"$dbdir/cof", flags=>$flags,
+						   pack_i=>$pack_id, pack_f=>$pack_f,
+						   dmax=>$coldb->{dmax}, fmin=>$coldb->{cfmin},
+						   keeptmp=>$coldb->{keeptmp},
+						  )
     or $coldb->logconfess("create(): failed to open co-frequency db $dbdir/cof.*: $!");
-  $cof->create($tokfile, dmax=>$coldb->{dmax}, fmin=>$coldb->{cfmin})
+  $cof->create($tokfile)
     or $coldb->logconfess("create(): failed to create co-frequency db: $!");
 
   ##-- save header
@@ -485,17 +493,17 @@ sub saveHeader {
 
 
 ##==============================================================================
-## Dump
+## Export/Import
 
-## $bool = $collocdb->export()
-## $bool = $collocdb->export($outdir,%opts)
+## $bool = $coldb->dbexport()
+## $bool = $coldb->dbexport($outdir,%opts)
 ##  + $outdir defaults to "$coldb->{dbdir}/export"
 ##  + %opts:
 ##     export_sdat => $bool,  ##-- whether to export *.sdat (stringified tuple files for debugging; default=0)
 ##     export_cof  => $bool,  ##-- do/don't export cof.* (default=do)
-sub export {
+sub dbexport {
   my ($coldb,$outdir,%opts) = @_;
-  $coldb->logconfess("cannot export() an un-opened DB") if (!$coldb->opened);
+  $coldb->logconfess("cannot dbexport() an un-opened DB") if (!$coldb->opened);
   $outdir //= "$coldb->{dbdir}/export";
   $coldb->vlog('info', "export($outdir)");
 
@@ -506,53 +514,53 @@ sub export {
   ##-- create export directory
   -d $outdir
     or make_path($outdir)
-      or $coldb->logconfess("export(): could not create export directory $outdir: $!");
+      or $coldb->logconfess("dbexport(): could not create export directory $outdir: $!");
 
   ##-- dump: header
   $coldb->saveHeader("$outdir/header.json")
-    or $coldb->logconfess("export(): could not export header to $outdir/header.json: $!");
+    or $coldb->logconfess("dbexport(): could not export header to $outdir/header.json: $!");
 
   ##-- dump: load enums
-  $coldb->vlog($coldb->{logExport}, "export(): loading enums to memory");
+  $coldb->vlog($coldb->{logExport}, "dbexport(): loading enums to memory");
   $coldb->{lenum}->load() if ($coldb->{lenum} && !$coldb->{lenum}->loaded);
   $coldb->{xenum}->load() if ($coldb->{xenum} && !$coldb->{xenum}->loaded);
 
   ##-- dump: enums
-  $coldb->vlog($coldb->{logExport}, "export(): exporting lemma-enum file $outdir/lenum.dat");
+  $coldb->vlog($coldb->{logExport}, "dbexport(): exporting lemma-enum file $outdir/lenum.dat");
   $coldb->{lenum}->saveTextFile("$outdir/lenum.dat")
-    or $coldb->logconfess("export() failed for $outdir/lenum.dat");
+    or $coldb->logconfess("dbexport() failed for $outdir/lenum.dat");
 
   ##-- dump: tuple-enum: raw
   my $pack_x = $coldb->{pack_x};
-  $coldb->vlog($coldb->{logExport}, "export(): exporting raw tuple-enum file $outdir/xenum.dat");
+  $coldb->vlog($coldb->{logExport}, "dbexport(): exporting raw tuple-enum file $outdir/xenum.dat");
   $coldb->{xenum}->saveTextFile("$outdir/xenum.dat", pack_s=>$pack_x)
     or $coldb->logconfess("export failed for $outdir/xenum.dat");
 
   ##-- dump: tuple-enum: stringified
-  my (@x,$li2s); ##-- these are re-used for cof.sdat
   if ($export_sdat) {
-    $coldb->vlog($coldb->{logExport}, "export(): preparing tuple-stringification structures");
-    $li2s  = $coldb->{lenum}->toArray;
-    my $xs2wld = sub {
-      @x = unpack($pack_x,$_[0]);
-      return join("\t", $li2s->[$x[0]], $x[1]//'');
+    $coldb->vlog($coldb->{logExport}, "dbexport(): preparing tuple-stringification structures");
+    my ($li,$d);
+    my $li2s   = $coldb->{lenum}->toArray;
+    my $xs2txt = sub {
+      ($li,$d) = unpack($pack_x,$_[0]);
+      return join("\t", $li2s->[$li//0]//'', $d//0);
     };
 
-    $coldb->vlog($coldb->{logExport}, "export(): exporting stringified tuple-enum file $outdir/xenum.sdat");
-    $coldb->{xenum}->saveTextFile("$outdir/xenum.sdat", pack_s=>$xs2wld)
-      or $coldb->logconfess("export() failed for $outdir/xenum.sdat");
+    $coldb->vlog($coldb->{logExport}, "dbexport(): exporting stringified tuple-enum file $outdir/xenum.sdat");
+    $coldb->{xenum}->saveTextFile("$outdir/xenum.sdat", pack_s=>$xs2txt)
+      or $coldb->logconfess("dbexport() failed for $outdir/xenum.sdat");
   }
 
   ##-- dump: l2x
   if ($coldb->{l2x}) {
-    $coldb->vlog($coldb->{logExport}, "export(): exporting lemma-expansion multimap $outdir/l2x.dat");
+    $coldb->vlog($coldb->{logExport}, "dbexport(): exporting lemma-expansion multimap $outdir/l2x.dat");
     $coldb->{l2x}->saveTextFile("$outdir/l2x.dat")
-      or $coldb->logconfess("export() failed for $outdir/l2x.dat");
+      or $coldb->logconfess("dbexport() failed for $outdir/l2x.dat");
   }
 
   ##-- dump: xf
   if ($coldb->{xf}) {
-    $coldb->vlog($coldb->{logExport}, "export(): exporting tuple-frequency db $outdir/xf.dat");
+    $coldb->vlog($coldb->{logExport}, "dbexport(): exporting tuple-frequency db $outdir/xf.dat");
     $coldb->{xf}->setFilters($coldb->{pack_f});
     $coldb->{xf}->saveTextFile("$outdir/xf.dat", keys=>1)
       or $coldb->logconfess("export failed for $outdir/xf.dat");
@@ -561,28 +569,93 @@ sub export {
 
   ##-- dump: cof
   if ($coldb->{cof} && $export_cof) {
-    $coldb->vlog($coldb->{logExport}, "export(): exporting raw co-frequency db $outdir/cof.dat");
+    $coldb->vlog($coldb->{logExport}, "dbexport(): exporting raw co-frequency db $outdir/cof.dat");
     $coldb->{cof}->saveTextFile("$outdir/cof.dat")
       or $coldb->logconfess("export failed for $outdir/cof.dat");
 
     if ($export_sdat) {
-      $coldb->vlog($coldb->{logExport}, "export(): preparing tuple-stringification index");
-      my $xs2i   = $coldb->{xenum}->toArray;
-      my $xi2wld = sub {
-	@x = unpack($pack_x,$xs2i->[$_[0]]//'');
-	return join("\t", $li2s->[$x[$_]//0]//'', $x[1]);
+      $coldb->vlog($coldb->{logExport}, "dbexport(): preparing tuple-stringification index");
+      my ($li,$d);
+      my $xi2s   = $coldb->{xenum}->toArray;
+      my $li2s   = $coldb->{lenum}->toArray;
+      my $xi2txt = sub {
+	($li,$d) = unpack($pack_x,$xi2s->[$_[0]//'']//'');
+	return join("\t", $li2s->[$li//0]//'', $d//0);
       };
-      $coldb->vlog($coldb->{logExport}, "export(): exporting stringified co-frequency db $outdir/cof.sdat");
-      $coldb->{cof}->saveTextFile("$outdir/cof.sdat", i2s=>$xi2wld)
+      $coldb->vlog($coldb->{logExport}, "dbexport(): exporting stringified co-frequency db $outdir/cof.sdat");
+      $coldb->{cof}->saveTextFile("$outdir/cof.sdat", i2s=>$xi2txt)
 	or $coldb->logconfess("export failed for $outdir/cof.sdat");
     }
   }
 
   ##-- all done
-  $coldb->vlog($coldb->{logExport}, "export(): export to $outdir complete.");
+  $coldb->vlog($coldb->{logExport}, "dbexport(): export to $outdir complete.");
   return $coldb;
 }
 
+## $coldb = $coldb->dbimport()
+## $coldb = $coldb->dbimport($txtdir,%opts)
+##  + import ColocDB data from $txtdir
+##  + TODO
+sub dbimport {
+  my ($coldb,$txtdir,%opts) = @_;
+  $coldb = $coldb->new() if (!ref($coldb));
+  $coldb->logconfess("dbimport() not yet implemented");
+}
+
+##==============================================================================
+## Profiling
+
+##--------------------------------------------------------------
+## Profiling: Utils: enum expansion
+
+## $re = $coldb->regex($regex)
+##  + parses and compiles regexes
+sub regex {
+  my ($coldb,$re) = @_;
+}
+
+
+##--------------------------------------------------------------
+## Profiling: Co-Frequencies
+
+
+## $prf = $cof->cofProfile(%opts)
+##  + get co-frequency profile for selected items
+##  + %opts:
+##    (
+##     ##-- selection parameters
+##     lemma => $lemma1,          ##-- string or array or regex "/REGEX/[gi]*"        : REQUIRED
+##     date  => $date1,           ##-- string or array or range "MIN-MAX" (inclusive) : default=all
+##     ##
+##     ##-- aggregation parameters
+##     groupby => $attrs,         ##-- string or array; ("lemma"|"date"|"date/"SLICE)* : default=lemma,date
+##     ##
+##     ##-- scoring and trimming parameters
+##     scoreby => $func,          ##-- scoring function ("f"|"mi"|"ld") : default="f"
+##     kbest   => $k,             ##-- return only $k best collocates per date (slice) : default=all
+##     cutoff  => $cutoff,        ##-- minimum score
+##
+sub cofProfile {
+  my ($coldb,%opts) = @_;
+
+  ##-- sanity check(s)
+  my $lemmas = $opts{lemmas} // '';
+  if ($lemmas eq '') {
+    $coldb->logwarn("cofProfile(): missing required 'lemmas' parameter");
+    return undef;
+  }
+
+  ##-- common variables
+  my ($logProfile,$lenum,$xenum) = @$coldb{qw(logProfilelenum xenum)};
+  my ($l,$li,$lxids,@xids);
+
+  ##-- profile: get tuple-IDs
+  $coldb->vlog($logProfile, "cofProfile(): get tuple-IDs");
+  my @lemmas = qw();
+#  if
+
+}
 
 ##==============================================================================
 ## Footer

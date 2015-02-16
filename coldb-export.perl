@@ -62,7 +62,7 @@ $coldb->open($dbdir)
 
 ##-- export
 $outdir //= "$dbdir.export";
-$coldb->export($outdir,%export)
+$coldb->dbexport($outdir,%export)
   or die("$prog: CollocDB::export() failed to '$outdir': $!");
 
 __END__

@@ -624,7 +624,12 @@ Hund	8.80	0.20
 Maus	6.14	0.14
 
 
+##-- stringification breakdown (1st runs, kern01.d[cfmin=2])
+$ time ./coldb-profile.perl kern.d Mann -noout -nodates -nolemmas	# real	0m2.630s  [+2.630 = 100.0%]
+$ time ./coldb-profile.perl kern.d Mann -noout -dates   -nolemmas 	# real	0m4.423s  [+1.793 =  68.2%]
+$ time ./coldb-profile.perl kern.d Mann -noout -dates   -lemmas 	# real	0m5.428s  [+1.005 =  38.2%]
+##
 ##-- stringification breakdown (1st runs, kern.d[cfmin=2])
-$ time ./coldb-profile.perl kern01.d Mann -noout -nodates -nolemmas	# real	0m2.630s [+2.630]
-$ time ./coldb-profile.perl kern01.d Mann -noout -dates   -nolemmas 	# real	0m4.423s [+1.793]
-$ time ./coldb-profile.perl kern01.d Mann -noout -dates   -lemmas 	# real	0m5.428s [+1.005]
+$ time ./coldb-profile.perl kern.d Mann -noout -nodates -nolemmas	# real	0m04.827s [+4.827 = 100.0%]
+$ time ./coldb-profile.perl kern.d Mann -noout -dates   -nolemmas 	# real	0m08.230s [+3.403 =  70.5%]
+$ time ./coldb-profile.perl kern.d Mann -noout -dates   -lemmas 	# real	0m11.684s [+3.454 =  71.6%]
