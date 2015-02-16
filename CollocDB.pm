@@ -164,6 +164,7 @@ sub new {
 
 		      ##-- data
 		      xf    => undef, #CollocDB::Unigrams->new(packas=>$coldb->{pack_f}),
+		      xN    => 0,     #-- unigram total
 		      cof   => undef, #CollocDB::Cofreqs->new(pack_f=>$pack_f, pack_i=>$pack_i, dmax=>$dmax, fmin=>$cfmin),
 
 		      @_,	##-- user arguments
@@ -230,7 +231,7 @@ sub open {
       or $coldb->logconfess("open(): failed to open tuple-enum $dbdir/xenum.*: $!");
 
   ##-- open: xf
-  $coldb->{xf} = CollocDB::Unigrams->new(file=>"$dbdir/xf.dba", flags=>$flags, packas=>$coldb->{pack_f})
+  $coldb->{xf} = CollocDB::Unigrams->new(file=>"$dbdir/xf.dba", flags=>$flags, packas=>$coldb->{pack_f}, N=>$coldb->{xN})
     or $coldb->logconfess("open(): failed to open tuple-unigrams $dbdir/xf.dba: $!");
 
   ##-- open: cof
@@ -432,6 +433,7 @@ sub create {
     or $coldb->logconfess("create(): could not set unigram db size = $xenum->{size}: $!");
   $xfdb->create($tokfile)
     or $coldb->logconfess("create(): failed to create unigram db: $!");
+  $coldb->{xN} = $xfdb->{N}; ##-- store unigram total
 
   ##-- compute collocation frequencies
   $coldb->info("creating co-frequency db $dbdir/cof.* [dmax=$coldb->{dmax}, fmin=$coldb->{cfmin}]");
