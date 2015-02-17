@@ -21,6 +21,7 @@ our $prog       = basename($0);
 our $verbose    = 1;
 our ($help,$version);
 
+our %log        = (level=>'TRACE', rootLevel=>'FATAL');
 our $dbdir      = undef;
 our %coldb      = (flags=>'r');
 
@@ -46,8 +47,8 @@ GetOptions(##-- general
 	   'version|V' => \$version,
 	   'verbose|v=i' => \$verbose,
 
-	   ##-- logging
-	   'log-level|level|ll=s' => sub { $DiaColloDB::Logger::MIN_LEVEL = uc($_[1]); },
+	   ##-- general
+	   'log-level|level|ll=s' => sub { $log{level} = uc($_[1]); },
 	   'option|O=s%' => \%coldb,
 
 	   ##-- local
@@ -86,7 +87,7 @@ if ($version || $verbose >= 2) {
 ##----------------------------------------------------------------------
 
 ##-- setup logger
-DiaColloDB::Logger->ensureLog();
+DiaColloDB::Logger->ensureLog(%log);
 
 ##-- open colloc-db
 $dbdir = shift(@ARGV);

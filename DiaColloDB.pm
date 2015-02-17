@@ -170,7 +170,13 @@ sub new {
 		     ref($that)||$that);
   $coldb->{class}  = ref($coldb);
   $coldb->{pack_x} = $coldb->{pack_id} . $coldb->{pack_date};
-  return defined($coldb->{dbdir}) ? $coldb->open($coldb->{dbdir}) : $coldb;
+  if (defined($coldb->{dbdir})) {
+    ##-- avoid initial close() if called with dbdir=>$dbdir argument
+    my $dbdir = $coldb->{dbdir};
+    delete $coldb->{dbdir};
+    return $coldb->open($dbdir);
+  }
+  return $coldb;
 }
 
 sub DESTROY {
@@ -657,10 +663,22 @@ sub profile {
   my $slice   = $opts{slice} // 1;
   my $score   = $opts{score} // 'f';
   my $kbest   = $opts{kbest} // -1;
-  my $cutoff  = $opts{cutoff};
+  my $cutoff  = $opts{cutoff} // '';
   my $strings = $opts{strings} // 1;
 
   ##-- sanity check(s)
+  if (!UNIVERSAL::can($coldb->{$rel},'profile')) {
+    if ($rel =~ m/^(?:xf|f?1|ug)$/) { 
+      $rel = 'xf';
+    }
+    elsif ($rel =~ m/^(?:f?1?2$|c)/) {
+      $rel = 'cof';
+    }
+    else {
+      $coldb->logwarn("profile(): unknown relation '$rel'");
+      return undef;
+    }
+  }
   if ($lemma eq '') {
     $coldb->logwarn("profile(): missing required parameter 'lemma'");
     return undef;
@@ -669,20 +687,24 @@ sub profile {
     $coldb->logwarn("profile(): unknown relation '$rel'");
     return undef;
   }
+  $cutoff = undef if ($cutoff eq '');
+
 
   ##-- prepare: get target lemmas
-  $coldb->vlog($logProfile, "profile(): get target lemmata");
   my ($lis);
   if (UNIVERSAL::isa($lemma,'ARRAY')) {
     ##-- lemmas: array
+    $coldb->vlog($logProfile, "profile(): get target lemmata (ARRAY)");
     $lis = [map {$lenum->s2i($_)} @$lemma];
   }
   elsif ($lemma =~ m{^/}) {
     ##-- lemmas: regex
+    $coldb->vlog($logProfile, "profile(): get target lemmata (REGEX)");
     $lis = $lenum->re2i($lemma);
   }
   else {
     ##-- lemmas: space-separated literals
+    $coldb->vlog($logProfile, "profile(): get target lemmata (STRINGS)");
     $lis = [grep {defined($_)} map {$lenum->s2i($_)} grep {($_//'') ne ''} map {s{\\(.)}{$1}g; $_} split(/(?:(?<!\\)[\,\s])+/,$lemma)];
   }
   if (!@$lis) {
@@ -726,7 +748,7 @@ sub profile {
   }
 
   ##-- profile: get low-level co-frequency profiles
-  $coldb->vlog($logProfile, "profile(): get frequency profile(s)");
+  $coldb->vlog($logProfile, "profile(): get frequency profile(s) [$rel]");
   my $gbsub = sub { unpack($pack_i,$xenum->i2s($_[0])) };
   my $d2prf = {}; ##-- ($dateKey => $profileForDateKey, ...)
   my $reldb = $coldb->{$rel};
@@ -739,7 +761,7 @@ sub profile {
     $d2prf->{$d} = $prf;
   }
 
-  return DiaColloDB::Profile::Multi->new(ps=>$d2prf);
+  return DiaColloDB::Profile::Multi->new(data=>$d2prf);
 }
 
 ##==============================================================================

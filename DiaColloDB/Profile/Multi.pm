@@ -20,12 +20,12 @@ our @ISA = qw(DiaColloDB::Logger);
 ## $mp = CLASS_OR_OBJECT->new(%args)
 ## + %args, object structure:
 ##   (
-##    ps => \%key2prf,   ##-- ($date => $profile, ...) : profiles by date
+##    data => \%key2prf,   ##-- ($date => $profile, ...) : profiles by date
 ##   )
 sub new {
   my $that = shift;
   my $mp   = bless({
-		    ps=>{},
+		    data=>{},
 		    @_
 		   }, (ref($that)||$that));
   return $mp;
@@ -39,7 +39,7 @@ sub saveTextFile {
   my ($mp,$file,%opts) = @_;
   my $fh = ref($file) ? $file : IO::File->new(">$file");
   $mp->logconfess("saveTextFile(): failed to open '$file': $!") if (!ref($fh));
-  my $ps = $mp->{ps};
+  my $ps = $mp->{data};
   foreach (sort {$a<=>$b} keys %$ps) {
     $ps->{$_}->saveTextFile($file, prefix=>$_)
       or $mp->logconfess("saveTextFile() saved for sub-profile with key '$_': $!");
@@ -65,7 +65,7 @@ sub TO_JSON {
 ##  + compile all sub-profiles for score-function $func, one of qw(f mi ld); default='f'
 sub compile {
   my ($mp,$func) = @_;
-  $_->compile($func) or return undef foreach (values %{$mp->{ps}});
+  $_->compile($func) or return undef foreach (values %{$mp->{data}});
   return $mp;
 }
 
@@ -73,7 +73,7 @@ sub compile {
 ##  + calls $prf->trim(%opts) for each sub-profile $prf
 sub trim {
   my $mp = shift;
-  $_->trim(@_) or return undef foreach (values %{$mp->{ps}});
+  $_->trim(@_) or return undef foreach (values %{$mp->{data}});
   return $mp;
 }
 
@@ -84,7 +84,7 @@ sub trim {
 ##  + returns stringified profile via $obj->i2s($key2), $key2str->($i2) or $key2str->{$i2}
 sub stringify {
   my $mp = shift;
-  $_->trim(@_) or return undef foreach (values %{$mp->{ps}});
+  $_->trim(@_) or return undef foreach (values %{$mp->{data}});
   return $mp;
 }
 

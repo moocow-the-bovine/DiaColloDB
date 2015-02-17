@@ -16,7 +16,8 @@ our $prog       = basename($0);
 our $verbose    = 1;
 our ($help,$version);
 
-our $dbdir        = undef;
+our %log        = (level=>'TRACE', rootLevel=>'FATAL');
+our $dbdir      = undef;
 
 our $globargs = 1; ##-- glob @ARGV?
 our $listargs = 0; ##-- args are file-lists?
@@ -41,8 +42,8 @@ GetOptions(##-- general
 	   'document-class|dclass|dc=s' => \$corpus{dclass},
 	   'output|outdir|od|o=s' => \$dbdir,
 
-	   ##-- logging
-	   'log-level|level|ll=s' => sub { $DiaColloDB::Logger::MIN_LEVEL = uc($_[1]); },
+	   ##-- general
+	   'log-level|level|ll=s' => sub { $log{level} = uc($_[1]); },
 
 	   ##-- coldb options
 	   'max-distance|maxd|dmax|n=i' => \$coldb{dmax},
