@@ -1,24 +1,24 @@
 ## -*- Mode: CPerl -*-
-## File: CollocDB.pm
+## File: DiaColloDB.pm
 ## Author: Bryan Jurish <moocow@cpan.org>
 ## Description: collocation db, top-level
 
-package CollocDB;
-use CollocDB::Logger;
-use CollocDB::Enum;
-use CollocDB::EnumFile;
-use CollocDB::EnumFile::MMap;
-use CollocDB::EnumFile::FixedLen;
-use CollocDB::EnumFile::FixedMap;
-use CollocDB::MultiMapFile;
-use CollocDB::DBFile;
-use CollocDB::PackedFile;
-use CollocDB::Unigrams;
-use CollocDB::Cofreqs;
-use CollocDB::Profile;
-use CollocDB::Profile::Multi;
-use CollocDB::Corpus;
-use CollocDB::Utils qw(:fcntl :json :sort :pack :regex);
+package DiaColloDB;
+use DiaColloDB::Logger;
+use DiaColloDB::Enum;
+use DiaColloDB::EnumFile;
+use DiaColloDB::EnumFile::MMap;
+use DiaColloDB::EnumFile::FixedLen;
+use DiaColloDB::EnumFile::FixedMap;
+use DiaColloDB::MultiMapFile;
+use DiaColloDB::DBFile;
+use DiaColloDB::PackedFile;
+use DiaColloDB::Unigrams;
+use DiaColloDB::Cofreqs;
+use DiaColloDB::Profile;
+use DiaColloDB::Profile::Multi;
+use DiaColloDB::Corpus;
+use DiaColloDB::Utils qw(:fcntl :json :sort :pack :regex);
 use Fcntl;
 use File::Path qw(make_path remove_tree);
 use strict;
@@ -28,7 +28,7 @@ use strict;
 ## Globals & Constants
 
 our $VERSION = 0.01;
-our @ISA = qw(CollocDB::Logger);
+our @ISA = qw(DiaColloDB::Logger);
 
 ## $PGOOD_DEFAULT
 ##  + default positive pos regex for document parsing
@@ -57,18 +57,18 @@ our $LBAD_DEFAULT   = undef;
 
 ## $ECLASS
 ##  + enum class
-#our $ECLASS = 'CollocDB::EnumFile';
-our $ECLASS = 'CollocDB::EnumFile::MMap';
+#our $ECLASS = 'DiaColloDB::EnumFile';
+our $ECLASS = 'DiaColloDB::EnumFile::MMap';
 
 ## $XECLASS
 ##  + fixed-length enum class
-#our $XECLASS = 'CollocDB::EnumFile::FixedLen';
-our $XECLASS = 'CollocDB::EnumFile::FixedLen::MMap';
+#our $XECLASS = 'DiaColloDB::EnumFile::FixedLen';
+our $XECLASS = 'DiaColloDB::EnumFile::FixedLen::MMap';
 
 ## $MMCLASS
 ##  + multimap class
-our $MMCLASS = 'CollocDB::MultiMapFile';
-#our $MMCLASS = 'CollocDB::MultiMapFile::MMap';
+our $MMCLASS = 'DiaColloDB::MultiMapFile';
+#our $MMCLASS = 'DiaColloDB::MultiMapFile::MMap';
 
 ##==============================================================================
 ## Constructors etc.
@@ -156,16 +156,16 @@ sub new {
 		      logProfile => 'trace',
 
 		      ##-- enums
-		      #wenum => undef, #CollocDB::EnumFile->new(pack_i=>$coldb->{pack_id}, pack_o=>$coldb->{pack_off}, pack_l=>$coldb->{pack_len}),
-		      lenum => undef, #CollocDB::EnumFile->new(pack_i=>$coldb->{pack_id}, pack_o=>$coldb->{pack_off}, pack_l=>$coldb->{pack_len}),
-		      xenum => undef, #CollocDB::EnumFile::FixedLen->new(pack_i=>$coldb->{pack_id}, pack_s=>$coldb->{pack_x}),
-		      #w2x   => undef, #CollocDB::MultiMapFile->new(pack_i=>$coldb->{pack_id}, pack_o=>$coldb->{pack_off}, pack_l=>$coldb->{pack_len}),
-		      l2x   => undef, #CollocDB::MultiMapFile->new(pack_i=>$coldb->{pack_id}, pack_o=>$coldb->{pack_off}, pack_l=>$coldb->{pack_len}),
+		      #wenum => undef, #DiaColloDB::EnumFile->new(pack_i=>$coldb->{pack_id}, pack_o=>$coldb->{pack_off}, pack_l=>$coldb->{pack_len}),
+		      lenum => undef, #DiaColloDB::EnumFile->new(pack_i=>$coldb->{pack_id}, pack_o=>$coldb->{pack_off}, pack_l=>$coldb->{pack_len}),
+		      xenum => undef, #DiaColloDB::EnumFile::FixedLen->new(pack_i=>$coldb->{pack_id}, pack_s=>$coldb->{pack_x}),
+		      #w2x   => undef, #DiaColloDB::MultiMapFile->new(pack_i=>$coldb->{pack_id}, pack_o=>$coldb->{pack_off}, pack_l=>$coldb->{pack_len}),
+		      l2x   => undef, #DiaColloDB::MultiMapFile->new(pack_i=>$coldb->{pack_id}, pack_o=>$coldb->{pack_off}, pack_l=>$coldb->{pack_len}),
 
 		      ##-- data
-		      xf    => undef, #CollocDB::Unigrams->new(packas=>$coldb->{pack_f}),
+		      xf    => undef, #DiaColloDB::Unigrams->new(packas=>$coldb->{pack_f}),
 		      xN    => 0,     #-- unigram total
-		      cof   => undef, #CollocDB::Cofreqs->new(pack_f=>$pack_f, pack_i=>$pack_i, dmax=>$dmax, fmin=>$cfmin),
+		      cof   => undef, #DiaColloDB::Cofreqs->new(pack_f=>$pack_f, pack_i=>$pack_i, dmax=>$dmax, fmin=>$cfmin),
 
 		      @_,	##-- user arguments
 		     },
@@ -186,7 +186,7 @@ sub DESTROY {
 ## $coldb_or_undef = $coldb->open()
 sub open {
   my ($coldb,$dbdir,%opts) = @_;
-  CollocDB::Logger->ensureLog();
+  DiaColloDB::Logger->ensureLog();
   $coldb = $coldb->new() if (!ref($coldb));
   @$coldb{keys %opts} = values %opts;
   $dbdir //= $coldb->{dbdir};
@@ -230,11 +230,11 @@ sub open {
       or $coldb->logconfess("open(): failed to open tuple-enum $dbdir/xenum.*: $!");
 
   ##-- open: xf
-  $coldb->{xf} = CollocDB::Unigrams->new(file=>"$dbdir/xf.dba", flags=>$flags, packas=>$coldb->{pack_f}, N=>$coldb->{xN})
+  $coldb->{xf} = DiaColloDB::Unigrams->new(file=>"$dbdir/xf.dba", flags=>$flags, packas=>$coldb->{pack_f}, N=>$coldb->{xN})
     or $coldb->logconfess("open(): failed to open tuple-unigrams $dbdir/xf.dba: $!");
 
   ##-- open: cof
-  $coldb->{cof} = CollocDB::Cofreqs->new(base=>"$dbdir/cof", flags=>$flags,
+  $coldb->{cof} = DiaColloDB::Cofreqs->new(base=>"$dbdir/cof", flags=>$flags,
 					 pack_i=>$coldb->{pack_id}, pack_f=>$coldb->{pack_f},
 					 dmax=>$coldb->{dmax}, fmin=>$coldb->{cfmin},
 					)
@@ -426,7 +426,7 @@ sub create {
 
   ##-- compute unigrams
   $coldb->info("creating tuple 1-gram file $dbdir/xf.dba");
-  my $xfdb = $coldb->{xf} = CollocDB::Unigrams->new(file=>"$dbdir/xf.dba", flags=>$flags, packas=>$pack_f)
+  my $xfdb = $coldb->{xf} = DiaColloDB::Unigrams->new(file=>"$dbdir/xf.dba", flags=>$flags, packas=>$pack_f)
     or $coldb->logconfess("create(): could not create $dbdir/xf.dba: $!");
   $xfdb->setsize($xenum->{size})
     or $coldb->logconfess("create(): could not set unigram db size = $xenum->{size}: $!");
@@ -436,7 +436,7 @@ sub create {
 
   ##-- compute collocation frequencies
   $coldb->info("creating co-frequency db $dbdir/cof.* [dmax=$coldb->{dmax}, fmin=$coldb->{cfmin}]");
-  my $cof = $coldb->{cof} = CollocDB::Cofreqs->new(base=>"$dbdir/cof", flags=>$flags,
+  my $cof = $coldb->{cof} = DiaColloDB::Cofreqs->new(base=>"$dbdir/cof", flags=>$flags,
 						   pack_i=>$pack_id, pack_f=>$pack_f,
 						   dmax=>$coldb->{dmax}, fmin=>$coldb->{cfmin},
 						   keeptmp=>$coldb->{keeptmp},
@@ -613,7 +613,7 @@ sub dbimport {
 ## Profiling: Co-Frequencies
 
 ## $mprf = $coldb->xfprofile(%opts)
-##  + get unigram frequency profile for selected items as a CollocDB::Profile::Multi object
+##  + get unigram frequency profile for selected items as a DiaColloDB::Profile::Multi object
 ##  + really just wraps $coldb->profile('xf', %opts)
 ##  + %opts: see profile() method
 sub xfprofile {
@@ -622,7 +622,7 @@ sub xfprofile {
 
 
 ## $mprf = $coldb->coprofile(%opts)
-##  + get co-frequency profile for selected items as a CollocDB::Profile::Multi object
+##  + get co-frequency profile for selected items as a DiaColloDB::Profile::Multi object
 ##  + really just wraps $coldb->profile('cof', %opts)
 ##  + %opts: see profile() method
 sub coprofile {
@@ -630,7 +630,7 @@ sub coprofile {
 }
 
 ## $mprf = $coldb->profile($relation, %opts)
-##  + get a relation profile for selected items as a CollocDB::Profile::Multi object
+##  + get a relation profile for selected items as a DiaColloDB::Profile::Multi object
 ##  + %opts:
 ##    (
 ##     ##-- selection parameters
@@ -741,7 +741,7 @@ sub profile {
     $d2prf->{$d} = $prf;
   }
 
-  return CollocDB::Profile::Multi->new(ps=>$d2prf);
+  return DiaColloDB::Profile::Multi->new(ps=>$d2prf);
 }
 
 ##==============================================================================
