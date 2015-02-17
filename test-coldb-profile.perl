@@ -1,8 +1,8 @@
 #!/usr/bin/perl -w
 
 use lib '.';
-use CollocDB;
-use CollocDB::Utils qw(:json);
+use DiaColloDB;
+use DiaColloDB::Utils qw(:json);
 use Getopt::Long qw(:config no_ignore_case);
 use Pod::Usage;
 use File::Basename qw(basename);
@@ -47,7 +47,7 @@ GetOptions(##-- general
 	   'verbose|v=i' => \$verbose,
 
 	   ##-- logging
-	   'log-level|level|ll=s' => sub { $CollocDB::Logger::MIN_LEVEL = uc($_[1]); },
+	   'log-level|level|ll=s' => sub { $DiaColloDB::Logger::MIN_LEVEL = uc($_[1]); },
 	   'option|O=s%' => \%coldb,
 
 	   ##-- local
@@ -76,7 +76,7 @@ pod2usage({-exitval=>1,-verbose=>0,-msg=>"$prog: ERROR: no DBDIR specified!"}) i
 pod2usage({-exitval=>1,-verbose=>0,-msg=>"$prog: ERROR: no LEMMA(s) specified!"}) if (@ARGV<2);
 
 if ($version || $verbose >= 2) {
-  print STDERR "$prog version $CollocDB::VERSION by Bryan Jurish\n";
+  print STDERR "$prog version $DiaColloDB::VERSION by Bryan Jurish\n";
   exit 0 if ($version);
 }
 
@@ -86,14 +86,14 @@ if ($version || $verbose >= 2) {
 ##----------------------------------------------------------------------
 
 ##-- setup logger
-CollocDB::Logger->ensureLog();
+DiaColloDB::Logger->ensureLog();
 
 ##-- open colloc-db
 $dbdir = shift(@ARGV);
-my $coldb = CollocDB->new(%coldb)
-  or die("$prog: failed to create new CollocDB object: $!");
+my $coldb = DiaColloDB->new(%coldb)
+  or die("$prog: failed to create new DiaColloDB object: $!");
 $coldb->open($dbdir)
-  or die("$prog: CollocDB::open() failed for '$dbdir': $!");
+  or die("$prog: DiaColloDB::open() failed for '$dbdir': $!");
 
 ##-- get profile
 $profile{lemma} = join(' ',@ARGV);
@@ -107,7 +107,7 @@ if ($outfmt eq 'text') {
 }
 elsif ($outfmt eq 'json') {
   $mp->trace("saveJsonFile()");
-  CollocDB::Utils::saveJsonFile($mp, '-', utf8=>0,pretty=>$pretty,canonical=>$pretty);
+  DiaColloDB::Utils::saveJsonFile($mp, '-', utf8=>0,pretty=>$pretty,canonical=>$pretty);
 }
 #$coldb->trace("done.");
 
@@ -122,7 +122,7 @@ __END__
 
 =head1 NAME
 
-coldb-profile.perl - get a frequency profile from a CollocDB
+coldb-profile.perl - get a frequency profile from a DiaColloDB
 
 =head1 SYNOPSIS
 
@@ -133,9 +133,9 @@ coldb-profile.perl - get a frequency profile from a CollocDB
    -version
    -verbose LEVEL
 
- CollocDB Options:
-   -log-level LEVEL     # set minimum CollocDB log-level
-   -O KEY=VALUE         # set CollocDB option
+ DiaColloDB Options:
+   -log-level LEVEL     # set minimum DiaColloDB log-level
+   -O KEY=VALUE         # set DiaColloDB option
 
  Profiling Options:
    -collocs , -unigrams # select profile type (collocations or unigrams; default=-collocs)

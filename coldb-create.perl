@@ -1,7 +1,7 @@
 #!/usr/bin/perl -w
 
 use lib '.';
-use CollocDB;
+use DiaColloDB;
 use Getopt::Long qw(:config no_ignore_case);
 use Pod::Usage;
 use File::Basename qw(basename);
@@ -42,7 +42,7 @@ GetOptions(##-- general
 	   'output|outdir|od|o=s' => \$dbdir,
 
 	   ##-- logging
-	   'log-level|level|ll=s' => sub { $CollocDB::Logger::MIN_LEVEL = uc($_[1]); },
+	   'log-level|level|ll=s' => sub { $DiaColloDB::Logger::MIN_LEVEL = uc($_[1]); },
 
 	   ##-- coldb options
 	   'max-distance|maxd|dmax|n=i' => \$coldb{dmax},
@@ -59,7 +59,7 @@ GetOptions(##-- general
 pod2usage({-exitval=>0,-verbose=>0}) if ($help);
 
 if ($version || $verbose >= 2) {
-  print STDERR "$prog version $CollocDB::VERSION by Bryan Jurish\n";
+  print STDERR "$prog version $DiaColloDB::VERSION by Bryan Jurish\n";
   exit 0 if ($version);
 }
 
@@ -69,19 +69,19 @@ if ($version || $verbose >= 2) {
 ##----------------------------------------------------------------------
 
 ##-- setup logger
-CollocDB::Logger->ensureLog();
+DiaColloDB::Logger->ensureLog();
 
 ##-- setup corpus
 push(@ARGV,'-') if (!@ARGV);
-my $corpus = CollocDB::Corpus->new(%corpus);
+my $corpus = DiaColloDB::Corpus->new(%corpus);
 $corpus->open(\@ARGV, 'glob'=>$globargs, 'list'=>$listargs)
   or die("$prog: failed to open corpus: $!");
 
 ##-- create colloc-db
-my $coldb = CollocDB->new(%coldb)
-  or die("$prog: failed to create new CollocDB object: $!");
+my $coldb = DiaColloDB->new(%coldb)
+  or die("$prog: failed to create new DiaColloDB object: $!");
 $coldb->create($corpus, dbdir=>$dbdir, flags=>'rw')
-  or die("$prog: CollocDB::create() failed: $!");
+  or die("$prog: DiaColloDB::create() failed: $!");
 
 
 __END__
@@ -94,7 +94,7 @@ __END__
 
 =head1 NAME
 
-coldb-create.perl - create a CollocDB collocation database from a corpus dump
+coldb-create.perl - create a DiaColloDB collocation database from a corpus dump
 
 =head1 SYNOPSIS
 
@@ -110,7 +110,7 @@ coldb-create.perl - create a CollocDB collocation database from a corpus dump
    -glob , -noglob      ##-- do/don't glob INPUT(s) argument(s) (default=do)
    -dclass CLASS        ##-- set corpus document class (default=DDCTabs)
 
- CollocDB Options:
+ DiaColloDB Options:
    #-[no]index-w         ##-- do/don't index words (default=don't) : OBSOLETE
    #-[no]index-l         ##-- do/don't index lemmata (default=do)  : OBSOLETE
    -[no]keep            ##-- do/ton't keep temporary files (default=don't)
@@ -119,7 +119,7 @@ coldb-create.perl - create a CollocDB collocation database from a corpus dump
    -32bit               ##-- use 32-bit integers where available
    -dmax DIST           ##-- maximum distance for collocation-frequencies (default=5)
    -cfmin CFMIN         ##-- minimum relation co-occurrence frequency (default=2)
-   -option OPT=VAL      ##-- set arbitrary CollocDB option, e.g.
+   -option OPT=VAL      ##-- set arbitrary DiaColloDB option, e.g.
                         ##   pack_id=PACKFMT    # pack-format for IDs
                         ##   pack_f=PACKFMT     # pack-format for frequencies
                         ##   pack_date=PACKFMT  # pack-format for dates

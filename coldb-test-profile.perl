@@ -1,8 +1,8 @@
 #!/usr/bin/perl -w
 
 use lib '.';
-use CollocDB;
-use CollocDB::Utils qw(:json);
+use DiaColloDB;
+use DiaColloDB::Utils qw(:json);
 use Getopt::Long qw(:config no_ignore_case);
 use Pod::Usage;
 use File::Basename qw(basename);
@@ -56,7 +56,7 @@ pod2usage({-exitval=>1,-verbose=>0,-msg=>"$prog: ERROR: no DBDIR specified!"}) i
 pod2usage({-exitval=>1,-verbose=>0,-msg=>"$prog: ERROR: no LEMMA specified!"}) if (@ARGV<2);
 
 if ($version || $verbose >= 2) {
-  print STDERR "$prog version $CollocDB::VERSION by Bryan Jurish\n";
+  print STDERR "$prog version $DiaColloDB::VERSION by Bryan Jurish\n";
   exit 0 if ($version);
 }
 
@@ -66,15 +66,15 @@ if ($version || $verbose >= 2) {
 ##----------------------------------------------------------------------
 
 ##-- setup logger
-CollocDB::Logger->ensureLog();
+DiaColloDB::Logger->ensureLog();
 
 ##-- open colloc-db
 $dbdir = shift(@ARGV);
 $dbdir =~ s{/$}{};
-my $coldb = CollocDB->new(%coldb)
-  or die("$prog: failed to create new CollocDB object: $!");
+my $coldb = DiaColloDB->new(%coldb)
+  or die("$prog: failed to create new DiaColloDB object: $!");
 $coldb->open($dbdir)
-  or die("$prog: CollocDB::open() failed for '$dbdir': $!");
+  or die("$prog: DiaColloDB::open() failed for '$dbdir': $!");
 
 ##-- profile: get tuple-IDs
 $coldb->trace("profile: get tuple-IDs");
@@ -128,7 +128,7 @@ if ($outfmt eq 'text') {
 }
 elsif ($outfmt eq 'json') {
   $coldb->trace("saveJsonFile()");
-  CollocDB::Utils::saveJsonFile($sprf, '-');
+  DiaColloDB::Utils::saveJsonFile($sprf, '-');
 }
 $coldb->trace("done.");
 
@@ -143,7 +143,7 @@ __END__
 
 =head1 NAME
 
-coldb-profile.perl - get a lemma-profile from a CollocDB
+coldb-profile.perl - get a lemma-profile from a DiaColloDB
 
 =head1 SYNOPSIS
 

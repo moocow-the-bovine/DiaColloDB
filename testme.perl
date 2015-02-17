@@ -1,8 +1,8 @@
 #!/usr/bin/perl -w
 
 use lib qw(.);
-use CollocDB;
-use CollocDB::Utils qw(:sort);
+use DiaColloDB;
+use DiaColloDB::Utils qw(:sort);
 use PDL;
 use File::Path qw(make_path remove_tree);
 use File::Find;
@@ -15,7 +15,7 @@ use Benchmark qw(timethese cmpthese);
 
 sub test_enum_create {
   my $base = shift || 'etest';
-  my $enum = CollocDB::Enum->new();
+  my $enum = DiaColloDB::Enum->new();
   $enum->open($base,"rw") or die("enum->open failed: $!");
   $enum->addSymbols(qw(a b c));
   $enum->close();
@@ -25,7 +25,7 @@ sub test_enum_create {
 sub test_enum_append {
   my $base = shift || 'etest';
   my @syms = @_ ? @_ : qw(x y z);
-  my $enum = CollocDB::Enum->new();
+  my $enum = DiaColloDB::Enum->new();
   $enum->open($base,"ra") or die("enum->open failed: $!");
   $enum->addSymbols(@syms);
   $enum->close();
@@ -36,7 +36,7 @@ sub test_enum_append {
 sub test_enum_text2db {
   my $base = shift || 'etest';
   my $labs = shift || "$base.lab";
-  my $enum = CollocDB::Enum->new();
+  my $enum = DiaColloDB::Enum->new();
   $enum->open($base,"rw") or die("enum->open failed: $!");
   $enum->loadTextFile($labs) or die("loadTextFile() failed for '$labs': $!");
   $enum->close();
@@ -46,7 +46,7 @@ sub test_enum_text2db {
 sub test_enum_text2mem {
   my $base = shift || 'etest';
   my $labs = shift || "$base.lab";
-  my $enum = CollocDB::Enum->new();
+  my $enum = DiaColloDB::Enum->new();
   #$enum->open($base,"rw") or die("enum->open failed: $!");
   $enum->loadTextFile($labs) or die("loadTextFile() failed for '$labs': $!");
 }
@@ -55,7 +55,7 @@ sub test_enum_text2mem {
 sub test_enum_text2mem2db {
   my $base = shift || 'etest';
   my $labs = shift || "$base.lab";
-  my $enum = CollocDB::Enum->new();
+  my $enum = DiaColloDB::Enum->new();
   $enum->loadTextFile($labs) or die("loadTextFile() failed for '$labs': $!");
   $enum->saveDbFile($base) or die ("enum->saveDbFile() failed for '$base': $!");
 }
@@ -73,7 +73,7 @@ sub test_createdb_xtuples {
     or die("$0: could not create output directory $outdir: $!");
 
   ##-- tuple-enum
-  my $xenum = CollocDB::Enum->new();
+  my $xenum = DiaColloDB::Enum->new();
   my $xs2i  = $xenum->{s2i}{data};
   my $xi2s  = $xenum->{i2s}{data};
   my $nx    = 0;
@@ -138,13 +138,13 @@ sub test_createdb_xtuples {
   }
 
   print STDERR "$0: creating $outdir/w2x.db\n";
-  my $w2xdb = CollocDB::DBFile->new(file=>"$outdir/w2x.db")
+  my $w2xdb = DiaColloDB::DBFile->new(file=>"$outdir/w2x.db")
     or die("$0: failed to create $outdir/w2x.db: $!");
   my $w2xdata = $w2xdb->{data};
   $w2xdata->{$_} = $w2xi{$_} foreach (sort keys %w2xi);
 
   print STDERR "$0: creating $outdir/l2x.db\n";
-  my $l2xdb = CollocDB::DBFile->new(file=>"$outdir/l2x.db")
+  my $l2xdb = DiaColloDB::DBFile->new(file=>"$outdir/l2x.db")
     or die("$0: failed to create $outdir/l2x.db: $!");
   my $l2xdata = $l2xdb->{data};
   $l2xdata->{$_} = $l2xi{$_} foreach (sort keys %l2xi);
@@ -164,15 +164,15 @@ sub test_createdb_ituples {
     or die("$0: could not create output directory $outdir: $!");
 
   ##-- enums
-  my $xenum = CollocDB::Enum->new();
+  my $xenum = DiaColloDB::Enum->new();
   my $xs2i  = $xenum->{s2i}{data};
   my $nx    = 0;
   #
-  my $wenum = CollocDB::Enum->new();
+  my $wenum = DiaColloDB::Enum->new();
   my $ws2i  = $wenum->{s2i}{data};
   my $nw    = 0;
   #
-  my $lenum = CollocDB::Enum->new();
+  my $lenum = DiaColloDB::Enum->new();
   my $ls2i  = $lenum->{s2i}{data};
   my $nl    = 0;
   #
@@ -253,13 +253,13 @@ sub test_createdb_ituples {
   }
 
   print STDERR "$0: creating $outdir/w2x.db\n";
-  my $w2xdb = CollocDB::DBFile->new(file=>"$outdir/w2x.db", pack_key=>'N')
+  my $w2xdb = DiaColloDB::DBFile->new(file=>"$outdir/w2x.db", pack_key=>'N')
     or die("$0: failed to create $outdir/w2x.db: $!");
   my $w2xdata = $w2xdb->{data};
   $w2xdata->{$_} = $w2xi{$_} foreach (sort {$a<=>$b} keys %w2xi);
 
   print STDERR "$0: creating $outdir/l2x.db\n";
-  my $l2xdb = CollocDB::DBFile->new(file=>"$outdir/l2x.db", pack_key=>'N')
+  my $l2xdb = DiaColloDB::DBFile->new(file=>"$outdir/l2x.db", pack_key=>'N')
     or die("$0: failed to create $outdir/l2x.db: $!");
   my $l2xdata = $l2xdb->{data};
   $l2xdata->{$_} = $l2xi{$_} foreach (sort {$a<=>$b} keys %l2xi);
@@ -288,8 +288,8 @@ sub test_csort {
 
 sub test_pf_create {
   my $pfile = shift || 'pf.bin';
-  my $pf = CollocDB::PackedFile->new(reclen=>4,packas=>'N')
-    or die("$0: failed to create CollocDB::PackedFile object: $!");
+  my $pf = DiaColloDB::PackedFile->new(reclen=>4,packas=>'N')
+    or die("$0: failed to create DiaColloDB::PackedFile object: $!");
   $pf->open($pfile,'rw')
     or die("$0: failed to open '$pfile': $!");
   $pf->push($_) foreach (1..10);
@@ -302,8 +302,8 @@ sub test_pf_create {
 sub test_pf_load {
   my $pfile = shift || 'pf.bin';
   my $tfile = shift || 'pf.dat';
-  my $pf = CollocDB::PackedFile->new(reclen=>4,packas=>'N')
-    or die("$0: failed to create CollocDB::PackedFile object: $!");
+  my $pf = DiaColloDB::PackedFile->new(reclen=>4,packas=>'N')
+    or die("$0: failed to create DiaColloDB::PackedFile object: $!");
   $pf->open($pfile,'rw')
     or die("$0: failed to open '$pfile': $!");
   $pf->loadTextFile($tfile, gaps=>1);
@@ -318,7 +318,7 @@ sub test_pf_load {
 
 sub bench_filesize {
   my $file = shift || "kern01.wl.d/xf.dba";
-  my $pf   = CollocDB::PackedFile->new(file=>$file,flags=>'r',packas=>'N');
+  my $pf   = DiaColloDB::PackedFile->new(file=>$file,flags=>'r',packas=>'N');
   $pf->{size} = $pf->size();
   my ($size);
   cmpthese(1000000,
@@ -399,9 +399,9 @@ sub bench_subunpack {
 ## test: enum loaded
 
 sub test_enum_loaded {
-  CollocDB::Logger->ensureLog();
+  DiaColloDB::Logger->ensureLog();
   my $ebase = shift || "corpus1.d/lenum";
-  my $ef    = CollocDB::EnumFile->new(base=>$ebase)
+  my $ef    = DiaColloDB::EnumFile->new(base=>$ebase)
     or die("$0: could not create EnumFile for $ebase: $!");
 
   $ef->info("toArray()");
@@ -432,14 +432,14 @@ sub test_enum_loaded {
 ## test: enum expand
 
 sub test_enum_expand {
-  CollocDB::Logger->ensureLog();
+  DiaColloDB::Logger->ensureLog();
   my $re    = shift || '/[[:upper:]]nderung/u';
   my $ebase = shift || "corpus1.d/lenum";
   my ($eclass);
-  #$eclass = 'CollocDB::EnumFile';
-  $eclass = 'CollocDB::EnumFile::MMap';
-  #$eclass = 'CollocDB::EnumFile::FixedLen';
-  #$eclass = 'CollocDB::EnumFile::FixedLen::MMap';
+  #$eclass = 'DiaColloDB::EnumFile';
+  $eclass = 'DiaColloDB::EnumFile::MMap';
+  #$eclass = 'DiaColloDB::EnumFile::FixedLen';
+  #$eclass = 'DiaColloDB::EnumFile::FixedLen::MMap';
   my $ef    = $eclass->new(base=>$ebase)
     or die("$0: could not create $eclass object for $ebase: $!");
 
@@ -460,7 +460,7 @@ sub test_profile_io0 {
   my $dbdir = shift || 'kern01.d';
   my $lemma = shift || 'Mann';
 
-  my $coldb = CollocDB->new(dbdir=>$dbdir)
+  my $coldb = DiaColloDB->new(dbdir=>$dbdir)
     or die("$0: failed to open DB-directory $dbdir: $!");
   my $mp = $coldb->coprofile(lemma=>$lemma, slice=>10, kbest=>50, score=>'ld');
 
