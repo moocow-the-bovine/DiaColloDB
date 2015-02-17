@@ -80,7 +80,7 @@ $corpus->open(\@ARGV, 'glob'=>$globargs, 'list'=>$listargs)
 ##-- create colloc-db
 my $coldb = CollocDB->new(%coldb)
   or die("$prog: failed to create new CollocDB object: $!");
-$coldb->create($corpus, dbdir=>$dbdir)
+$coldb->create($corpus, dbdir=>$dbdir, flags=>'rw')
   or die("$prog: CollocDB::create() failed: $!");
 
 

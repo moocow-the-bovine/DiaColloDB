@@ -78,7 +78,7 @@ our $MMCLASS = 'CollocDB::MultiMapFile';
 ##   (
 ##    ##-- options
 ##    dbdir => $dbdir,    ##-- database directory; REQUIRED
-##    flags => $fcflags,  ##-- fcntl flags or open()-style mode string; default='rw'
+##    flags => $fcflags,  ##-- fcntl flags or open()-style mode string; default='r'
 ##    #index_w => $bool,   ##-- index surface word-forms? (default=0) : DISABLED
 ##    index_l => $bool,   ##-- index lemmata? (default=1) : REDUNDANT
 ##    bos => $bos,        ##-- special string to use for BOS, undef or empty for none (default=undef)
@@ -125,7 +125,7 @@ sub new {
   my $coldb  = bless({
 		     ##-- options
 		      dbdir => undef,
-		      flags => 'rw',
+		      flags => 'r',
 		      #index_w => 0,
 		      #index_l => 1,
 		      bos => undef,
@@ -186,6 +186,7 @@ sub DESTROY {
 ## $coldb_or_undef = $coldb->open()
 sub open {
   my ($coldb,$dbdir,%opts) = @_;
+  CollocDB::Logger->ensureLog();
   $coldb = $coldb->new() if (!ref($coldb));
   @$coldb{keys %opts} = values %opts;
   $dbdir //= $coldb->{dbdir};
@@ -196,7 +197,7 @@ sub open {
   $coldb->vlog($coldb->{logOpen}, "open($dbdir)");
 
   ##-- open: truncate
-  if (($flags&O_TRUNC) == O_TRUNC) {
+  if (fctrunc($flags)) {
     $flags |= O_CREAT;
     !-d $dbdir
       or remove_tree($dbdir)
@@ -205,9 +206,7 @@ sub open {
 
   ##-- open: create
   if (!-d $dbdir) {
-    $coldb->logconfess("open(): no such directory '$dbdir'")
-      if (($flags&O_CREAT) != O_CREAT);
-
+    $coldb->logconfess("open(): no such directory '$dbdir'") if (!fccreat($flags));
     make_path($dbdir)
       or $coldb->logconfess("open(): could not create DB directory '$dbdir': $!");
   }
@@ -236,7 +235,7 @@ sub open {
 
   ##-- open: cof
   $coldb->{cof} = CollocDB::Cofreqs->new(base=>"$dbdir/cof", flags=>$flags,
-					 pack_i=>$coldb->{pack_i}, pack_f=>$coldb->{pack_f},
+					 pack_i=>$coldb->{pack_id}, pack_f=>$coldb->{pack_f},
 					 dmax=>$coldb->{dmax}, fmin=>$coldb->{cfmin},
 					)
     or $coldb->logconfess("open(): failed to open co-frequency file $dbdir/cof.*: $!");
@@ -704,9 +703,13 @@ sub profile {
     my $dre  = regex($date);
     $dfilter = sub { $_[0] =~ $dre };
   }
-  elsif ($date && $date =~ /^\s*([0-9]+)\s*[\-\:\s]+\s*([0-9]+)\s*$/) {
+  elsif ($date && $date =~ /^\s*([0-9]+)\s*[\-\:]+\s*([0-9]+)\s*$/) {
     my ($dlo,$dhi) = ($1+0,$2+0);
     $dfilter = sub { $_[0]>=$dlo && $_[0]<=$dhi };
+  }
+  elsif ($date && $date =~ /[\s\,]/) {
+    my %dwant = map {($_=>undef)} grep {($_//'') ne ''} split(/[\s\,]+/,$date);
+    $dfilter  = sub { exists($dwant{$_[0]}) };
   }
   elsif ($date) {
     $dfilter = sub { $_[0] == $date };

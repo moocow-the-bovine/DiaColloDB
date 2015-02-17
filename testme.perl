@@ -7,6 +7,7 @@ use PDL;
 use File::Path qw(make_path remove_tree);
 use File::Find;
 use File::Basename qw(basename);
+use JSON;
 use Benchmark qw(timethese cmpthese);
 
 ##==============================================================================
@@ -449,7 +450,171 @@ sub test_enum_expand {
 
   exit 0;
 }
-test_enum_expand(@ARGV);
+#test_enum_expand(@ARGV);
+
+##==============================================================================
+## test: profile io
+
+use Storable;
+sub test_profile_io0 {
+  my $dbdir = shift || 'kern01.d';
+  my $lemma = shift || 'Mann';
+
+  my $coldb = CollocDB->new(dbdir=>$dbdir)
+    or die("$0: failed to open DB-directory $dbdir: $!");
+  my $mp = $coldb->coprofile(lemma=>$lemma, slice=>10, kbest=>50, score=>'ld');
+
+  Storable::nstore($mp,"mp.bin");
+  exit 0;
+}
+#test_profile_io0(@ARGV);
+
+sub mp2s_storable {
+  my $mp = shift;
+  my $buf;
+  open(my $fh, ">", \$buf) or die("mp2s_storable(): open failed for string buffer: $!");
+  Storable::nstore_fd($mp, $fh);
+  close($fh);
+  return $buf;
+}
+
+sub mp2s_text {
+  my $mp = shift;
+  my $buf;
+  open(my $fh, ">", \$buf) or die("mp2s_text(): open failed for string buffer: $!");
+  $mp->saveTextFile($fh);
+  close($fh);
+  return $buf;
+}
+
+BEGIN {
+  our $jxs;
+}
+sub jxs {
+  $jxs //= JSON->new->utf8(1)->allow_nonref(1)->allow_blessed(1)->convert_blessed(1)->pretty(0)->canonical(0);
+  return $jxs;
+}
+
+sub mp2s_json_raw {
+  return jxs()->encode($_[0]);
+}
+
+sub p2array {
+  my $prf = shift;
+  my @tab = qw();
+  my ($f1,$f2,$f12) = @$prf{qw(f1 f2 f12)};
+  my $fscore = $prf->{$prf->{score}//'f12'};
+  foreach (keys %$fscore) {
+    push(@tab, [$f2->{$_},$f12->{$_},$fscore->{$_},$_]);
+  }
+  return \@tab;
+}
+
+sub mp2s_json_flat {
+  my $mp  = shift;
+  my ($p);
+  return jxs->encode({map {$p=$mp->{ps}{$_}; ($_=>[@$p{qw(N f1 score)},p2array($p)])} keys %{$mp->{ps}}});
+}
+
+sub mp2s_json_raw2 {
+  return to_json($_[0], {utf8=>1,allow_nonref=>1,allow_blessed=>1,convert_blessed=>1,pretty=>0,canonical=>0});
+}
+sub mp2s_json_flat2 {
+  my $mp = shift;
+  my ($p);
+  return to_json({map {$p=$mp->{ps}{$_}; ($_=>[@$p{qw(N f1 score)},p2array($p)])} keys %{$mp->{ps}}},
+		 {utf8=>1,allow_nonref=>1,allow_blessed=>1,convert_blessed=>1,pretty=>0,canonical=>0});
+}
+
+
+sub mp2s_pack {
+  my $mp  = shift;
+  my $buf = '';
+  my ($key,$p,$key2,$f2,$f12,$scoref,$scoreh);
+  while (($key,$p)=each(%{$mp->{ps}})) {
+    $scoref = $p->{score} // '';
+    $scoreh = $p->{$scoref};
+    $buf   .= pack('(n/A)NN(n/A)', $key, @$p{qw(N f1)}, $scoref);
+    while (($key2,$f12)=each(%{$p->{f12}})) {
+      $buf .= pack('(n/A)NNf', $key2, $p->{f2}{$key2}, $f12, ($scoreh ? $scoreh->{$key2} : 0));
+    }
+  }
+  return $buf;
+}
+
+sub mp2s_packraw {
+  my $mp  = shift;
+  my $ps  = $mp->{ps};
+  my ($p,$f2,$f12);
+  return join('',
+	     map {
+	       $p=$ps->{$_};
+	       ($f2,$f12) = @$p{qw(f2 f12)};
+	       pack('(n/A)NNN((n/A)NN)*',
+		    $_, @$p{qw(N f1)}, scalar(keys %$f12),
+		    map {
+		      ($_, $f2->{$_}, $f12->{$_})
+		    } keys %$f12)
+	     }
+	      keys %{$mp->{ps}}
+	     );
+}
+
+
+sub bench_profile_io {
+  my $mpbin = shift || 'mp.bin';
+
+  my $mp = Storable::retrieve($mpbin)
+    or die("$0: Storable::retrieve() failed for file '$mpbin': $!");
+
+  use bytes;
+  my %cf = (
+	    storable  => {code=>\&mp2s_storable},
+	    text      => {code=>\&mp2s_text},
+	    json_raw  => {code=>\&mp2s_json_raw},
+	    json_flat => {code=>\&mp2s_json_flat},
+	    json_raw2 => {code=>\&mp2s_json_raw2},
+	    json_flat2 => {code=>\&mp2s_json_flat2},
+	    pack      => {code=>\&mp2s_pack},
+	    packraw   => {code=>\&mp2s_packraw},
+	   );
+  $cf{$_}{label} = $_ foreach (keys %cf);
+  foreach (values %cf) {
+    $_->{str} = $_->{code}->($mp);
+    $_->{len} = length($_->{str});
+    open(my $fh, ">$mpbin.$_->{label}") or die("$0: open failed for $mpbin.$_->{label}: $!");
+    print $fh $_->{str};
+    close $fh;
+  }
+  #@data = unpack('((n/A)NN(n/A)((n/A)NNf)*)*', $cf{pack}{str})
+  my $nrecs    = @{[ ($cf{text}{str} =~ /\n/sg) ]};
+  my $fmt = "# %-12s\t%4d bytes / $nrecs records = %5.1f bytes/record\n";
+  print STDERR sprintf($fmt, $_, $cf{$_}{len}, $cf{$_}{len}/$nrecs) foreach (sort keys %cf);
+  # json_flat   	6359 bytes / 150 records =  42.4 bytes/record
+  # json_flat2  	6359 bytes / 150 records =  42.4 bytes/record
+  # json_raw    	8683 bytes / 150 records =  57.9 bytes/record
+  # json_raw2   	8835 bytes / 150 records =  58.9 bytes/record
+  # pack        	2941 bytes / 150 records =  19.6 bytes/record
+  # packraw     	2341 bytes / 150 records =  15.6 bytes/record
+  # storable    	8733 bytes / 150 records =  58.2 bytes/record
+  # text        	6539 bytes / 150 records =  43.6 bytes/record
+
+  my %cmpus = map {my $c=$_; ($c->{label}=>sub {$c->{code}->($mp)})} values %cf;
+  cmpthese(-3, \%cmpus);
+  #               Rate text pack json_flat2 json_flat packraw storable json_raw2 json_raw
+  # text        3147/s   -- -37%       -38%      -40%    -54%     -58%      -82%     -84%
+  # pack        4990/s  59%   --        -2%       -6%    -27%     -34%      -71%     -75%
+  # json_flat2  5071/s  61%   2%         --       -4%    -26%     -33%      -71%     -74%
+  # json_flat   5286/s  68%   6%         4%        --    -23%     -30%      -70%     -73%
+  # packraw     6827/s 117%  37%        35%       29%      --      -9%      -61%     -65%
+  # storable    7542/s 140%  51%        49%       43%     10%       --      -57%     -62%
+  # json_raw2  17357/s 452% 248%       242%      228%    154%     130%        --     -12%
+  # json_raw   19783/s 529% 296%       290%      274%    190%     162%       14%       --
+
+  exit 0;
+}
+bench_profile_io(@ARGV);
+
 
 
 ##==============================================================================
