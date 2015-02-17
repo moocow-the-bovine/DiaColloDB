@@ -5,13 +5,11 @@
 
 package DiaColloDB;
 use DiaColloDB::Logger;
-use DiaColloDB::Enum;
 use DiaColloDB::EnumFile;
 use DiaColloDB::EnumFile::MMap;
 use DiaColloDB::EnumFile::FixedLen;
 use DiaColloDB::EnumFile::FixedMap;
 use DiaColloDB::MultiMapFile;
-use DiaColloDB::DBFile;
 use DiaColloDB::PackedFile;
 use DiaColloDB::Unigrams;
 use DiaColloDB::Cofreqs;
