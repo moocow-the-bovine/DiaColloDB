@@ -68,6 +68,7 @@ GetOptions(##-- general
 	   ##-- I/O
 	   'text|t' => sub {$outfmt='text'},
 	   'json|j' => sub {$outfmt='json'},
+	   'html|H' => sub {$outfmt='html'},
 	   'pretty|p!' => sub {$pretty=$_[1]},
 	   'null|noout' => sub {$outfmt=''},
 	  );
@@ -109,6 +110,10 @@ if ($outfmt eq 'text') {
 elsif ($outfmt eq 'json') {
   $mp->trace("saveJsonFile()");
   DiaColloDB::Utils::saveJsonFile($mp, '-', utf8=>0,pretty=>$pretty,canonical=>$pretty);
+}
+elsif ($outfmt eq 'html') {
+  $mp->trace("saveHtmlFile()");
+  $mp->saveHtmlFile('-');
 }
 #$coldb->trace("done.");
 

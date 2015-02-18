@@ -20,7 +20,7 @@
 
 
 package DiaColloDB::Profile;
-use DiaColloDB::Utils qw(:math);
+use DiaColloDB::Utils qw(:math :html);
 use IO::File;
 use strict;
 
@@ -90,6 +90,56 @@ sub saveTextFile {
 		    $_),
 	       "\n");
   }
+  $fh->close() if (!ref($file));
+  return $prf;
+}
+
+##--------------------------------------------------------------
+## I/O: HTML
+
+## $bool = $prf->saveHtmlFile($filename_or_handle, %opts)
+##  + %opts:
+##    (
+##     table  => $bool,     ##-- include <table>..</table> ? (default=1)
+##     body   => $bool,     ##-- include <html><body>..</html></body> ? (default=1)
+##     header => $bool,     ##-- include header-row? (default=1)
+##     hprefix => $hprefix, ##-- prefix header item-cells with $hprefix (used by Profile::Multi), no '<th>..</th>' required
+##     prefix => $prefix,   ##-- prefix item-cells with $prefix (used by Profile::Multi), no '<td>..</td>' required
+##    )
+sub saveHtmlFile {
+  my ($prf,$file,%opts) = @_;
+  my $fh = ref($file) ? $file : IO::File->new(">$file");
+  $prf->logconfess("saveTextFile(): failed to open '$file': $!") if (!ref($fh));
+
+  $fh->print("<html><body>\n") if ($opts{body}//1);
+  $fh->print("<table><tbody>\n") if ($opts{table}//1);
+  $fh->print("<tr>",(
+		     map {"<th>".htmlesc($_)."</th>"}
+		     #'N'
+		     qw(f1 f2 f12 score),
+		     (defined($opts{hprefix}) ? $opts{hprefix} : qw()),
+		     qw(item2)
+		    ),
+	     "</tr>\n"
+	    ) if ($opts{header}//1);
+
+  my ($f1,$f2,$f12) = @$prf{qw(f1 f2 f12)};
+  my $prefix = $opts{prefix} // '';
+  my $fscore = $prf->{$prf->{score}//'f12'};
+  foreach (sort {$fscore->{$b} <=> $fscore->{$a}} keys %$fscore) {
+    $fh->print("<tr>", (map {"<td>".htmlesc($_)."</td>"}
+			#$N,
+			$f1,
+			$f2->{$_},
+			$f12->{$_},
+			($fscore ? $fscore->{$_} : 'NA'),
+			(defined($prefix) ? $prefix : qw()),
+			$_
+		       ),
+	       "</tr>\n");
+  }
+  $fh->print("</tbody><table>\n") if ($opts{table}//1);
+  $fh->print("</body></html>\n") if ($opts{body}//1);
   $fh->close() if (!ref($file));
   return $prf;
 }

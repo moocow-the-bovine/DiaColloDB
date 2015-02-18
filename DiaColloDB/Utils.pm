@@ -30,6 +30,7 @@ our %EXPORT_TAGS =
      pack  => [qw(packsize packFilterFetch packFilterStore)],
      math  => [qw($LOG2 log2)],
      regex => [qw(regex)],
+     html  => [qw(htmlesc)],
     );
 our @EXPORT_OK = map {@$_} values(%EXPORT_TAGS);
 $EXPORT_TAGS{all} = [@EXPORT_OK];
@@ -359,6 +360,20 @@ sub regex {
   return qr{$re};
 }
 
+##==============================================================================
+## Functions: html
+
+## $escaped = htmlesc($str)
+sub htmlesc {
+  ##-- html escapes
+  my $str = shift;
+  $str =~ s/\&/\&amp;/sg;
+  $str =~ s/\'/\&#39;/sg;
+  $str =~ s/\"/\&quot;/sg;
+  $str =~ s/\</\&lt;/sg;
+  $str =~ s/\>/\&gt;/sg;
+  return $str;
+}
 
 ##==============================================================================
 ## Footer
