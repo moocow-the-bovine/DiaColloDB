@@ -189,6 +189,7 @@ sub i2s {
 ##   + binary search; enum must be opened
 sub s2i {
   my ($enum,$key,$ilo,$ihi) = @_;
+  utf8::encode($key) if ($enum->{utf8} && utf8::is_utf8($key));
   $ilo //= 0;
   $ihi //= $enum->{size}; #(-s $enum->{sxfh}) / $enum->{len_sx};
 

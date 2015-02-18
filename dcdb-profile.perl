@@ -52,8 +52,8 @@ GetOptions(##-- general
 	   'option|O=s%' => \%coldb,
 
 	   ##-- local
-	   'collocations|collocs|cofreqs|cof|co' => sub { $rel='cof' },
-	   'unigrams|ug|u' => sub { $rel='xf' },
+	   'collocations|collocs|cofreqs|cof|co|f12|f2|12|2' => sub { $rel='cof' },
+	   'unigrams|ug|u|f1|1' => sub { $rel='xf' },
 	   'date|d=s'   => \$profile{date},
 	   'date-slice|ds=s'  => \$profile{slice},
 	   'mutual-information|mi'    => sub {$profile{score}='mi'},

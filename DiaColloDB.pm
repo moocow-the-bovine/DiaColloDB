@@ -680,11 +680,11 @@ sub profile {
     }
   }
   if ($lemma eq '') {
-    $coldb->logwarn("profile(): missing required parameter 'lemma'");
+    $coldb->logwarn($coldb->{error}="profile(): missing required parameter 'lemma'");
     return undef;
   }
   if (!UNIVERSAL::can($coldb->{$rel},'profile')) {
-    $coldb->logwarn("profile(): unknown relation '$rel'");
+    $coldb->logwarn($coldb->{error}="profile(): unknown relation '$rel'");
     return undef;
   }
   $cutoff = undef if ($cutoff eq '');
@@ -708,7 +708,7 @@ sub profile {
     $lis = [grep {defined($_)} map {$lenum->s2i($_)} grep {($_//'') ne ''} map {s{\\(.)}{$1}g; $_} split(/(?:(?<!\\)[\,\s])+/,$lemma)];
   }
   if (!@$lis) {
-    $coldb->logwarn("profile(): no lemmata matching user query '$lemma'");
+    $coldb->logwarn($coldb->{error}="profile(): no lemmata matching user query '$lemma'");
     return undef;
   }
 
