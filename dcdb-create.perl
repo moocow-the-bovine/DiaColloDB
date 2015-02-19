@@ -115,8 +115,8 @@ dcdb-create.perl - create a DiaColloDB collocation database from a corpus dump
                         ##   eosre=EOSRE        # eos regex (default='^$'; alt. '^%%\$DDC:PAGE=' or '^%%\$DDC:BREAK\.p=')
 
  DiaColloDB Options:
-   #-[no]index-w         ##-- do/don't index words (default=don't) : OBSOLETE
-   #-[no]index-l         ##-- do/don't index lemmata (default=do)  : OBSOLETE
+   #-[no]index-w         ##-- do/don't index words (default=don't) : DISABLED
+   #-[no]index-l         ##-- do/don't index lemmata (default=do)  : DISABLED
    -[no]keep            ##-- do/ton't keep temporary files (default=don't)
    -nofilters           ##-- disable default regex-filters
    -64bit               ##-- use 64-bit quads where available

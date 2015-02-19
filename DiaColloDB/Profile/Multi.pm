@@ -11,6 +11,13 @@ use DiaColloDB::Persistent;
 use DiaColloDB::Utils qw(:html);
 use strict;
 
+use overload
+  fallback => 0,
+  '+' => \&add,
+  '+=' => \&_add,
+  '-' => \&diff,
+  '-=' => \&_diff;
+
 ##==============================================================================
 ## Globals & Constants
 
@@ -31,6 +38,18 @@ sub new {
 		    @_
 		   }, (ref($that)||$that));
   return $mp;
+}
+
+## $mp2 = $mp->clone()
+## $mp2 = $mp->clone($keep_compiled)
+##  + clones %$mp
+##  + if $keep_score is true, compiled data is cloned too
+sub clone {
+  my $mp = shift;
+  return bless({
+		data=>[map {$_->clone(@_)} @{$mp->{data}}],
+	       }, ref($mp)
+	      );
 }
 
 ##==============================================================================
@@ -104,6 +123,13 @@ sub compile {
   return $mp;
 }
 
+## $mp = $mp->uncompile()
+##  + un-compiles all scores for $mp
+sub uncompile {
+  $_->uncompile() foreach (values %{$_[0]{data}});
+  return $_[0];
+}
+
 ## $mp_or_undef = $mp->trim(%opts)
 ##  + calls $prf->trim(%opts) for each sub-profile $prf
 sub trim {
@@ -121,6 +147,54 @@ sub stringify {
   my $mp = shift;
   $_->trim(@_) or return undef foreach (values %{$mp->{data}});
   return $mp;
+}
+
+##==============================================================================
+## Algebraic operations
+
+## $mp = $mp->_add($mp2)
+##  + adds $mp2 frequency data to $mp (destructive)
+##  + implicitly un-compiles sub-profiles
+sub _add {
+  my ($mp1,$mp2) = @_;
+  my $data1 = $mp1->{data};
+  my ($key2,$prf2,$prf1);
+  while (($key2,$prf2)=each(%{$mp2->{data}})) {
+    if (defined($prf1=$data1->{$_})) {
+      $prf1->add($prf2);
+    } else {
+      $data1->{$_} = $prf2->clone();
+    }
+  }
+  return $mp1->uncompile();
+}
+
+## $mp3 = $mp1->add($mp2)
+##  + returns sum of $mp1 and $mp2 frequency data (destructive)
+sub add {
+  return $_[0]->clone->_add($_[1]);
+}
+
+## $mp = $mp->_diff($mp2)
+##  + subtracts $mp2 sub-profile scores from $mp sub-profiles (destructive)
+##  + $mp and $mp2 must be compatibly compiled
+sub _diff {
+  my ($mpa,$mpb) = @_;
+  my $adata = $mpa->{data};
+  my ($bkey,$bprf,$aprf);
+  while (($bkey,$bprf)=each(%{$mpb->{data}})) {
+    if (!defined($aprf=$adata->{$bkey})) {
+      $aprf = $adata->{$bkey} = ref($bprf)->new()->compile($bprf->{score});
+    }
+    $aprf->_diff($bprf);
+  }
+  return $mpa;
+}
+
+## $mp3 = $mp1->diff($mp2)
+##  + returns score-diff of $mp1 and $mp2 frequency data (destructive)
+sub diff {
+  return $_[0]->clone(1)->diff($_[1]);
 }
 
 

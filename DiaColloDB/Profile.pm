@@ -25,6 +25,14 @@ use DiaColloDB::Persistent;
 use IO::File;
 use strict;
 
+use overload
+  fallback => 0,
+  '+' => \&add,
+  '+=' => \&_add,
+  '-' => \&diff,
+  '-=' => \&_diff;
+
+
 ##==============================================================================
 ## Globals & Constants
 
@@ -58,6 +66,27 @@ sub new {
 		   }, (ref($that)||$that));
   return $prf;
 }
+
+## $prf2 = $prf->clone()
+## $prf2 = $prf->clone($keep_compiled)
+##  + clones %$mp
+##  + if $keep_score is true, compiled data is cloned too
+sub clone {
+  my ($prf,$force) = @_;
+  return bless({
+		N=>$prf->{N},
+		f1=>$prf->{f1},
+		f2=>{ %{$prf->{f2}} },
+		f12=>{ %{$prf->{f12}} },
+		($force
+		 ? (($prf->{mi} ? (mi=>{%{$prf->{mi}}}) : qw()),
+		    ($prf->{ld} ? (ld=>{%{$prf->{ld}}}) : qw()),
+		    ($prf->{score} ? (score=>$prf->{score}) : qw())
+		   )
+		 : qw()),
+	       }, ref($prf));
+}
+
 
 ##==============================================================================
 ## I/O
@@ -159,6 +188,13 @@ sub compile {
   return $prf->compile_mi if ($func =~ m{^(?:l?f?mi|mutual-?information)$}i);
   $prf->logwarn("compile(): unknown score function '$func'");
   return $prf->compile_f;
+}
+
+## $prf = $prf->uncompile()
+##  + un-compiles all scores for $prf
+sub uncompile {
+  delete @{$_[0]}{qw(mi ld score)};
+  return $_[0];
 }
 
 ## $prf = $prf->compile_f()
@@ -287,6 +323,57 @@ sub stringify {
   }
 
   $prf->logconfess("stringify(): don't know how to stringify via object '$key2str'");
+}
+
+##==============================================================================
+## Algebraic operations
+
+## $prf = $prf->_add($prf2)
+##  + adds $prf2 frequency data to $prf (destructive)
+##  + implicitly un-compiles $prf
+sub _add {
+  my ($pa,$pb) = @_;
+  $pa->{N}  += $pb->{N};
+  $pa->{f1} += $pb->{f1};
+  my ($af2,$af12) = @$pa{qw(f2 f12)};
+  my ($bf2,$bf12) = @$pb{qw(f2 f12)};
+  foreach (keys %$bf12) {
+    $af2->{$_}  += $bf2->{$_};
+    $af12->{$_} += $bf12->{$_};
+  }
+  return $pa->uncompile();
+}
+
+## $prf3 = $prf1->add($prf2)
+##  + returns sum of $prf1 and $prf2 frequency data (destructive)
+sub add {
+  return $_[0]->clone->_add($_[1]);
+}
+
+## $prf = $prf->_diff($prf2)
+##  + subtracts $prf2 scores from $prf (destructive)
+##  + $prf and $prf2 must be compatibly compiled
+sub _diff {
+  my ($pa,$pb) = @_;
+  $pa->{N}  -= $pb->{N};
+  $pa->{f1} -= $pb->{f1};
+  my $scoref = $pa->{score} // $pb->{score} // 'f12';
+  my ($af2,$af12,$ascore) = @$pa{qw(f2 f12),$scoref};
+  my ($bf2,$bf12,$bscore) = @$pb{qw(f2 f12),$scoref};
+  $pa->logconfess("_diff(): no {$scoref} key for \$pa") if (!$ascore);
+  $pa->logconfess("_diff(): no {$scoref} key for \$pb") if (!$bscore);
+  foreach (keys %$bscore) {
+    $af2->{$_}    -= $bf2->{$_};
+    $af12->{$_}   -= $bf12->{$_};
+    $ascore->{$_} -= $bscore->{$_}
+  }
+  return $pa;
+}
+
+## $prf3 = $prf1->diff($prf2)
+##  + returns score-diff of $prf1 and $prf2 frequency data (destructive)
+sub diff {
+  return $_[0]->clone(1)->diff($_[1]);
 }
 
 
