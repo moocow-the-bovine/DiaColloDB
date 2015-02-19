@@ -75,11 +75,11 @@ __END__
 
 =head1 NAME
 
-coldb-export.perl - export a text representation of a DiaColloDB index
+dcdb-export.perl - export a text representation of a DiaColloDB index
 
 =head1 SYNOPSIS
 
- coldb-export.perl [OPTIONS] DBDIR
+ dcdb-export.perl [OPTIONS] DBDIR
 
  General Options:
    -help

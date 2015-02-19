@@ -23,7 +23,8 @@ our $DCLASS_DEFAULT = 'DDCTabs';
 ## + %args, object structure:
 ##   (
 ##    files => \@files,   ##-- source files
-##    dclass => $class,   ##-- DiaColloDB::Document subclass for loading (default=$DCLASS_DEFAULT)
+##    dclass => $dclass,  ##-- DiaColloDB::Document subclass for loading (default=$DCLASS_DEFAULT)
+##    dopts  => \%opts,   ##-- options for $dclass->fromFile()
 ##    cur    => $i,       ##-- index of current file
 ##   )
 sub new {
@@ -31,6 +32,7 @@ sub new {
   my $corpus  = bless({
 		       files => [],
 		       dclass => $DCLASS_DEFAULT,
+		       dopts => {},
 		       cur => 0,
 
 		       @_, ##-- user arguments
@@ -110,7 +112,7 @@ sub idocument {
   my ($corpus,$pos) = @_;
   $pos //= $corpus->{cur};
   return undef if ($pos > $#{$corpus->{files}});
-  return $corpus->{dclass}->fromFile($corpus->{files}[$pos]);
+  return $corpus->{dclass}->fromFile($corpus->{files}[$pos], %{$corpus->{dopts}//{}});
 }
 
 ## $pos = $corpus->inext()

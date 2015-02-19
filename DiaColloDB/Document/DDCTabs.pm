@@ -19,16 +19,21 @@ our @ISA = qw(DiaColloDB::Document);
 ## $doc = CLASS_OR_OBJECT->new(%args)
 ## + %args, object structure:
 ##   (
+##    ##-- parsing options
+##    eosre => $re,       ##-- EOS regex (default='^$')
+##    ##
+##    ##-- document data
 ##    date   =>$date,     ##-- year
 ##    wf     =>$iw,       ##-- index-field for $word attribute (default=0)
 ##    pf     =>$ip,       ##-- index-field for $pos attribute (default=1)
 ##    lf     =>$il,       ##-- index-field for $lemma attribute (default=2)
-##    tokens =>\@tokens,  ##-- tokens, including EOS
+##    tokens =>\@tokens,  ##-- tokens, including undef for EOS
 ##   )
 ## + each token in @tokens is a HASH-ref {w=>$word,p=>$pos,l=>$lemma,...}
 sub new {
   my $that = shift;
   my $doc  = $that->SUPER::new(
+			       eosre=>qr{^$},
 			       wf=>0,
 			       pf=>1,
 			       lf=>2,
@@ -43,11 +48,13 @@ sub new {
 ##--------------------------------------------------------------
 ## API: I/O: parse
 
-## $bool = $doc->fromFile($filename_or_fh)
+## $bool = $doc->fromFile($filename_or_fh, %opts)
 ##  + parse tokens from $filename_or_fh
+##  + %opts : clobbers %$doc
 sub fromFile {
-  my ($doc,$file) = @_;
+  my ($doc,$file,%opts) = @_;
   $doc = $doc->new() if (!ref($doc));
+  @$doc{keys %opts} = values %opts;
   $doc->{label} = ref($file) ? "$file" : $file;
   my $fh = ref($file) ? $file : IO::File->new("<$file");
   $doc->logconfess("fromFile(): cannot open file '$file': $!") if (!ref($fh));
@@ -55,11 +62,18 @@ sub fromFile {
   my ($wf,$pf,$lf) = @$doc{qw(wf pf lf)};
   my $tokens   = $doc->{tokens};
   my $eos      = undef;
+  my $eosre    = $doc->{eosre};
+  $eosre       = qr{$eosre} if ($eosre && !ref($eosre));
   @$tokens     = ();
   my $last_was_eos = 1;
   my ($w,$p,$l);
   while (defined($_=<$fh>)) {
     chomp;
+    if ($eosre && $_ =~ $eosre) {
+      push(@$tokens,$eos) if (!$last_was_eos);
+      $last_was_eos = 1;
+      next;
+    }
     if (/^%%/) {
       if (/^%%(?:\$DDC:meta\.date_|\$?date)=([0-9]+)/) {
 	$doc->{date} = $1;
@@ -73,11 +87,6 @@ sub fromFile {
       elsif (/^%%\$DDC:index\[([0-9]+)\]=Lemma\b/ || /^%%\$DDC:index\[([0-9]+)\]=\S+ l$/) {
 	$lf = $doc->{lf} = $1;
       }
-      next;
-    }
-    if (/^$/) {
-      push(@$tokens,$eos) if (!$last_was_eos);
-      $last_was_eos = 1;
       next;
     }
     ($w,$p,$l) = (split(/\t/,$_))[$wf,$pf,$lf];

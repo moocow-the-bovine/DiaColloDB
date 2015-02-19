@@ -128,11 +128,11 @@ __END__
 
 =head1 NAME
 
-coldb-profile.perl - get a frequency profile from a DiaColloDB
+dcdb-profile.perl - get a frequency profile from a DiaColloDB
 
 =head1 SYNOPSIS
 
- coldb-profile.perl [OPTIONS] DBDIR LEMMA(S)...
+ dcdb-profile.perl [OPTIONS] DBDIR LEMMA(S)...
 
  General Options:
    -help

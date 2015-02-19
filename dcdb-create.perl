@@ -21,7 +21,7 @@ our $dbdir      = undef;
 
 our $globargs = 1; ##-- glob @ARGV?
 our $listargs = 0; ##-- args are file-lists?
-our %corpus   = (dclass=>'DDCTabs');
+our %corpus   = (dclass=>'DDCTabs', dopts=>{});
 our %coldb    = (pack_id=>'N', pack_date=>'n', pack_f=>'N', pack_off=>'N', pack_len=>'n', dmax=>5, cfmin=>2, keeptmp=>0);
 
 ##----------------------------------------------------------------------
@@ -36,10 +36,11 @@ GetOptions(##-- general
 	   'version|V' => \$version,
 	   'verbose|v=i' => \$verbose,
 
-	   ##-- I/O
+	   ##-- I/O options
 	   'glob|g!' => \$globargs,
 	   'list|l!' => \$listargs,
 	   'document-class|dclass|dc=s' => \$corpus{dclass},
+	   'document-option|docoption|do=s%' => \$corpus{dopts},
 	   'output|outdir|od|o=s' => \$dbdir,
 
 	   ##-- general
@@ -95,11 +96,11 @@ __END__
 
 =head1 NAME
 
-coldb-create.perl - create a DiaColloDB collocation database from a corpus dump
+dcdb-create.perl - create a DiaColloDB collocation database from a corpus dump
 
 =head1 SYNOPSIS
 
- coldb-create.perl [OPTIONS] [INPUT(s)...]
+ dcdb-create.perl [OPTIONS] [INPUT(s)...]
 
  General Options:
    -help
@@ -110,6 +111,8 @@ coldb-create.perl - create a DiaColloDB collocation database from a corpus dump
    -list , -nolist      ##-- INPUT(s) are/aren't file-lists (default=no)
    -glob , -noglob      ##-- do/don't glob INPUT(s) argument(s) (default=do)
    -dclass CLASS        ##-- set corpus document class (default=DDCTabs)
+   -dopt OPT=VAL        ##-- set corpus document option, e.g.
+                        ##   eosre=EOSRE        # eos regex (default='^$'; alt. '^%%\$DDC:PAGE=' or '^%%\$DDC:BREAK\.p=')
 
  DiaColloDB Options:
    #-[no]index-w         ##-- do/don't index words (default=don't) : OBSOLETE
