@@ -12,7 +12,8 @@ use DiaColloDB::Utils qw(:html);
 use strict;
 
 use overload
-  fallback => 0,
+  #fallback => 0,
+  bool => sub {defined($_[0])},
   '+' => \&add,
   '+=' => \&_add,
   '-' => \&diff,
@@ -46,8 +47,9 @@ sub new {
 ##  + if $keep_score is true, compiled data is cloned too
 sub clone {
   my $mp = shift;
+  my $data = $mp->{data};
   return bless({
-		data=>[map {$_->clone(@_)} @{$mp->{data}}],
+		data=>{map {($_=>$data->{$_}->clone(@_))} keys %$data},
 	       }, ref($mp)
 	      );
 }
@@ -160,10 +162,10 @@ sub _add {
   my $data1 = $mp1->{data};
   my ($key2,$prf2,$prf1);
   while (($key2,$prf2)=each(%{$mp2->{data}})) {
-    if (defined($prf1=$data1->{$_})) {
+    if (defined($prf1=$data1->{$key2})) {
       $prf1->add($prf2);
     } else {
-      $data1->{$_} = $prf2->clone();
+      $data1->{$key2} = $prf2->clone();
     }
   }
   return $mp1->uncompile();

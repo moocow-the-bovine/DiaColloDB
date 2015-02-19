@@ -26,7 +26,9 @@ use IO::File;
 use strict;
 
 use overload
-  fallback => 0,
+  #fallback => 0,
+  bool => sub {defined($_[0])},
+  int => sub {$_[0]{N}},
   '+' => \&add,
   '+=' => \&_add,
   '-' => \&diff,

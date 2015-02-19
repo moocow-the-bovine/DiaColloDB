@@ -613,7 +613,28 @@ sub bench_profile_io {
 
   exit 0;
 }
-bench_profile_io(@ARGV);
+#bench_profile_io(@ARGV);
+
+##==============================================================================
+## test: profile overload
+
+sub test_profile_overload {
+  my $dbdir = shift || 'kern01.d';
+  my $lemma1 = shift || 'Mann';
+  my $lemma2 = shift || 'Frau';
+
+  my $coldb = DiaColloDB->new(dbdir=>$dbdir)
+    or die("$0: failed to open DB-directory $dbdir: $!");
+  my $mp1 = $coldb->coprofile(lemma=>$lemma1, slice=>0, kbest=>10, score=>'ld');
+  my $mp2 = $coldb->coprofile(lemma=>$lemma2, slice=>0, kbest=>10, score=>'ld');
+  my $mp3 = ($mp1 + $mp2)->compile('ld');
+
+  $mp1->saveTextFile(\*STDOUT); print "--\n";
+  $mp2->saveTextFile(\*STDOUT); print "--\n";
+  $mp3->saveTextFile(\*STDOUT); print "--\n";
+  exit 0;
+}
+test_profile_overload(@ARGV);
 
 
 
