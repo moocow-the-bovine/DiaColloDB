@@ -4,8 +4,9 @@
 ## Descript: collocation db: flat fixed-length record-oriented files
 
 package DiaColloDB::PackedFile;
-use DiaColloDB::Utils qw(:fcntl :pack);
 use DiaColloDB::Logger;
+use DiaColloDB::Persistent;
+use DiaColloDB::Utils qw(:fcntl :pack);
 use Tie::Array;
 use Fcntl;
 use IO::File;
@@ -15,7 +16,7 @@ use strict;
 ##==============================================================================
 ## Globals & Constants
 
-our @ISA = qw(DiaColloDB::Logger Tie::Array);
+our @ISA = qw(DiaColloDB::Persistent Tie::Array);
 
 ##==============================================================================
 ## Constructors etc.
@@ -88,7 +89,9 @@ sub opened {
 ## $bool = $pf->close()
 sub close {
   my $pf = shift;
-  my $rc = defined($pf->{fh}) ? CORE::close($pf->{fh}) : 1;
+  my $rc = (($pf->opened && fcwrite($pf->{flags}) ? $pf->flush : 1)
+	    &&
+	    (defined($pf->{fh}) ? CORE::close($pf->{fh}) : 1));
   delete $pf->{fh};
   $pf->{size} = 0;
   return $rc;
@@ -128,9 +131,11 @@ sub truncate {
 ##  + attempt to flush underlying filehandle, may not work
 sub flush {
   my $pf = shift;
-  return undef if (!$pf->opened);
+  return undef if (!$pf->opened || !fcwrite($pf->{flags}));
+  $pf->saveHeader()
+    or $pf->logconfess("flush(): failed to store header file ", $pf->headerFile, ": $!");
   return $pf->{fh}->flush() if (UNIVERSAL::can($pf->{fh},'flush'));
-  return binmode($pf->{fh},':raw'); ##-- see perlfaq5(1) and 
+  return binmode($pf->{fh},':raw'); ##-- see perlfaq5(1) re: flushing filehandles
 }
 
 
@@ -333,18 +338,33 @@ sub bsearch {
 
 
 ##==============================================================================
-## API: text I/O
+## I/O
+##  + largely INHERITED from DiaColloDB::Persistent
 
-## $bool = $pf->saveTextFile($filename_or_fh, %opts)
+##--------------------------------------------------------------
+## I/O: header
+##  + largely INHERITED from DiaColloDB::Persistent
+
+## @keys = $coldb->headerKeys()
+##  + keys to save as header
+sub headerKeys {
+  return grep {!ref($_[0]{$_}) && $_ !~ m{^(?:flags|perms|file|loaded|dirty)$}} keys %{$_[0]};
+}
+
+##--------------------------------------------------------------
+## I/O: text
+
+## $bool = $obj->saveTextFile($filename_or_handle, %opts)
+##  + wraps saveTextFh()
+##  + INHERITED from DiaColloDB::Persistent
+
+## $bool = $pf->saveTextFh($fh, %opts)
 ##  + save from text file with lines of the form "KEY? VALUE(s)..."
 ##  + %opts:
 ##      keys=>$bool,  ##-- do/don't save keys (default=true)
-sub saveTextFile {
-  my ($pf,$file,%opts) = @_;
-  $pf->logconfess("saveTextFile(): no packed-file opened!") if (!$pf->opened);
-
-  my $outfh = ref($file) ? $file : IO::File->new(">$file");
-  $pf->logconfess("saveTextFile(): failed to open '$file': $!") if (!ref($outfh));
+sub saveTextFh {
+  my ($pf,$outfh,%opts) = @_;
+  $pf->logconfess("saveTextFh(): no packed-file opened!") if (!$pf->opened);
 
   my $keys = $opts{keys} // 1;
   my $fh   = $pf->{fh};
@@ -354,21 +374,21 @@ sub saveTextFile {
     $outfh->print(($keys ? "$i\t" : ''), $val, "\n");
   }
 
-  CORE::close($outfh) if (!ref($file));
   return $pf;
 }
 
-## $bool = $pf->loadTextFile($filename_or_fh, %opts)
+## $bool = $obj->loadTextFile($filename_or_handle, %opts)
+##  + wraps loadTextFh()
+##  + INHERITED from DiaColloDB::Persistent
+
+## $bool = $pf->loadTextFh($fh, %opts)
 ##  + load from text file with lines of the form "KEY? VALUE(s)..."
 ##  + %opts:
 ##      keys=>$bool,     ##-- expect keys in input? (default=true)
 ##      gaps=>$bool,     ##-- expect gaps or out-of-order elements in input? (default=false; implies keys=>1)
-sub loadTextFile {
-  my ($pf,$file,%opts) = @_;
+sub loadTextFh {
+  my ($pf,$infh,%opts) = @_;
   $pf->logconfess("loadTextFile(): no packed-file opened!") if (!$pf->opened);
-
-  my $infh = ref($file) ? $file : IO::File->new("<$file");
-  $pf->logconfess("loadTextFile(): failed to open '$file': $!") if (!ref($infh));  $pf->logconfess("loadTextFile(): failed to open '$file': $!") if (!ref($infh));
 
   $pf->truncate();
   my $gaps = $opts{gaps} // 0;
@@ -396,7 +416,6 @@ sub loadTextFile {
   }
   $pf->flush();
 
-  CORE::close($infh) if (!ref($file));
   return $pf;
 }
 

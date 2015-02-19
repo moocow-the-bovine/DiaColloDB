@@ -4,7 +4,7 @@
 ## Description: collocation db, symbol<->integer enum
 
 package DiaColloDB::EnumFile;
-use DiaColloDB::Logger;
+use DiaColloDB::Persistent;
 use DiaColloDB::Utils qw(:fcntl :json :regex);
 use Fcntl qw(:DEFAULT :seek);
 use strict;
@@ -12,7 +12,7 @@ use strict;
 ##==============================================================================
 ## Globals & Constants
 
-our @ISA = qw(DiaColloDB::Logger);
+our @ISA = qw(DiaColloDB::Persistent);
 
 ##==============================================================================
 ## Constructors etc.
@@ -321,6 +321,7 @@ sub save {
 
 ##--------------------------------------------------------------
 ## I/O: header
+##  + see also DiaColloDB::Persistent
 
 ## @keys = $coldb->headerKeys()
 ##  + keys to save as header
@@ -328,43 +329,40 @@ sub headerKeys {
   return grep {!ref($_[0]{$_}) && $_ !~ m{^(?:flags|perms|base|loaded|dirty)$}} keys %{$_[0]};
 }
 
-## $bool = $enum->loadHeader()
-sub loadHeader {
-  my $enum = shift;
-  my $hdr = loadJsonFile("$enum->{base}.hdr");
-  if (!defined($hdr) && (fcflags($enum->{flags})&O_CREAT) != O_CREAT) {
-    $enum->logconfess("loadHeader() failed to load '$enum->{base}.hdr': $!");
+## $bool = $enum->loadHeaderData($hdr)
+##  + instantiates header data from $hdr
+##  + overrides DiaColloDB::Persistent implementation
+sub loadHeaderData {
+  my ($enum,$hdr) = @_;
+  if (!defined($hdr) && !fccreat($enum->{flags})) {
+    $enum->logconfess("loadHeaderData() failed to load header data from ", $enum->headerFile, ": $!");
   }
   elsif (defined($hdr)) {
-    @$enum{keys %$hdr} = values(%$hdr);
+    $enum->SUPER::loadHeaderData($hdr);
   }
   return $enum;
 }
 
 ## $bool = $enum->saveHeader()
-sub saveHeader {
-  my $enum = shift;
-  return undef if (!$enum->opened);
-  my $hdr  = {map {($_=>$enum->{$_})} $enum->headerKeys};
-  saveJsonFile($hdr, "$enum->{base}.hdr")
-    or $enum->logconfess("saveHeader() failed to save '$enum->{base}.hdr': $!");
-  return $enum;
-}
+##  + inherited from DiaColloDB::Persistent
 
 ##--------------------------------------------------------------
 ## I/O: text
+##  + largely INHERITED from DiaColloDB::Persistent
 
-## $enum = $CLASS_OR_OBJECT->loadTextFile($filename_or_fh)
-## $enum = $CLASS_OR_OBJECT->loadTextFile($filename_or_fh, %opts)
+## $bool = $obj->loadTextFile($filename_or_handle, %opts)
+##  + wraps loadTextFh()
+##  + INHERITED from DiaColloDB::Persistent
+
+## $enum = $CLASS_OR_OBJECT->loadTextFh($filename_or_fh)
+## $enum = $CLASS_OR_OBJECT->loadTextFh($filename_or_fh, %opts)
 ##  + loads from text file with lines of the form "ID SYMBOL..."
 ##  + clobbers enum contents
 ##  + %opts locally clobber %$enum, especially:
 ##     pack_s => $pack_s
-sub loadTextFile {
-  my ($enum,$file,%opts) = @_;
+sub loadTextFh {
+  my ($enum,$fh,%opts) = @_;
   $enum = $enum->new(%opts) if (!ref($enum));
-  my $fh = ref($file) ? $file : IO::File->new("<$file");
-  $enum->logconfess("loadTextFile(): failed to open '$file': $!") if (!$fh);
   my $pack_s  = exists($opts{pack_s}) ? $opts{pack_s} : $enum->{pack_s};
   my $packsub = $pack_s && !UNIVERSAL::isa($pack_s,'CODE') ? sub { pack($pack_s,split(/\t/,$_[0])) } : $pack_s;
   my @i2s  = qw();
@@ -376,20 +374,21 @@ sub loadTextFile {
     $s = $packsub->($s) if ($packsub);
     $i2s[$i] = $s;
   }
-  $fh->close() if (!ref($file));
 
   ##-- clobber enum
   return $enum->fromArray(\@i2s);
 }
 
+## $bool = $obj->saveTextFile($filename_or_handle, %opts)
+##  + wraps saveTextFh()
+##  + INHERITED from DiaColloDB::Persistent
+
 ## $bool = $enum->saveTextFile($filename_or_fh,%opts)
 ##  + save from text file with lines of the form "ID SYMBOL..."
 ##  + %opts locally clobber %$enum, especially:
 ##     pack_s => $pack_s
-sub saveTextFile {
-  my ($enum,$file,%opts) = @_;
-  my $fh = ref($file) ? $file : IO::File->new(">$file");
-  $enum->logconfess("saveTextFile(): failed to open '$file': $!") if (!ref($fh));
+sub saveTextFh {
+  my ($enum,$fh,%opts) = @_;
   my $pack_s  = exists($opts{pack_s}) ? $opts{pack_s} : $enum->{pack_s};
   my $packsub = $pack_s && !UNIVERSAL::isa($pack_s,'CODE') ? sub { join("\t", unpack($pack_s,$_[0])) } : $pack_s;
   my $i2s    = $enum->toArray;
@@ -400,7 +399,6 @@ sub saveTextFile {
     }
     ++$i;
   }
-  $fh->close() if (!ref($file));
   return $enum;
 }
 

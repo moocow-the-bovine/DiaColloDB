@@ -16,6 +16,7 @@ use DiaColloDB::Cofreqs;
 use DiaColloDB::Profile;
 use DiaColloDB::Profile::Multi;
 use DiaColloDB::Corpus;
+use DiaColloDB::Persistent;
 use DiaColloDB::Utils qw(:fcntl :json :sort :pack :regex);
 use Fcntl;
 use File::Path qw(make_path remove_tree);
@@ -26,7 +27,7 @@ use strict;
 ## Globals & Constants
 
 our $VERSION = 0.01;
-our @ISA = qw(DiaColloDB::Logger);
+our @ISA = qw(DiaColloDB::Persistent);
 
 ## $PGOOD_DEFAULT
 ##  + default positive pos regex for document parsing
@@ -162,7 +163,6 @@ sub new {
 
 		      ##-- data
 		      xf    => undef, #DiaColloDB::Unigrams->new(packas=>$coldb->{pack_f}),
-		      xN    => 0,     #-- unigram total
 		      cof   => undef, #DiaColloDB::Cofreqs->new(pack_f=>$pack_f, pack_i=>$pack_i, dmax=>$dmax, fmin=>$cfmin),
 
 		      @_,	##-- user arguments
@@ -217,7 +217,7 @@ sub open {
 
   ##-- open: header
   $coldb->loadHeader()
-    or $coldb->logconfess("open(): failed to load header");
+    or $coldb->logconfess("open(): failed to load header file", $coldb->headerFile, ": $!");
 
   ##-- open: common options
   my %efopts = (flags=>$flags, pack_i=>$coldb->{pack_id}, pack_o=>$coldb->{pack_off}, pack_l=>$coldb->{pack_len});
@@ -234,7 +234,7 @@ sub open {
       or $coldb->logconfess("open(): failed to open tuple-enum $dbdir/xenum.*: $!");
 
   ##-- open: xf
-  $coldb->{xf} = DiaColloDB::Unigrams->new(file=>"$dbdir/xf.dba", flags=>$flags, packas=>$coldb->{pack_f}, N=>$coldb->{xN})
+  $coldb->{xf} = DiaColloDB::Unigrams->new(file=>"$dbdir/xf.dba", flags=>$flags, packas=>$coldb->{pack_f})
     or $coldb->logconfess("open(): failed to open tuple-unigrams $dbdir/xf.dba: $!");
 
   ##-- open: cof
@@ -436,7 +436,6 @@ sub create {
     or $coldb->logconfess("create(): could not set unigram db size = $xenum->{size}: $!");
   $xfdb->create($tokfile)
     or $coldb->logconfess("create(): failed to create unigram db: $!");
-  $coldb->{xN} = $xfdb->{N}; ##-- store unigram total
 
   ##-- compute collocation frequencies
   $coldb->info("creating co-frequency db $dbdir/cof.* [dmax=$coldb->{dmax}, fmin=$coldb->{cfmin}]");
@@ -464,40 +463,30 @@ sub create {
 
 ##--------------------------------------------------------------
 ## I/O: header
+##  + largely INHERITED from DiaColloDB::Persistent
 
 ## @keys = $coldb->headerKeys()
 ##  + keys to save as header
 sub headerKeys {
-  my $coldb = shift;
-  return grep {!ref($coldb->{$_}) && $_ !~ m{^(?:dbdir$|flags$|perms$|log)}} keys %$coldb;
+  return grep {!ref($_[0]{$_}) && $_ !~ m{^(?:dbdir$|flags$|perms$|log)}} keys %{$_[0]};
 }
 
-## $bool = $coldb->loadHeader()
-## $bool = $coldb->loadHeader($headerFile)
-sub loadHeader {
-  my ($coldb,$hfile) = @_;
-  $hfile //= "$coldb->{dbdir}/header.json";
-  my $hdr = loadJsonFile($hfile);
-  if (!defined($hdr) && (fcflags($coldb->{flags})&O_CREAT) != O_CREAT) {
-    $coldb->logconfess("loadHeader() failed to load '$hfile': $!");
+## $bool = $coldb->loadHeaderData()
+## $bool = $coldb->loadHeaderData($data)
+sub loadHeaderData {
+  my ($coldb,$hdr) = @_;
+  if (!defined($hdr) && !fccreat($coldb->{flags})) {
+    $coldb->logconfess("loadHeader() failed to load header data from ", $coldb->headerFile, ": $!");
   }
   elsif (defined($hdr)) {
-    @$coldb{keys %$hdr} = values(%$hdr);
+    return $coldb->SUPER::loadHeaderData($hdr);
   }
   return $coldb;
 }
 
 ## $bool = $coldb->saveHeader()
 ## $bool = $coldb->saveHeader($headerFile)
-sub saveHeader {
-  my ($coldb,$hfile) = @_;
-  $hfile //= "$coldb->{dbdir}/header.json";
-  my $hdr  = {map {($_=>$coldb->{$_})} $coldb->headerKeys()};
-  saveJsonFile($hdr, $hfile)
-    or $coldb->logconfess("saveHeader() failed to save '$hfile': $!");
-  return $coldb;
-}
-
+##  + INHERITED from DiaColloDB::Persistent
 
 ##==============================================================================
 ## Export/Import

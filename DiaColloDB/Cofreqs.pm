@@ -6,6 +6,7 @@
 package DiaColloDB::Cofreqs;
 use DiaColloDB::Profile;
 use DiaColloDB::PackedFile;
+use DiaColloDB::Persistent;
 use DiaColloDB::Utils qw(:fcntl :env :run :json);
 use Fcntl;
 use strict;
@@ -13,7 +14,7 @@ use strict;
 ##==============================================================================
 ## Globals & Constants
 
-our @ISA = qw(DiaColloDB::Logger);
+our @ISA = qw(DiaColloDB::Persistent);
 
 ##==============================================================================
 ## Constructors etc.
@@ -117,6 +118,7 @@ sub opened {
 
 ##--------------------------------------------------------------
 ## I/O: header
+##  + largely INHERITED from DiaColloDB::Persistent
 
 ## @keys = $cof->headerKeys()
 ##  + keys to save as header
@@ -124,47 +126,42 @@ sub headerKeys {
   return grep {!ref($_[0]{$_}) && $_ !~ m{^(?:base|flags|perms)$}} keys %{$_[0]};
 }
 
-## $bool = $cof->loadHeader()
-sub loadHeader {
-  my $cof = shift;
-  my $hdr = loadJsonFile("$cof->{base}.hdr");
-  if (!defined($hdr) && (fcflags($cof->{flags})&O_CREAT) != O_CREAT) {
-    $cof->logconfess("loadHeader() failed to load '$cof->{base}.hdr': $!");
+## $bool = $cof->loadHeaderData($hdr)
+##  + instantiates header data from $hdr
+##  + overrides DiaColloDB::Persistent implementation
+sub loadHeaderData {
+  my ($cof,$hdr) = @_;
+  if (!defined($hdr) && !fccreat($cof->{flags})) {
+    $cof->logconfess("loadHeaderData() failed to load header data from ", $cof->headerFile, ": $!");
   }
   elsif (defined($hdr)) {
-    @$cof{keys %$hdr} = values(%$hdr);
+    return $cof->SUPER::loadHeaderData($hdr);
   }
   return $cof;
 }
 
-## $bool = $cof->saveHeader()
-sub saveHeader {
-  my $cof = shift;
-  return undef if (!$cof->opened);
-  my $hdr  = {map {($_=>$cof->{$_})} $cof->headerKeys()};
-  saveJsonFile($hdr, "$cof->{base}.hdr")
-    or $cof->logconfess("saveHeader() failed to save '$cof->{base}.hdr': $!");
-  return $cof;
-}
+## $bool = $enum->saveHeader()
+##  + inherited from DiaColloDB::Persistent
 
 ##--------------------------------------------------------------
 ## I/O: text
+##  + largely INHERITED from DiaColloDB::Persistent
 
-## $cof = $cof->loadTextFile($filename_or_fh,%opts)
-##  + loads from text file as saved by saveTextFile()
+## $bool = $obj->loadTextFile($filename_or_handle, %opts)
+##  + wraps loadTextFh()
+##  + INHERITED from DiaColloDB::Persistent
+
+## $cof = $cof->loadTextFh($fh,%opts)
+##  + loads from text file as saved by saveTextFh()
 ##  + %opts: clobber %$cof
-sub loadTextFile {
-  my ($cof,$file,%opts) = @_;
+sub loadTextFh {
+  my ($cof,$infh,%opts) = @_;
   if (!ref($cof)) {
     $cof = $cof->new(%opts);
   } else {
     @$cof{keys %opts} = values %opts;
   }
   $cof->logconfess("loadTextFile(): cannot load unopened database!") if (!$cof->opened);
-
-  my $infh = ref($file) ? $file : IO::File->new("<$file");
-  $cof->logconfess("loadTextFile(): failed to open '$file': $!") if (!ref($infh));
-  binmode($infh,':raw');
 
   ##-- common variables
   my $pack_f   = $cof->{pack_f};
@@ -184,6 +181,7 @@ sub loadTextFile {
   my $N = 0;
 
   ##-- guts
+  binmode($infh,':raw');
   while (defined($_=<$infh>)) {
     ($f12,$i1,$i2) = split(' ',$_,3);
     next if ($f12 < $fmin);
@@ -225,22 +223,20 @@ sub loadTextFile {
   $cof->{size1} = $r1->size;
   $cof->{size2} = $r2->size;
 
-  ##-- cleanup
-  CORE::close($infh) if (!ref($file));
   return $cof;
 }
 
-## $bool = $cof->saveTextFile($filename_or_fh,%opts)
+## $bool = $obj->saveTextFile($filename_or_handle, %opts)
+##  + wraps saveTextFh()
+##  + INHERITED from DiaColloDB::Persistent
+
+## $bool = $cof->saveTextFh($fh,%opts)
 ##  + save from text file with lines of the form "FREQ ID1 ID2"
 ##  + %opts:
 ##      i2s => \&CODE,   ##-- code-ref for formatting indices; called as $s=CODE($i)
-sub saveTextFile {
-  my ($cof,$file,%opts) = @_;
+sub saveTextFh {
+  my ($cof,$outfh,%opts) = @_;
   $cof->logconfess("saveTextFile(): cannot save unopened DB") if (!$cof->opened);
-
-  my $outfh = ref($file) ? $file : IO::File->new(">$file");
-  $cof->logconfess("saveTextFile(): failed to open output file '$file': $!") if (!ref($outfh));
-  binmode($outfh,':raw');
 
   ##-- common variables
   my ($r1,$r2)   = @$cof{qw(r1 r2)};
@@ -254,6 +250,7 @@ sub saveTextFile {
   my ($buf2,$off2,$i2,$f12);
 
   ##-- ye olde loope
+  binmode($outfh,':raw');
   for ($r1->seek($i1=0), $r2->seek($off2=0); !$r1->eof(); ++$i1) {
     $r1->read(\$buf1) or $cof->logconfess("saveTextFile(): failed to read record $i1 from $r1->{file}: $!");
     ($end2,$f1) = unpack($pack_r1,$buf1);
@@ -269,8 +266,6 @@ sub saveTextFile {
     }
   }
 
-  ##-- cleanup
-  $outfh->close() if (!ref($file));
   return $cof;
 }
 

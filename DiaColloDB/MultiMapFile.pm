@@ -5,6 +5,7 @@
 
 package DiaColloDB::MultiMapFile;
 use DiaColloDB::Logger;
+use DiaColloDB::Persistent;
 use DiaColloDB::Utils qw(:fcntl :json);
 use Fcntl qw(:DEFAULT :seek);
 use strict;
@@ -12,7 +13,7 @@ use strict;
 ##==============================================================================
 ## Globals & Constants
 
-our @ISA = qw(DiaColloDB::Logger);
+our @ISA = qw(DiaColloDB::Persistent);
 
 ##==============================================================================
 ## Constructors etc.
@@ -238,6 +239,7 @@ sub save {
 
 ##--------------------------------------------------------------
 ## I/O: header
+##  + see also DiaColloDB::Persistent
 
 ## @keys = $coldb->headerKeys()
 ##  + keys to save as header
@@ -245,40 +247,38 @@ sub headerKeys {
   return grep {!ref($_[0]{$_}) && $_ !~ m{^(?:flags|perms|base)$}} keys %{$_[0]};
 }
 
-## $bool = $mmf->loadHeader()
-sub loadHeader {
-  my $mmf = shift;
-  my $hdr = loadJsonFile("$mmf->{base}.hdr");
+## $bool = $CLASS_OR_OBJECT->loadHeader()
+##  + wraps $CLASS_OR_OBJECT->loadHeaderFile($CLASS_OR_OBJ->headerFile())
+##  + INHERITED from DiaColloDB::Persistent
+
+## $bool = $mmf->loadHeaderData($hdr)
+sub loadHeaderData {
+  my ($mmf,$hdr) = @_;
   if (!defined($hdr) && (fcflags($mmf->{flags})&O_CREAT) != O_CREAT) {
     $mmf->logconfess("loadHeader() failed to load '$mmf->{base}.hdr': $!");
   }
   elsif (defined($hdr)) {
-    @$mmf{keys %$hdr} = values(%$hdr);
+    return $mmf->SUPER::loadHeaderData($hdr);
   }
   return $mmf;
 }
 
-## $bool = $mmf->saveHeader()
-sub saveHeader {
-  my $mmf = shift;
-  return undef if (!$mmf->opened);
-  my $hdr  = {map {($_=>$mmf->{$_})} $mmf->headerKeys};
-  saveJsonFile($hdr, "$mmf->{base}.hdr")
-    or $mmf->logconfess("saveHeader() failed to save '$mmf->{base}.hdr': $!");
-  return $mmf;
-}
+## $bool = $enum->saveHeader()
+##  + inherited from DiaColloDB::Persistent
 
 ##--------------------------------------------------------------
 ## I/O: text
 
-## $mmf = $CLASS_OR_OBJECT->loadTextFile($filename_or_fh)
+## $bool = $obj->loadTextFile($filename_or_handle, %opts)
+##  + wraps loadTextFh()
+##  + INHERITED from DiaColloDB::Persistent
+
+## $mmf = $CLASS_OR_OBJECT->loadTextFh($filename_or_fh)
 ##  + loads from text file with lines of the form "ID SYMBOL..."
 ##  + clobbers multimap contents
-sub loadTextFile {
-  my ($mmf,$file,%opts) = @_;
+sub loadTextFh {
+  my ($mmf,$fh,%opts) = @_;
   $mmf = $mmf->new(%opts) if (!ref($mmf));
-  my $fh = ref($file) ? $file : IO::File->new("<$file");
-  $mmf->logconfess("loadTextFile(): failed to open '$file': $!") if (!$fh);
 
   my $pack_b = "($mmf->{pack_i})*";
   my @a2b  = qw();
@@ -289,18 +289,19 @@ sub loadTextFile {
     ($a,@b) = split(' ',$_);
     $a2b[$a] = pack($pack_b, @b);
   }
-  $fh->close() if (!ref($file));
 
   ##-- clobber multimap
   return $mmf->fromArray(\@a2b);
 }
 
-## $bool = $mmf->saveTextFile($filename_or_fh)
+## $bool = $obj->saveTextFile($filename_or_handle, %opts)
+##  + wraps saveTextFh()
+##  + INHERITED from DiaColloDB::Persistent
+
+## $bool = $mmf->saveTextFh($filename_or_fh,%opts)
 ##  + save from text file with lines of the form "A B1 B2..."
-sub saveTextFile {
-  my ($mmf,$file,%opts) = @_;
-  my $fh = ref($file) ? $file : IO::File->new(">$file");
-  $mmf->logconfess("saveTextFile(): failed to open '$file': $!") if (!ref($fh));
+sub saveTextFh {
+  my ($mmf,$fh,%opts) = @_;
 
   my $pack_b = "($mmf->{pack_i})*";
   my $a2b    = $mmf->toArray;
@@ -311,7 +312,7 @@ sub saveTextFile {
     }
     ++$a;
   }
-  $fh->close() if (!ref($file));
+
   return $mmf;
 }
 
