@@ -7,13 +7,14 @@
 
 package DiaColloDB::Profile::Multi;
 use DiaColloDB::Profile;
+use DiaColloDB::Persistent;
 use DiaColloDB::Utils qw(:html);
 use strict;
 
 ##==============================================================================
 ## Globals & Constants
 
-our @ISA = qw(DiaColloDB::Logger);
+our @ISA = qw(DiaColloDB::Persistent);
 
 ##==============================================================================
 ## Constructors etc.
@@ -33,23 +34,31 @@ sub new {
 }
 
 ##==============================================================================
+## I/O
+
+##--------------------------------------------------------------
+## I/O: JSON
+##  + INHERITED from DiaCollocDB::Persistent
+
+##--------------------------------------------------------------
 ## I/O: Text
 
-## $bool = $mp->saveTextFile($filename_or_handle)
-sub saveTextFile {
-  my ($mp,$file,%opts) = @_;
-  my $fh = ref($file) ? $file : IO::File->new(">$file");
-  $mp->logconfess("saveTextFile(): failed to open '$file': $!") if (!ref($fh));
+## $bool = $obj->saveTextFile($filename_or_handle, %opts)
+##  + wraps saveTextFh(); INHERITED from DiaCollocDB::Persistent
+
+## $bool = $mp->saveTextFh($fh)
+##  + save text representation to a filehandle (guts)
+sub saveTextFh {
+  my ($mp,$fh,%opts) = @_;
   my $ps = $mp->{data};
   foreach (sort {$a<=>$b} keys %$ps) {
-    $ps->{$_}->saveTextFile($file, prefix=>$_)
+    $ps->{$_}->saveTextFh($fh, prefix=>$_)
       or $mp->logconfess("saveTextFile() saved for sub-profile with key '$_': $!");
   }
-  $fh->close() if (!ref($file));
   return $mp;
 }
 
-##==============================================================================
+##--------------------------------------------------------------
 ## I/O: HTML
 
 ## $bool = $mp->saveHtmlFile($filename_or_handle, %opts)
@@ -83,15 +92,6 @@ sub saveHtmlFile {
   $fh->print("</body></html>\n") if ($opts{body}//1);
   $fh->close() if (!ref($file));
   return $mp;
-}
-
-##==============================================================================
-## I/O: JSON
-
-## $thingy = $mp->TO_JSON()
-##   + JSON module wrapper
-sub TO_JSON {
-  return { %{$_[0]} };
 }
 
 ##==============================================================================

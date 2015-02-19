@@ -132,15 +132,15 @@ sub fcopen {
 ##--------------------------------------------------------------
 ## JSON: load
 
-## $data = PACKAGE::loadJsonString($string)
-## $data = PACKAGE::loadJsonString(\$string)
+## $data = PACKAGE::loadJsonString( $string,%opts)
+## $data = PACKAGE::loadJsonString(\$string,%opts)
 sub loadJsonString {
   my $that = UNIVERSAL::isa($_[0],__PACKAGE__) ? shift : __PACKAGE__;
   my $bufr = ref($_[0]) ? $_[0] : \$_[0];
-  return from_json($$bufr, {utf8=>1, relaxed=>1, allow_nonref=>1});
+  return from_json($$bufr, {utf8=>1, relaxed=>1, allow_nonref=>1, @_[1..$#_]});
 }
 
-## $data = PACKAGE::loadJsonFile($filename_or_handle)
+## $data = PACKAGE::loadJsonFile($filename_or_handle,%opts)
 sub loadJsonFile {
   my $that = UNIVERSAL::isa($_[0],__PACKAGE__) ? shift : __PACKAGE__;
   my $file = shift;
@@ -150,7 +150,7 @@ sub loadJsonFile {
   local $/=undef;
   my $buf = <$fh>;
   close($fh) if (!ref($file));
-  return $that->loadJsonString(\$buf);
+  return $that->loadJsonString(\$buf,@_);
 }
 
 ##--------------------------------------------------------------

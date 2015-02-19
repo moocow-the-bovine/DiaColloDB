@@ -21,13 +21,14 @@
 
 package DiaColloDB::Profile;
 use DiaColloDB::Utils qw(:math :html);
+use DiaColloDB::Persistent;
 use IO::File;
 use strict;
 
 ##==============================================================================
 ## Globals & Constants
 
-our @ISA = qw(DiaColloDB::Logger);
+our @ISA = qw(DiaColloDB::Persistent);
 
 ##==============================================================================
 ## Constructors etc.
@@ -62,18 +63,19 @@ sub new {
 ## I/O
 
 ##--------------------------------------------------------------
+## I/O: JSON
+##  + INHERITED from DiaCollocDB::Persistent
+
+##--------------------------------------------------------------
 ## I/O: Text
 
-## $bool = $prf->saveTextFile($filename_or_handle, %opts)
+## $bool = $prf->saveTextFh($fh, %opts)
 ##  + %opts:
 ##    (
 ##     prefix => $prefix,   ##-- prefix each item-string with $sprefix (used by Profile::Multi), no tab-separators required
 ##    )
-sub saveTextFile {
-  my ($prf,$file,%opts) = @_;
-  my $fh = ref($file) ? $file : IO::File->new(">$file");
-  $prf->logconfess("saveTextFile(): failed to open '$file': $!") if (!ref($fh));
-
+sub saveTextFh {
+  my ($prf,$fh,%opts) = @_;
   my ($f1,$f2,$f12) = @$prf{qw(f1 f2 f12)};
   my $prefix = $opts{prefix} // '';
   my $fscore = $prf->{$prf->{score}//'f12'};
@@ -90,7 +92,6 @@ sub saveTextFile {
 		    $_),
 	       "\n");
   }
-  $fh->close() if (!ref($file));
   return $prf;
 }
 
@@ -144,14 +145,6 @@ sub saveHtmlFile {
   return $prf;
 }
 
-##--------------------------------------------------------------
-## I/O: JSON
-
-## $thingy = $prf->TO_JSON()
-##   + JSON module wrapper
-sub TO_JSON {
-  return { %{$_[0]} };
-}
 
 ##==============================================================================
 ## Compilation
