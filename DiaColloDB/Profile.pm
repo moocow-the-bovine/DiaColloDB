@@ -108,6 +108,7 @@ sub saveTextFh {
 ##     hprefix => $hprefix, ##-- prefix header item-cells with $hprefix (used by Profile::Multi), no '<th>..</th>' required
 ##     prefix => $prefix,   ##-- prefix item-cells with $prefix (used by Profile::Multi), no '<td>..</td>' required
 ##    )
+##  + saves rows of the format "N F1 F2 F12 SCORE PREFIX? ITEM2"
 sub saveHtmlFile {
   my ($prf,$file,%opts) = @_;
   my $fh = ref($file) ? $file : IO::File->new(">$file");
@@ -117,8 +118,7 @@ sub saveHtmlFile {
   $fh->print("<table><tbody>\n") if ($opts{table}//1);
   $fh->print("<tr>",(
 		     map {"<th>".htmlesc($_)."</th>"}
-		     #'N'
-		     qw(f1 f2 f12 score),
+		     qw(N f1 f2 f12 score),
 		     (defined($opts{hprefix}) ? $opts{hprefix} : qw()),
 		     qw(item2)
 		    ),
@@ -130,7 +130,7 @@ sub saveHtmlFile {
   my $fscore = $prf->{$prf->{score}//'f12'};
   foreach (sort {$fscore->{$b} <=> $fscore->{$a}} keys %$fscore) {
     $fh->print("<tr>", (map {"<td>".htmlesc($_)."</td>"}
-			#$N,
+			$N,
 			$f1,
 			$f2->{$_},
 			$f12->{$_},

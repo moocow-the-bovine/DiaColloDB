@@ -76,8 +76,7 @@ sub saveHtmlFile {
   $fh->print("<table><tbody>\n") if ($opts{table}//1);
   $fh->print("<tr>",(
 		     map {"<th>".htmlesc($_)."</th>"}
-		     #'N'
-		     qw(f1 f2 f12 score),
+		     qw(N f1 f2 f12 score),
 		     qw(date),
 		     qw(item2)
 		    ),
