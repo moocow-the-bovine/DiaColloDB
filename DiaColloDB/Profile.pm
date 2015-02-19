@@ -77,7 +77,7 @@ sub new {
 ##  + saves lines of the format "N F1 F2 F12 SCORE PREFIX? ITEM2"
 sub saveTextFh {
   my ($prf,$fh,%opts) = @_;
-  my ($f1,$f2,$f12,$N) = @$prf{qw(f1 f2 f12 N)};
+  my ($N,$f1,$f2,$f12) = @$prf{qw(N f1 f2 f12)};
   my $prefix = $opts{prefix} // '';
   my $fscore = $prf->{$prf->{score}//'f12'};
   foreach (sort {$fscore->{$b} <=> $fscore->{$a}} keys %$fscore) {
@@ -125,7 +125,7 @@ sub saveHtmlFile {
 	     "</tr>\n"
 	    ) if ($opts{header}//1);
 
-  my ($f1,$f2,$f12) = @$prf{qw(f1 f2 f12)};
+  my ($N,$f1,$f2,$f12) = @$prf{qw(N f1 f2 f12)};
   my $prefix = $opts{prefix} // '';
   my $fscore = $prf->{$prf->{score}//'f12'};
   foreach (sort {$fscore->{$b} <=> $fscore->{$a}} keys %$fscore) {
