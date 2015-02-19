@@ -1,3 +1,7 @@
+Makefile.PL
+MANIFEST
+MANIFEST.SKIP
+MYMETA.yml
 DiaColloDB.pm
 DiaColloDB/Cofreqs.pm
 DiaColloDB/Corpus.pm
