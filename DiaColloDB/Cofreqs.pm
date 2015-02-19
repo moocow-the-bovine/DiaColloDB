@@ -184,7 +184,7 @@ sub loadTextFh {
   binmode($infh,':raw');
   while (defined($_=<$infh>)) {
     ($f12,$i1,$i2) = split(' ',$_,3);
-    next if ($f12 < $fmin);
+    #next if ($f12 < $fmin);  ##-- don't skip here so that we can track "real" marginal frequencies
     if ($i1 != $i1_cur) {
       if ($i1_cur != -1) {
 	##-- dump record for $i1_cur
@@ -203,6 +203,7 @@ sub loadTextFh {
     ##-- track marginal f($i1) and N
     $f1_cur += $f12;
     $N      += $f12;
+    next if ($f12 < $fmin);
 
     ##-- dump record to $r2
     $fh2->print(pack($pack_r2, $i2,$f12));

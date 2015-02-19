@@ -72,16 +72,17 @@ sub new {
 ## $bool = $prf->saveTextFh($fh, %opts)
 ##  + %opts:
 ##    (
-##     prefix => $prefix,   ##-- prefix each item-string with $sprefix (used by Profile::Multi), no tab-separators required
+##     prefix => $prefix,   ##-- prepend each item-string with $prefix (used by Profile::Multi), no tab-separators required
 ##    )
+##  + saves lines of the format "N F1 F2 F12 SCORE PREFIX? ITEM2"
 sub saveTextFh {
   my ($prf,$fh,%opts) = @_;
-  my ($f1,$f2,$f12) = @$prf{qw(f1 f2 f12)};
+  my ($f1,$f2,$f12,$N) = @$prf{qw(f1 f2 f12 N)};
   my $prefix = $opts{prefix} // '';
   my $fscore = $prf->{$prf->{score}//'f12'};
   foreach (sort {$fscore->{$b} <=> $fscore->{$a}} keys %$fscore) {
     $fh->print(join("\t",
-		    #$N,
+		    $N,
 		    $f1,
 		    $f2->{$_},
 		    $f12->{$_},

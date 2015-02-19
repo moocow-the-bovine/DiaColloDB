@@ -31,7 +31,7 @@ our %profile = (
 		date  =>undef,  ##-- selected date(s)
 		slice =>1,      ##-- date slice
 		score =>'f',    ##-- score func
-		kbest =>undef,  ##-- k-best items per date
+		kbest =>10,     ##-- k-best items per date
 		cutoff =>undef, ##-- minimum score cutoff
 		strings => 1,    ##-- debug: want strings?
 	       );
@@ -148,7 +148,7 @@ coldb-profile.perl - get a frequency profile from a DiaColloDB
    -date DATES          # set target DATE or /REGEX/ or MIN-MAX
    -slice SLICE         # set target date slice (default=1)
    -freq , -mi , -ld    # set scoring function (default=-f)
-   -kbest KBEST         # return only KBEST items per date-slice (default=all)
+   -kbest KBEST         # return only KBEST items per date-slice (default=10)
    -nokbest             # disable k-best pruning
    -cutoff CUTOFF       # set minimum score for returned items (default=none)
    -nocutoff            # disable cutoff pruning

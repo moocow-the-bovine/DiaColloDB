@@ -74,6 +74,7 @@ sub open {
   @$pf{keys %opts} = values(%opts);
   $flags = $pf->{flags} = fcflags($flags // $pf->{flags});
   return undef if (!defined($pf->{file} = $file = ($file // $pf->{file})));
+  return undef if (-f "$pf->{file}.hdr" && !$pf->loadHeader()); ##-- allow missing header files for old v0.01 PackedFile objects
   $pf->{fh} = fcopen($file, $flags, $pf->{perms})
     or return undef;
   binmode($pf->{fh},':raw');
