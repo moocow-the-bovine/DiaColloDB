@@ -705,7 +705,7 @@ sub test_profile_diff {
     my %pkeys = map {($_=>undef)} (($p1 ? @{$p1->which(kbest=>10)} : qw()), ($p2 ? @{$p2->which(kbest=>10)} : qw()));
     $p1->trim(keep=>\%pkeys)->stringify($coldb->{lenum}) if ($p1);
     $p2->trim(keep=>\%pkeys)->stringify($coldb->{lenum}) if ($p2);
-  };
+  }
 
   my $mp_diff = $mp1->diff($mp2,N=>0);
   save_profile_binop('-',$mp1,$mp2,$mp_diff);

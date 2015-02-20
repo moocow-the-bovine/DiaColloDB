@@ -1,7 +1,7 @@
 ## -*- Mode: CPerl -*-
 ## File: DiaColloDB::Profile.pm
 ## Author: Bryan Jurish <moocow@cpan.org>
-## Description: collocation db, co-frequency profile
+## Description: collocation db, (co-)frequency profile
 ##  + for scoring heuristics, see:
 ##
 ##    - Jörg Didakowski; Alexander Geyken, 2013. From DWDS corpora to a German Word Profile – methodological problems and solutions.
@@ -22,6 +22,7 @@
 package DiaColloDB::Profile;
 use DiaColloDB::Utils qw(:math :html);
 use DiaColloDB::Persistent;
+use DiaColloDB::Profile::Diff;
 use IO::File;
 use strict;
 
@@ -479,11 +480,11 @@ sub _diff {
   return $pa;
 }
 
-## $prf3 = $prf1->diff($prf2,%opts)
-##  + returns score-diff of $prf1 and $prf2 frequency data (destructive)
-##  + %opts: see _diff() method
+## $diff = $prf1->diff($prf2,%opts)
+##  + returns new score-diff of $prf1 and $prf2 frequency data
+##  + %opts are passed to DiaColloDB::Profile::Diff->new()
 sub diff {
-  return $_[0]->clone(1)->_diff(@_[1..$#_]);
+  return DiaColloDB::Profile::Diff->new(prf1=>$_[0],prf2=>$_[1],@_[2..$#_]);
 }
 
 
