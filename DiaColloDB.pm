@@ -632,7 +632,7 @@ sub coprofile {
 ##     date  => $date1,           ##-- string or array or range "MIN-MAX" (inclusive) : default=all
 ##     ##
 ##     ##-- aggregation parameters
-##     #groupby => $attrs,         ##-- string or array; ("lemma"|"date")* : default=lemma,date
+##     #groupby => $attrs,         ##-- string or array; ("lemma"|"date")* : default=lemma,date : NYI
 ##     slice   => $slice,         ##-- date slice (default=1, 0 for global profile)
 ##     ##
 ##     ##-- scoring and trimming parameters
@@ -658,9 +658,12 @@ sub profile {
   my $cutoff  = $opts{cutoff} // '';
   my $strings = $opts{strings} // 1;
 
+  ##-- debug
+  $coldb->debug("profile(lemma='$lemma', date='$date', slice=$slice, score=$score, eps=$eps, kbest=$kbest, cutoff=$cutoff)");
+
   ##-- sanity check(s)
   if (!UNIVERSAL::can($coldb->{$rel},'profile')) {
-    if ($rel =~ m/^(?:xf|f?1|ug)$/) { 
+    if ($rel =~ m/^(?:xf|f?1|ug)$/) {
       $rel = 'xf';
     }
     elsif ($rel =~ m/^(?:f?1?2$|c)/) {
@@ -738,7 +741,7 @@ sub profile {
   }
 
   ##-- profile: get low-level co-frequency profiles
-  $coldb->vlog($logProfile, "profile(): get frequency profile(s) [rel=$rel, score=$score, eps=$eps, kbest=$kbest, cutoff=$cutoff]");
+  $coldb->vlog($logProfile, "profile(): get frequency profile(s)");
   my $gbsub = sub { unpack($pack_i,$xenum->i2s($_[0])) };
   my $d2prf = {}; ##-- ($dateKey => $profileForDateKey, ...)
   my $reldb = $coldb->{$rel};

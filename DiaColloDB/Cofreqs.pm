@@ -204,7 +204,7 @@ sub loadTextFh {
     $f1_cur += $f12;
     $N      += $f12;
     next if ($f12 < $fmin  ##-- minimum co-occurrence frequency filter
-	     || $i1==$i2   ##-- suppress identity collocations
+	     #|| $i1==$i2   ##-- suppress identity collocations (... but we can't eliminate e.g. lemma-identity if using complex tuples!)
 	    );
 
     ##-- dump record to $r2

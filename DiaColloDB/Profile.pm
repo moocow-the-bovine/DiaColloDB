@@ -148,8 +148,8 @@ sub saveTextFh {
 ##     table  => $bool,     ##-- include <table>..</table> ? (default=1)
 ##     body   => $bool,     ##-- include <html><body>..</html></body> ? (default=1)
 ##     header => $bool,     ##-- include header-row? (default=1)
-##     hprefix => $hprefix, ##-- prefix header item-cells with $hprefix (used by Profile::Multi), no '<th>..</th>' required
-##     prefix => $prefix,   ##-- prefix item-cells with $prefix (used by Profile::Multi), no '<td>..</td>' required
+##     hlabel => $hlabel,   ##-- prefix header item-cells with $hlabel (used by Profile::Multi), no '<th>..</th>' required
+##     label => $label,     ##-- prefix item-cells with $label (used by Profile::Multi), no '<td>..</td>' required
 ##    )
 ##  + saves rows of the format "N F1 F2 F12 SCORE PREFIX? ITEM2"
 sub saveHtmlFile {
@@ -162,14 +162,14 @@ sub saveHtmlFile {
   $fh->print("<tr>",(
 		     map {"<th>".htmlesc($_)."</th>"}
 		     qw(N f1 f2 f12 score),
-		     (defined($opts{hprefix}) ? $opts{hprefix} : qw()),
+		     (defined($opts{hlabel}) ? $opts{hlabel} : qw()),
 		     qw(item2)
 		    ),
 	     "</tr>\n"
 	    ) if ($opts{header}//1);
 
   my ($N,$f1,$f2,$f12) = @$prf{qw(N f1 f2 f12)};
-  my $prefix = $opts{prefix} // '';
+  my $label = (exists($opts{label}) ? $opts{label} : $prf->{label});
   my $fscore = $prf->{$prf->{score}//'f12'};
   foreach (sort {$fscore->{$b} <=> $fscore->{$a}} keys %$fscore) {
     $fh->print("<tr>", (map {"<td>".htmlesc($_)."</td>"}
@@ -178,7 +178,7 @@ sub saveHtmlFile {
 			$f2->{$_},
 			$f12->{$_},
 			($fscore ? $fscore->{$_} : 'NA'),
-			(defined($prefix) ? $prefix : qw()),
+			(defined($label) ? $label : qw()),
 			$_
 		       ),
 	       "</tr>\n");

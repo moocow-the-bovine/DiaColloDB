@@ -618,7 +618,7 @@ sub bench_profile_io {
 ##==============================================================================
 ## test: profile algebra
 
-sub save_profile_op {
+sub save_profile_binop {
   my ($op,$mp1,$mp2,$mp3) = @_;
   foreach my $key (sort {$a<=>$b} keys %{$mp3->{data}}) {
     my ($p1,$p2,$p3) = ($mp1->{data}{$key},$mp2->{data}{$key},$mp3->{data}{$key});
@@ -635,25 +635,26 @@ sub save_profile_op {
   }
 }
 
-sub test_profile_algebra {
+sub test_profile_binops {
   my $dbdir = shift || 'kern01.d';
   my $lemma1 = shift || 'Mann';
   my $lemma2 = shift || 'Frau';
+  my $score = shift || 'ld';
 
   my $coldb = DiaColloDB->new(dbdir=>$dbdir)
     or die("$0: failed to open DB-directory $dbdir: $!");
-  my $mp1 = $coldb->coprofile(lemma=>$lemma1, slice=>0, kbest=>10, score=>'ld');
-  my $mp2 = $coldb->coprofile(lemma=>$lemma2, slice=>0, kbest=>10, score=>'ld');
+  my $mp1 = $coldb->coprofile(lemma=>$lemma1, slice=>0, kbest=>10, score=>$score);
+  my $mp2 = $coldb->coprofile(lemma=>$lemma2, slice=>0, kbest=>10, score=>$score);
 
-  #my $mp_add = $mp1->add($mp2,N=>0)->compile('ld');
-  #save_profile_op('+',$mp1,$mp2,$mp_add);
+  #my $mp_add = $mp1->add($mp2,N=>0)->compile($score);
+  #save_profile_binop('+',$mp1,$mp2,$mp_add);
 
   my $mp_diff = $mp1->diff($mp2);
-  save_profile_op('-',$mp1,$mp2,$mp_diff);
+  save_profile_binop('-',$mp1,$mp2,$mp_diff);
 
   exit 0;
 }
-test_profile_algebra(@ARGV);
+test_profile_binops(@ARGV);
 
 
 

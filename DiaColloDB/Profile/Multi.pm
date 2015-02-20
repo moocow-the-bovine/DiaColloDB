@@ -73,7 +73,7 @@ sub saveTextFh {
   my ($mp,$fh,%opts) = @_;
   my $ps = $mp->{data};
   foreach (sort {$a<=>$b} keys %$ps) {
-    $ps->{$_}->saveTextFh($fh, prefix=>$_)
+    $ps->{$_}->saveTextFh($fh, label=>$_)
       or $mp->logconfess("saveTextFile() saved for sub-profile with key '$_': $!");
   }
   return $mp;
@@ -105,7 +105,7 @@ sub saveHtmlFile {
 	    ) if ($opts{header}//1);
   my $ps = $mp->{data};
   foreach (sort {$a<=>$b} keys %$ps) {
-    $ps->{$_}->saveHtmlFile($file, prefix=>$_, table=>0,body=>0,header=>0)
+    $ps->{$_}->saveHtmlFile($file, label=>$_, table=>0,body=>0,header=>0)
       or $mp->logconfess("saveTextFile() saved for sub-profile with key '$_': $!");
   }
   $fh->print("</tbody><table>\n") if ($opts{table}//1);
