@@ -72,7 +72,7 @@ sub clone {
 sub saveTextFh {
   my ($mp,$fh,%opts) = @_;
   my $ps = $mp->{data};
-  foreach (sort {$a<=>$b} keys %$ps) {
+  foreach (sort keys %$ps) {
     $ps->{$_}->saveTextFh($fh, label=>$_)
       or $mp->logconfess("saveTextFile() saved for sub-profile with key '$_': $!");
   }
@@ -104,7 +104,7 @@ sub saveHtmlFile {
 	     "</tr>\n"
 	    ) if ($opts{header}//1);
   my $ps = $mp->{data};
-  foreach (sort {$a<=>$b} keys %$ps) {
+  foreach (sort keys %$ps) {
     $ps->{$_}->saveHtmlFile($file, label=>$_, table=>0,body=>0,header=>0)
       or $mp->logconfess("saveTextFile() saved for sub-profile with key '$_': $!");
   }

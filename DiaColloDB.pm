@@ -604,24 +604,111 @@ sub dbimport {
 ## Profiling
 
 ##--------------------------------------------------------------
-## Profiling: Co-Frequencies
+## Profiling: Wrappers
 
-## $mprf = $coldb->xfprofile(%opts)
+## $mprf = $coldb->profile1(%opts)
 ##  + get unigram frequency profile for selected items as a DiaColloDB::Profile::Multi object
 ##  + really just wraps $coldb->profile('xf', %opts)
 ##  + %opts: see profile() method
-sub xfprofile {
+sub profile1 {
   return $_[0]->profile('xf',@_[1..$#_]);
 }
 
 
-## $mprf = $coldb->coprofile(%opts)
+## $mprf = $coldb->profile2(%opts)
 ##  + get co-frequency profile for selected items as a DiaColloDB::Profile::Multi object
 ##  + really just wraps $coldb->profile('cof', %opts)
 ##  + %opts: see profile() method
-sub coprofile {
+sub profile2 {
   return $_[0]->profile('cof',@_[1..$#_]);
 }
+
+##--------------------------------------------------------------
+## Profiling: Utils
+
+## $obj_or_undef = $coldb->relation($rel)
+##  + returns an appropriate relation-like object for profile() and friends
+##  + returns $coldb->{$rel} if it supports a profile() method
+##  + otherwise heuristically parses $relationName qw(xf|f?1|ug) or qw(f1?2|c)
+sub relation {
+  my ($coldb,$rel) = @_;
+  my ($obj);
+  if (UNIVERSAL::can($coldb->{$rel},'profile')) {
+    $obj = $coldb->{$rel};
+  }
+  elsif ($rel =~ m/^(?:xf|f?1|ug)$/) {
+    $obj = $coldb->{xf};
+  }
+  elsif ($rel =~ m/^(?:f?1?2$|c)/) {
+    $obj = $coldb->{cof};
+  }
+  return $obj;
+}
+
+## \@ids = $coldb->enumIds($enum,$req,%opts)
+##  + %opts:
+##     logLevel => $logLevel, ##-- logging level (default=undef)
+##     logPrefix => $prefix,  ##-- logging prefix (default="enumIds(): fetch ids")
+sub enumIds {
+  my ($coldb,$enum,$req,%opts) = @_;
+  $opts{logPrefix} //= "enumIds(): fetch ids";
+  if (UNIVERSAL::isa($req,'ARRAY')) {
+    ##-- lemmas: array
+    $coldb->vlog($opts{logLevel}, $opts{logPrefix}, " (ARRAY)");
+    return [map {$enum->s2i($_)} @$req];
+  }
+  elsif ($req =~ m{^/}) {
+    ##-- lemmas: regex
+    $coldb->vlog($opts{logLevel}, $opts{logPrefix}, " (REGEX)");
+    return $enum->re2i($req);
+  }
+  else {
+    ##-- lemmas: space-separated literals
+    $coldb->vlog($opts{logLevel}, $opts{logPrefix}, " (STRINGS)");
+    return [grep {defined($_)} map {$enum->s2i($_)} grep {($_//'') ne ''} map {s{\\(.)}{$1}g; $_} split(/(?:(?<!\\)[\,\s])+/,$req)];
+  }
+  return [];
+}
+
+## \%slice2xids = $coldb->xidsByDate(\@xids, $dateRequest, $sliceRequest)
+##   + parse and filter \@xids by $dateRequest, $sliceRequest
+##   + returns a HASH-ref from slice-ids to \@xids in that date-slice
+sub xidsByDate {
+  my ($coldb,$xids,$date,$slice) = @_;
+  my $dfilter = undef;
+  if ($date && $date =~ /^\//) {
+    my $dre  = regex($date);
+    $dfilter = sub { $_[0] =~ $dre };
+  }
+  elsif ($date && $date =~ /^\s*([0-9]+)\s*[\-\:]+\s*([0-9]+)\s*$/) {
+    my ($dlo,$dhi) = ($1+0,$2+0);
+    $dfilter = sub { $_[0]>=$dlo && $_[0]<=$dhi };
+  }
+  elsif ($date && $date =~ /[\s\,]/) {
+    my %dwant = map {($_=>undef)} grep {($_//'') ne ''} split(/[\s\,]+/,$date);
+    $dfilter  = sub { exists($dwant{$_[0]}) };
+  }
+  elsif ($date) {
+    $dfilter = sub { $_[0] == $date };
+  }
+  my $xenum  = $coldb->{xenum};
+  my $pack_x = $coldb->{pack_x};
+  my $pack_i = $coldb->{pack_id};
+  my $pack_d = $coldb->{pack_date};
+  my $pack_xd = "@".packsize($pack_i).$pack_d;
+  my $d2xis  = {}; ##-- ($dateKey => \@xis_at_date, ...)
+  my ($xi,$d);
+  foreach $xi (@$xids) {
+    $d = unpack($pack_xd, $xenum->i2s($xi));
+    next if ($dfilter && !$dfilter->($d));
+    $d = $slice ? int($d/$slice)*$slice : 0;
+    push(@{$d2xis->{$d}}, $xi);
+  }
+  return $d2xis;
+}
+
+##--------------------------------------------------------------
+## Profiling: Generic
 
 ## $mprf = $coldb->profile($relation, %opts)
 ##  + get a relation profile for selected items as a DiaColloDB::Profile::Multi object
@@ -662,44 +749,18 @@ sub profile {
   $coldb->debug("profile(lemma='$lemma', date='$date', slice=$slice, score=$score, eps=$eps, kbest=$kbest, cutoff=$cutoff)");
 
   ##-- sanity check(s)
-  if (!UNIVERSAL::can($coldb->{$rel},'profile')) {
-    if ($rel =~ m/^(?:xf|f?1|ug)$/) {
-      $rel = 'xf';
-    }
-    elsif ($rel =~ m/^(?:f?1?2$|c)/) {
-      $rel = 'cof';
-    }
-    else {
-      $coldb->logwarn("profile(): unknown relation '$rel'");
-      return undef;
-    }
+  my ($reldb);
+  if (!defined($reldb=$coldb->relation($rel||'cof'))) {
+    $coldb->logwarn($coldb->{error}="profile(): unknown relation '".($rel//'-undef-')."'");
+    return undef;
   }
   if ($lemma eq '') {
     $coldb->logwarn($coldb->{error}="profile(): missing required parameter 'lemma'");
     return undef;
   }
-  if (!UNIVERSAL::can($coldb->{$rel},'profile')) {
-    $coldb->logwarn($coldb->{error}="profile(): unknown relation '$rel'");
-    return undef;
-  }
 
-  ##-- prepare: get target lemmas
-  my ($lis);
-  if (UNIVERSAL::isa($lemma,'ARRAY')) {
-    ##-- lemmas: array
-    $coldb->vlog($logProfile, "profile(): get target lemmata (ARRAY)");
-    $lis = [map {$lenum->s2i($_)} @$lemma];
-  }
-  elsif ($lemma =~ m{^/}) {
-    ##-- lemmas: regex
-    $coldb->vlog($logProfile, "profile(): get target lemmata (REGEX)");
-    $lis = $lenum->re2i($lemma);
-  }
-  else {
-    ##-- lemmas: space-separated literals
-    $coldb->vlog($logProfile, "profile(): get target lemmata (STRINGS)");
-    $lis = [grep {defined($_)} map {$lenum->s2i($_)} grep {($_//'') ne ''} map {s{\\(.)}{$1}g; $_} split(/(?:(?<!\\)[\,\s])+/,$lemma)];
-  }
+  ##-- prepare: get target lemmata
+  my $lis = $coldb->enumIds($lenum,$lemma,logLevel=>$logProfile, logPrefix=>"profile(): get target lemmata");
   if (!@$lis) {
     $coldb->logwarn($coldb->{error}="profile(): no lemmata matching user query '$lemma'");
     return undef;
@@ -711,47 +772,21 @@ sub profile {
 
   ##-- prepare: parse and filter tuples
   $coldb->vlog($logProfile, "profile(): parse and filter target tuples");
-  my $dfilter = undef;
-  if ($date && $date =~ /^\//) {
-    my $dre  = regex($date);
-    $dfilter = sub { $_[0] =~ $dre };
-  }
-  elsif ($date && $date =~ /^\s*([0-9]+)\s*[\-\:]+\s*([0-9]+)\s*$/) {
-    my ($dlo,$dhi) = ($1+0,$2+0);
-    $dfilter = sub { $_[0]>=$dlo && $_[0]<=$dhi };
-  }
-  elsif ($date && $date =~ /[\s\,]/) {
-    my %dwant = map {($_=>undef)} grep {($_//'') ne ''} split(/[\s\,]+/,$date);
-    $dfilter  = sub { exists($dwant{$_[0]}) };
-  }
-  elsif ($date) {
-    $dfilter = sub { $_[0] == $date };
-  }
-  my $d2xis  = {}; ##-- ($dateKey => \@xis_at_date, ...)
-  my $pack_x = $coldb->{pack_x};
-  my $pack_i = $coldb->{pack_id};
-  my $pack_d = $coldb->{pack_date};
-  my $pack_xd = "@".packsize($pack_i).$pack_d;
-  my ($xi,$d);
-  foreach $xi (@$xis) {
-    $d = unpack($pack_xd, $xenum->i2s($xi));
-    next if ($dfilter && !$dfilter->($d));
-    $d = $slice ? int($d/$slice)*$slice : 0;
-    push(@{$d2xis->{$d}}, $xi);
-  }
+  my $d2xis = $coldb->xidsByDate($xis, $date, $slice);
 
   ##-- profile: get low-level co-frequency profiles
   $coldb->vlog($logProfile, "profile(): get frequency profile(s)");
-  my $gbsub = sub { unpack($pack_i,$xenum->i2s($_[0])) };
-  my $d2prf = {}; ##-- ($dateKey => $profileForDateKey, ...)
-  my $reldb = $coldb->{$rel};
-  my ($prf);
+  my $pack_i = $coldb->{pack_id};
+  my $gbsub  = sub { unpack($pack_i,$xenum->i2s($_[0])) };
+  my $d2prf  = {}; ##-- ($dateKey => $profileForDateKey, ...)
+  my ($d,$prf);
   foreach $d (sort {$a<=>$b} keys %$d2xis) {
     $prf = $reldb->profile($d2xis->{$d}, groupby=>$gbsub);
     $prf->compile($score, eps=>$eps);
     $prf->trim(kbest=>$kbest, cutoff=>$cutoff);
     $prf = $prf->stringify($lenum) if ($strings);
-    $d2prf->{$d} = $prf;
+    $prf->{label} = $d;
+    $d2prf->{$d}  = $prf;
   }
 
   return DiaColloDB::Profile::Multi->new(data=>$d2prf);
