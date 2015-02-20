@@ -616,9 +616,26 @@ sub bench_profile_io {
 #bench_profile_io(@ARGV);
 
 ##==============================================================================
-## test: profile overload
+## test: profile algebra
 
-sub test_profile_overload {
+sub save_profile_op {
+  my ($op,$mp1,$mp2,$mp3) = @_;
+  foreach my $key (sort {$a<=>$b} keys %{$mp3->{data}}) {
+    my ($p1,$p2,$p3) = ($mp1->{data}{$key},$mp2->{data}{$key},$mp3->{data}{$key});
+    print join("\t",
+	       "N:$p1->{N}${op}$p2->{N}=$p3->{N}",
+	       "f1:$p1->{f1}${op}$p2->{f1}=$p3->{f1}")."\n";
+    foreach my $i2 (sort {$p3->{f12}{$b}<=>$p3->{f12}{$a}} keys %{$p3->{f12}}) {
+      print join("\t",
+		 '',$i2,
+		 map {"$_:".($p1->{$_}{$i2}//0).$op.($p2->{$_}{$i2}//0).'='.$p3->{$_}{$i2}}
+		 (qw(f2 f12),grep {defined($p3->{$_})} $p3->scoreKeys),
+		)."\n";
+    }
+  }
+}
+
+sub test_profile_algebra {
   my $dbdir = shift || 'kern01.d';
   my $lemma1 = shift || 'Mann';
   my $lemma2 = shift || 'Frau';
@@ -627,14 +644,16 @@ sub test_profile_overload {
     or die("$0: failed to open DB-directory $dbdir: $!");
   my $mp1 = $coldb->coprofile(lemma=>$lemma1, slice=>0, kbest=>10, score=>'ld');
   my $mp2 = $coldb->coprofile(lemma=>$lemma2, slice=>0, kbest=>10, score=>'ld');
-  my $mp3 = ($mp1 + $mp2)->compile('ld');
 
-  $mp1->saveTextFile(\*STDOUT); print "--\n";
-  $mp2->saveTextFile(\*STDOUT); print "--\n";
-  $mp3->saveTextFile(\*STDOUT); print "--\n";
+  #my $mp_add = $mp1->add($mp2,N=>0)->compile('ld');
+  #save_profile_op('+',$mp1,$mp2,$mp_add);
+
+  my $mp_diff = $mp1->diff($mp2);
+  save_profile_op('-',$mp1,$mp2,$mp_diff);
+
   exit 0;
 }
-test_profile_overload(@ARGV);
+test_profile_algebra(@ARGV);
 
 
 

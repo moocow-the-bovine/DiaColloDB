@@ -30,6 +30,7 @@ our %profile = (
 		lemma =>'',	##-- selected lemma(ta)
 		date  =>undef,  ##-- selected date(s)
 		slice =>1,      ##-- date slice
+		eps => 0,       ##-- smoothing constant
 		score =>'f',    ##-- score func
 		kbest =>10,     ##-- k-best items per date
 		cutoff =>undef, ##-- minimum score cutoff
@@ -56,9 +57,11 @@ GetOptions(##-- general
 	   'unigrams|ug|u|f1|1' => sub { $rel='xf' },
 	   'date|d=s'   => \$profile{date},
 	   'date-slice|ds=s'  => \$profile{slice},
+	   'epsilon|eps|e=f'  => \$profile{eps},
 	   'mutual-information|mi'    => sub {$profile{score}='mi'},
 	   'log-dice|logdice|ld|dice' => sub {$profile{score}='ld'},
 	   'frequency|freq|f'         => sub {$profile{score}='f'},
+	   'normalized-frequency|nf|frequency-per-million|fpm|fm'  => sub {$profile{score}='fm'},
 	   'k-best|kbest|k=i' => \$profile{kbest},
 	   'no-k-best|nokbest|nok' => sub {$profile{kbest}=undef},
 	   'cutoff|C=f' => \$profile{cutoff},
@@ -147,7 +150,7 @@ dcdb-profile.perl - get a frequency profile from a DiaColloDB
    -collocs , -unigrams # select profile type (collocations or unigrams; default=-collocs)
    -date DATES          # set target DATE or /REGEX/ or MIN-MAX
    -slice SLICE         # set target date slice (default=1)
-   -freq , -mi , -ld    # set scoring function (default=-f)
+   -f , -fm , -mi , -ld # set scoring function (default=-f)
    -kbest KBEST         # return only KBEST items per date-slice (default=10)
    -nokbest             # disable k-best pruning
    -cutoff CUTOFF       # set minimum score for returned items (default=none)

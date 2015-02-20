@@ -636,7 +636,8 @@ sub coprofile {
 ##     slice   => $slice,         ##-- date slice (default=1, 0 for global profile)
 ##     ##
 ##     ##-- scoring and trimming parameters
-##     score   => $func,          ##-- scoring function ("f"|"mi"|"ld") : default="f"
+##     eps     => $eps,           ##-- smoothing constant (default=0)
+##     score   => $func,          ##-- scoring function ("f"|"fm"|"mi"|"ld") : default="f"
 ##     kbest   => $k,             ##-- return only $k best collocates per date (slice) : default=-1:all
 ##     cutoff  => $cutoff,        ##-- minimum score
 ##     ##
@@ -652,6 +653,7 @@ sub profile {
   my $date    = $opts{date}  // '';
   my $slice   = $opts{slice} // 1;
   my $score   = $opts{score} // 'f';
+  my $eps     = $opts{eps} // 0;
   my $kbest   = $opts{kbest} // -1;
   my $cutoff  = $opts{cutoff} // '';
   my $strings = $opts{strings} // 1;
@@ -677,8 +679,6 @@ sub profile {
     $coldb->logwarn($coldb->{error}="profile(): unknown relation '$rel'");
     return undef;
   }
-  $cutoff = undef if ($cutoff eq '');
-
 
   ##-- prepare: get target lemmas
   my ($lis);
@@ -738,14 +738,14 @@ sub profile {
   }
 
   ##-- profile: get low-level co-frequency profiles
-  $coldb->vlog($logProfile, "profile(): get frequency profile(s) [$rel]");
+  $coldb->vlog($logProfile, "profile(): get frequency profile(s) [rel=$rel, score=$score, eps=$eps, kbest=$kbest, cutoff=$cutoff]");
   my $gbsub = sub { unpack($pack_i,$xenum->i2s($_[0])) };
   my $d2prf = {}; ##-- ($dateKey => $profileForDateKey, ...)
   my $reldb = $coldb->{$rel};
   my ($prf);
   foreach $d (sort {$a<=>$b} keys %$d2xis) {
     $prf = $reldb->profile($d2xis->{$d}, groupby=>$gbsub);
-    $prf->compile($score);
+    $prf->compile($score, eps=>$eps);
     $prf->trim(kbest=>$kbest, cutoff=>$cutoff);
     $prf = $prf->stringify($lenum) if ($strings);
     $d2prf->{$d} = $prf;

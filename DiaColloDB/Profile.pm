@@ -25,14 +25,14 @@ use DiaColloDB::Persistent;
 use IO::File;
 use strict;
 
-use overload
-  #fallback => 0,
-  bool => sub {defined($_[0])},
-  int => sub {$_[0]{N}},
-  '+' => \&add,
-  '+=' => \&_add,
-  '-' => \&diff,
-  '-=' => \&_diff;
+#use overload
+#  #fallback => 0,
+#  bool => sub {defined($_[0])},
+#  int => sub {$_[0]{N}},
+#  '+' => \&add,
+#  '+=' => \&_add,
+#  '-' => \&diff,
+#  '-=' => \&_diff;
 
 
 ##==============================================================================
@@ -46,27 +46,39 @@ our @ISA = qw(DiaColloDB::Persistent);
 ## $prf = CLASS_OR_OBJECT->new(%args)
 ## + %args, object structure:
 ##   (
+##    label => $label,   ##-- string label (used by Multi; undef for none(default))
 ##    N   => $N,         ##-- total marginal relation frequency
 ##    f1  => $f1,        ##-- total marginal frequency of target word(s)
 ##    f2  => \%f2,       ##-- total marginal frequency of collocates: ($i2=>$f2, ...)
 ##    f12 => \%f12,      ##-- collocation frequencies, %f12 = ($i2=>$f12, ...)
 ##    #
+##    eps => $eps,       ##-- smoothing constant (default=undef: no smoothing)
 ##    score => $func,    ##-- selected scoring function ('f12', 'mi', or 'ld')
-##    mi => \%mi12,      ##-- mutual information * logFreq scores a la Wortprofil; requires compile_mi()
-##    ld => \%ld12,      ##-- log-dice scores a la Wortprofil; requires compile_ld()
+##    mi => \%mi12,      ##-- score: mutual information * logFreq a la Wortprofil; requires compile_mi()
+##    ld => \%ld12,      ##-- score: log-dice a la Wortprofil; requires compile_ld()
+##    fm => \%fm12,      ##-- frequency per million score; requires compile_fm()
 ##   )
 sub new {
   my $that = shift;
   my $prf  = bless({
+		    #label=>undef,
 		    N=>1,
 		    f1=>0,
 		    f2=>{},
 		    f12=>{},
+		    #eps=>0,
 		    #mi=>{},
 		    #ld=>{},
+		    #fm=>{},
 		    @_
 		   }, (ref($that)||$that));
   return $prf;
+}
+
+## @keys = $prf->scoreKeys()
+##  + returns known score function keys
+sub scoreKeys {
+  return qw(mi ld fm);
 }
 
 ## $prf2 = $prf->clone()
@@ -76,14 +88,16 @@ sub new {
 sub clone {
   my ($prf,$force) = @_;
   return bless({
+		label=>$prf->{label},
 		N=>$prf->{N},
 		f1=>$prf->{f1},
 		f2=>{ %{$prf->{f2}} },
 		f12=>{ %{$prf->{f12}} },
+		(exists($prf->{eps}) ? (eps=>$prf->{eps}) : qw()),
 		($force
-		 ? (($prf->{mi} ? (mi=>{%{$prf->{mi}}}) : qw()),
-		    ($prf->{ld} ? (ld=>{%{$prf->{ld}}}) : qw()),
-		    ($prf->{score} ? (score=>$prf->{score}) : qw())
+		 ? (
+		    ($prf->{score} ? (score=>$prf->{score}) : qw()),
+		    (map {$prf->{$_} ? ($_=>{%{$prf->{$_}}}) : qw()} $prf->scoreKeys),
 		   )
 		 : qw()),
 	       }, ref($prf));
@@ -103,13 +117,13 @@ sub clone {
 ## $bool = $prf->saveTextFh($fh, %opts)
 ##  + %opts:
 ##    (
-##     prefix => $prefix,   ##-- prepend each item-string with $prefix (used by Profile::Multi), no tab-separators required
+##     label => $label,   ##-- override $prf->{label} (used by Profile::Multi), no tab-separators required
 ##    )
-##  + saves lines of the format "N F1 F2 F12 SCORE PREFIX? ITEM2"
+##  + format (flat, TAB-separated): N F1 F2 F12 SCORE LABEL ITEM2
 sub saveTextFh {
   my ($prf,$fh,%opts) = @_;
+  my $label = (exists($opts{label}) ? $opts{label} : $prf->{label});
   my ($N,$f1,$f2,$f12) = @$prf{qw(N f1 f2 f12)};
-  my $prefix = $opts{prefix} // '';
   my $fscore = $prf->{$prf->{score}//'f12'};
   foreach (sort {$fscore->{$b} <=> $fscore->{$a}} keys %$fscore) {
     $fh->print(join("\t",
@@ -118,9 +132,7 @@ sub saveTextFh {
 		    $f2->{$_},
 		    $f12->{$_},
 		    ($fscore ? $fscore->{$_} : 'NA'),
-		    #($mi ? $mi->{$_} : 'NA'),
-		    #($ld ? $ld->{$_} : 'NA'),
-		    (defined($prefix) ? $prefix : qw()),
+		    (defined($label) ? $label : qw()),
 		    $_),
 	       "\n");
   }
@@ -181,21 +193,23 @@ sub saveHtmlFile {
 ##==============================================================================
 ## Compilation
 
-## $prf = $prf->compile($func)
-##  + compile for score-function $func, one of qw(f mi ld); default='f'
+## $prf = $prf->compile($func,%opts)
+##  + compile for score-function $func, one of qw(f fm mi ld); default='f'
 sub compile {
-  my ($prf,$func) = @_;
-  return $prf->compile_f if (!$func || $func =~ m{^(?:f(?:req(?:uency)?)?(?:12)?)$}i);
-  return $prf->compile_ld if ($func =~ m{^(?:ld|log-?dice)}i);
-  return $prf->compile_mi if ($func =~ m{^(?:l?f?mi|mutual-?information)$}i);
+  my $prf = shift;
+  my $func = shift;
+  return $prf->compile_f(@_)  if (!$func || $func =~ m{^(?:f(?:req(?:uency)?)?(?:12)?)$}i);
+  return $prf->compile_fm(@_) if ($func =~ m{^(?:f(?:req(?:uency)?)?(?:-?p(?:er)?)?(?:-?m(?:(?:ill)?ion)?)(?:12)?)$}i);
+  return $prf->compile_ld(@_) if ($func =~ m{^(?:ld|log-?dice)}i);
+  return $prf->compile_mi(@_) if ($func =~ m{^(?:l?f?mi|mutual-?information)$}i);
   $prf->logwarn("compile(): unknown score function '$func'");
-  return $prf->compile_f;
+  return $prf->compile_f(@_);
 }
 
 ## $prf = $prf->uncompile()
 ##  + un-compiles all scores for $prf
 sub uncompile {
-  delete @{$_[0]}{qw(mi ld score)};
+  delete @{$_[0]}{$_[0]->scoreKeys,'score'};
   return $_[0];
 }
 
@@ -206,14 +220,31 @@ sub compile_f {
   return $_[0];
 }
 
-## $prf = $prf->compile_mi()
-##  + computes MI*logF-profile in $prf->{mi} a la Rychly (2008)
-##  + sets $prf->{score}=$prf->{mi}
-sub compile_mi {
+## $prf = $prf->compile_fm()
+##  + computes frequency-per-million in $prf->{fm}
+##  + sets $prf->{score}='fm'
+sub compile_fm {
   my $prf = shift;
+  my ($N,$pf12) = @$prf{qw(N f12)};
+  my $fm = $prf->{fm} = {};
+  my ($i2,$f12);
+  while (($i2,$f12)=each(%$pf12)) {
+    $fm->{$i2} = (1000000 * $f12) / $N;
+  }
+  $prf->{score} = 'fm';
+  return $prf;
+}
+
+## $prf = $prf->compile_mi(%opts)
+##  + computes MI*logF-profile in $prf->{mi} a la Rychly (2008)
+##  + sets $prf->{score}='mi'
+##  + %opts:
+##     eps => $eps  #-- clobber $prf->{eps}
+sub compile_mi {
+  my ($prf,%opts) = @_;
   my ($N,$f1,$pf2,$pf12) = @$prf{qw(N f1 f2 f12)};
   my $mi = $prf->{mi} = {};
-  my $eps = 0; #0.5;
+  my $eps = $opts{eps} // $prf->{eps} // 0; #0.5;
   my ($i2,$f2,$f12);
   while (($i2,$f2)=each(%$pf2)) {
     $f12 = $pf12->{$i2} // 0;
@@ -232,13 +263,16 @@ sub compile_mi {
   return $prf;
 }
 
-## $prf = $prf->compile_ld()
+## $prf = $prf->compile_ld(%opts)
 ##  + computes log-dice profile in $prf->{ld} a la Rychly (2008)
+##  + sets $pf->{score}='ld'
+##  + %opts:
+##     eps => $eps  #-- clobber $prf->{eps}
 sub compile_ld {
-  my $prf = shift;
+  my ($prf,%opts) = @_;
   my ($N,$f1,$pf2,$pf12) = @$prf{qw(N f1 f2 f12)};
   my $ld = $prf->{ld} = {};
-  my $eps = 0; #0.5;
+  my $eps = $opts{eps} // $prf->{eps} // 0; #0.5;
   my ($i2,$f2,$f12);
   while (($i2,$f2)=each(%$pf2)) {
     $f12 = $pf12->{$i2} // 0;
@@ -269,13 +303,13 @@ sub trim {
     or $prf->logconfess("trim(): no profile scores for '$prf->{score}'");
 
   ##-- trim: by user-specified cutoff
-  if (defined(my $cutoff = $opts{cutoff})) {
+  if ((my $cutoff=$opts{cutoff}//'') ne '') {
     my @trim = qw();
     my ($key,$val);
     while (($key,$val) = each %$score) {
       push(@trim,$key) if ($val < $cutoff);
     }
-    delete @{$prf->{$_}}{@trim} foreach (grep {defined($prf->{$_})} qw(f2 f12 mi ld));
+    delete @{$prf->{$_}}{@trim} foreach (grep {defined($prf->{$_})} qw(f2 f12),$prf->scoreKeys);
   }
 
   ##-- trim: k-best
@@ -284,7 +318,7 @@ sub trim {
     my @trim = sort {$score->{$b} <=> $score->{$a}} keys %$score;
     if (@trim > $kbest) {
       splice(@trim, 0, $kbest);
-      delete @{$prf->{$_}}{@trim} foreach (grep {defined($prf->{$_})} qw(f2 f12 mi ld));
+      delete @{$prf->{$_}}{@trim} foreach (grep {defined($prf->{$_})} qw(f2 f12),$prf->scoreKeys);
     }
   }
 
@@ -311,14 +345,14 @@ sub stringify {
   }
   elsif (UNIVERSAL::isa($key2str,'HASH')) {
     my $sprf = $prf->new(N=>$prf->{N}, f1=>$prf->{f1}, score=>$prf->{score});
-    foreach (grep {defined $prf->{$_}} qw(f2 f12 mi ld)) {
+    foreach (grep {defined $prf->{$_}} qw(f2 f12),$prf->scoreKeys) {
       @{$sprf->{$_}}{@$key2str{keys %{$prf->{$_}}}} = values %{$prf->{$_}};
     }
     return $sprf;
   }
   elsif (UNIVERSAL::isa($key2str,'ARRAY')) {
     my $sprf = $prf->new(N=>$prf->{N}, f1=>$prf->{f1}, score=>$prf->{score});
-    foreach (grep {defined $prf->{$_}} qw(f2 f12 mi ld)) {
+    foreach (grep {defined $prf->{$_}} qw(f2 f12),$prf->scoreKeys) {
       @{$sprf->{$_}}{@$key2str[keys %{$prf->{$_}}]} = values %{$prf->{$_}};
     }
     return $sprf;
@@ -330,13 +364,16 @@ sub stringify {
 ##==============================================================================
 ## Algebraic operations
 
-## $prf = $prf->_add($prf2)
+## $prf = $prf->_add($prf2,%opts)
 ##  + adds $prf2 frequency data to $prf (destructive)
 ##  + implicitly un-compiles $prf
+##  + %opts:
+##     N  => $bool, ##-- whether to add N values (default:true)
+##     f1 => $bool, ##-- whether to add f1 values (default:true)
 sub _add {
-  my ($pa,$pb) = @_;
-  $pa->{N}  += $pb->{N};
-  $pa->{f1} += $pb->{f1};
+  my ($pa,$pb,%opts) = @_;
+  $pa->{N}  += $pb->{N}  if (!exists($opts{N}) || $opts{N});
+  $pa->{f1} += $pb->{f1} if (!exists($opts{f1}) || $opts{f1});
   my ($af2,$af12) = @$pa{qw(f2 f12)};
   my ($bf2,$bf12) = @$pb{qw(f2 f12)};
   foreach (keys %$bf12) {
@@ -346,36 +383,47 @@ sub _add {
   return $pa->uncompile();
 }
 
-## $prf3 = $prf1->add($prf2)
+## $prf3 = $prf1->add($prf2,%opts)
 ##  + returns sum of $prf1 and $prf2 frequency data (destructive)
+##  + see _add() method for %opts
 sub add {
-  return $_[0]->clone->_add($_[1]);
+  return $_[0]->clone->_add(@_[1..$#_]);
 }
 
-## $prf = $prf->_diff($prf2)
+## $prf = $prf->_diff($prf2,%opts)
 ##  + subtracts $prf2 scores from $prf (destructive)
 ##  + $prf and $prf2 must be compatibly compiled
+##  + %opts:
+##     N  => $bool, ##-- whether to subtract N values (default:true)
+##     f1 => $bool, ##-- whether to subtract f1 values (default:true)
+##     f2 => $bool, ##-- whether to subtract f2 values (default:true)
+##     f12 => $bool, ##-- whether to subtract f12 values (default:true)
+##     score => $bool, ##-- whether to subtract score values (default:true)
 sub _diff {
-  my ($pa,$pb) = @_;
-  $pa->{N}  -= $pb->{N};
-  $pa->{f1} -= $pb->{f1};
+  my ($pa,$pb,%opts) = @_;
+  $pa->{N}  -= $pb->{N} if (!exists($opts{N}) || $opts{N});
+  $pa->{f1} -= $pb->{f1} if (!exists($opts{f1}) || $opts{f1});
   my $scoref = $pa->{score} // $pb->{score} // 'f12';
+  my $diff_f12 = (!exists($opts{f12}) || $opts{f12});
+  my $diff_f2  = (!exists($opts{f2}) || $opts{f2});
+  my $diff_score = (!exists($opts{score}) || $opts{score}) && (!$diff_f12 || $scoref ne 'f12');
   my ($af2,$af12,$ascore) = @$pa{qw(f2 f12),$scoref};
   my ($bf2,$bf12,$bscore) = @$pb{qw(f2 f12),$scoref};
   $pa->logconfess("_diff(): no {$scoref} key for \$pa") if (!$ascore);
   $pa->logconfess("_diff(): no {$scoref} key for \$pb") if (!$bscore);
   foreach (keys %$bscore) {
-    $af2->{$_}    -= $bf2->{$_};
-    $af12->{$_}   -= $bf12->{$_};
-    $ascore->{$_} -= $bscore->{$_}
+    $af2->{$_}    -= $bf2->{$_} if ($diff_f2);
+    $af12->{$_}   -= $bf12->{$_} if ($diff_f12);
+    $ascore->{$_} -= $bscore->{$_} if ($diff_score);
   }
   return $pa;
 }
 
-## $prf3 = $prf1->diff($prf2)
+## $prf3 = $prf1->diff($prf2,%opts)
 ##  + returns score-diff of $prf1 and $prf2 frequency data (destructive)
+##  + %opts: see _diff() method
 sub diff {
-  return $_[0]->clone(1)->diff($_[1]);
+  return $_[0]->clone(1)->_diff(@_[1..$#_]);
 }
 
 

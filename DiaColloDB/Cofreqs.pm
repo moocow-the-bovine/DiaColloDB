@@ -203,7 +203,9 @@ sub loadTextFh {
     ##-- track marginal f($i1) and N
     $f1_cur += $f12;
     $N      += $f12;
-    next if ($f12 < $fmin);
+    next if ($f12 < $fmin  ##-- minimum co-occurrence frequency filter
+	     || $i1==$i2   ##-- suppress identity collocations
+	    );
 
     ##-- dump record to $r2
     $fh2->print(pack($pack_r2, $i2,$f12));
