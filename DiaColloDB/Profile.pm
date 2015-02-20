@@ -289,18 +289,76 @@ sub compile_ld {
 ##==============================================================================
 ## Trimming
 
+## \@keys = $prf->which(%opts)
+##  + returns 'good' keys for trimming options %opts:
+##    (
+##     cutoff => $cutoff,  ##-- retain only items with $prf->{$prf->{score}}{$item} >= $cutoff
+##     kbest  => $kbest,   ##-- retain only $kbest items
+##     return => $which,   ##-- either 'good' (default) or 'bad'
+##     as     => $as,      ##-- 'hash' or 'array'; default='array'
+##    )
+sub which {
+  my ($prf,%opts) = @_;
+
+  ##-- trim: scoring function
+  my $score = $prf->{$prf->{score}//'f12'}
+    or $prf->logconfess("trim(): no profile scores for '$prf->{score}'");
+  my $bad = {};
+
+  ##-- which: by user-specified cutoff
+  if ((my $cutoff=$opts{cutoff}//'') ne '') {
+    my ($key,$val);
+    while (($key,$val) = each %$score) {
+      $bad->{$key} = undef if ($val < $cutoff);
+    }
+  }
+
+  ##-- which: k-best
+  my $kbest;
+  if (defined($kbest = $opts{kbest}) && $kbest > 0) {
+    my @keys = sort {$score->{$b} <=> $score->{$a}} grep {!exists($bad->{$_})} keys %$score;
+    if (@keys > $kbest) {
+      splice(@keys, 0, $kbest);
+      $bad->{$_} = 1 foreach (@keys);
+    }
+  }
+
+  ##-- which: return
+  if (($opts{return}//'') eq 'bad') {
+    return lc($opts{as}//'array') eq 'hash' ?  $bad : [keys %$bad];
+  }
+  return lc($opts{as}//'array') eq 'hash' ? {map {$bad->{$_} ? qw() : ($_=>undef)} keys %$score } : [grep {!$bad->{$_}} keys %$score];
+}
+
+
 ## $prf = $prf->trim(%opts)
 ##  + %opts:
 ##    (
 ##     kbest => $kbest,    ##-- retain only $kbest items
 ##     cutoff => $cutoff,  ##-- retain only items with $prf->{$prf->{score}}{$item} >= $cutoff
+##     keep => $keep,      ##-- retain keys @$keep (ARRAY) or keys(%$keep) (HASH)
+##     drop => $drop,      ##-- drop keys @$drop (ARRAY) or keys(%$drop) (HASH)
 ##    )
+##  + this COULD be factored out into s.t. like $prf->trim($prf->which(%opts)), but it's about 15% faster inline
 sub trim {
   my ($prf,%opts) = @_;
 
   ##-- trim: scoring function
   my $score = $prf->{$prf->{score}//'f12'}
     or $prf->logconfess("trim(): no profile scores for '$prf->{score}'");
+
+  ##-- trim: by user request: keep
+  if (defined($opts{keep})) {
+    my $keep = (UNIVERSAL::isa($opts{keep},'ARRAY') ? {map {($_=>undef)} @{$opts{keep}}} : $opts{keep});
+    my @trim = grep {!exists($keep->{$_})} keys %$score;
+    delete @{$prf->{$_}}{@trim} foreach (grep {defined($prf->{$_})} qw(f2 f12),$prf->scoreKeys);
+  }
+
+  ##-- trim: by user request: drop
+  if (defined($opts{drop})) {
+    my $drop = (UNIVERSAL::isa($opts{drop},'ARRAY') ? $opts{drop} : [keys %{$opts{drop}}]);
+    delete @{$prf->{$_}}{@$drop} foreach (grep {defined($prf->{$_})} qw(f2 f12),$prf->scoreKeys);
+  }
 
   ##-- trim: by user-specified cutoff
   if ((my $cutoff=$opts{cutoff}//'') ne '') {
@@ -328,11 +386,11 @@ sub trim {
 ##==============================================================================
 ## Stringification
 
-## $sprf = $prf->stringify( $obj)
-## $sprf = $prf->stringify(\@key2str)
-## $sprf = $prf->stringify(\&key2str)
-## $sprf = $prf->stringify(\%key2str)
-##  + returns stringified profile via $obj->i2s($key2), $key2str->($i2) or $key2str->{$i2}
+## $prf = $prf->stringify( $obj)
+## $prf = $prf->stringify(\@key2str)
+## $prf = $prf->stringify(\&key2str)
+## $prf = $prf->stringify(\%key2str)
+##  + stringifies profile (destructive) via $obj->i2s($key2), $key2str->($i2) or $key2str->{$i2}
 sub stringify {
   my ($prf,$key2str) = @_;
   if (UNIVERSAL::can($key2str,'i2s')) {
@@ -344,18 +402,20 @@ sub stringify {
     return $prf->stringify($i2s);
   }
   elsif (UNIVERSAL::isa($key2str,'HASH')) {
-    my $sprf = $prf->new(N=>$prf->{N}, f1=>$prf->{f1}, score=>$prf->{score});
     foreach (grep {defined $prf->{$_}} qw(f2 f12),$prf->scoreKeys) {
-      @{$sprf->{$_}}{@$key2str{keys %{$prf->{$_}}}} = values %{$prf->{$_}};
+      my $sh = {};
+      @$sh{@$key2str{keys %{$prf->{$_}}}} = values %{$prf->{$_}};
+      $prf->{$_} = $sh;
     }
-    return $sprf;
+    return $prf;
   }
   elsif (UNIVERSAL::isa($key2str,'ARRAY')) {
-    my $sprf = $prf->new(N=>$prf->{N}, f1=>$prf->{f1}, score=>$prf->{score});
     foreach (grep {defined $prf->{$_}} qw(f2 f12),$prf->scoreKeys) {
-      @{$sprf->{$_}}{@$key2str[keys %{$prf->{$_}}]} = values %{$prf->{$_}};
+      my $sh = {};
+      @$sh{@$key2str[keys %{$prf->{$_}}]} = values %{$prf->{$_}};
+      $prf->{$_} = $sh;
     }
-    return $sprf;
+    return $prf;
   }
 
   $prf->logconfess("stringify(): don't know how to stringify via object '$key2str'");

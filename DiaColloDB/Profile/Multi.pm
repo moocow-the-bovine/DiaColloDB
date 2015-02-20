@@ -140,14 +140,14 @@ sub trim {
   return $mp;
 }
 
-## $sprf = $prf->stringify( $obj)
-## $sprf = $prf->stringify(\@key2str)
-## $sprf = $prf->stringify(\&key2str)
-## $sprf = $prf->stringify(\%key2str)
-##  + returns stringified profile via $obj->i2s($key2), $key2str->($i2) or $key2str->{$i2}
+## $mp = $mp->stringify( $obj)
+## $mp = $mp->stringify(\@key2str)
+## $mp = $mp->stringify(\&key2str)
+## $mp = $mp->stringify(\%key2str)
+##  + stringifies multi-profile (destructive) via $obj->i2s($key2), $key2str->($i2) or $key2str->{$i2}
 sub stringify {
   my $mp = shift;
-  $_->trim(@_) or return undef foreach (values %{$mp->{data}});
+  $_->stringify(@_) or return undef foreach (values %{$mp->{data}});
   return $mp;
 }
 

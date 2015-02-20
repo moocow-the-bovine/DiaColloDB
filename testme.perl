@@ -462,7 +462,7 @@ sub test_profile_io0 {
 
   my $coldb = DiaColloDB->new(dbdir=>$dbdir)
     or die("$0: failed to open DB-directory $dbdir: $!");
-  my $mp = $coldb->coprofile(lemma=>$lemma, slice=>10, kbest=>50, score=>'ld');
+  my $mp = $coldb->profile2(lemma=>$lemma, slice=>10, kbest=>50, score=>'ld');
 
   Storable::nstore($mp,"mp.bin");
   exit 0;
@@ -616,6 +616,39 @@ sub bench_profile_io {
 #bench_profile_io(@ARGV);
 
 ##==============================================================================
+## bench: profile trimming
+
+sub bench_profile_trim {
+  my $dbdir = shift || 'kern01.d';
+  my $lemma = shift || 'Mann';
+  my $score = shift || 'ld';
+
+  my $coldb = DiaColloDB->new(dbdir=>$dbdir)
+    or die("$0: failed to open DB-directory $dbdir: $!");
+  my $mp0 = $coldb->profile2(lemma=>$lemma, slice=>0, kbest=>0, score=>$score, strings=>0);
+  my $p0  = $mp0->{data}{(sort {$a<=>$b} keys %{$mp0->{data}})[0]};
+
+  my $p1=$p0->clone(1)->trim(kbest=>10)->saveTextFile('-');
+  print "--\n";
+  my $p2=$p0->clone(1)->trim(keep=>$p0->which(kbest=>10))->saveTextFile(\*STDOUT);
+
+  cmpthese(-3, {
+		'clone'=>sub{my $p=$p0->clone(1);},
+		'trim'=>sub {my $p=$p0->clone(1); $p->trim(kbest=>10);},
+		'which+trim:keep'=>sub{my $p=$p0->clone(1); $p->trim(keep=>$p->which(kbest=>10));},
+		'which+trim:drop'=>sub{my $p=$p0->clone(1); $p->trim(drop=>$p->which(kbest=>10,return=>'bad'));},
+	       });
+  #                   Rate which+trim:keep which+trim:drop         trim        clone
+  # which+trim:keep 35.8/s              --             -8%         -19%         -84%
+  # which+trim:drop 39.0/s              9%              --         -12%         -83%
+  # trim            44.2/s             23%             13%           --         -81%
+  # clone            227/s            534%            482%         413%           --
+
+  exit 0;
+}
+#bench_profile_trim(@ARGV);
+
+##==============================================================================
 ## test: profile algebra
 
 sub save_profile_binop {
@@ -625,7 +658,8 @@ sub save_profile_binop {
     print join("\t",
 	       "N:$p1->{N}${op}$p2->{N}=$p3->{N}",
 	       "f1:$p1->{f1}${op}$p2->{f1}=$p3->{f1}")."\n";
-    foreach my $i2 (sort {$p3->{f12}{$b}<=>$p3->{f12}{$a}} keys %{$p3->{f12}}) {
+    my $score = $p3->{score} // 'f12';
+    foreach my $i2 (sort {$p3->{$score}{$b}<=>$p3->{$score}{$a}} keys %{$p3->{$score}}) {
       print join("\t",
 		 '',$i2,
 		 map {"$_:".($p1->{$_}{$i2}//0).$op.($p2->{$_}{$i2}//0).'='.$p3->{$_}{$i2}}
@@ -635,7 +669,7 @@ sub save_profile_binop {
   }
 }
 
-sub test_profile_binops {
+sub test_profile_add {
   my $dbdir = shift || 'kern01.d';
   my $lemma1 = shift || 'Mann';
   my $lemma2 = shift || 'Frau';
@@ -643,19 +677,42 @@ sub test_profile_binops {
 
   my $coldb = DiaColloDB->new(dbdir=>$dbdir)
     or die("$0: failed to open DB-directory $dbdir: $!");
-  my $mp1 = $coldb->coprofile(lemma=>$lemma1, slice=>0, kbest=>10, score=>$score);
-  my $mp2 = $coldb->coprofile(lemma=>$lemma2, slice=>0, kbest=>10, score=>$score);
+  my $mp1 = $coldb->profile2(lemma=>$lemma1, slice=>0, kbest=>10, score=>$score);
+  my $mp2 = $coldb->profile2(lemma=>$lemma2, slice=>0, kbest=>10, score=>$score);
 
-  #my $mp_add = $mp1->add($mp2,N=>0)->compile($score);
-  #save_profile_binop('+',$mp1,$mp2,$mp_add);
+  my $mp_add = $mp1->add($mp2,N=>0)->compile($score);
+  save_profile_binop('+',$mp1,$mp2,$mp_add);
 
-  my $mp_diff = $mp1->diff($mp2);
+  exit 0;
+}
+#test_profile_add(@ARGV);
+
+sub test_profile_diff {
+  my $dbdir = shift || 'kern01.d';
+  my $lemma1 = shift || 'Mann';
+  my $lemma2 = shift || 'Frau';
+  my $score = shift || 'ld';
+
+  my $coldb = DiaColloDB->new(dbdir=>$dbdir)
+    or die("$0: failed to open DB-directory $dbdir: $!");
+  my $mp1 = $coldb->profile2(lemma=>$lemma1, slice=>0, kbest=>0, score=>$score, strings=>0);
+  my $mp2 = $coldb->profile2(lemma=>$lemma2, slice=>0, kbest=>0, score=>$score, strings=>0);
+
+  ##-- trim
+  my %dkeys = map {($_=>undef)} keys(%{$mp1->{data}}), keys(%{$mp2->{data}});
+  foreach my $d (keys %dkeys) {
+    my ($p1,$p2) = ($mp1->{data}{$d},$mp2->{data}{$d});
+    my %pkeys = map {($_=>undef)} (($p1 ? @{$p1->which(kbest=>10)} : qw()), ($p2 ? @{$p2->which(kbest=>10)} : qw()));
+    $p1->trim(keep=>\%pkeys)->stringify($coldb->{lenum}) if ($p1);
+    $p2->trim(keep=>\%pkeys)->stringify($coldb->{lenum}) if ($p2);
+  };
+
+  my $mp_diff = $mp1->diff($mp2,N=>0);
   save_profile_binop('-',$mp1,$mp2,$mp_diff);
 
   exit 0;
 }
-test_profile_binops(@ARGV);
-
+test_profile_diff(@ARGV);
 
 
 ##==============================================================================
