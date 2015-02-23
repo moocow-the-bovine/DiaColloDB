@@ -16,11 +16,14 @@ DiaColloDB/MultiMapFile.pm
 DiaColloDB/PackedFile.pm
 DiaColloDB/Persistent.pm
 DiaColloDB/Profile.pm
+DiaColloDB/Profile/Diff.pm
 DiaColloDB/Profile/Multi.pm
+DiaColloDB/Profile/MultiDiff.pm
 DiaColloDB/Unigrams.pm
 DiaColloDB/Utils.pm
 dcdb-create.perl
 dcdb-export.perl
 dcdb-profile.perl
+dcdb-compare.perl
 t/00_basic.t
 t/common.plt
