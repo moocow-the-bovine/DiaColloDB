@@ -54,7 +54,7 @@ sub new {
 ## $bool = $obj->saveTextFile($filename_or_handle, %opts)
 ##  + wraps saveTextFh(); INHERITED from DiaCollocDB::Persistent
 
-## $bool = $mp->saveTextFh($fh)
+## $bool = $mp->saveTextFh($fh,%opts)
 ##  + save text representation to a filehandle (guts)
 ##  + INHERITED from DiaCollocDB::Profile::Multi
 
@@ -67,11 +67,29 @@ sub new {
 ##     table  => $bool,     ##-- include <table>..</table> ? (default=1)
 ##     body   => $bool,     ##-- include <html><body>..</html></body> ? (default=1)
 ##     header => $bool,     ##-- include header-row? (default=1)
+##     format => $fmt,      ##-- printf score formatting (default="%.2f")
 ##    )
-##  + TODO
 sub saveHtmlFile {
   my ($mp,$file,%opts) = @_;
-  $mp->logconfess("saveHtmlFile(): not yet implemented");
+  my $fh = ref($file) ? $file : IO::File->new(">$file");
+  $mp->logconfess("saveHtmlFile(): failed to open '$file': $!") if (!ref($fh));
+  $fh->print("<html><body>\n") if ($opts{body}//1);
+  $fh->print("<table><tbody>\n") if ($opts{table}//1);
+  $fh->print("<tr>",(
+		     map {"<th>".htmlesc($_)."</th>"}
+		     qw(ascore bscore diff label item2),
+		    ),
+	     "</tr>\n"
+	    ) if ($opts{header}//1);
+  my $ps = $mp->{profiles};
+  foreach (@$ps) {
+    $_->saveHtmlFile($file, %opts,table=>0,body=>0,header=>0)
+      or $mp->logconfess("saveHtmlFile() saved for sub-profile with label '", $_->label, "': $!");
+  }
+  $fh->print("</tbody><table>\n") if ($opts{table}//1);
+  $fh->print("</body></html>\n") if ($opts{body}//1);
+  $fh->close() if (!ref($file));
+  return $mp;
 }
 
 ##==============================================================================

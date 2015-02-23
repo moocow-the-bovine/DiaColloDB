@@ -125,6 +125,7 @@ sub clone {
 ##  + %opts:
 ##    (
 ##     label => $label,   ##-- override $prf->{label} (used by Profile::Multi), no tab-separators required
+##     format => $fmt,    ##-- printf format for scores (default="%f")
 ##    )
 ##  + format (flat, TAB-separated): N F1 F2 F12 SCORE LABEL ITEM2
 sub saveTextFh {
@@ -132,13 +133,14 @@ sub saveTextFh {
   my $label = (exists($opts{label}) ? $opts{label} : $prf->{label});
   my ($N,$f1,$f2,$f12) = @$prf{qw(N f1 f2 f12)};
   my $fscore = $prf->{$prf->{score}//'f12'};
+  my $fmt    = $opts{format} || '%f';
   foreach (sort {$fscore->{$b} <=> $fscore->{$a}} keys %$fscore) {
     $fh->print(join("\t",
 		    $N,
 		    $f1,
 		    $f2->{$_},
 		    $f12->{$_},
-		    ($fscore ? $fscore->{$_} : 'NA'),
+		    sprintf($fmt,$fscore->{$_}//'nan'),
 		    (defined($label) ? $label : qw()),
 		    $_),
 	       "\n");
@@ -157,12 +159,13 @@ sub saveTextFh {
 ##     header => $bool,     ##-- include header-row? (default=1)
 ##     hlabel => $hlabel,   ##-- prefix header item-cells with $hlabel (used by Profile::Multi), no '<th>..</th>' required
 ##     label => $label,     ##-- prefix item-cells with $label (used by Profile::Multi), no '<td>..</td>' required
+##     format => $fmt,      ##-- printf score formatting (default="%.4f")
 ##    )
 ##  + saves rows of the format "N F1 F2 F12 SCORE PREFIX? ITEM2"
 sub saveHtmlFile {
   my ($prf,$file,%opts) = @_;
   my $fh = ref($file) ? $file : IO::File->new(">$file");
-  $prf->logconfess("saveTextFile(): failed to open '$file': $!") if (!ref($fh));
+  $prf->logconfess("saveHtmlFile(): failed to open '$file': $!") if (!ref($fh));
 
   $fh->print("<html><body>\n") if ($opts{body}//1);
   $fh->print("<table><tbody>\n") if ($opts{table}//1);
@@ -178,13 +181,14 @@ sub saveHtmlFile {
   my ($N,$f1,$f2,$f12) = @$prf{qw(N f1 f2 f12)};
   my $label = (exists($opts{label}) ? $opts{label} : $prf->{label});
   my $fscore = $prf->{$prf->{score}//'f12'};
+  my $fmt   = $opts{format} || "%.4f";
   foreach (sort {$fscore->{$b} <=> $fscore->{$a}} keys %$fscore) {
     $fh->print("<tr>", (map {"<td>".htmlesc($_)."</td>"}
 			$N,
 			$f1,
 			$f2->{$_},
 			$f12->{$_},
-			($fscore ? $fscore->{$_} : 'NA'),
+			sprintf($fmt, $fscore->{$_}//'nan'),
 			(defined($label) ? $label : qw()),
 			$_
 		       ),
@@ -358,7 +362,10 @@ sub trim {
   if (defined($opts{keep})) {
     my $keep = (UNIVERSAL::isa($opts{keep},'ARRAY') ? {map {($_=>undef)} @{$opts{keep}}} : $opts{keep});
     my @trim = grep {!exists($keep->{$_})} keys %$score;
-    delete @{$prf->{$_}}{@trim} foreach (grep {defined($prf->{$_})} qw(f2 f12),$prf->scoreKeys);
+    foreach (grep {defined($prf->{$_})} qw(f2 f12),$prf->scoreKeys) {
+      delete @{$prf->{$_}}{@trim};
+      $_ //= 0 foreach (@{$prf->{$_}}{keys %$keep});
+    }
   }
 
   ##-- trim: by user request: drop

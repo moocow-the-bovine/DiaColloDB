@@ -44,6 +44,7 @@ our %profile = (
 		cutoff =>undef, ##-- minimum score cutoff
 		strings => 1,    ##-- debug: want strings?
 	       );
+our %save = (format=>undef);
 
 our $outfmt  = 'text'; ##-- output format: 'text' or 'json'
 our $pretty  = 1;
@@ -87,6 +88,7 @@ GetOptions(##-- general
 	   'html|H' => sub {$outfmt='html'},
 	   'pretty|p!' => sub {$pretty=$_[1]},
 	   'null|noout' => sub {$outfmt=''},
+	   'score-format|sf|format|fmt=s' => \$save{format},
 	  );
 
 pod2usage({-exitval=>0,-verbose=>0}) if ($help);
@@ -123,7 +125,7 @@ my $mpd = $coldb->compare($rel, %profile)
 ##-- dump stringified profile
 if ($outfmt eq 'text') {
   $mpd->trace("saveTextFile()");
-  $mpd->saveTextFile('-');
+  $mpd->saveTextFile('-',%save);
 }
 elsif ($outfmt eq 'json') {
   $mpd->trace("saveJsonFile()");
@@ -131,7 +133,7 @@ elsif ($outfmt eq 'json') {
 }
 elsif ($outfmt eq 'html') {
   $mpd->trace("saveHtmlFile()");
-  $mpd->saveHtmlFile('-');
+  $mpd->saveHtmlFile('-',%save);
 }
 #$coldb->trace("done.");
 

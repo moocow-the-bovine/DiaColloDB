@@ -80,9 +80,9 @@ sub operands {
 ##  + %opts:
 ##    (
 ##     label => $label,   ##-- override $prf->{label} (used by Profile::Multi), no tab-separators required
+##     format => $fmt,      ##-- printf score formatting (default="%.4f")
 ##    )
 ##  + format (flat, TAB-separated): Na Nb F1a F1b F2a F2b F12a F12b SCOREa SCOREb SCOREdiff LABEL ITEM2
-##  + TODO
 sub saveTextFh {
   my ($dprf,$fh,%opts) = @_;
 
@@ -92,15 +92,16 @@ sub saveTextFh {
   my ($Nb,$f1b,$f2b,$f12b,$scoreb) = @$pb{qw(N f1 f2 f12),$fscore};
   my $scored = $dprf->{$fscore};
   my $label = exists($opts{label}) ? $opts{label} : $dprf->{label};
+  my $fmt   = $opts{fmt} || '%f';
   foreach (sort {$scored->{$b} <=> $scored->{$a}} keys %$scored) {
     $fh->print(join("\t",
 		    $Na, $Nb,
 		    $f1a,$f1b,
 		    $f2a->{$_}, $f2b->{$_},
 		    $f12a->{$_}, $f2b->{$_},
-		    ($fscore
-		     ? ($scorea->{$_},$scoreb->{$_},$scored->{$_})
-		     : (qw(NA NA NA))),
+		    sprintf($fmt,$scorea->{$_}//'nan'),
+		    sprintf($fmt,$scoreb->{$_}//'nan'),
+		    sprintf($fmt,$scored->{$_}//'nan'),
 		    (defined($label) ? $label : qw()),
 		    $_),
 	       "\n");
@@ -119,11 +120,45 @@ sub saveTextFh {
 ##     header => $bool,     ##-- include header-row? (default=1)
 ##     hlabel => $hlabel,   ##-- prefix header item-cells with $hlabel (used by Profile::Multi), no '<th>..</th>' required
 ##     label => $label,     ##-- prefix item-cells with $label (used by Profile::Multi), no '<td>..</td>' required
+##     format => $fmt,      ##-- printf score formatting (default="%.4f")
 ##    )
-##  + saves rows of the format "N F1 F2 F12 SCORE PREFIX? ITEM2"
+##  + saves rows of the format "SCOREa SCOREb DIFF PREFIX? ITEM2"
 sub saveHtmlFile {
   my ($dprf,$file,%opts) = @_;
-  $dprf->logconfess("saveHtmlFile: not yet implemented");
+  my $fh = ref($file) ? $file : IO::File->new(">$file");
+  $dprf->logconfess("saveHtmlFile(): failed to open '$file': $!") if (!ref($fh));
+
+  $fh->print("<html><body>\n") if ($opts{body}//1);
+  $fh->print("<table><tbody>\n") if ($opts{table}//1);
+  $fh->print("<tr>",(
+		     map {"<th>".htmlesc($_)."</th>"}
+		     qw(ascore bscore diff),
+		     (defined($opts{hlabel}) ? $opts{hlabel} : qw()),
+		     qw(item2)
+		    ),
+	     "</tr>\n"
+	    ) if ($opts{header}//1);
+
+  my ($pa,$pb,$fscore) = @$dprf{qw(prf1 prf2 score)};
+  $fscore //= 'f12';
+  my $scorea = $pa->{$fscore};
+  my $scoreb = $pb->{$fscore};
+  my $scored = $dprf->{$fscore};
+  my $fmt    = $opts{format} || "%.4f";
+  my $label  = exists($opts{label}) ? $opts{label} : $dprf->{label};
+  foreach (sort {$scored->{$b} <=> $scored->{$a}} keys %$scored) {
+    $fh->print("<tr>", (map {"<td>".htmlesc($_)."</td>"}
+			sprintf($fmt,$scorea->{$_}//'nan'),
+			sprintf($fmt,$scoreb->{$_}//'nan'),
+			sprintf($fmt,$scored->{$_}//'nan'),
+			(defined($label) ? $label : qw()),
+			$_),
+	       "</tr>\n");
+  }
+  $fh->print("</tbody><table>\n") if ($opts{table}//1);
+  $fh->print("</body></html>\n") if ($opts{body}//1);
+  $fh->close() if (!ref($file));
+  return $dprf;
 }
 
 

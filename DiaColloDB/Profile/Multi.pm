@@ -59,13 +59,13 @@ sub clone {
 ## $bool = $obj->saveTextFile($filename_or_handle, %opts)
 ##  + wraps saveTextFh(); INHERITED from DiaCollocDB::Persistent
 
-## $bool = $mp->saveTextFh($fh)
+## $bool = $mp->saveTextFh($fh,%opts)
 ##  + save text representation to a filehandle (guts)
 sub saveTextFh {
   my ($mp,$fh,%opts) = @_;
   my $ps = $mp->{profiles};
   foreach (@$ps) {
-    $_->saveTextFh($fh)
+    $_->saveTextFh($fh,%opts)
       or $mp->logconfess("saveTextFile() saved for sub-profile with label '", $_->label, "': $!");
   }
   return $mp;
@@ -80,6 +80,7 @@ sub saveTextFh {
 ##     table  => $bool,     ##-- include <table>..</table> ? (default=1)
 ##     body   => $bool,     ##-- include <html><body>..</html></body> ? (default=1)
 ##     header => $bool,     ##-- include header-row? (default=1)
+##     format => $fmt,      ##-- printf score formatting (default="%.2f")
 ##    )
 sub saveHtmlFile {
   my ($mp,$file,%opts) = @_;
@@ -90,15 +91,15 @@ sub saveHtmlFile {
   $fh->print("<tr>",(
 		     map {"<th>".htmlesc($_)."</th>"}
 		     qw(N f1 f2 f12 score),
-		     qw(date),
+		     qw(label),
 		     qw(item2)
 		    ),
 	     "</tr>\n"
 	    ) if ($opts{header}//1);
   my $ps = $mp->{profiles};
   foreach (@$ps) {
-    $_->saveHtmlFile($file, table=>0,body=>0,header=>0)
-      or $mp->logconfess("saveTextFile() saved for sub-profile with label '", $_->label, "': $!");
+    $_->saveHtmlFile($file, %opts,table=>0,body=>0,header=>0)
+      or $mp->logconfess("saveHtmlFile() saved for sub-profile with label '", $_->label, "': $!");
   }
   $fh->print("</tbody><table>\n") if ($opts{table}//1);
   $fh->print("</body></html>\n") if ($opts{body}//1);

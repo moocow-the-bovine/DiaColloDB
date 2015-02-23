@@ -39,6 +39,7 @@ our %profile = (
 
 our $outfmt  = 'text'; ##-- output format: 'text' or 'json'
 our $pretty  = 1;
+our %save    = (format=>undef);
 
 ##----------------------------------------------------------------------
 ## Command-line processing
@@ -74,6 +75,7 @@ GetOptions(##-- general
 	   'html|H' => sub {$outfmt='html'},
 	   'pretty|p!' => sub {$pretty=$_[1]},
 	   'null|noout' => sub {$outfmt=''},
+	   'score-format|sf|format|fmt=s' => \$save{format},
 	  );
 
 pod2usage({-exitval=>0,-verbose=>0}) if ($help);
@@ -108,7 +110,7 @@ my $mp = $coldb->profile($rel, %profile)
 ##-- dump stringified profile
 if ($outfmt eq 'text') {
   $mp->trace("saveTextFile()");
-  $mp->saveTextFile('-');
+  $mp->saveTextFile('-',%save);
 }
 elsif ($outfmt eq 'json') {
   $mp->trace("saveJsonFile()");
@@ -116,7 +118,7 @@ elsif ($outfmt eq 'json') {
 }
 elsif ($outfmt eq 'html') {
   $mp->trace("saveHtmlFile()");
-  $mp->saveHtmlFile('-');
+  $mp->saveHtmlFile('-',%save);
 }
 #$coldb->trace("done.");
 
@@ -156,6 +158,7 @@ dcdb-profile.perl - get a frequency profile from a DiaColloDB
    -cutoff CUTOFF       # set minimum score for returned items (default=none)
    -nocutoff            # disable cutoff pruning
    -[no]strings         # debug: do/don't stringify returned profile (default=do)
+   -format FMT          # use printf format FMT for scores (text,html)
 
  I/O Options:
    -text		# use text output (default)
