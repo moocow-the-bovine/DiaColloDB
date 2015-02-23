@@ -76,6 +76,12 @@ sub new {
   return $prf;
 }
 
+## $label = $prf->label()
+##  + get label
+sub label {
+  return $_[0]{label} // '';
+}
+
 ## @keys = $prf->scoreKeys()
 ##  + returns known score function keys
 sub scoreKeys {
@@ -393,33 +399,32 @@ sub trim {
 ## $prf = $prf->stringify(\%key2str)
 ##  + stringifies profile (destructive) via $obj->i2s($key2), $key2str->($i2) or $key2str->{$i2}
 sub stringify {
-  my ($prf,$key2str) = @_;
-  if (UNIVERSAL::can($key2str,'i2s')) {
-    my $i2s = { map {($_=>$key2str->i2s($_))} sort {$a<=>$b} keys %{$prf->{f2}} };
-    return $prf->stringify($i2s);
+  my ($prf,$i2s) = @_;
+  if (UNIVERSAL::can($i2s,'i2s')) {
+    $i2s = { map {($_=>$i2s->i2s($_))} sort {$a<=>$b} keys %{$prf->{f2}} };
   }
-  elsif (UNIVERSAL::isa($key2str,'CODE')) {
-    my $i2s = { map {($_=>$key2str->($_))} sort {$a<=>$b} keys %{$prf->{f2}} };
-    return $prf->stringify($i2s);
+  elsif (UNIVERSAL::isa($i2s,'CODE')) {
+    $i2s = { map {($_=>$i2s->($_))} sort {$a<=>$b} keys %{$prf->{f2}} };
   }
-  elsif (UNIVERSAL::isa($key2str,'HASH')) {
+  ##-- guts
+  if (UNIVERSAL::isa($i2s,'HASH')) {
     foreach (grep {defined $prf->{$_}} qw(f2 f12),$prf->scoreKeys) {
       my $sh = {};
-      @$sh{@$key2str{keys %{$prf->{$_}}}} = values %{$prf->{$_}};
+      @$sh{@$i2s{keys %{$prf->{$_}}}} = values %{$prf->{$_}};
       $prf->{$_} = $sh;
     }
     return $prf;
   }
-  elsif (UNIVERSAL::isa($key2str,'ARRAY')) {
+  elsif (UNIVERSAL::isa($i2s,'ARRAY')) {
     foreach (grep {defined $prf->{$_}} qw(f2 f12),$prf->scoreKeys) {
       my $sh = {};
-      @$sh{@$key2str[keys %{$prf->{$_}}]} = values %{$prf->{$_}};
+      @$sh{@$i2s[keys %{$prf->{$_}}]} = values %{$prf->{$_}};
       $prf->{$_} = $sh;
     }
     return $prf;
   }
 
-  $prf->logconfess("stringify(): don't know how to stringify via object '$key2str'");
+  $prf->logconfess("stringify(): don't know how to stringify via object '$i2s'");
 }
 
 ##==============================================================================
@@ -451,40 +456,16 @@ sub add {
   return $_[0]->clone->_add(@_[1..$#_]);
 }
 
-## $prf = $prf->_diff($prf2,%opts)
-##  + subtracts $prf2 scores from $prf (destructive)
-##  + $prf and $prf2 must be compatibly compiled
+## $diff = $prf1->diff($prf2,%opts)
+##  + wraps DiaColloDB::Profile::Diff->new($prf1,$prf2,%opts)
 ##  + %opts:
 ##     N  => $bool, ##-- whether to subtract N values (default:true)
 ##     f1 => $bool, ##-- whether to subtract f1 values (default:true)
 ##     f2 => $bool, ##-- whether to subtract f2 values (default:true)
 ##     f12 => $bool, ##-- whether to subtract f12 values (default:true)
 ##     score => $bool, ##-- whether to subtract score values (default:true)
-sub _diff {
-  my ($pa,$pb,%opts) = @_;
-  $pa->{N}  -= $pb->{N} if (!exists($opts{N}) || $opts{N});
-  $pa->{f1} -= $pb->{f1} if (!exists($opts{f1}) || $opts{f1});
-  my $scoref = $pa->{score} // $pb->{score} // 'f12';
-  my $diff_f12 = (!exists($opts{f12}) || $opts{f12});
-  my $diff_f2  = (!exists($opts{f2}) || $opts{f2});
-  my $diff_score = (!exists($opts{score}) || $opts{score}) && (!$diff_f12 || $scoref ne 'f12');
-  my ($af2,$af12,$ascore) = @$pa{qw(f2 f12),$scoref};
-  my ($bf2,$bf12,$bscore) = @$pb{qw(f2 f12),$scoref};
-  $pa->logconfess("_diff(): no {$scoref} key for \$pa") if (!$ascore);
-  $pa->logconfess("_diff(): no {$scoref} key for \$pb") if (!$bscore);
-  foreach (keys %$bscore) {
-    $af2->{$_}    -= $bf2->{$_} if ($diff_f2);
-    $af12->{$_}   -= $bf12->{$_} if ($diff_f12);
-    $ascore->{$_} -= $bscore->{$_} if ($diff_score);
-  }
-  return $pa;
-}
-
-## $diff = $prf1->diff($prf2,%opts)
-##  + returns new score-diff of $prf1 and $prf2 frequency data
-##  + %opts are passed to DiaColloDB::Profile::Diff->new()
 sub diff {
-  return DiaColloDB::Profile::Diff->new(prf1=>$_[0],prf2=>$_[1],@_[2..$#_]);
+  return DiaColloDB::Profile::Diff->new(@_);
 }
 
 

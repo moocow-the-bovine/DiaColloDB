@@ -15,6 +15,7 @@ use DiaColloDB::Unigrams;
 use DiaColloDB::Cofreqs;
 use DiaColloDB::Profile;
 use DiaColloDB::Profile::Multi;
+use DiaColloDB::Profile::MultiDiff;
 use DiaColloDB::Corpus;
 use DiaColloDB::Persistent;
 use DiaColloDB::Utils qw(:fcntl :json :sort :pack :regex);
@@ -623,6 +624,26 @@ sub profile2 {
   return $_[0]->profile('cof',@_[1..$#_]);
 }
 
+## $mprf = $coldb->compare1(%opts)
+##  + get unigram comparison profile for selected items as a DiaColloDB::Profile::MultiDiff object
+##  + really just wraps $coldb->compare('xf', %opts)
+##  + %opts: see compare() method
+BEGIN { *diff1 = \&compare1; }
+sub compare1 {
+  return $_[0]->compare('xf',@_[1..$#_]);
+}
+
+
+## $mprf = $coldb->compare2(%opts)
+##  + get co-frequency comparison profile for selected items as a DiaColloDB::Profile::MultiDiff object
+##  + really just wraps $coldb->profile('cof', %opts)
+##  + %opts: see compare() method
+BEGIN { *diff2 = \&compare2; }
+sub compare2 {
+  return $_[0]->compare('cof',@_[1..$#_]);
+}
+
+
 ##--------------------------------------------------------------
 ## Profiling: Utils
 
@@ -746,7 +767,7 @@ sub profile {
   my $strings = $opts{strings} // 1;
 
   ##-- debug
-  $coldb->debug("profile(lemma='$lemma', date='$date', slice=$slice, score=$score, eps=$eps, kbest=$kbest, cutoff=$cutoff)");
+  $coldb->debug("profile(rel=$rel, lemma='$lemma', date='$date', slice=$slice, score=$score, eps=$eps, kbest=$kbest, cutoff=$cutoff)");
 
   ##-- sanity check(s)
   my ($reldb);
@@ -778,7 +799,7 @@ sub profile {
   $coldb->vlog($logProfile, "profile(): get frequency profile(s)");
   my $pack_i = $coldb->{pack_id};
   my $gbsub  = sub { unpack($pack_i,$xenum->i2s($_[0])) };
-  my $d2prf  = {}; ##-- ($dateKey => $profileForDateKey, ...)
+  my @dprfs  = qw();
   my ($d,$prf);
   foreach $d (sort {$a<=>$b} keys %$d2xis) {
     $prf = $reldb->profile($d2xis->{$d}, groupby=>$gbsub);
@@ -786,10 +807,75 @@ sub profile {
     $prf->trim(kbest=>$kbest, cutoff=>$cutoff);
     $prf = $prf->stringify($lenum) if ($strings);
     $prf->{label} = $d;
-    $d2prf->{$d}  = $prf;
+    push(@dprfs, $prf);
   }
 
-  return DiaColloDB::Profile::Multi->new(data=>$d2prf);
+  return DiaColloDB::Profile::Multi->new(profiles=>\@dprfs);
+}
+
+##--------------------------------------------------------------
+## Profiling: Comparison (diff)
+
+## $mprf = $coldb->compare($relation, %opts)
+##  + get a relation comparison profile for selected items as a DiaColloDB::Profile::MultiDiff object
+##  + %opts:
+##    (
+##     ##-- selection parameters
+##     lemma => $lemma1,          ##-- string or array or regex "/REGEX/[gi]*"        : REQUIRED
+##     date  => $date1,           ##-- string or array or range "MIN-MAX" (inclusive) : default=all
+##     ##
+##     ##-- aggregation parameters
+##     #groupby => $attrs,         ##-- string or array; ("lemma"|"date")* : default=lemma,date : NYI
+##     slice   => $slice,         ##-- date slice (default=1, 0 for global profile)
+##     ##
+##     ##-- scoring and trimming parameters
+##     eps     => $eps,           ##-- smoothing constant (default=0)
+##     score   => $func,          ##-- scoring function ("f"|"fm"|"mi"|"ld") : default="f"
+##     kbest   => $k,             ##-- return only $k best collocates per date (slice) : default=-1:all
+##     cutoff  => $cutoff,        ##-- minimum score
+##     ##
+##     ##-- profiling and debugging parameters
+##     strings => $bool,          ##-- do/don't stringify (default=do)
+BEGIN { *diff = \&compare; }
+sub compare {
+  my ($coldb,$rel,%opts) = @_;
+  $rel //= 'cof';
+
+  ##-- common variables
+  my ($logProfile,$lenum) = @$coldb{qw(logProfile lenum)};
+  $opts{"a$_"} //= $opts{$_}//'' foreach qw(lemma date slice);
+  $opts{"b$_"} //= $opts{$_}//'' foreach qw(lemma date slice);
+  my %aopts = map {($_=>$opts{"a$_"})} qw(lemma date slice);
+  my %bopts = map {($_=>$opts{"b$_"})} qw(lemma date slice);
+  my %popts = (kbest=>-1,cutoff=>'',strings=>0);
+
+  ##-- debug
+  $coldb->debug("compare(".join(', ', map {"$_=".($opts{$_}//'')} qw(rel alemma blemma adate bdate aslice bslice score eps kbest cutoff)).")");
+
+  ##-- get profiles to compare
+  my $mpa = $coldb->profile($rel,%opts, %aopts,%popts)
+    or return undef;
+  my $mpb = $coldb->profile($rel,%opts, %bopts,%popts)
+    or return undef;
+
+  ##-- alignment and trimming
+  $coldb->vlog($logProfile, "compare(): align and trim");
+  my $ppairs = DiaColloDB::Profile::MultiDiff->align($mpa,$mpb);
+  my %trim   = (kbest=>($opts{kbest}//-1), cutoff=>($opts{cutoff}//''));
+  my ($pa,$pb,%pkeys);
+  foreach (@$ppairs) {
+    ($pa,$pb) = @$_;
+    %pkeys = map {($_=>undef)} (@{$pa->which(%trim)}, @{$pb->which(%trim)});
+    $pa->trim(keep=>\%pkeys);
+    $pb->trim(keep=>\%pkeys);
+  }
+
+  ##-- diff and stringification
+  $coldb->vlog($logProfile, "compare(): diff and stringification");
+  my $diff = DiaColloDB::Profile::MultiDiff->new($mpa,$mpb);
+  $diff->stringify($lenum) if ($opts{strings}//1);
+
+  return $diff;
 }
 
 ##==============================================================================

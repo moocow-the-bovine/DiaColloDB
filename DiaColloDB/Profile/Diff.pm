@@ -20,6 +20,7 @@ our @ISA = qw(DiaColloDB::Profile);
 ## Constructors etc.
 
 ## $prf = CLASS_OR_OBJECT->new(%args)
+## $prf = CLASS_OR_OBJECT->new($prf1,$prf2,%args)
 ## + %args, object structure:
 ##   (
 ##    ##-- DiaColloDB::Profile::Diff
@@ -40,12 +41,14 @@ our @ISA = qw(DiaColloDB::Profile);
 ##   )
 sub new {
   my $that = shift;
+  my $prf1 = UNIVERSAL::isa(ref($_[0]),'DiaColloDB::Profile') ? shift : undef;
+  my $prf2 = UNIVERSAL::isa(ref($_[0]),'DiaColloDB::Profile') ? shift : undef;
   my $dprf = $that->SUPER::new(
-			       prf1=>undef,
-			       prf2=>undef,
+			       prf1=>$prf1,
+			       prf2=>$prf2,
 			       @_,
 			      );
-  $dprf->populate() if ($dprf->{prf1} && $dprf->{prf2});
+  return $dprf->populate() if ($dprf->{prf1} && $dprf->{prf2});
   return $dprf;
 }
 
@@ -78,11 +81,31 @@ sub operands {
 ##    (
 ##     label => $label,   ##-- override $prf->{label} (used by Profile::Multi), no tab-separators required
 ##    )
-##  + format (flat, TAB-separated): N F1 F2 F12 SCORE LABEL ITEM2
+##  + format (flat, TAB-separated): Na Nb F1a F1b F2a F2b F12a F12b SCOREa SCOREb SCOREdiff LABEL ITEM2
 ##  + TODO
 sub saveTextFh {
   my ($dprf,$fh,%opts) = @_;
-  $dprf->logconfess("saveTextFh: not yet implemented");
+
+  my ($pa,$pb,$fscore) = @$dprf{qw(prf1 prf2 score)};
+  $fscore //= 'f12';
+  my ($Na,$f1a,$f2a,$f12a,$scorea) = @$pa{qw(N f1 f2 f12),$fscore};
+  my ($Nb,$f1b,$f2b,$f12b,$scoreb) = @$pb{qw(N f1 f2 f12),$fscore};
+  my $scored = $dprf->{$fscore};
+  my $label = exists($opts{label}) ? $opts{label} : $dprf->{label};
+  foreach (sort {$scored->{$b} <=> $scored->{$a}} keys %$scored) {
+    $fh->print(join("\t",
+		    $Na, $Nb,
+		    $f1a,$f1b,
+		    $f2a->{$_}, $f2b->{$_},
+		    $f12a->{$_}, $f2b->{$_},
+		    ($fscore
+		     ? ($scorea->{$_},$scoreb->{$_},$scored->{$_})
+		     : (qw(NA NA NA))),
+		    (defined($label) ? $label : qw()),
+		    $_),
+	       "\n");
+  }
+  return $dprf;
 }
 
 ##--------------------------------------------------------------
@@ -109,15 +132,16 @@ sub saveHtmlFile {
 
 ## $dprf = $dprf->populate()
 ## $dprf = $dprf->populate($prf1,$prf2)
+##  + populates diff-profile by subtracting $prf2 scores from $prf1
 sub populate {
   my ($dprf,$pa,$pb) = @_;
   $pa = $dprf->{prf1} = ($pa // $dprf->{prf1});
   $pb = $dprf->{prf2} = ($pb // $dprf->{prf2});
-  $dprf->{label} = "$pa->{label}-$pb->{label}";
+  $dprf->{label} //= $pa->label() ."-" . $pb->label();
 
   $dprf->{N} = $pa->{N}-$pb->{N};
   $dprf->{f1} = $pa->{f1}-$pb->{f1};
-  my $scoref = $pa->{score} // $pb->{score} // 'f12';
+  my $scoref = $dprf->{score} = $dprf->{score} // $pa->{score} // $pb->{score} // 'f12';
   my ($af2,$af12,$ascore) = @$pa{qw(f2 f12),$scoref};
   my ($bf2,$bf12,$bscore) = @$pb{qw(f2 f12),$scoref};
   my ($df2,$df12,$dscore) = @$dprf{qw(f2 f12),$scoref};
@@ -125,6 +149,9 @@ sub populate {
   $dprf->logconfess("populate(): no {$scoref} key for \$pb") if (!$bscore);
   $dscore = $dprf->{$scoref} = ($dscore // {});
   foreach (keys %$bscore) {
+    $af2->{$_}    //= 0;
+    $af12->{$_}   //= 0;
+    $ascore->{$_} //= 0;
     $df2->{$_}    = $af2->{$_} - $bf2->{$_};
     $df12->{$_}   = $af12->{$_} - $bf12->{$_};
     $dscore->{$_} = $ascore->{$_} - $bscore->{$_};
@@ -165,12 +192,12 @@ sub uncompile {
 ##  + stringifies profile (destructive) via $obj->i2s($key2), $key2str->($i2) or $key2str->{$i2}
 sub stringify {
   my $dprf = shift;
-  $_->stringify(@_) or return undef foreach (grep {defined($_)} @{$dprf->operands});
+  $_->stringify(@_) or return undef foreach (grep {defined($_)} $dprf->operands);
   return $dprf->SUPER::stringify(@_);
 }
 
 ##==============================================================================
-## Algebraic operations
+## Binary operations
 
 ## $prf = $prf->_add($prf2,%opts)
 ##  + adds $prf2 frequency data to $prf (destructive)
