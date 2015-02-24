@@ -469,6 +469,7 @@ sub i2s {
   CORE::read($enum->{sfh}, $buf, $slen)==$slen
       or $enum->logconfess("i2s(): read() failed on $enum->{base}.es for string of length $slen at offset $soff");
 
+  utf8::decode($buf) if ($enum->{utf8});
   return $buf;
 }
 

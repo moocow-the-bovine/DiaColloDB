@@ -137,7 +137,7 @@ sub fcopen {
 sub loadJsonString {
   my $that = UNIVERSAL::isa($_[0],__PACKAGE__) ? shift : __PACKAGE__;
   my $bufr = ref($_[0]) ? $_[0] : \$_[0];
-  return from_json($$bufr, {utf8=>1, relaxed=>1, allow_nonref=>1, @_[1..$#_]});
+  return from_json($$bufr, {utf8=>!utf8::is_utf8($$bufr), relaxed=>1, allow_nonref=>1, @_[1..$#_]});
 }
 
 ## $data = PACKAGE::loadJsonFile($filename_or_handle,%opts)
@@ -162,7 +162,7 @@ sub loadJsonFile {
 sub saveJsonString {
   my $that = UNIVERSAL::isa($_[0],__PACKAGE__) ? shift : __PACKAGE__;
   my $data = shift;
-  return to_json($data, {utf8=>0, allow_nonref=>1, allow_unknown=>1, allow_blessed=>1, convert_blessed=>1, pretty=>1, canonical=>1, @_});
+  return to_json($data, {utf8=>1, allow_nonref=>1, allow_unknown=>1, allow_blessed=>1, convert_blessed=>1, pretty=>1, canonical=>1, @_});
 }
 
 ## $bool = PACKAGE::saveJsonFile($data,$filename_or_handle,%opts)

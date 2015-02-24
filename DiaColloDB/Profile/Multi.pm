@@ -51,7 +51,16 @@ sub clone {
 
 ##--------------------------------------------------------------
 ## I/O: JSON
-##  + INHERITED from DiaCollocDB::Persistent
+##  + mostly INHERITED from DiaCollocDB::Persistent
+
+## $obj = $CLASS_OR_OBJECT->loadJsonData( $data,%opts)
+##  + guts for loadJsonString(), loadJsonFile()
+sub loadJsonData {
+  my $that = shift;
+  my $mp   = $that->DiaColloDB::Persistent::loadJsonData(@_);
+  bless($_,'DiaColloDB::Profile') foreach (@{$mp->{profiles}//[]});
+  return $mp;
+}
 
 ##--------------------------------------------------------------
 ## I/O: Text
@@ -153,7 +162,7 @@ sub stringify {
 ##  + %opts: passed to Profile::_add()
 sub _add {
   my ($amp,$bmp) = (shift,shift);
-  my %a2data = map {($_=>label=>$_)} @{$amp->{profiles}};
+  my %a2data = map {($_->label=>$_)} @{$amp->{profiles}};
   my ($bkey,$bprf,$aprf);
   foreach $bprf (@{$bmp->{profiles}}) {
     $bkey = $bprf->label;

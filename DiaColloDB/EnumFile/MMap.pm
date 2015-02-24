@@ -181,7 +181,9 @@ sub i2s {
 
   my $soff = unpack($enum->{pack_o}, substr(${$enum->{ixbufr}}, $i*$enum->{len_o}, $enum->{len_o}));
   my $slen = unpack($enum->{pack_l}, substr(${$enum->{sbufr}},  $soff, $enum->{len_l}));
-  return substr(${$enum->{sbufr}}, $soff+$enum->{len_l}, $slen);
+  my $buf  = substr(${$enum->{sbufr}}, $soff+$enum->{len_l}, $slen);
+  utf8::decode($buf) if ($enum->{utf8});
+  return $buf;
 }
 
 ## $i_or_undef = $enum->s2i($s)

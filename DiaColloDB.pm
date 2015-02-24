@@ -4,6 +4,7 @@
 ## Description: collocation db, top-level
 
 package DiaColloDB;
+use DiaColloDB::Client;
 use DiaColloDB::Logger;
 use DiaColloDB::EnumFile;
 use DiaColloDB::EnumFile::MMap;

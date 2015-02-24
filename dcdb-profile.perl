@@ -114,7 +114,7 @@ if ($outfmt eq 'text') {
 }
 elsif ($outfmt eq 'json') {
   $mp->trace("saveJsonFile()");
-  DiaColloDB::Utils::saveJsonFile($mp, '-', utf8=>0,pretty=>$pretty,canonical=>$pretty);
+  DiaColloDB::Utils::saveJsonFile($mp, '-', utf8=>1,pretty=>$pretty,canonical=>$pretty);
 }
 elsif ($outfmt eq 'html') {
   $mp->trace("saveHtmlFile()");

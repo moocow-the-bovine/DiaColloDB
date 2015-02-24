@@ -46,7 +46,20 @@ sub new {
 
 ##--------------------------------------------------------------
 ## I/O: JSON
-##  + INHERITED from DiaCollocDB::Persistent
+##  + mostly INHERITED from DiaCollocDB::Persistent
+
+## $obj = $CLASS_OR_OBJECT->loadJsonData( $data,%opts)
+##  + guts for loadJsonString(), loadJsonFile()
+sub loadJsonData {
+  my $that = shift;
+  my $mp   = $that->DiaColloDB::Persistent::loadJsonData(@_);
+  foreach (@{$mp->{profiles}//[]}) {
+    bless($_,'DiaColloDB::Profile::Diff');
+    bless($_->{prf1}, 'DiaColloDB::Profile') if ($_->{prf1});
+    bless($_->{prf2}, 'DiaColloDB::Profile') if ($_->{prf2});
+  }
+  return $mp;
+}
 
 ##--------------------------------------------------------------
 ## I/O: Text

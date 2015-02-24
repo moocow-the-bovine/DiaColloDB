@@ -134,6 +134,7 @@ sub saveTextFh {
   my ($N,$f1,$f2,$f12) = @$prf{qw(N f1 f2 f12)};
   my $fscore = $prf->{$prf->{score}//'f12'};
   my $fmt    = $opts{format} || '%f';
+  binmode($fh,':utf8');
   foreach (sort {$fscore->{$b} <=> $fscore->{$a}} keys %$fscore) {
     $fh->print(join("\t",
 		    $N,

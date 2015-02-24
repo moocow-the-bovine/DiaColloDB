@@ -3,6 +3,9 @@ MANIFEST
 MANIFEST.SKIP
 MYMETA.yml
 DiaColloDB.pm
+DiaColloDB/Client.pm
+DiaColloDB/Client/file.pm
+DiaColloDB/Client/http.pm
 DiaColloDB/Cofreqs.pm
 DiaColloDB/Corpus.pm
 DiaColloDB/Document.pm

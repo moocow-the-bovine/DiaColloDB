@@ -129,14 +129,20 @@ sub saveJsonFile {
   return DiaColloDB::Utils::saveJsonFile(@_);
 }
 
+## $obj = $CLASS_OR_OBJECT->loadJsonData( $data,%opts)
+##  + guts for loadJsonString(), loadJsonFile()
+sub loadJsonData {
+  my ($that,$data) = @_;
+  return bless($data,$that) if (!ref($that));
+  %$that = %$data;
+  return $that;
+}
+
 ## $obj = $CLASS_OR_OBJECT->loadJsonString( $string,%opts)
 ## $obj = $CLASS_OR_OBJECT->loadJsonString(\$string,%opts)
 sub loadJsonString {
   my $that = shift;
-  my $loaded = DiaColloDB::Utils::loadJsonString(@_);
-  return bless($loaded,$that) if (!ref($that));
-  %$that = %$loaded;
-  return $that;
+  return $that->loadJsonData(DiaColloDB::Utils::loadJsonString(@_));
 }
 
 ## $obj = $CLASS_OR_OBJECT->loadJsonFh($fh,%opts)
@@ -147,10 +153,7 @@ BEGIN {
 ## $obj = $CLASS_OR_OBJECT->loadJsonFile($filename_or_handle,%opts)
 sub loadJsonFile {
   my $that = shift;
-  my $loaded = DiaColloDB::Utils::loadJsonFile(@_);
-  return bless($loaded,$that) if (!ref($that));
-  %$that = %$loaded;
-  return $that;
+  return $that->loadJsonData(DiaColloDB::Utils::loadJsonFile(@_));
 }
 
 ##--------------------------------------------------------------

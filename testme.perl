@@ -7,6 +7,7 @@ use PDL;
 use File::Path qw(make_path remove_tree);
 use File::Find;
 use File::Basename qw(basename);
+use Time::HiRes qw(gettimeofday tv_interval);
 use JSON;
 use Benchmark qw(timethese cmpthese);
 
@@ -712,7 +713,142 @@ sub test_profile_diff {
 
   exit 0;
 }
-test_profile_diff(@ARGV);
+#test_profile_diff(@ARGV);
+
+##==============================================================================
+## bench: profile-multi
+
+## (\@lemmata,\@dbs) = bench_profile_multi_load($lfile,$dbglob)
+sub bench_profile_multi_load {
+  my $lfile  = shift || 'lf-100.dat';
+  my $dbglob = shift || 'kern01.d';
+  my @dbdirs = glob($dbglob);
+
+  ##-- open dbdirs
+  DiaColloDB::Logger->ensureLog(
+				level=>'INFO'
+			       );
+  my @coldbs = map {
+    DiaColloDB->new(dbdir=>$_, logProfile=>'off')
+      or die("$0: open failed for dbdir $_: $!");
+  } @dbdirs;
+  die("$0: no dbs!") if (!@coldbs);
+
+  ##-- load lemma file
+  open(my $lfh,"<$lfile") or die("$0: open failed for $lfile: $!");
+  binmode($lfh,':utf8');
+  my @lemmas = map {chomp; s/^[0-9]+\t//; $_} grep {defined($_) && $_ !~ /^\s*$/} <$lfh>;
+  close($lfh);
+
+  return (\@lemmas,\@coldbs);
+}
+
+sub bench_profile_multi {
+  my $lfile  = shift || 'lf-100.dat';
+  my $dbglob = shift || 'kern01.d';
+  my ($lemmas,$coldbs) = bench_profile_multi_load($lfile,$dbglob);
+
+  ##-- bench profile
+  my %popts = (kbest=>10, slice=>0, score=>'ld');
+  my ($l,$mp,$mpi);
+  my $t0 = [gettimeofday];
+  foreach $l (@$lemmas) {
+    $mp = undef;
+    foreach (@$coldbs) {
+      $mpi = $_->profile2(lemma=>$l, %popts) or next;
+      $mp  = defined($mp) ? $mp->_add($mpi) : $mpi;
+    }
+    $mp->compile($popts{score})->trim(%popts) if (defined($mp));
+  }
+  my $t1 = [gettimeofday];
+  $_->close() foreach (@$coldbs);
+
+  ##-- report
+  my $elapsed = tv_interval($t0,$t1);
+  my $nl      = @$lemmas;
+  printf ("  # %-10s @ {%-12s}  : got %d profile(s) in %.4f seconds ~ %.2f secs/op\n", $lfile,$dbglob,$nl,$elapsed,$elapsed/$nl);
+  # lf-100.dat @ {kern01.d} : got 10 profile(s) in 3.4193 seconds ~ 0.34 secs/op
+  # lf-1k.dat  @ {kern01.d} : got 10 profile(s) in 5.4863 seconds ~ 0.55 secs/op
+  # lf-10k.dat @ {kern01.d} : got 10 profile(s) in 5.1056 seconds ~ 0.51 secs/op
+  # lftest.dat @ {kern01.d} : got 30 profile(s) in 9.0231 seconds ~ 0.30 secs/op
+  ##
+  # lf-100.dat @ {kern.d      } : got 10 profile(s) in 11.6816 seconds ~ 1.17 secs/op
+  # lf-100.dat @ {kern0[1-4].d} : got 10 profile(s) in 15.3844 seconds ~ 1.54 secs/op (+31.6%)
+  ##
+  # lf-1k.dat  @ {kern.d      } : got 10 profile(s) in 16.6947 seconds ~ 1.67 secs/op
+  # lf-1k.dat  @ {kern0[1-4].d} : got 10 profile(s) in 20.1486 seconds ~ 2.01 secs/op (+20.4%)
+  ##
+  # lf-10k.dat @ {kern.d      } : got 10 profile(s) in 18.7411 seconds ~ 1.87 secs/op
+  # lf-10k.dat @ {kern0[1-4].d} : got 10 profile(s) in 21.8675 seconds ~ 2.19 secs/op (+17.1%)
+  ##
+  # lftest.dat @ {kern.d      } : got 30 profile(s) in 30.7756 seconds ~ 1.03 secs/op
+  # lftest.dat @ {kern0[1-4].d} : got 30 profile(s) in 39.0718 seconds ~ 1.30 secs/op (+26.2%)
+  ##
+  ## (threaded)
+  # lftest.dat @ {kern.d      }T : got 30 profile(s) in 32.0691 seconds ~ 1.07 secs/op
+  # lftest.dat @ {kern0[1-4].d}T : got 30 profile(s) in 41.0114 seconds ~ 1.37 secs/op
+  ##
+  ##-- 2nd run
+  # lftest.dat @ {kern.d      }  : got 30 profile(s) in 1.4780 seconds ~ 0.05 secs/op
+  # lftest.dat @ {kern0[1-4].d}  : got 30 profile(s) in 1.5600 seconds ~ 0.05 secs/op (+ 5.5%)
+  ##
+  # lftest.dat @ {kern.d      }T : got 30 profile(s) in 2.6317 seconds ~ 0.09 secs/op
+  # lftest.dat @ {kern0[1-4].d}T : got 30 profile(s) in 3.8586 seconds ~ 0.13 secs/op (+46.1%)
+  exit 0;
+}
+#bench_profile_multi(@ARGV);
+
+sub bench_profile_multi_threads {
+  my $lfile  = shift || 'lf-100.dat';
+  my $dbglob = shift || 'kern01.d';
+  my ($lemmas,$coldbs) = bench_profile_multi_load($lfile,$dbglob);
+
+  use threads;
+  use threads::shared;
+
+  ##-- bench profile
+  my %popts = (kbest=>10, slice=>0, score=>'ld');
+  my ($l,$mp,@threads,$mpi);
+  my $t0 = [gettimeofday];
+  foreach $l (@$lemmas) {
+    $mp = undef;
+    @threads = map {
+      my $coldb = $_;
+      threads->create(sub { $^W=0; $coldb->profile2(lemma=>$l,%popts); })
+    } @$coldbs;
+    foreach (@threads) {
+      $mpi = $_->join() or next;
+      $mp  = defined($mp) ? $mp->_add($mpi) : $mpi;
+    }
+    $mp->compile($popts{score})->trim(%popts) if (defined($mp));
+  }
+  my $t1 = [gettimeofday];
+  $_->close() foreach (@$coldbs);
+
+  ##-- report
+  my $elapsed = tv_interval($t0,$t1);
+  my $nl      = @$lemmas;
+  printf ("  # %-10s @ {%-12s}T : got %d profile(s) in %.4f seconds ~ %.2f secs/op\n", $lfile,$dbglob,$nl,$elapsed,$elapsed/$nl);
+}
+#bench_profile_multi_threads(@ARGV);
+
+##==============================================================================
+## test: client
+
+sub test_client {
+  my $lemma = shift || 'Frau';
+  #my $url = shift || 'file://kern01.d';
+  my $url = shift || 'http://localhost/~moocow/diacollo';
+
+  my $cli = DiaColloDB::Client->new($url, user=>'taxi',password=>'tsgpw')
+    or die("$0: failed to create client for URL $url: $!");
+  my $mp = $cli->profile2(lemma=>$lemma, slice=>0, kbest=>10, score=>'ld')
+    or die("$0: failed to retrieve profile for '$lemma': $cli->{error}");
+  $mp->saveTextFile(\*STDOUT);
+
+  exit 0;
+}
+test_client(@ARGV);
 
 
 ##==============================================================================
