@@ -874,6 +874,7 @@ sub compare {
   ##-- diff and stringification
   $coldb->vlog($logProfile, "compare(): diff and stringification");
   my $diff = DiaColloDB::Profile::MultiDiff->new($mpa,$mpb);
+  $diff->trim(kbesta=>$opts{kbest}) if ($opts{kbest});
   $diff->stringify($lenum) if ($opts{strings}//1);
 
   return $diff;

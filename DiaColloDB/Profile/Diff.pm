@@ -28,10 +28,10 @@ our @ISA = qw(DiaColloDB::Profile);
 ##    prf2 => $prf2,     ##-- 2nd operand
 ##    ##-- DiaColloDB::Profile keys
 ##    label => $label,   ##-- string label (used by Multi; undef for none(default))
-##    N   => $N,         ##-- DIFFERENCE of total marginal relation frequency
-##    f1  => $f1,        ##-- DIFFERENCE of total marginal frequency of target word(s)
-##    f2  => \%f2,       ##-- DIFFERENCE total marginal frequency of collocates: ($i2=>$f2, ...)
-##    f12 => \%f12,      ##-- DIFFERENCE collocation frequencies, %f12 = ($i2=>$f12, ...)
+##    #N   => $N,         ##-- OVERRIDE:unused: total marginal relation frequency
+##    #f1  => $f1,        ##-- OVERRIDE:unused: total marginal frequency of target word(s)
+##    #f2  => \%f2,       ##-- OVERRIDE:unused: total marginal frequency of collocates: ($i2=>$f2, ...)
+##    #f12 => \%f12,      ##-- OVERRIDE:unused: collocation frequencies, %f12 = ($i2=>$f12, ...)
 ##    #
 ##    eps => $eps,       ##-- smoothing constant (default=undef: no smoothing)
 ##    score => $func,    ##-- selected scoring function ('f12', 'mi', or 'ld')
@@ -43,22 +43,28 @@ sub new {
   my $that = shift;
   my $prf1 = UNIVERSAL::isa(ref($_[0]),'DiaColloDB::Profile') ? shift : undef;
   my $prf2 = UNIVERSAL::isa(ref($_[0]),'DiaColloDB::Profile') ? shift : undef;
+  my %opts = @_;
   my $dprf = $that->SUPER::new(
 			       prf1=>$prf1,
 			       prf2=>$prf2,
-			       @_,
+			       %opts,
 			      );
+  delete @$dprf{grep {!defined($opts{$_})} qw(N f1 f2 f12)};
   return $dprf->populate() if ($dprf->{prf1} && $dprf->{prf2});
   return $dprf;
 }
 
-## $prf2 = $dprf->clone()
-## $prf2 = $dprf->clone($keep_compiled)
-##  + clones %$mp
+## $dprf2 = $dprf->clone()
+## $dprf2 = $dprf->clone($keep_compiled)
+##  + clones %$dprf
 ##  + if $keep_score is true, compiled data is cloned too
 sub clone {
   my ($dprf,$force) = @_;
-  $dprf->logconfess("clone(): not implemented");
+  return bless({
+		label=>$dprf->{label},
+		(defined($dprf->{prf1}) ? $dprf->{prf1}->clone($force) : qw()),
+		(defined($dprf->{prf2}) ? $dprf->{prf2}->clone($force) : qw()),
+	       }, ref($dprf));
 }
 
 ## ($prf1,$prf2) = $dprf->operands();
@@ -71,7 +77,16 @@ sub operands {
 
 ##--------------------------------------------------------------
 ## I/O: JSON
-##  + INHERITED from DiaCollocDB::Persistent
+##  + mostly INHERITED from DiaCollocDB::Persistent
+
+## $obj = $CLASS_OR_OBJECT->loadJsonData( $data,%opts)
+##  + guts for loadJsonString(), loadJsonFile()
+sub loadJsonData {
+  my $that = shift;
+  my $dprf = $that->DiaColloDB::Persistent::loadJsonData(@_);
+  bless($_,'DiaColloDB::Profile') foreach (grep {defined($_)} @$dprf{qw(prf1 prf2)});
+  return $dprf;
+}
 
 ##--------------------------------------------------------------
 ## I/O: Text
@@ -85,6 +100,7 @@ sub operands {
 ##  + format (flat, TAB-separated): Na Nb F1a F1b F2a F2b F12a F12b SCOREa SCOREb SCOREdiff LABEL ITEM2
 sub saveTextFh {
   my ($dprf,$fh,%opts) = @_;
+  binmode($fh,':utf8');
 
   my ($pa,$pb,$fscore) = @$dprf{qw(prf1 prf2 score)};
   $fscore //= 'f12';
@@ -127,6 +143,7 @@ sub saveHtmlFile {
   my ($dprf,$file,%opts) = @_;
   my $fh = ref($file) ? $file : IO::File->new(">$file");
   $dprf->logconfess("saveHtmlFile(): failed to open '$file': $!") if (!ref($fh));
+  binmode($fh,':utf8');
 
   $fh->print("<html><body>\n") if ($opts{body}//1);
   $fh->print("<table><tbody>\n") if ($opts{table}//1);
@@ -174,21 +191,16 @@ sub populate {
   $pb = $dprf->{prf2} = ($pb // $dprf->{prf2});
   $dprf->{label} //= $pa->label() ."-" . $pb->label();
 
-  $dprf->{N} = $pa->{N}-$pb->{N};
-  $dprf->{f1} = $pa->{f1}-$pb->{f1};
   my $scoref = $dprf->{score} = $dprf->{score} // $pa->{score} // $pb->{score} // 'f12';
   my ($af2,$af12,$ascore) = @$pa{qw(f2 f12),$scoref};
   my ($bf2,$bf12,$bscore) = @$pb{qw(f2 f12),$scoref};
-  my ($df2,$df12,$dscore) = @$dprf{qw(f2 f12),$scoref};
+  my $dscore              = $dprf->{$scoref} = ($dprf->{$scoref} // {});
   $dprf->logconfess("populate(): no {$scoref} key for \$pa") if (!$ascore);
   $dprf->logconfess("populate(): no {$scoref} key for \$pb") if (!$bscore);
-  $dscore = $dprf->{$scoref} = ($dscore // {});
   foreach (keys %$bscore) {
     $af2->{$_}    //= 0;
     $af12->{$_}   //= 0;
     $ascore->{$_} //= 0;
-    $df2->{$_}    = $af2->{$_} - $bf2->{$_};
-    $df12->{$_}   = $af12->{$_} - $bf12->{$_};
     $dscore->{$_} = $ascore->{$_} - $bscore->{$_};
   }
   return $dprf;
@@ -201,9 +213,8 @@ sub compile {
   my ($dprf,$func) = (shift,shift);
   $dprf->logconfess("compile(): cannot compile without operand profiles")
     if (!$dprf->{prf1} || !$dprf->{prf2});
-  $_->compile() or return undef foreach (@$dprf{qw(prf1 prf2)});
-  $dprf->{prf1}->compile($func,@_);
-  $dprf->{prf2}->compile($func,@_);
+  $dprf->{prf1}->compile($func,@_) or return undef;
+  $dprf->{prf2}->compile($func,@_) or return undef;
   $dprf->{score} = $dprf->{prf1}{score};
   return $dprf->populate();
 }
@@ -218,6 +229,39 @@ sub uncompile {
 }
 
 ##==============================================================================
+## Trimming
+
+## \@keys = $prf->which(%opts)
+##  + returns 'good' keys for trimming options %opts:
+##    (
+##     cutoff => $cutoff,  ##-- retain only items with $prf->{$prf->{score}}{$item} >= $cutoff
+##     kbest  => $kbest,   ##-- retain only $kbest items
+##     kbesta => $kbesta,  ##-- retain only $kbest items (absolute value)
+##     return => $which,   ##-- either 'good' (default) or 'bad'
+##     as     => $as,      ##-- 'hash' or 'array'; default='array'
+##    )
+##  + INHERITED from DiaColloDB::Profile
+
+## $dprf = $dprf->trim(%opts)
+##  + %opts:
+##    (
+##     kbest => $kbest,    ##-- retain only $kbest items (by score value)
+##     kbesta => $kbesta,  ##-- retain only $kbest items (by score absolute value)
+##     cutoff => $cutoff,  ##-- retain only items with $prf->{$prf->{score}}{$item} >= $cutoff
+##     keep => $keep,      ##-- retain keys @$keep (ARRAY) or keys(%$keep) (HASH)
+##     drop => $drop,      ##-- drop keys @$drop (ARRAY) or keys(%$drop) (HASH)
+##    )
+sub trim {
+  my $dprf = shift;
+  $dprf->SUPER::trim(@_) or return undef;
+  my $dscore = $dprf->{$dprf->{score}//'f12'};
+  $dprf->{prf1}->trim(keep=>$dscore) or return undef if ($dprf->{prf1});
+  $dprf->{prf2}->trim(keep=>$dscore) or return undef if ($dprf->{prf2});
+  return $dprf;
+}
+
+
+##==============================================================================
 ## Stringification
 
 ## $dprf = $dprf->stringify( $obj)
@@ -226,26 +270,32 @@ sub uncompile {
 ## $dprf = $dprf->stringify(\%key2str)
 ##  + stringifies profile (destructive) via $obj->i2s($key2), $key2str->($i2) or $key2str->{$i2}
 sub stringify {
-  my $dprf = shift;
-  $_->stringify(@_) or return undef foreach (grep {defined($_)} $dprf->operands);
-  return $dprf->SUPER::stringify(@_);
+  my ($dprf,$i2s) = @_;
+  $i2s = $dprf->stringify_map($i2s);
+  $_->stringify($i2s) or return undef foreach (grep {defined($_)} $dprf->operands);
+  return $dprf->SUPER::stringify($i2s);
 }
 
 ##==============================================================================
 ## Binary operations
 
-## $prf = $prf->_add($prf2,%opts)
-##  + adds $prf2 frequency data to $prf (destructive)
-##  + implicitly un-compiles $prf
+## $dprf = $dprf->_add($dprf2,%opts)
+##  + adds $prf2 operatnd frequency data to $prf operands (destructive)
+##  + implicitly un-compiles $dprf
 ##  + %opts:
 ##     N  => $bool, ##-- whether to add N values (default:true)
 ##     f1 => $bool, ##-- whether to add f1 values (default:true)
-##  + INHERITED but probably useless
+sub _add {
+  my ($dpa,$dpb,%opts) = @_;
+  $dpa->{prf1}->_add($dpb->{prf1}) if ($dpa->{prf1} && $dpb->{prf1});
+  $dpa->{prf2}->_add($dpb->{prf2}) if ($dpa->{prf2} && $dpb->{prf2});
+  return $dpa->uncompile();
+}
 
-## $prf3 = $prf1->add($prf2,%opts)
-##  + returns sum of $prf1 and $prf2 frequency data (destructive)
+## $dprf3 = $dprf1->add($dprf2,%opts)
+##  + returns sum of $dprf1 and $dprf2 operatnd frequency data (destructive)
 ##  + see _add() method for %opts
-##  + INHERITED but probably useless
+##  + INHERITED from DiaColloDB::Profile
 
 ## $prf = $prf->_diff($prf2,%opts)
 ##  + subtracts $prf2 scores from $prf (destructive)
@@ -258,7 +308,7 @@ sub stringify {
 ##     score => $bool, ##-- whether to subtract score values (default:true)
 ##  + INHERITED but probably useless
 
-## $prf3 = $prf1->diff($prf2,%opts)
+## $diff = $prf1->diff($prf2,%opts)
 ##  + returns score-diff of $prf1 and $prf2 frequency data (destructive)
 ##  + %opts: see _diff() method
 ##  + INHERITED but probably useless

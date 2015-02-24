@@ -167,6 +167,7 @@ sub saveHtmlFile {
   my ($prf,$file,%opts) = @_;
   my $fh = ref($file) ? $file : IO::File->new(">$file");
   $prf->logconfess("saveHtmlFile(): failed to open '$file': $!") if (!ref($fh));
+  binmode($fh,':utf8');
 
   $fh->print("<html><body>\n") if ($opts{body}//1);
   $fh->print("<table><tbody>\n") if ($opts{table}//1);
@@ -306,6 +307,7 @@ sub compile_ld {
 ##    (
 ##     cutoff => $cutoff,  ##-- retain only items with $prf->{$prf->{score}}{$item} >= $cutoff
 ##     kbest  => $kbest,   ##-- retain only $kbest items
+##     kbesta => $kbesta,  ##-- retain only $kbest items (absolute value)
 ##     return => $which,   ##-- either 'good' (default) or 'bad'
 ##     as     => $as,      ##-- 'hash' or 'array'; default='array'
 ##    )
@@ -331,7 +333,17 @@ sub which {
     my @keys = sort {$score->{$b} <=> $score->{$a}} grep {!exists($bad->{$_})} keys %$score;
     if (@keys > $kbest) {
       splice(@keys, 0, $kbest);
-      $bad->{$_} = 1 foreach (@keys);
+      @$bad{@keys} = qw();
+    }
+  }
+
+  ##-- which: abs k-best
+  my $kbesta;
+  if (defined($kbesta = $opts{kbesta}) && $kbesta > 0) {
+    my @keys = sort {abs($score->{$b}) <=> abs($score->{$a})} grep {!exists($bad->{$_})} keys %$score;
+    if (@keys > $kbesta) {
+      splice(@keys, 0, $kbesta);
+      @$bad{@keys} = qw();
     }
   }
 
@@ -339,14 +351,15 @@ sub which {
   if (($opts{return}//'') eq 'bad') {
     return lc($opts{as}//'array') eq 'hash' ?  $bad : [keys %$bad];
   }
-  return lc($opts{as}//'array') eq 'hash' ? {map {$bad->{$_} ? qw() : ($_=>undef)} keys %$score } : [grep {!$bad->{$_}} keys %$score];
+  return lc($opts{as}//'array') eq 'hash' ? {map {exists($bad->{$_}) ? qw() : ($_=>undef)} keys %$score } : [grep {!exists($bad->{$_})} keys %$score];
 }
 
 
 ## $prf = $prf->trim(%opts)
 ##  + %opts:
 ##    (
-##     kbest => $kbest,    ##-- retain only $kbest items
+##     kbest => $kbest,    ##-- retain only $kbest items (by score value)
+##     kbesta => $kbesta,  ##-- retain only $kbest items (by score absolute value)
 ##     cutoff => $cutoff,  ##-- retain only items with $prf->{$prf->{score}}{$item} >= $cutoff
 ##     keep => $keep,      ##-- retain keys @$keep (ARRAY) or keys(%$keep) (HASH)
 ##     drop => $drop,      ##-- drop keys @$drop (ARRAY) or keys(%$drop) (HASH)
@@ -395,11 +408,38 @@ sub trim {
     }
   }
 
+  ##-- trim: abs k-best
+  my $kbesta;
+  if (defined($kbesta = $opts{kbesta}) && $kbesta > 0) {
+    my @trim = sort {abs($score->{$b}) <=> abs($score->{$a})} keys %$score;
+    if (@trim > $kbesta) {
+      splice(@trim, 0, $kbesta);
+      delete @{$prf->{$_}}{@trim} foreach (grep {defined($prf->{$_})} qw(f2 f12),$prf->scoreKeys);
+    }
+  }
+
   return $prf;
 }
 
 ##==============================================================================
 ## Stringification
+
+## $i2s = $prf->stringify( $obj)
+## $i2s = $prf->stringify(\@key2str)
+## $i2s = $prf->stringify(\&key2str)
+## $i2s = $prf->stringify(\%key2str)
+##  + guts for stringify: get a map for stringification
+sub stringify_map {
+  my ($prf,$i2s) = @_;
+  if (UNIVERSAL::can($i2s,'i2s')) {
+    $i2s = { map {($_=>$i2s->i2s($_))} sort {$a<=>$b} keys %{$prf->{$prf->{score}//'f12'}} };
+  }
+  elsif (UNIVERSAL::isa($i2s,'CODE')) {
+    $i2s = { map {($_=>$i2s->($_))} sort {$a<=>$b} keys %{$prf->{$prf->{score}//'f12'}} };
+  }
+  return $i2s;
+}
+
 
 ## $prf = $prf->stringify( $obj)
 ## $prf = $prf->stringify(\@key2str)
@@ -408,13 +448,7 @@ sub trim {
 ##  + stringifies profile (destructive) via $obj->i2s($key2), $key2str->($i2) or $key2str->{$i2}
 sub stringify {
   my ($prf,$i2s) = @_;
-  if (UNIVERSAL::can($i2s,'i2s')) {
-    $i2s = { map {($_=>$i2s->i2s($_))} sort {$a<=>$b} keys %{$prf->{f2}} };
-  }
-  elsif (UNIVERSAL::isa($i2s,'CODE')) {
-    $i2s = { map {($_=>$i2s->($_))} sort {$a<=>$b} keys %{$prf->{f2}} };
-  }
-  ##-- guts
+  $i2s = $prf->stringify_map($i2s);
   if (UNIVERSAL::isa($i2s,'HASH')) {
     foreach (grep {defined $prf->{$_}} qw(f2 f12),$prf->scoreKeys) {
       my $sh = {};
@@ -432,7 +466,7 @@ sub stringify {
     return $prf;
   }
 
-  $prf->logconfess("stringify(): don't know how to stringify via object '$i2s'");
+  $prf->logconfess("stringify(): don't know how to stringify via '", ($i2s//'undef'). "'");
 }
 
 ##==============================================================================
