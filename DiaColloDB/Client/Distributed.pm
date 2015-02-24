@@ -114,7 +114,7 @@ sub profile {
   my $kfudge = ($cli->{fudge} || 1)*$kbest;
   foreach (@{$cli->{clis}}) {
     $mpi = $_->profile($rel,%opts,kbest=>$kfudge)
-      or $cli->logconfess("profile() failed for client URL $_->{url}: $!");
+      or $cli->logconfess("profile() failed for client URL $_->{url}: $_->{error}");
     $mp  = defined($mp) ? $mp->_add($mpi) : $mpi;
   }
 
