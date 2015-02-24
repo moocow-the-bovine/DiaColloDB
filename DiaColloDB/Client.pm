@@ -7,6 +7,7 @@ package DiaColloDB::Client;
 use DiaColloDB::Persistent;
 use DiaColloDB::Client::file;
 use DiaColloDB::Client::http;
+use DiaColloDB::Client::Distributed;
 use URI;
 use strict;
 
@@ -30,11 +31,18 @@ sub new {
   my $that = shift;
   my $url  = (@_ % 2)==0 ? undef : shift;
   my $cli  = bless({
+		    $that->defaults(),
 		    url=>$url,
 		    @_
 		   }, ref($that)||$that);
   return $cli->open() if (defined($cli->{url}));
   return $cli;
+}
+
+## %defaults = $CLASS_OR_OBJ->defaults()
+##  + called by new()
+sub defaults {
+  return qw();
 }
 
 sub DESTROY {

@@ -112,8 +112,8 @@ sub opened {
   my $cof = shift;
   return
     (defined($cof->{base})
-     && $cof->{r1}->opened
-     && $cof->{r2}->opened);
+     && defined($cof->{r1}) && $cof->{r1}->opened
+     && defined($cof->{r2}) && $cof->{r2}->opened);
 }
 
 ##--------------------------------------------------------------

@@ -835,20 +835,40 @@ sub bench_profile_multi_threads {
 ##==============================================================================
 ## test: client
 
-sub test_client {
+sub test_client_profile {
   my $lemma = shift || 'Frau';
-  #my $url = shift || 'file://kern01.d';
-  my $url = shift || 'http://localhost/~moocow/diacollo';
+  #my @urls = @_ ? @_ : glob('kern0[1-4].d');
+  my @urls = @_ ? @_ : ('http://localhost/~moocow/diacollo', glob("kern0[2-4].d"));
 
-  my $cli = DiaColloDB::Client->new($url, user=>'taxi',password=>'tsgpw')
-    or die("$0: failed to create client for URL $url: $!");
+  DiaColloDB::Logger->ensureLog();
+  my $cli = DiaColloDB::Client::Distributed->new(\@urls, opts=>{user=>'taxi',password=>'tsgpw',logRequest=>'debug'})
+    or die("$0: failed to create client for URLs ", join(' ',@urls), ": $!");
   my $mp = $cli->profile2(lemma=>$lemma, slice=>0, kbest=>10, score=>'ld')
     or die("$0: failed to retrieve profile for '$lemma': $cli->{error}");
+  $cli->close();
   $mp->saveTextFile(\*STDOUT);
 
   exit 0;
 }
-test_client(@ARGV);
+#test_client_profile(@ARGV);
+
+sub test_client_diff {
+  my $alemma = shift || 'Mann';
+  my $blemma = shift || 'Frau';
+
+  #my @urls = @_ ? @_ : glob('kern0[1-4].d');
+  my @urls = @_ ? @_ : ('http://localhost/~moocow/diacollo', glob("kern0[2-4].d"));
+
+  DiaColloDB::Logger->ensureLog();
+  my $cli = DiaColloDB::Client::Distributed->new(\@urls, opts=>{user=>'taxi',password=>'tsgpw',logRequest=>'debug'})
+    or die("$0: failed to create client for URLs ", join(' ',@urls), ": $!");
+  my $mp = $cli->compare2(alemma=>$alemma, blemma=>$blemma, slice=>0, kbest=>10, score=>'ld')
+    or die("$0: failed to retrieve diff for '$alemma'-'$blemma': $cli->{error}");
+  $mp->saveTextFile(\*STDOUT);
+
+  exit 0;
+}
+test_client_diff(@ARGV);
 
 
 ##==============================================================================

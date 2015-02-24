@@ -53,7 +53,7 @@ our @ISA = qw(DiaColloDB::Persistent);
 ##    f2  => \%f2,       ##-- total marginal frequency of collocates: ($i2=>$f2, ...)
 ##    f12 => \%f12,      ##-- collocation frequencies, %f12 = ($i2=>$f12, ...)
 ##    #
-##    eps => $eps,       ##-- smoothing constant (default=undef: no smoothing)
+##    eps => $eps,       ##-- smoothing constant (default=0.5)
 ##    score => $func,    ##-- selected scoring function ('f12', 'mi', or 'ld')
 ##    mi => \%mi12,      ##-- score: mutual information * logFreq a la Wortprofil; requires compile_mi()
 ##    ld => \%ld12,      ##-- score: log-dice a la Wortprofil; requires compile_ld()
@@ -67,7 +67,7 @@ sub new {
 		    f1=>0,
 		    f2=>{},
 		    f12=>{},
-		    #eps=>0,
+		    eps=>0.5,
 		    #mi=>{},
 		    #ld=>{},
 		    #fm=>{},

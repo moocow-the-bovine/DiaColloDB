@@ -22,6 +22,8 @@ our @ISA = qw(DiaColloDB::Client);
 ##   (
 ##    ##-- options
 ##    urls  => \@urls,     ##-- db urls
+##    opts  => \%opts,     ##-- sub-client options
+##    fudge => $coef,      ##-- get ($coef*$kbest) items from sub-clients (default=1)
 ##    ##
 ##    ##-- guts
 ##    clis => \@clis,      ##-- per-url clients
@@ -31,6 +33,8 @@ sub new {
   my $urls = (@_ % 2)==0 ? [] : shift;
   my $cli  = bless({
 		    urls=>$urls,
+		    opts=>{},
+		    fudge=>1,
 		    @_
 		   }, ref($that)||$that);
   return $cli->open() if (defined($cli->{urls}) && @{$cli->{urls}});
@@ -42,14 +46,14 @@ sub new {
 
 ## $cli_or_undef = $cli->open(\@urls,%opts)
 ## $cli_or_undef = $cli->open()
-##  + calls open() on all urls
+##  + creates new client for each url, passing %opts to DiaColloDB::Client->new()
 sub open {
   my ($cli,$urls) = (shift,shift);
   $cli->{urls} = $urls = ($urls // $cli->{urls});
   my ($c);
   my $clis = $cli->{clis} = [];
   foreach (@$urls) {
-    $c = DiaColloDB::Client->new($_,@_)
+    $c = DiaColloDB::Client->new($_,%{$cli->{opts}//{}},@_)
       or $cli->logconfess("open(): failed to create client for URL '$_': $!");
     push(@$clis, $c);
   }
@@ -77,7 +81,10 @@ sub open_http {
 ## $cli_or_undef = $cli->close()
 ##  + default just returns $cli
 sub close {
-  return $_[0];
+  my $cli = shift;
+  $_->close() foreach (grep {defined($_)} @{$cli->{clis}});
+  delete $cli->{clis};
+  return $cli;
 }
 
 ## $bool = $cli->opened()
@@ -101,16 +108,18 @@ sub opened {
 ##  + %opts: as for DiaColloDB::profile()
 ##  + sets $cli->{error} on error
 sub profile {
-  my ($cli,$rel) = (shift,shift);
+  my ($cli,$rel,%opts) = @_;
   my ($mp,$mpi);
+  my $kbest  = $opts{kbest} // 0;
+  my $kfudge = ($cli->{fudge} || 1)*$kbest;
   foreach (@{$cli->{clis}}) {
-    $mpi = $_->profile($rel,@_)
+    $mpi = $_->profile($rel,%opts,kbest=>$kfudge)
       or $cli->logconfess("profile() failed for client URL $_->{url}: $!");
     $mp  = defined($mp) ? $mp->_add($mpi) : $mpi;
   }
 
   ##-- re-compile and -trim
-  $mp->compile($opts{score})->trim(kbest=>$opts{kbest}, cutoff=>$opts{cutoff});
+  $mp->compile($opts{score})->trim(kbest=>$kbest, cutoff=>$opts{cutoff});
   return $mp;
 }
 
@@ -121,11 +130,20 @@ sub profile {
 ##  + get a relation comparison profile for selected items as a DiaColloDB::Profile::MultiDiff object
 ##  + %opts: as for DiaColloDB::compare()
 ##  + sets $cli->{error} on error
-### + TODO
-sub diff { $_[0]->compare(@_[1..$#_]); }
 sub compare {
   my ($cli,$rel,%opts) = @_;
-  $cli->logconfess("compare(): not implemented");
+  my ($mp,$mpi);
+  my $kbest  = $opts{kbest} // 0;
+  my $kfudge = ($cli->{fudge} || 1)*$kbest;
+  foreach (@{$cli->{clis}}) {
+    $mpi = $_->compare($rel,%opts,kbest=>$kfudge)
+      or $cli->logconfess("profile() failed for client URL $_->{url}: $!");
+    $mp  = defined($mp) ? $mp->_add($mpi) : $mpi;
+  }
+
+  ##-- re-compile and -trim
+  $mp->compile($opts{score})->trim(kbest=>$kbest, cutoff=>$opts{cutoff});
+  return $mp;
 }
 
 ##==============================================================================

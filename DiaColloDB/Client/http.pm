@@ -28,10 +28,21 @@ our @ISA = qw(DiaColloDB::Client);
 ##    ##-- DiaColloDB::Client::http: options
 ##    user => $user,          ##-- for LWP::UserAgent basic authentication
 ##    password => $password,  ##-- for LWP::UserAgent basic authentication
+##    logRequest => $log,     ##-- log-level for HTTP requests (default:undef)
 ##    ##
 ##    ##-- DiaColloDB::Client::http: guts
 ##    ua   => $ua,        ##-- underlying LWP::UserAgent
 ##   )
+
+## %defaults = $CLASS_OR_OBJ->defaults()
+##  + called by new()
+sub defaults {
+  return (
+	  logRequest=>undef,
+	 );
+}
+
+
 
 ##==============================================================================
 ## I/O: open/close
@@ -83,6 +94,7 @@ sub jget {
   $uri->query_form($form);
   my $req = HTTP::Request->new('GET',"$uri");
   $req->authorization_basic($cli->{user}, $cli->{password}) if (defined($cli->{user}) && defined($cli->{password}));
+  $cli->vlog($cli->{logRequest}, "GET $uri");
   my $rsp = $cli->{ua}->request($req);
   if (!$rsp->is_success) {
     $cli->{error} = $rsp->status_line;
