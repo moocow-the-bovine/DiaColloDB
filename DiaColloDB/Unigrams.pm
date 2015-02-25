@@ -121,6 +121,46 @@ sub create {
 }
 
 ##==============================================================================
+## Relation API: union
+
+## $ug = CLASS_OR_OBJECT->union(\@pairs, %opts)
+##  + merge multiple co-frequency indices into new object
+##  + @pairs : array of pairs ([$ug,\@xi2u],...)
+##    of unigram-objects $ug and tuple-id maps \@xi2u for $ug
+##  + %opts: clobber %$ug
+##  + implicitly flushes the new index
+sub union {
+  my ($ug,$pairs,%opts) = @_;
+
+  ##-- create/clobber
+  $ug = $ug->new() if (!ref($ug));
+  @$ug{keys %opts} = values %opts;
+
+  ##-- union guts (in-memory)
+  my $N = 0;
+  my $udata = [];
+  my ($pair,$pug,$pdata,$pi2u,$pxi);
+  foreach $pair (@$pairs) {
+    ($pug,$pi2u) = @$pair;
+    $pdata = $pug->toArray();
+    $pxi   = 0;
+    foreach (@$pdata) {
+      $udata->[$pi2u->[$pxi++]] += $_;
+    }
+    $N += $pug->{N};
+  }
+
+  ##-- finalize
+  $ug->{N} = $N;
+  $ug->fromArray($udata)
+    or $ug->logconfess("union(): failed to populate from array");
+  $ug->flush()
+    or $ug->logconfess("union(): failed to flush to disk");
+
+  return $ug;
+}
+
+##==============================================================================
 ## Relation API: profile
 
 ## $prf = $ug->profile(\@xids, %opts)

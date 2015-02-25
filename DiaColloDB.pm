@@ -443,13 +443,13 @@ sub create {
     or $corpus->logconfess("create(): failed to close temporary token storage file '$tokfile': $!");
 
   ##-- compile: lenum
-  $coldb->vlog($coldb->{logCreate},"create(): creating lemma-enum DB $dbdir/lenum.*");
+  $coldb->vlog($coldb->{logCreate},"create(): creating lemma-enum $dbdir/lenum.*");
   $lenum->fromHash($ls2i);
   $lenum->save("$dbdir/lenum")
     or $coldb->logconfess("create(): failed to save $dbdir/lenum: $!");
 
   ##-- compile: xenum
-  $coldb->vlog($coldb->{logCreate}, "create(): creating tuple-enum DB $dbdir/xenum.*");
+  $coldb->vlog($coldb->{logCreate}, "create(): creating tuple-enum $dbdir/xenum.*");
   $xenum->fromHash($xs2i);
   $xenum->save("$dbdir/xenum")
     or $coldb->logconfess("create(): failed to save $dbdir/xenum: $!");
@@ -458,24 +458,24 @@ sub create {
   $coldb->create_xmap("$dbdir/l2x",$xs2i,$pack_id,"lemma-expansion multimap");
 
   ##-- compute unigrams
-  $coldb->info("creating tuple 1-gram file $dbdir/xf.dba");
+  $coldb->info("creating tuple unigram index $dbdir/xf.dba");
   my $xfdb = $coldb->{xf} = DiaColloDB::Unigrams->new(file=>"$dbdir/xf.dba", flags=>$flags, packas=>$pack_f)
     or $coldb->logconfess("create(): could not create $dbdir/xf.dba: $!");
   $xfdb->setsize($xenum->{size})
-    or $coldb->logconfess("create(): could not set unigram db size = $xenum->{size}: $!");
+    or $coldb->logconfess("create(): could not set unigram index size = $xenum->{size}: $!");
   $xfdb->create($tokfile)
-    or $coldb->logconfess("create(): failed to create unigram db: $!");
+    or $coldb->logconfess("create(): failed to create unigram index: $!");
 
   ##-- compute collocation frequencies
-  $coldb->info("creating co-frequency db $dbdir/cof.* [dmax=$coldb->{dmax}, fmin=$coldb->{cfmin}]");
+  $coldb->info("creating co-frequency index $dbdir/cof.* [dmax=$coldb->{dmax}, fmin=$coldb->{cfmin}]");
   my $cof = $coldb->{cof} = DiaColloDB::Cofreqs->new(base=>"$dbdir/cof", flags=>$flags,
-						   pack_i=>$pack_id, pack_f=>$pack_f,
-						   dmax=>$coldb->{dmax}, fmin=>$coldb->{cfmin},
-						   keeptmp=>$coldb->{keeptmp},
-						  )
-    or $coldb->logconfess("create(): failed to open co-frequency db $dbdir/cof.*: $!");
+						     pack_i=>$pack_id, pack_f=>$pack_f,
+						     dmax=>$coldb->{dmax}, fmin=>$coldb->{cfmin},
+						     keeptmp=>$coldb->{keeptmp},
+						    )
+    or $coldb->logconfess("create(): failed to create co-frequency index $dbdir/cof.*: $!");
   $cof->create($tokfile)
-    or $coldb->logconfess("create(): failed to create co-frequency db: $!");
+    or $coldb->logconfess("create(): failed to create co-frequency index: $!");
 
   ##-- save header
   $coldb->saveHeader()
@@ -528,7 +528,7 @@ sub union {
   my ($db);
 
   ##-- lenum: populate
-  $coldb->vlog($coldb->{logCreate}, "union(): creating lemma-enum DB $dbdir/lenum.*");
+  $coldb->vlog($coldb->{logCreate}, "union(): creating lemma-enum $dbdir/lenum.*");
   my $lenum = $coldb->{lenum} = $ECLASS->new(%efopts);
   my $ls2i  = $lenum->{s2i};
   my $nl    = 0;
@@ -549,7 +549,7 @@ sub union {
     or $coldb->logconfess("union(): failed to save $dbdir/lenum: $!");
 
   ##-- xenum: populate
-  $coldb->vlog($coldb->{logCreate}, "union(): creating tuple DB $dbdir/xenum.*");
+  $coldb->vlog($coldb->{logCreate}, "union(): creating tuple-enum $dbdir/xenum.*");
   my $xenum = $coldb->{xenum} = $XECLASS->new(%efopts, pack_s=>$pack_x);
   my $xs2i  = $xenum->{s2i};
   my $nx    = 0;
@@ -578,25 +578,22 @@ sub union {
   $coldb->create_xmap("$dbdir/l2x",$xs2i,$pack_id,"lemma-expansion multimap");
 
   ##-- unigrams: populate
-  $coldb->vlog($coldb->{logCreate}, "union(): tuple 1-gram file $dbdir/xf.dba");
-  my $xfdata = [];
-  my ($axf);
-  foreach $db (@dbargs) {
-    $axf  = $db->{xf}->toArray();
-    $xi2u = $db->{xi2u};
-    $axi  = 0;
-    foreach (@$axf) {
-      $xfdata->[$xi2u->[$axi++]] += $_;
-    }
-  }
-  my $xfdb = $coldb->{xf} = DiaColloDB::Unigrams->new(file=>"$dbdir/xf.dba", flags=>$flags, packas=>$pack_f)
-    or $coldb->logconfess("union(): could not create $dbdir/xf.dba: $!");
-  $xfdb->fromArray($xfdata)
-    or $coldb->logconfess("union(): could not populate unigram db $dbdir/xf.dba: $!");
-  $xfdb->flush()
-    or $coldb->logconfess("union(): could not flush unigram db $dbdir/xf.dba: $!");
+  $coldb->vlog($coldb->{logCreate}, "union(): creating tuple unigram index $dbdir/xf.*");
+  $coldb->{xf} = DiaColloDB::Unigrams->new(file=>"$dbdir/xf.dba", flags=>$flags, packas=>$pack_f)
+    or $coldb->logconfess("union(): could not create $dbdir/xf.*: $!");
+  $coldb->{xf}->union([map {[@$_{qw(xf xi2u)}]} @dbargs])
+    or $coldb->logconfess("union(): could not populate unigram index $dbdir/xf.*: $!");
 
-  ##-- cof: TODO
+  ##-- co-frequencies: populate
+  $coldb->vlog($coldb->{logCreate}, "union(): creating co-frequency index $dbdir/cof.* [fmin=$coldb->{cfmin}]");
+  $coldb->{cof} = DiaColloDB::Cofreqs->new(base=>"$dbdir/cof", flags=>$flags,
+					   pack_i=>$pack_id, pack_f=>$pack_f,
+					   dmax=>$coldb->{dmax}, fmin=>$coldb->{cfmin},
+					   keeptmp=>$coldb->{keeptmp},
+					  )
+    or $coldb->logconfess("create(): failed to open co-frequency index $dbdir/cof.*: $!");
+  $coldb->{cof}->union([map {[@$_{qw(cof xi2u)}]} @dbargs])
+    or $coldb->logconfess("union(): could not populate co-frequency index $dbdir/cof.*: $!");
 
   ##-- cleanup
   delete @$_{qw(li2u xi2u)} foreach (@dbargs);
@@ -706,7 +703,7 @@ sub dbexport {
 
   ##-- dump: xf
   if ($coldb->{xf}) {
-    $coldb->vlog($coldb->{logExport}, "dbexport(): exporting tuple-frequency db $outdir/xf.dat");
+    $coldb->vlog($coldb->{logExport}, "dbexport(): exporting tuple-frequency index $outdir/xf.dat");
     $coldb->{xf}->setFilters($coldb->{pack_f});
     $coldb->{xf}->saveTextFile("$outdir/xf.dat", keys=>1)
       or $coldb->logconfess("export failed for $outdir/xf.dat");
@@ -715,7 +712,7 @@ sub dbexport {
 
   ##-- dump: cof
   if ($coldb->{cof} && $export_cof) {
-    $coldb->vlog($coldb->{logExport}, "dbexport(): exporting raw co-frequency db $outdir/cof.dat");
+    $coldb->vlog($coldb->{logExport}, "dbexport(): exporting raw co-frequency index $outdir/cof.dat");
     $coldb->{cof}->saveTextFile("$outdir/cof.dat")
       or $coldb->logconfess("export failed for $outdir/cof.dat");
 
@@ -728,7 +725,7 @@ sub dbexport {
 	($li,$d) = unpack($pack_x,$xi2s->[$_[0]//'']//'');
 	return join("\t", $li2s->[$li//0]//'', $d//0);
       };
-      $coldb->vlog($coldb->{logExport}, "dbexport(): exporting stringified co-frequency db $outdir/cof.sdat");
+      $coldb->vlog($coldb->{logExport}, "dbexport(): exporting stringified co-frequency index $outdir/cof.sdat");
       $coldb->{cof}->saveTextFile("$outdir/cof.sdat", i2s=>$xi2txt)
 	or $coldb->logconfess("export failed for $outdir/cof.sdat");
     }

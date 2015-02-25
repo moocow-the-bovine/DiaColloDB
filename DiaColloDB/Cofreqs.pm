@@ -7,8 +7,8 @@ package DiaColloDB::Cofreqs;
 use DiaColloDB::Profile;
 use DiaColloDB::PackedFile;
 use DiaColloDB::Persistent;
-use DiaColloDB::Utils qw(:fcntl :env :run :json);
-use Fcntl;
+use DiaColloDB::Utils qw(:fcntl :env :run :json :pack);
+use Fcntl qw(:DEFAULT :seek);
 use strict;
 
 ##==============================================================================
@@ -153,6 +153,9 @@ sub loadHeaderData {
 
 ## $cof = $cof->loadTextFh($fh,%opts)
 ##  + loads from text file as saved by saveTextFh()
+##  + supports semi-sorted input: input fh must be sorted by $i1,
+##    and all $i2 for each $i1 must be adjacent (i.e. no intervening $j1 != $i1)
+##  + supports multiple lines for pairs ($i1,$i2) provided the above conditions hold
 ##  + %opts: clobber %$cof
 sub loadTextFh {
   my ($cof,$infh,%opts) = @_;
@@ -168,6 +171,82 @@ sub loadTextFh {
   my $pack_i   = $cof->{pack_i};
   my $pack_r1  = "${pack_i}${pack_f}"; ##-- $r1 : [$end2,$f1] @ $i1
   my $pack_r2  = "${pack_i}${pack_f}"; ##-- $r2 : [$i2,$f12]  @ end2($i1-1)..(end2($i1)-1)
+  my $len_r2   = packsize($pack_r2);
+  my $fmin     = $cof->{fmin} // 0;
+  my ($r1,$r2) = @$cof{qw(r1 r2)};
+  $r1->truncate();
+  $r2->truncate();
+  my ($fh1,$fh2) = ($r1->{fh},$r2->{fh});
+
+  ##-- iteration variables
+  my ($pos1,$pos2) = (0,0);
+  my ($i1_cur,$f1) = (-1,0);
+  my ($f12,$i1,$i2,$f);
+  my $N = 0;
+  my %f12 = qw(); ##-- ($i2=>$f12, ...)
+
+  ##-- guts
+  binmode($infh,':raw');
+  while (1) {
+    $_ = <$infh>;
+    ($f12,$i1,$i2) = defined($_) ? split(' ',$_,3) : (0,-1,0);
+    chomp($i2);
+    if ($i1 != $i1_cur) {
+      if ($i1_cur != -1) {
+	if ($i1_cur != $pos1) {
+	  ##-- we've skipped one or more $i1 because it had no collocates (e.g. kern01 i1=287123="Untier/1906")
+	  $fh1->print( pack($pack_r1,$pos2,0) x ($i1_cur-$pos1) );
+	}
+	##-- dump r2-records for $i1_cur
+	$f1 = 0;
+	foreach (sort {$a<=>$b} keys %f12) {
+	  $f    = $f12{$_};
+	  $f1  += $f;
+	  $N   += $f;
+	  next if ($f < $fmin); ##-- skip here so we can track "real" marginal frequencies
+	  $fh2->print(pack($pack_r2, $_,$f));
+	  ++$pos2;
+	}
+	##-- dump r1-record for $i1_cur
+	$fh1->print(pack($pack_r1, $pos2,$f1));
+	$pos1  = $i1_cur+1;
+      }
+      $i1_cur   = $i1;
+      %f12      = qw();
+    }
+    last if ($i1 < 0);
+
+    ##-- buffer collocation frequencies
+    $f12{$i2} += $f12;
+  }
+
+  ##-- adopt final $N and sizes
+  $cof->{N} = $N;
+  $cof->{size1} = $r1->size;
+  $cof->{size2} = $r2->size;
+
+  return $cof;
+}
+
+## $cof = $cof->loadTextFile_create($fh,%opts)
+##  + old version of loadTextFile() which doesn't support semi-sorted input or multiple ($i1,$i2) entries
+##  + not useable by union() method
+sub loadTextFile_create {
+  my ($cof,$infile,%opts) = @_;
+  my $infh = ref($infile) ? $infile : IO::File->new("<$infile");
+  if (!ref($cof)) {
+    $cof = $cof->new(%opts);
+  } else {
+    @$cof{keys %opts} = values %opts;
+  }
+  $cof->logconfess("loadTextFile(): cannot load unopened database!") if (!$cof->opened);
+
+  ##-- common variables
+  my $pack_f   = $cof->{pack_f};
+  my $pack_i   = $cof->{pack_i};
+  my $pack_r1  = "${pack_i}${pack_f}"; ##-- $r1 : [$end2,$f1] @ $i1
+  my $pack_r2  = "${pack_i}${pack_f}"; ##-- $r2 : [$i2,$f12]  @ end2($i1-1)..(end2($i1)-1)
+  my $len_r2   = packsize($pack_r2);
   my $fmin     = $cof->{fmin} // 0;
   my ($r1,$r2) = @$cof{qw(r1 r2)};
   $r1->truncate();
@@ -226,6 +305,7 @@ sub loadTextFh {
   $cof->{size1} = $r1->size;
   $cof->{size2} = $r2->size;
 
+  $infh->close() if (!ref($infile));
   return $cof;
 }
 
@@ -335,7 +415,7 @@ sub create {
 
   ##-- stage2: load pair-frequencies
   $cof->vlog('trace', "create(): stage2: load pair frequencies (fmin=$cof->{fmin})");
-  $cof->loadTextFile($tmpfile)
+  $cof->loadTextFile_create($tmpfile)
     or $cof->logconfess("create(): failed to load pair frequencies from $tmpfile: $!");
 
   ##-- stage3: header
@@ -346,6 +426,66 @@ sub create {
   unlink($tmpfile) if (!$cof->{keeptmp});
 
   ##-- done
+  return $cof;
+}
+
+##==============================================================================
+## Relation API: union
+
+
+## $cof = CLASS_OR_OBJECT->union(\@pairs, %opts)
+##  + merge multiple unigram unigram indices from \@pairs into new object
+##  + @pairs : array of pairs ([$cof,\@xi2u],...)
+##    of unigram-objects $cof and tuple-id maps \@xi2u for $cof
+##  + %opts: clobber %$cof
+##  + implicitly flushes the new index
+sub union {
+  my ($cof,$pairs,%opts) = @_;
+
+  ##-- create/clobber
+  $cof = $cof->new() if (!ref($cof));
+  @$cof{keys %opts} = values %opts;
+
+  ##-- tempfile (input for sort)
+  my $tmpfile = "$cof->{base}.udat";
+  my $tmpfh   = IO::File->new(">$tmpfile")
+    or $cof->logconfess("union(): open failed for tempfile $tmpfile: $!");
+  binmode($tmpfh,':raw');
+
+  ##-- stage1: extract pairs
+  $cof->vlog('trace', "union(): stage1: extract pairs");
+  my ($pair,$pcof,$pi2u);
+  my $pairi=0;
+  foreach $pair (@$pairs) {
+    ($pcof,$pi2u) = @$pair;
+    $pcof->saveTextFh($tmpfh, i2s=>sub {$pi2u->[$_[0]]})
+      or $cof->logconfess("union(): failed to extract pairs for argument $pairi");
+    ++$pairi;
+  }
+  $tmpfh->close()
+    or $cof->logconfess("union(): failed to close tempfile $tmpfile: $!");
+
+  ##-- sort temp-file
+  env_push(LC_ALL=>'C');
+  my $sortfh = opencmd("sort -n -k2 -k3 $tmpfile |")
+    or $cof->logconfess("union(): open failed for pipe from sort: $!");
+  binmode($sortfh,':raw');
+
+  ##-- stage2: load pair-frequencies
+  $cof->vlog('trace', "union(): stage2: load pair frequencies (fmin=$cof->{fmin})");
+  $cof->loadTextFh($sortfh)
+    or $cof->logconfess("union(): failed to load pair frequencies from $tmpfile: $!");
+  $sortfh->close()
+    or $cof->logconfess("union(): failed to close pipe from sort: $!");
+  env_pop();
+
+  ##-- stage3: header
+  $cof->saveHeader()
+    or $cof->logconfess("union(): failed to save header: $!");
+
+  ##-- unlink temp file
+  unlink($tmpfile) if (!$cof->{keeptmp});
+
   return $cof;
 }
 
