@@ -10,6 +10,7 @@
 \.zip$
 \.old$
 \.log$
+\.out$
 ^testme\.perl$
 \.(?:db|ttd|1g|types|i|d[0-9]?|d[ex]|dxd|bin|ng[0-5]|i[0-5]|cld|files|tabs|lab|kv|kvr|dat|rdat|tmp|export|[ls]|hdr|prf|xi)$
 ^cofgen

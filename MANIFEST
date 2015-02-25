@@ -6,6 +6,7 @@ DiaColloDB.pm
 DiaColloDB/Client.pm
 DiaColloDB/Client/file.pm
 DiaColloDB/Client/http.pm
+DiaColloDB/Client/list.pm
 DiaColloDB/Cofreqs.pm
 DiaColloDB/Corpus.pm
 DiaColloDB/Document.pm
@@ -26,7 +27,6 @@ DiaColloDB/Unigrams.pm
 DiaColloDB/Utils.pm
 dcdb-create.perl
 dcdb-export.perl
-dcdb-profile.perl
-dcdb-compare.perl
+dcdb-query.perl
 t/00_basic.t
 t/common.plt
