@@ -7,7 +7,7 @@ package DiaColloDB::Client;
 use DiaColloDB::Persistent;
 use DiaColloDB::Client::file;
 use DiaColloDB::Client::http;
-use DiaColloDB::Client::Distributed;
+use DiaColloDB::Client::list;
 use URI;
 use strict;
 
