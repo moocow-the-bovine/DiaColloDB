@@ -21,6 +21,7 @@ our $dbdir      = undef;
 
 our $globargs = 1; ##-- glob @ARGV?
 our $listargs = 0; ##-- args are file-lists?
+our $union    = 0; ##-- args are db-dirs?
 our %corpus   = (dclass=>'DDCTabs', dopts=>{});
 our %coldb    = (pack_id=>'N', pack_date=>'n', pack_f=>'N', pack_off=>'N', pack_len=>'n', dmax=>5, cfmin=>2, keeptmp=>0);
 
@@ -39,6 +40,7 @@ GetOptions(##-- general
 	   ##-- I/O options
 	   'glob|g!' => \$globargs,
 	   'list|l!' => \$listargs,
+	   'union|u|merge!' => \$union,
 	   'document-class|dclass|dc=s' => \$corpus{dclass},
 	   'document-option|docoption|do=s%' => \$corpus{dopts},
 	   'output|outdir|od|o=s' => \$dbdir,
@@ -82,8 +84,15 @@ $corpus->open(\@ARGV, 'glob'=>$globargs, 'list'=>$listargs)
 ##-- create colloc-db
 my $coldb = DiaColloDB->new(%coldb)
   or die("$prog: failed to create new DiaColloDB object: $!");
-$coldb->create($corpus, dbdir=>$dbdir, flags=>'rw')
-  or die("$prog: DiaColloDB::create() failed: $!");
+if ($union) {
+  ##-- union: create from dbdirs
+  $coldb->union($corpus->{files}, dbdir=>$dbdir, flags=>'rw')
+    or die("$prog: DiaColloDB::union() failed: $!");
+} else {
+  ##-- !union: create from corpus
+  $coldb->create($corpus, dbdir=>$dbdir, flags=>'rw')
+    or die("$prog: DiaColloDB::create() failed: $!");
+}
 
 
 __END__

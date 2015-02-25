@@ -290,19 +290,52 @@ sub opened {
 ##==============================================================================
 ## Create/compile
 
+##--------------------------------------------------------------
+## create: utils
+
+## $multimap = $coldb->create_xmap($base, \%xs2i, $packfmt, $label="multimap")
+sub create_xmap {
+  my ($coldb,$base,$xs2i,$packfmt,$label) = @_;
+  $label //= "multimap";
+  $coldb->vlog($coldb->{logCreate},"create_xmap(): creating $label $base.*");
+
+  my $pack_id  = $coldb->{pack_id};
+  my $pack_mmb = "${pack_id}*"; ##-- multimap target-set pack format
+  my @v2xi     = qw();
+  my ($x,$xi,$vi);
+  while (($x,$xi)=each %$xs2i) {
+    ($vi)       = unpack($packfmt,$x);
+    $v2xi[$vi] .= pack($pack_id,$xi);
+  }
+  $_ = pack($pack_mmb, sort {$a<=>$b} unpack($pack_mmb,$_//'')) foreach (@v2xi); ##-- ensure multimap target-sets are sorted
+
+  my $v2x = $MMCLASS->new(base=>$base, flags=>'rw', perms=>$coldb->{perms}, pack_i=>$pack_id, pack_o=>$coldb->{pack_off}, pack_l=>$coldb->{pack_len})
+      or $coldb->logconfess("create_xmap(): failed to create $base.*: $!");
+  $v2x->fromArray(\@v2xi)
+    or $coldb->logconfess("create_xmap(): failed to populate $base.*: $!");
+  $v2x->flush()
+    or $coldb->logconfess("create_xmap(): failed to flush $base.*: $!");
+
+  return $v2x;
+}
+
+##--------------------------------------------------------------
+## create: from corpus
+
 ## $bool = $coldb->create($corpus,%opts)
 ##  + %opts:
 ##     clobber %$coldb
 sub create {
   my ($coldb,$corpus,%opts) = @_;
+  $coldb = $coldb->new() if (!ref($coldb));
   @$coldb{keys %opts} = values %opts;
   my $flags = O_RDWR|O_CREAT|O_TRUNC;
 
   ##-- initialize: output directory
-  $coldb->vlog('info', "create(", ($coldb->{dbdir}//''), ")");
   my $dbdir = $coldb->{dbdir}
     or $coldb->logconfess("create() called but 'dbdir' key not set!");
   $dbdir =~ s{/$}{};
+  $coldb->vlog('info', "create($dbdir)");
   !-d $dbdir
     or remove_tree($dbdir)
       or $coldb->logconfess("create(): could not remove stale $dbdir: $!");
@@ -316,7 +349,6 @@ sub create {
   my $pack_off   = $coldb->{pack_off};
   my $pack_len   = $coldb->{pack_len};
   my $pack_x     = $coldb->{pack_x} = $pack_id.$pack_date; ##-- pack("${pack_id}${pack_date}", $li, $date)
-  my $pack_mmb   = "${pack_id}*";
 
   ##-- initialize: enums
   my %efopts = (flags=>$flags, pack_i=>$coldb->{pack_id}, pack_o=>$coldb->{pack_off}, pack_l=>$coldb->{pack_len});
@@ -423,21 +455,7 @@ sub create {
     or $coldb->logconfess("create(): failed to save $dbdir/xenum: $!");
 
   ##-- expansion map: l2x
-  {
-    $coldb->vlog($coldb->{logCreate},"create(): creating lemma-expansion multimap $dbdir/l2x.*");
-    my @l2xi  = qw();
-    while (($x,$xi)=each %$xs2i) {
-      ($li)       = unpack($pack_id,$x);
-      $l2xi[$li] .= pack($pack_id,$xi);
-    }
-    $_ = pack($pack_mmb, sort {$a<=>$b} unpack($pack_mmb,$_//'')) foreach (@l2xi); ##-- ensure multimap target-sets are sorted
-    my $l2x = $coldb->{l2x} = $MMCLASS->new(base=>"$dbdir/l2x", %mmopts)
-      or $coldb->logconfess("create(): failed to create $dbdir/l2x.*: $!");
-    $l2x->fromArray(\@l2xi)
-      or $coldb->logconfess("create(): failed to populate $dbdir/l2x.*: $!");
-    $l2x->flush()
-      or $coldb->logconfess("create(): failed to flush $dbdir/l2x.*: $!");
-  }
+  $coldb->create_xmap("$dbdir/l2x",$xs2i,$pack_id,"lemma-expansion multimap");
 
   ##-- compute unigrams
   $coldb->info("creating tuple 1-gram file $dbdir/xf.dba");
@@ -468,6 +486,127 @@ sub create {
 
   ##-- cleanup
   unlink($tokfile) if (!$coldb->{keeptmp});
+
+  return $coldb;
+}
+
+##--------------------------------------------------------------
+## create: union (aka merge)
+
+## $coldb = $CLASS_OR_OBJECT->union(\@coldbs_or_dbdirs,%opts)
+##  + populates $coldb as union over @coldbs_or_dbdirs
+##  + clobbers argument dbs {li2u}, {xi2u}
+BEGIN { *merge = \&union; }
+sub union {
+  my ($coldb,$args,%opts) = @_;
+  $coldb = $coldb->new() if (!ref($coldb));
+  @$coldb{keys %opts} = values %opts;
+  my @dbargs = map {ref($_) ? $_ : $coldb->new(dbdir=>$_)} @$args;
+  my $flags = O_RDWR|O_CREAT|O_TRUNC;
+
+  ##-- initialize: output directory
+  my $dbdir = $coldb->{dbdir}
+    or $coldb->logconfess("union() called but 'dbdir' key not set!");
+  $dbdir =~ s{/$}{};
+  $coldb->vlog('info', "union($dbdir): ", join(' ', map {$_->{dbdir}//''} @dbargs));
+  !-d $dbdir
+    or remove_tree($dbdir)
+      or $coldb->logconfess("union(): could not remove stale $dbdir: $!");
+  make_path($dbdir)
+    or $coldb->logconfess("union(): could not create DB directory $dbdir: $!");
+
+  ##-- pack-formats
+  my $pack_id    = $coldb->{pack_id};
+  my $pack_date  = $coldb->{pack_date};
+  my $pack_f     = $coldb->{pack_f};
+  my $pack_off   = $coldb->{pack_off};
+  my $pack_len   = $coldb->{pack_len};
+  my $pack_x     = $coldb->{pack_x} = $pack_id.$pack_date; ##-- pack("${pack_id}${pack_date}", $li, $date)
+
+  ##-- common variables: enums
+  my %efopts = (flags=>$flags, pack_i=>$coldb->{pack_id}, pack_o=>$coldb->{pack_off}, pack_l=>$coldb->{pack_len});
+  my ($db);
+
+  ##-- lenum: populate
+  $coldb->vlog($coldb->{logCreate}, "union(): creating lemma-enum DB $dbdir/lenum.*");
+  my $lenum = $coldb->{lenum} = $ECLASS->new(%efopts);
+  my $ls2i  = $lenum->{s2i};
+  my $nl    = 0;
+  my ($ali,$uli,$li2u);
+  foreach $db (@dbargs) {
+    $db->{lenum}->load()
+      or $coldb->logconfess("union(): failed to load lemma-enum for $db->{dbdir}");
+    $li2u = $db->{li2u} = [];
+    $ali  = 0;
+    foreach (@{$db->{lenum}{i2s}}) {
+      $uli = $ls2i->{$_} = $nl++ if (!defined($uli=$ls2i->{$_}));
+      $li2u->[$ali++] = $uli;
+    }
+    $db->{lenum}->rollback();
+  }
+  $lenum->fromHash($ls2i);
+  $lenum->save("$dbdir/lenum")
+    or $coldb->logconfess("union(): failed to save $dbdir/lenum: $!");
+
+  ##-- xenum: populate
+  $coldb->vlog($coldb->{logCreate}, "union(): creating tuple DB $dbdir/xenum.*");
+  my $xenum = $coldb->{xenum} = $XECLASS->new(%efopts, pack_s=>$pack_x);
+  my $xs2i  = $xenum->{s2i};
+  my $nx    = 0;
+  my ($db_pack_x,$xi2u,$axi,@dbx,$uxs,$uxi);
+  foreach $db (@dbargs) {
+    $db->{xenum}->load()
+      or $coldb->logconfess("union(): failed to load tuple-enum for $db->{dbdir}");
+    $db_pack_x = $db->{pack_x};
+    $li2u      = $db->{li2u};
+    $xi2u      = $db->{xi2u} = [];
+    $axi       = 0;
+    foreach (@{$db->{xenum}{i2s}}) {
+      @dbx    = unpack($db_pack_x,$_);
+      $dbx[0] = $li2u->[$dbx[0]//0];
+      $uxs    = pack($pack_x,@dbx);
+      $uxi    = $xs2i->{$uxs} = $nx++ if (!defined($uxi=$xs2i->{$uxs}));
+      $xi2u->[$axi++] = $uxi;
+    }
+    $db->{xenum}->rollback();
+  }
+  $xenum->fromHash($xs2i);
+  $xenum->save("$dbdir/xenum")
+    or $coldb->logconfess("union(): failed to save $dbdir/xenum: $!");
+
+  ##-- expansion map: l2x
+  $coldb->create_xmap("$dbdir/l2x",$xs2i,$pack_id,"lemma-expansion multimap");
+
+  ##-- unigrams: populate
+  $coldb->vlog($coldb->{logCreate}, "union(): tuple 1-gram file $dbdir/xf.dba");
+  my $xfdata = [];
+  my ($axf);
+  foreach $db (@dbargs) {
+    $axf  = $db->{xf}->toArray();
+    $xi2u = $db->{xi2u};
+    $axi  = 0;
+    foreach (@$axf) {
+      $xfdata->[$xi2u->[$axi++]] += $_;
+    }
+  }
+  my $xfdb = $coldb->{xf} = DiaColloDB::Unigrams->new(file=>"$dbdir/xf.dba", flags=>$flags, packas=>$pack_f)
+    or $coldb->logconfess("union(): could not create $dbdir/xf.dba: $!");
+  $xfdb->fromArray($xfdata)
+    or $coldb->logconfess("union(): could not populate unigram db $dbdir/xf.dba: $!");
+  $xfdb->flush()
+    or $coldb->logconfess("union(): could not flush unigram db $dbdir/xf.dba: $!");
+
+  ##-- cof: TODO
+
+  ##-- cleanup
+  delete @$_{qw(li2u xi2u)} foreach (@dbargs);
+
+  ##-- save header
+  $coldb->saveHeader()
+    or $coldb->logconfess("union(): failed to save header: $!");
+
+  ##-- all done
+  $coldb->vlog($coldb->{logCreate}, "union(): union DB $dbdir created.");
 
   return $coldb;
 }
@@ -607,7 +746,7 @@ sub dbexport {
 sub dbimport {
   my ($coldb,$txtdir,%opts) = @_;
   $coldb = $coldb->new() if (!ref($coldb));
-  $coldb->logconfess("dbimport() not yet implemented");
+  $coldb->logconfess("dbimport(): not yet implemented");
 }
 
 ##==============================================================================

@@ -168,6 +168,18 @@ sub loaded {
   return $_[0]{loaded};
 }
 
+## $bool = $enum->rollback()
+##  + drops in-memory structures
+##  + invalidates any old references to {s2i}, {i2s} (but doesn't empty them if you need to keep a reference)
+##  + clears {dirty} flag
+sub rollback {
+  my $enum = shift;
+  $enum->{i2s} = [];
+  $enum->{s2i} = {};
+  $enum->{dirty} = 0;
+  return $enum;
+}
+
 ## $bool = $enum->flush()
 ## $bool = $enum->flush($force)
 ##  + flush in-memory structures to disk
@@ -219,10 +231,7 @@ sub flush {
   CORE::truncate($sxfh, $sxfh->tell());
 
   ##-- clear in-memory structures (but don't clobber existing references; used for xenum by DiaColloDB::create())
-  $enum->{i2s} = [];
-  $enum->{s2i} = {};
-  $enum->{dirty} = 0;
-
+  $enum->rollback();
   return $enum;
 }
 

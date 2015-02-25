@@ -139,7 +139,6 @@ sub flush {
   return binmode($pf->{fh},':raw'); ##-- see perlfaq5(1) re: flushing filehandles
 }
 
-
 ##==============================================================================
 ## API: filters
 
@@ -292,6 +291,54 @@ sub push {
   $_[0]{fh}->print($_) or return undef;
   return $_[1];
 }
+
+##==============================================================================
+## API: batch I/O
+
+## \@data = $pf->toArray(%opts)
+##   + read entire contents to an array
+##   + %opts : override %$pf:
+##      packas => $packas
+sub toArray {
+  my ($pf,%opts) = @_;
+  $pf->setFilters($opts{packas}) if (exists($opts{packas}));
+  my ($fh,$filter_fetch,$reclen) = @$pf{qw(fh filter_fetch reclen)};
+  my @data = qw();
+  local $_;
+  $fh->seek(0,SEEK_SET);
+  while (!CORE::eof($fh)) {
+    CORE::read($fh, $_, $reclen)==$reclen
+	or $pf->logconfess("toArray(): failed to read $reclen bytes for record number ", scalar(@data), ": $!");
+    $filter_fetch->() if ($filter_fetch);
+    CORE::push(@data,$_);
+  }
+  $pf->setFilters();
+  return \@data;
+}
+
+## $pf = $pf->fromArray(\@data,%opts)
+##   + write file contents from an array
+##   + %opts : override %$pf:
+##      packas => $packas
+sub fromArray {
+  my ($pf,$data,%opts) = @_;
+  $pf->setFilters($opts{packas}) if (exists($opts{packas}));
+  my ($fh,$filter_store) = @$pf{qw(fh filter_store)};
+  local $_;
+  $pf->setsize(scalar @$data)
+    or $pf->logconfess("fromArray(): failed to set file size = ", scalar(@$data), ": $!");
+  $fh->seek(0,SEEK_SET);
+  my $i = 0;
+  foreach (@$data) {
+    $filter_store->() if ($filter_store);
+    $fh->print($_)
+      or $pf->logconfess("toArray(): failed to write record number $i: $!");
+    ++$i;
+  }
+  $pf->setFilters();
+  return $pf;
+}
+
 
 ##==============================================================================
 ## API: binary search
