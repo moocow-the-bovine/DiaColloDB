@@ -29,7 +29,7 @@ use strict;
 ## Globals & Constants
 
 our $VERSION = 0.02;
-our @ISA = qw(DiaColloDB::Persistent);
+our @ISA = qw(DiaColloDB::Client);
 
 ## $PGOOD_DEFAULT
 ##  + default positive pos regex for document parsing
@@ -108,6 +108,7 @@ our $MMCLASS = 'DiaColloDB::MultiMapFile';
 ##    logCorpusFileN => $N,     ##-- log corpus file-parsing only for every N files (0 for none; default:undef ~ $corpus->size()/100)
 ##    logExport => $level,      ##-- log-level for export messages (default='info')
 ##    logProfile => $level,     ##-- log-level for verbose profiling messages (default='trace')
+##    logRequest => $level,     ##-- log-level for request-level profiling messages (default='debug')
 ##    ##
 ##    ##-- enums
 ##    #wenum => $wenum,    ##-- enum: words  ($dbdir/wenum.*) : $w<=>$wi : A*<=>N # DISABLED
@@ -155,6 +156,7 @@ sub new {
 		      logCorpusFileN => undef,
 		      logExport => 'info',
 		      logProfile => 'trace',
+		      logRequest => 'debug',
 
 		      ##-- enums
 		      #wenum => undef, #DiaColloDB::EnumFile->new(pack_i=>$coldb->{pack_id}, pack_o=>$coldb->{pack_off}, pack_l=>$coldb->{pack_len}),
@@ -181,8 +183,14 @@ sub new {
   return $coldb;
 }
 
-sub DESTROY {
-  $_[0]->close() if ($_[0]->opened);
+## undef = $obj->DESTROY
+##  + destructor calls close() if necessary
+##  + INHERITED from DiaColloDB::Client
+
+## $cli_or_undef = $cli->promote($class,%opts)
+##  + DiaColloDB::Client method override
+sub promote {
+  $_[0]->logconfess("promote(): not supported");
 }
 
 ##==============================================================================
@@ -607,64 +615,64 @@ sub dbimport {
 
 ##--------------------------------------------------------------
 ## Profiling: Wrappers
+##  + INHERITED from DiaColloDB::Client
+
+## $mprf = $coldb->query($rel,%opts)
+##  + get a generic DiaColloDB::Profile::Multi object for $rel
+##  + calls $coldb->profile() or $coldb->compare() as appropriate
+##  + INHERITED from DiaColloDB::Client
 
 ## $mprf = $coldb->profile1(%opts)
 ##  + get unigram frequency profile for selected items as a DiaColloDB::Profile::Multi object
 ##  + really just wraps $coldb->profile('xf', %opts)
 ##  + %opts: see profile() method
-sub profile1 {
-  return $_[0]->profile('xf',@_[1..$#_]);
-}
-
+##  + INHERITED from DiaColloDB::Client
 
 ## $mprf = $coldb->profile2(%opts)
 ##  + get co-frequency profile for selected items as a DiaColloDB::Profile::Multi object
 ##  + really just wraps $coldb->profile('cof', %opts)
 ##  + %opts: see profile() method
-sub profile2 {
-  return $_[0]->profile('cof',@_[1..$#_]);
-}
+##  + INHERITED from DiaColloDB::Client
 
 ## $mprf = $coldb->compare1(%opts)
 ##  + get unigram comparison profile for selected items as a DiaColloDB::Profile::MultiDiff object
 ##  + really just wraps $coldb->compare('xf', %opts)
 ##  + %opts: see compare() method
-BEGIN { *diff1 = \&compare1; }
-sub compare1 {
-  return $_[0]->compare('xf',@_[1..$#_]);
-}
-
+##  + INHERITED from DiaColloDB::Client
 
 ## $mprf = $coldb->compare2(%opts)
 ##  + get co-frequency comparison profile for selected items as a DiaColloDB::Profile::MultiDiff object
 ##  + really just wraps $coldb->profile('cof', %opts)
 ##  + %opts: see compare() method
-BEGIN { *diff2 = \&compare2; }
-sub compare2 {
-  return $_[0]->compare('cof',@_[1..$#_]);
-}
+##  + INHERITED from DiaColloDB::Client
 
 
 ##--------------------------------------------------------------
 ## Profiling: Utils
 
+## $relname = $coldb->relname($rel)
+##  + returns an appropriate relation name for profile() and friends
+##  + returns $rel if $coldb->{$rel} supports a profile() method
+##  + otherwise heuristically parses $relationName /xf|f?1|ug/ or /f1?2|c/
+sub relname {
+  my ($coldb,$rel) = @_;
+  if (UNIVERSAL::can($coldb->{$rel},'profile')) {
+    return $rel;
+  }
+  elsif ($rel =~ m/^(?:[ux]|f?1$)/) {
+    return 'xf';
+  }
+  elsif ($rel =~ m/^(?:c|f?1?2$)/) {
+    return 'cof';
+  }
+  return $rel;
+}
+
 ## $obj_or_undef = $coldb->relation($rel)
 ##  + returns an appropriate relation-like object for profile() and friends
-##  + returns $coldb->{$rel} if it supports a profile() method
-##  + otherwise heuristically parses $relationName qw(xf|f?1|ug) or qw(f1?2|c)
+##  + wraps $coldb->{$coldb->relname($rel)}
 sub relation {
-  my ($coldb,$rel) = @_;
-  my ($obj);
-  if (UNIVERSAL::can($coldb->{$rel},'profile')) {
-    $obj = $coldb->{$rel};
-  }
-  elsif ($rel =~ m/^(?:xf|f?1|ug)$/) {
-    $obj = $coldb->{xf};
-  }
-  elsif ($rel =~ m/^(?:f?1?2$|c)/) {
-    $obj = $coldb->{cof};
-  }
-  return $obj;
+  return $_[0]->{$_[0]->relname($_[1])};
 }
 
 ## \@ids = $coldb->enumIds($enum,$req,%opts)
@@ -768,7 +776,7 @@ sub profile {
   my $strings = $opts{strings} // 1;
 
   ##-- debug
-  $coldb->debug("profile(rel=$rel, lemma='$lemma', date='$date', slice=$slice, score=$score, eps=$eps, kbest=$kbest, cutoff=$cutoff)");
+  $coldb->vlog($coldb->{logRequest},"profile(rel=$rel, lemma='$lemma', date='$date', slice=$slice, score=$score, eps=$eps, kbest=$kbest, cutoff=$cutoff)");
 
   ##-- sanity check(s)
   my ($reldb);
@@ -851,7 +859,7 @@ sub compare {
   my %popts = (kbest=>-1,cutoff=>'',strings=>0);
 
   ##-- debug
-  $coldb->debug("compare(".join(', ', map {"$_=".($opts{$_}//'')} qw(rel alemma blemma adate bdate aslice bslice score eps kbest cutoff)).")");
+  $coldb->vlog($coldb->{logRequest},"compare(".join(', ', map {"$_=".($opts{$_}//'')} qw(rel alemma blemma adate bdate aslice bslice score eps kbest cutoff)).")");
 
   ##-- get profiles to compare
   my $mpa = $coldb->profile($rel,%opts, %aopts,%popts)

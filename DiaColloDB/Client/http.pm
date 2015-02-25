@@ -28,7 +28,7 @@ our @ISA = qw(DiaColloDB::Client);
 ##    ##-- DiaColloDB::Client::http: options
 ##    user => $user,          ##-- for LWP::UserAgent basic authentication
 ##    password => $password,  ##-- for LWP::UserAgent basic authentication
-##    logRequest => $log,     ##-- log-level for HTTP requests (default:undef)
+##    logRequest => $log,     ##-- log-level for HTTP requests (default:'debug')
 ##    ##
 ##    ##-- DiaColloDB::Client::http: guts
 ##    ua   => $ua,        ##-- underlying LWP::UserAgent
@@ -38,7 +38,7 @@ our @ISA = qw(DiaColloDB::Client);
 ##  + called by new()
 sub defaults {
   return (
-	  logRequest=>undef,
+	  logRequest=>'debug',
 	 );
 }
 
@@ -57,12 +57,18 @@ sub open_http {
   $cli = $cli->new() if (!ref($cli));
   $cli->close() if ($cli->opened);
   $url //= $cli->{url};
-  if ($url !~ m/profile/) {
-    $url .= "/" if ($url !~ m{/$});
-    $url .= "profile.perl";
+  my $uri = URI->new($url);
+  if ((my $path=$uri->path) !~ m/profile/) {
+    $path .= "/" if ($path !~ m{/$});
+    $path .= "profile.perl";
+    $uri->path($path);
   }
-  $cli->{url}   = $url;
-  $cli->{ua}  //= LWP::UserAgent->new();
+  if ($uri->query) {
+    my %qf  = $uri->query_form();
+    @$cli{keys %qf} = values %qf;
+  }
+  $cli->{url}    = $uri->as_string;
+  $cli->{ua}   //= LWP::UserAgent->new();
   return $cli;
 }
 
@@ -91,7 +97,7 @@ sub opened {
 sub jget {
   my ($cli,$form,$class) = @_;
   my $uri = URI->new($cli->{url});
-  $uri->query_form($form);
+  $uri->query_form( {%{$cli->{params}//{}}, %$form} );
   my $req = HTTP::Request->new('GET',"$uri");
   $req->authorization_basic($cli->{user}, $cli->{password}) if (defined($cli->{user}) && defined($cli->{password}));
   $cli->vlog($cli->{logRequest}, "GET $uri");
@@ -113,6 +119,7 @@ sub jget {
 ##  + sets $cli->{error} on error
 sub profile {
   my ($cli,$rel,%opts) = @_;
+  delete @opts{qw(alemma adate aslice blemma bdate bslice)};
   return $cli->jget({profile=>$rel, %opts, format=>'json'},'DiaColloDB::Profile::Multi');
 }
 

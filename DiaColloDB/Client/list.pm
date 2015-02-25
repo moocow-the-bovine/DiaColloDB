@@ -3,7 +3,7 @@
 ## Author: Bryan Jurish <moocow@cpan.org>
 ## Description: collocation db, client
 
-package DiaColloDB::Client::Distributed;
+package DiaColloDB::Client::list;
 use DiaColloDB::Client;
 use strict;
 
@@ -20,7 +20,10 @@ our @ISA = qw(DiaColloDB::Client);
 ## $cli = CLASS_OR_OBJECT->new(\@urls, %args)
 ## + %args, object structure:
 ##   (
-##    ##-- options
+##    ##-- DiaColloDB::Client: options
+##    url  => $url,       ##-- list url (space-separated sub-urls)
+##    ##
+##    ##-- DiaColloDB::Client::list
 ##    urls  => \@urls,     ##-- db urls
 ##    opts  => \%opts,     ##-- sub-client options
 ##    fudge => $coef,      ##-- get ($coef*$kbest) items from sub-clients (default=1)
@@ -28,28 +31,41 @@ our @ISA = qw(DiaColloDB::Client);
 ##    ##-- guts
 ##    clis => \@clis,      ##-- per-url clients
 ##   )
-sub new {
-  my $that = shift;
-  my $urls = (@_ % 2)==0 ? [] : shift;
-  my $cli  = bless({
-		    urls=>$urls,
-		    opts=>{},
-		    fudge=>1,
-		    @_
-		   }, ref($that)||$that);
-  return $cli->open() if (defined($cli->{urls}) && @{$cli->{urls}});
-  return $cli;
+
+## %defaults = $CLASS_OR_OBJ->defaults()
+##  + called by new()
+sub defaults {
+  return (
+	  #urls=>[],
+	  #clis=>[],
+	  opts=>{},
+	  fudge=>1,
+	 );
 }
 
 ##==============================================================================
 ## I/O: open/close
 
-## $cli_or_undef = $cli->open(\@urls,%opts)
-## $cli_or_undef = $cli->open()
+## $cli_or_undef = $cli->open_list(  \@urls,  %opts)
+## $cli_or_undef = $cli->open_list($list_url, %opts)
+## $cli_or_undef = $cli->open_list()
 ##  + creates new client for each url, passing %opts to DiaColloDB::Client->new()
-sub open {
-  my ($cli,$urls) = (shift,shift);
-  $cli->{urls} = $urls = ($urls // $cli->{urls});
+sub open_list {
+  my ($cli,$url) = (shift,shift);
+
+  ##-- parse URLs
+  $url //= $cli->{url};
+  my ($urls);
+  if (UNIVERSAL::isa($url,'ARRAY')) {
+    $urls = $url;
+    $url  = "list://".join(' ',@$urls);
+  } else {
+    ($urls=$url) =~ s{^list://}{};
+    $urls        = [split(' ',$urls)];
+  }
+  @$cli{qw(url urls)} = ($url,$urls);
+
+  ##-- open sub-clients
   my ($c);
   my $clis = $cli->{clis} = [];
   foreach (@$urls) {
@@ -58,24 +74,6 @@ sub open {
     push(@$clis, $c);
   }
   return $cli;
-}
-
-## $cli_or_undef = $cli->open_file($file_url,%opts)
-## $cli_or_undef = $cli->open_file()
-##  + opens a local file url
-##  + may re-bless() $cli into an appropriate package
-##  + OVERRIDE in subclasses supporting file urls
-sub open_file {
-  $_[0]->logconfess("open_file(): not supported.");
-}
-
-## $cli_or_undef = $cli->open_http($http_url,%opts)
-## $cli_or_undef = $cli->open_http()
-##  + opens a http url
-##  + may re-bless() $cli into an appropriate package
-##  + OVERRIDE in subclasses supporting http urls
-sub open_http {
-  $_[0]->logconfess("open_http(): not supported.");
 }
 
 ## $cli_or_undef = $cli->close()

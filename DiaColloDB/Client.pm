@@ -24,7 +24,7 @@ our @ISA = qw(DiaColloDB::Persistent);
 ## $cli = CLASS_OR_OBJECT->new($url, %args)
 ## + %args, object structure:
 ##   (
-##    ##-- options
+##    ##-- DiaColloDB::Client: options
 ##    url  => $url,       ##-- db url
 ##   )
 sub new {
@@ -40,11 +40,26 @@ sub new {
 }
 
 ## %defaults = $CLASS_OR_OBJ->defaults()
-##  + called by new()
+##  + called by new() and promote()
 sub defaults {
   return qw();
 }
 
+## $cli_or_undef = $cli->promote($class,%opts)
+##  + promotes $cli to (a subclass of) $class
+##  + ensures $class->defaults() keys are set for $cli
+##  + client options are clobbered with %opts
+sub promote {
+  my ($cli,$class,%opts) = @_;
+  $cli = $cli->new() if (!ref($cli));
+  bless($cli,$class) if (!UNIVERSAL::isa($cli,$class));
+  @$cli{keys %opts} = values(%opts);
+  %$cli = ($class->defaults,%$cli);
+  return $cli;
+}
+
+## undef = $obj->DESTROY
+##  + destructor calls close() if necessary
 sub DESTROY {
   $_[0]->close() if ($_[0]->opened);
 }
@@ -58,16 +73,19 @@ sub DESTROY {
 sub open {
   my ($cli,$url) = (shift,shift);
   $url //= $cli->{url};
-  my $scheme = URI->new($url)->scheme // 'file';
-  if ($scheme eq 'file') {
-    return $cli->open_file($url,@_);
+  if (UNIVERSAL::isa($url,'ARRAY') || $url =~ m{^list://}i) {
+    return $cli->open_list($url,@_);
   }
-  elsif ($scheme eq 'http') {
+  elsif ($url =~ m{^http://}i) {
     return $cli->open_http($url,@_);
+  }
+  elsif ($url =~ m{^file://}i || $url !~ m{^[a-zA-Z]+://}) {
+    return $cli->open_file($url,@_);
   }
   $cli->logconfess("open(): unsupported URL scheme for $url");
   return undef;
 }
+
 
 ## $cli_or_undef = $cli->open_file($file_url,%opts)
 ## $cli_or_undef = $cli->open_file()
@@ -78,7 +96,7 @@ sub open_file {
   my $cli = shift;
   $cli = $cli->new() if (!ref($cli));
   $cli->close() if ($cli->opened);
-  $cli = bless($cli,'DiaColloDB::Client::file') if (!UNIVERSAL::isa($cli,'DiaColloDB::Client::file'));
+  $cli->promote('DiaColloDB::Client::file');
   $cli->logconfess("open_file(): not implemented") if ($cli->can('open_file') eq \&open_file);
   return $cli->open_file(@_)
 }
@@ -92,9 +110,24 @@ sub open_http {
   my $cli = shift;
   $cli = $cli->new() if (!ref($cli));
   $cli->close() if ($cli->opened);
-  $cli = bless($cli,'DiaColloDB::Client::http') if (!UNIVERSAL::isa($cli,'DiaColloDB::Client::http'));
+  $cli->promote('DiaColloDB::Client::http');
   $cli->logconfess("open_http(): not implemented") if ($cli->can('open_http') eq \&open_http);
   return $cli->open_http(@_)
+}
+
+## $cli_or_undef = $cli->open_list($list_url,%opts)
+## $cli_or_undef = $cli->open_list(\@urls,   %opts)
+## $cli_or_undef = $cli->open_list()
+##  + opens a list url
+##  + may re-bless() $cli into an appropriate package
+##  + OVERRIDE in subclasses supporting list urls
+sub open_list {
+  my $cli = shift;
+  $cli = $cli->new() if (!ref($cli));
+  $cli->close() if ($cli->opened);
+  $cli->promote('DiaColloDB::Client::list');
+  $cli->logconfess("open_list(): not implemented") if ($cli->can('open_list') eq \&open_list);
+  return $cli->open_list(@_)
 }
 
 ## $cli_or_undef = $cli->close()
@@ -114,6 +147,17 @@ sub opened {
 
 ##--------------------------------------------------------------
 ## Profiling: Wrappers
+
+## $mprf = $cli->query($rel,%opts)
+##  + get a generic DiaColloDB::Profile::Multi object for $rel
+##  + calls $coldb->profile() or $coldb->compare() as appropriate
+sub query {
+  my ($cli,$rel) = (shift,shift);
+  if ($rel =~ s{^(?:d(?:iff)?|co?mp(?:are)?)[\-\/\.\:]?}{}) {
+    return $cli->compare($rel,@_);
+  }
+  return $cli->profile($rel,@_);
+}
 
 ## $mprf = $cli->profile1(%opts)
 ##  + get unigram frequency profile for selected items as a DiaColloDB::Profile::Multi object

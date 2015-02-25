@@ -5,6 +5,7 @@
 
 package DiaColloDB::Client::file;
 use DiaColloDB::Client;
+use URI;
 use strict;
 
 ##==============================================================================
@@ -20,7 +21,7 @@ our @ISA = qw(DiaColloDB::Client);
 ## + %args, object structure:
 ##   (
 ##    ##-- DiaColloDB::Client: options
-##    url  => $url,       ##-- local url
+##    url  => $url,       ##-- local url; query form is used as db parameters
 ##    ##
 ##    ##-- DiaColloDB::Client::file
 ##    db   => $db,        ##-- underlying DiaColloDB object
@@ -39,8 +40,10 @@ sub open_file {
   $cli  = $cli->new() if (!ref($cli));
   $cli->close() if ($cli->opened);
   $cli->{url} = $url = ($url // $cli->{url});
-  (my $path = $url) =~ s{^file://}{}i;
-  $cli->{db} = DiaColloDB->new(dbdir=>$path)
+  my ($path,%dbopts);
+  ($path = $url) =~ s{^file://}{}i;
+  %dbopts = URI->new($url)->query_form() if ($path =~ s{\?.*$}{});
+  $cli->{db} = DiaColloDB->new(%dbopts,dbdir=>$path)
     or $cli->logconfess("open_file() failed to open DB directory $path: $!");
   return $cli;
 }

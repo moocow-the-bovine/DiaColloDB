@@ -18,28 +18,41 @@ BEGIN {
 
 ##-- program vars
 our $prog       = basename($0);
-our $verbose    = 1;
 our ($help,$version);
 
 our %log        = (level=>'TRACE', rootLevel=>'FATAL');
-our $dbdir      = undef;
-our %coldb      = (flags=>'r');
+our $dburl      = undef;
+our %cli        = (opts=>{});
+our $http_user  = undef;
 
-our $rel = 'cof';
-our %profile = (
-		lemma =>'',	##-- selected lemma(ta)
-		date  =>undef,  ##-- selected date(s)
-		slice =>1,      ##-- date slice
-		eps => 0,       ##-- smoothing constant
-		score =>'f',    ##-- score func
-		kbest =>10,     ##-- k-best items per date
-		cutoff =>undef, ##-- minimum score cutoff
-		strings => 1,    ##-- debug: want strings?
-	       );
+our $diff = undef;
+our $rel  = 'cof';
+our %query = (
+	      lemma =>'',	##-- selected lemma(ta), arg1
+	      date  =>undef,    ##-- selected date(s), arg1
+	      slice =>undef,    ##-- date slice, arg1
+	      ##
+	      #alemma =>'',	##-- selected lemma(ta), arg1
+	      adate  =>undef,	##-- selected date(s), arg1
+	      aslice =>undef,	##-- date slice, arg1
+	      ##
+	      blemma=>'',	##-- selected lemma(ta), arg2
+	      bdate  =>undef,	##-- selected date(s), arg2
+	      bslice =>undef,	##-- date slice, arg2
+	      ##
+	      date=>'',
+	      slice=>1,
+	      ##
+	      eps => 0,		##-- smoothing constant
+	      score =>'ld',	##-- score func
+	      kbest =>10,	##-- k-best items per date
+	      cutoff =>undef,	##-- minimum score cutoff
+	      strings => 1,	##-- debug: want strings?
+	     );
+our %save = (format=>undef);
 
 our $outfmt  = 'text'; ##-- output format: 'text' or 'json'
 our $pretty  = 1;
-our %save    = (format=>undef);
 
 ##----------------------------------------------------------------------
 ## Command-line processing
@@ -47,29 +60,33 @@ our %save    = (format=>undef);
 GetOptions(##-- general
 	   'help|h' => \$help,
 	   'version|V' => \$version,
-	   'verbose|v=i' => \$verbose,
 
 	   ##-- general
 	   'log-level|level|ll=s' => sub { $log{level} = uc($_[1]); },
-	   'option|O=s%' => \%coldb,
+	   'option|O=s%' => \$cli{opts},
 
-	   ##-- local
+	   ##-- query options
+	   'difference|diff|D|compare|comp|cmp!' => \$diff,
+	   'profile|prof|prf|P' => sub { $diff=0 },
 	   'collocations|collocs|cofreqs|cof|co|f12|f2|12|2' => sub { $rel='cof' },
 	   'unigrams|ug|u|f1|1' => sub { $rel='xf' },
-	   'date|d=s'   => \$profile{date},
-	   'date-slice|ds|slice|sl=s'  => \$profile{slice},
-	   'epsilon|eps|e=f'  => \$profile{eps},
-	   'mutual-information|mi'    => sub {$profile{score}='mi'},
-	   'log-dice|logdice|ld|dice' => sub {$profile{score}='ld'},
-	   'frequency|freq|f'         => sub {$profile{score}='f'},
-	   'normalized-frequency|nf|frequency-per-million|fpm|fm'  => sub {$profile{score}='fm'},
-	   'k-best|kbest|k=i' => \$profile{kbest},
-	   'no-k-best|nokbest|nok' => sub {$profile{kbest}=undef},
-	   'cutoff|C=f' => \$profile{cutoff},
-	   'no-cutoff|nocutoff|noc' => sub {$profile{cutoff}=undef},
-	   'strings|S!' => \$profile{strings},
+	   ##
+	   (map {("${_}date|${_}d=s"=>\$query{"${_}date"})} ('',qw(a b))), 				 ##-- date,adate,bdate
+	   (map {("${_}date-slice|${_}ds|${_}slice|${_}sl|${_}s=s"=>\$query{"${_}slice"})} ('',qw(a b))), ##-- slice,aslice,bslice
+	   ##
+	   'epsilon|eps|e=f'  => \$query{eps},
+	   'mutual-information|mi'    => sub {$query{score}='mi'},
+	   'log-dice|logdice|ld|dice' => sub {$query{score}='ld'},
+	   'frequency|freq|f'         => sub {$query{score}='f'},
+	   'normalized-frequency|nf|frequency-per-million|fpm|fm'  => sub {$query{score}='fm'},
+	   'k-best|kbest|k=i' => \$query{kbest},
+	   'no-k-best|nokbest|nok' => sub {$query{kbest}=undef},
+	   'cutoff|C=f' => \$query{cutoff},
+	   'no-cutoff|nocutoff|noc' => sub {$query{cutoff}=undef},
+	   'strings|S!' => \$query{strings},
 
 	   ##-- I/O
+	   'user|U=s' => \$http_user,
 	   'text|t' => sub {$outfmt='text'},
 	   'json|j' => sub {$outfmt='json'},
 	   'html|H' => sub {$outfmt='html'},
@@ -79,10 +96,10 @@ GetOptions(##-- general
 	  );
 
 pod2usage({-exitval=>0,-verbose=>0}) if ($help);
-pod2usage({-exitval=>1,-verbose=>0,-msg=>"$prog: ERROR: no DBDIR specified!"}) if (@ARGV<1);
-pod2usage({-exitval=>1,-verbose=>0,-msg=>"$prog: ERROR: no LEMMA(s) specified!"}) if (@ARGV<2);
+pod2usage({-exitval=>1,-verbose=>0,-msg=>"$prog: ERROR: no DBURL specified!"}) if (@ARGV<1);
+pod2usage({-exitval=>1,-verbose=>0,-msg=>"$prog: ERROR: no LEMMA1 specified!"}) if (@ARGV<2);
 
-if ($version || $verbose >= 2) {
+if ($version) {
   print STDERR "$prog version $DiaColloDB::VERSION by Bryan Jurish\n";
   exit 0 if ($version);
 }
@@ -95,26 +112,47 @@ if ($version || $verbose >= 2) {
 ##-- setup logger
 DiaColloDB::Logger->ensureLog(%log);
 
-##-- open colloc-db
-$dbdir = shift(@ARGV);
-my $coldb = DiaColloDB->new(%coldb)
-  or die("$prog: failed to create new DiaColloDB object: $!");
-$coldb->open($dbdir)
-  or die("$prog: DiaColloDB::open() failed for '$dbdir': $!");
+##-- parse user options
+if ($http_user) {
+  my ($user,$pass) = split(/:/,$http_user,2);
+  $pass //= '';
+  if ($pass eq '') {
+    print STDERR "Password: ";
+    $pass = <STDIN>;
+    chomp $pass;
+  }
+  @{$cli{opts}}{qw(user password)} = @cli{qw(user password)} = ($user,$pass),
+}
 
-##-- get profile
-$profile{lemma} = join(' ',@ARGV);
-my $mp = $coldb->profile($rel, %profile)
-  or die("$prog: profile() failed for relation '$rel', lemma(s) '$profile{lemma}': $!");
+##-- open db client
+$dburl = shift(@ARGV);
+my ($cli);
+if ($dburl !~ m{^[a-zA-Z]+://}) {
+  ##-- hack for local directory URLs without scheme
+  $cli = DiaColloDB->new(dbdir=>$dburl,%cli);
+} else {
+  ##-- use client interface for any URL with a scheme
+  $cli = DiaColloDB::Client->new($dburl,%cli);
+}
+die("$prog: failed to create new DiaColloDB::Client object for $dburl: $!") if (!$cli);
 
-##-- dump stringified profile
+##-- client query
+do { utf8::decode($_) if (!utf8::is_utf8($_)) } foreach (@ARGV);
+$diff //= @ARGV > 1;
+$query{lemma}  = shift;
+$query{blemma} = @ARGV ? shift : $query{lemma};
+$rel  = "d$rel" if ($diff);
+my $mp = $cli->query($rel, %query)
+  or die("$prog: query() failed for relation '$rel', lemma(s) '$query{lemma}' - '$query{blemma}': $cli->{error}");
+
+##-- dump stringified query
 if ($outfmt eq 'text') {
   $mp->trace("saveTextFile()");
   $mp->saveTextFile('-',%save);
 }
 elsif ($outfmt eq 'json') {
   $mp->trace("saveJsonFile()");
-  DiaColloDB::Utils::saveJsonFile($mp, '-', utf8=>1,pretty=>$pretty,canonical=>$pretty);
+  $mp->saveJsonFile('-', pretty=>$pretty,canonical=>$pretty); #utf8=>0
 }
 elsif ($outfmt eq 'html') {
   $mp->trace("saveHtmlFile()");
@@ -133,11 +171,11 @@ __END__
 
 =head1 NAME
 
-dcdb-profile.perl - get a frequency profile from a DiaColloDB
+dcdb-query.perl - query a DiaColloDB
 
 =head1 SYNOPSIS
 
- dcdb-profile.perl [OPTIONS] DBDIR LEMMA(S)...
+ dcdb-query.perl [OPTIONS] DBURL LEMMA1 [LEMMA2]
 
  General Options:
    -help
@@ -146,25 +184,31 @@ dcdb-profile.perl - get a frequency profile from a DiaColloDB
 
  DiaColloDB Options:
    -log-level LEVEL     # set minimum DiaColloDB log-level
-   -O KEY=VALUE         # set DiaColloDB option
+   -O KEY=VALUE         # set DiaColloDB::Client option
 
- Profiling Options:
+ Query Options:
+   -profile , -diff     # select profile operation (default=-profile)
    -collocs , -unigrams # select profile type (collocations or unigrams; default=-collocs)
-   -date DATES          # set target DATE or /REGEX/ or MIN-MAX
-   -slice SLICE         # set target date slice (default=1)
-   -f , -fm , -mi , -ld # set scoring function (default=-f)
+   -(a|b)?date DATES    # set target DATE or /REGEX/ or MIN-MAX
+   -(a|b)?slice SLICE   # set target date slice (default=1)
+   -f , -fm , -mi , -ld # set scoring function (default=-ld)
    -kbest KBEST         # return only KBEST items per date-slice (default=10)
    -nokbest             # disable k-best pruning
    -cutoff CUTOFF       # set minimum score for returned items (default=none)
    -nocutoff            # disable cutoff pruning
    -[no]strings         # debug: do/don't stringify returned profile (default=do)
-   -format FMT          # use printf format FMT for scores (text,html)
 
  I/O Options:
+   -user USER[:PASSWD]  # user credentials for HTTP queries
    -text		# use text output (default)
    -json                # use json output
    -[no]pretty          # do/don't pretty-print json output (default=do)
    -null                # don't output profile at all
+
+ Arguments:
+   DBURL                # DB URL (file://, http://, or list:// ; query part sets local options)
+   LEMMA1               # space-separated target1 string(s) list or /REGEX/
+   LEMMA2               # space-separated target2 string(s) list or /REGEX/
 
 =cut
 
