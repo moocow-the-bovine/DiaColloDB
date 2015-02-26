@@ -156,6 +156,7 @@ sub loadHeaderData {
 ##  + supports semi-sorted input: input fh must be sorted by $i1,
 ##    and all $i2 for each $i1 must be adjacent (i.e. no intervening $j1 != $i1)
 ##  + supports multiple lines for pairs ($i1,$i2) provided the above conditions hold
+##  + supports loading of $cof->{N} from single-value lines
 ##  + %opts: clobber %$cof
 sub loadTextFh {
   my ($cof,$infh,%opts) = @_;
@@ -182,8 +183,9 @@ sub loadTextFh {
   my ($pos1,$pos2) = (0,0);
   my ($i1_cur,$f1) = (-1,0);
   my ($f12,$i1,$i2,$f);
-  my $N = 0;
-  my %f12 = qw(); ##-- ($i2=>$f12, ...)
+  my $N  = 0;	  ##-- total marginal frequency as extracted from %f12
+  my $N1 = 0;     ##-- total N as extracted from single-element records
+  my %f12 = qw(); ##-- ($i2=>$f12, ...) for $i1_cur
 
   ##-- guts for inserting records from $i1_cur,%f12,$pos1,$pos2
   my $insert = sub {
@@ -215,13 +217,19 @@ sub loadTextFh {
   while (defined($_=<$infh>)) {
     chomp;
     ($f12,$i1,$i2) = split(' ',$_,3);
+    if (!defined($i1)) {
+      $cof->debug("N1 += $f12");
+      $N1 += $f12;		      ##-- load N values
+      next;
+    }
     $insert->() if ($i1 != $i1_cur);  ##-- insert record(s) for $i1_cur
     $f12{$i2} += $f12;                ##-- buffer co-frequencies for $i1_cur
   }
   $insert->();                        ##-- write record(s) for final $i1_cur
 
   ##-- adopt final $N and sizes
-  $cof->{N} = $N;
+  $cof->debug("FINAL: N1=$N1, N=$N");
+  $cof->{N} = $N1>$N ? $N1 : $N;
   $cof->{size1} = $r1->size;
   $cof->{size2} = $r2->size;
 
@@ -229,7 +237,7 @@ sub loadTextFh {
 }
 
 ## $cof = $cof->loadTextFile_create($fh,%opts)
-##  + old version of loadTextFile() which doesn't support semi-sorted input or multiple ($i1,$i2) entries
+##  + old version of loadTextFile() which doesn't support N, semi-sorted input, or multiple ($i1,$i2) entries
 ##  + not useable by union() method
 sub loadTextFile_create {
   my ($cof,$infile,%opts) = @_;
@@ -309,7 +317,7 @@ sub loadTextFile_create {
 ##  + INHERITED from DiaColloDB::Persistent
 
 ## $bool = $cof->saveTextFh($fh,%opts)
-##  + save from text file with lines of the form "FREQ ID1 ID2"
+##  + save from text file with lines of the form "N", "FREQ ID1 ID2"*
 ##  + %opts:
 ##      i2s => \&CODE,   ##-- code-ref for formatting indices; called as $s=CODE($i)
 sub saveTextFh {
@@ -329,6 +337,7 @@ sub saveTextFh {
 
   ##-- ye olde loope
   binmode($outfh,':raw');
+  $outfh->print($cof->{N}, "\n");
   for ($r1->seek($i1=0), $r2->seek($off2=0); !$r1->eof(); ++$i1) {
     $r1->read(\$buf1) or $cof->logconfess("saveTextFile(): failed to read record $i1 from $r1->{file}: $!");
     ($end2,$f1) = unpack($pack_r1,$buf1);
@@ -451,13 +460,11 @@ sub union {
   $cof->vlog('trace', "union(): stage1: extract pairs");
   my ($pair,$pcof,$pi2u);
   my $pairi=0;
-  my $N=0;
   foreach $pair (@$pairs) {
     ($pcof,$pi2u) = @$pair;
     $pcof->saveTextFh($tmpfh, i2s=>sub {$pi2u->[$_[0]]})
       or $cof->logconfess("union(): failed to extract pairs for argument $pairi");
     ++$pairi;
-    $N += $pcof->{N};
   }
   $tmpfh->close()
     or $cof->logconfess("union(): failed to close tempfile $tmpfile: $!");
@@ -475,9 +482,6 @@ sub union {
   $sortfh->close()
     or $cof->logconfess("union(): failed to close pipe from sort: $!");
   env_pop();
-
-  ##-- clobber N (after loading text file, since sub-corpus frequency filters will have tweaked it out of proportion)
-  $cof->{N} = $N;
 
   ##-- stage3: header
   $cof->saveHeader()

@@ -409,17 +409,23 @@ sub headerKeys {
 ## $bool = $pf->saveTextFh($fh, %opts)
 ##  + save from text file with lines of the form "KEY? VALUE(s)..."
 ##  + %opts:
-##      keys=>$bool,  ##-- do/don't save keys (default=true)
+##      keys=>$bool,    ##-- do/don't save keys (default=true)
+##      key2s=>$key2s, ##-- code-ref for key formatting, called as $s=$key2s->($key)
 sub saveTextFh {
   my ($pf,$outfh,%opts) = @_;
   $pf->logconfess("saveTextFh(): no packed-file opened!") if (!$pf->opened);
 
-  my $keys = $opts{keys} // 1;
+  my $key2s = $opts{key2s};
+  my $keys  = $opts{keys} // 1;
   my $fh   = $pf->{fh};
-  my ($i,$val);
+  my ($i,$key,$val);
   for ($i=0, $pf->reset(); !CORE::eof($fh); ++$i) {
     $val = $pf->get();
-    $outfh->print(($keys ? "$i\t" : ''), $val, "\n");
+    $outfh->print(($keys
+		   ? (($key2s ? $key2s->($i) : $i),"\t")
+		   : qw()),
+		  $val,
+		  "\n");
   }
 
   return $pf;

@@ -649,7 +649,8 @@ sub dbexport {
   my ($coldb,$outdir,%opts) = @_;
   $coldb->logconfess("cannot dbexport() an un-opened DB") if (!$coldb->opened);
   $outdir //= "$coldb->{dbdir}/export";
-  $coldb->vlog('info', "export($outdir)");
+  $outdir  =~ s{/$}{};
+  $coldb->vlog('info', "export($outdir/)");
 
   ##-- options
   my $export_sdat = exists($opts{export_sdat}) ? $opts{export_sdat} : 0;
@@ -669,46 +670,71 @@ sub dbexport {
   $coldb->{lenum}->load() if ($coldb->{lenum} && !$coldb->{lenum}->loaded);
   $coldb->{xenum}->load() if ($coldb->{xenum} && !$coldb->{xenum}->loaded);
 
-  ##-- dump: enums
+  ##-- dump: common: stringification
+  my ($li2txt,$xs2txt,$xi2txt);
+  if ($export_sdat) {
+    $coldb->vlog($coldb->{logExport}, "dbexport(): preparing tuple-stringification structures");
+    my ($li,$d);
+    my $pack_x = $coldb->{pack_x};
+    my $li2s   = $coldb->{lenum}->toArray;
+    my $xi2s   = $coldb->{xenum}->toArray;
+    $li2txt = sub { return $li2s->[$_[0]//0]//''; };
+    $xs2txt = sub {
+      ($li,$d) = unpack($pack_x,$_[0]);
+      return join("\t", $li2s->[$li//0]//'', $d//0);
+    };
+    $xi2txt = sub {
+      ($li,$d) = unpack($pack_x,$xi2s->[$_[0]//'']//'');
+      return join("\t", $li2s->[$li//0]//'', $d//0);
+    };
+  }
+
+  ##-- dump: lenum
   $coldb->vlog($coldb->{logExport}, "dbexport(): exporting lemma-enum file $outdir/lenum.dat");
   $coldb->{lenum}->saveTextFile("$outdir/lenum.dat")
     or $coldb->logconfess("dbexport() failed for $outdir/lenum.dat");
 
-  ##-- dump: tuple-enum: raw
+  ##-- dump: xenum: raw
   my $pack_x = $coldb->{pack_x};
   $coldb->vlog($coldb->{logExport}, "dbexport(): exporting raw tuple-enum file $outdir/xenum.dat");
   $coldb->{xenum}->saveTextFile("$outdir/xenum.dat", pack_s=>$pack_x)
     or $coldb->logconfess("export failed for $outdir/xenum.dat");
 
-  ##-- dump: tuple-enum: stringified
-  if ($export_sdat) {
-    $coldb->vlog($coldb->{logExport}, "dbexport(): preparing tuple-stringification structures");
-    my ($li,$d);
-    my $li2s   = $coldb->{lenum}->toArray;
-    my $xs2txt = sub {
-      ($li,$d) = unpack($pack_x,$_[0]);
-      return join("\t", $li2s->[$li//0]//'', $d//0);
-    };
-
-    $coldb->vlog($coldb->{logExport}, "dbexport(): exporting stringified tuple-enum file $outdir/xenum.sdat");
-    $coldb->{xenum}->saveTextFile("$outdir/xenum.sdat", pack_s=>$xs2txt)
-      or $coldb->logconfess("dbexport() failed for $outdir/xenum.sdat");
-  }
+  ##-- dump: xenum: stringified
+  $coldb->vlog($coldb->{logExport}, "dbexport(): exporting stringified tuple-enum file $outdir/xenum.sdat");
+  $coldb->{xenum}->saveTextFile("$outdir/xenum.sdat", pack_s=>$xs2txt)
+    or $coldb->logconfess("dbexport() failed for $outdir/xenum.sdat");
 
   ##-- dump: l2x
   if ($coldb->{l2x}) {
-    $coldb->vlog($coldb->{logExport}, "dbexport(): exporting lemma-expansion multimap $outdir/l2x.dat");
+    ##-- dump: l2x: raw
+    $coldb->vlog($coldb->{logExport}, "dbexport(): exporting raw lemma-expansion multimap $outdir/l2x.dat");
     $coldb->{l2x}->saveTextFile("$outdir/l2x.dat")
       or $coldb->logconfess("dbexport() failed for $outdir/l2x.dat");
+
+    ##-- dump: l2x: stringified
+    if ($export_sdat) {
+      $coldb->vlog($coldb->{logExport}, "dbexport(): exporting stringified lemma-expansion multimap $outdir/l2x.sdat");
+      $coldb->{l2x}->saveTextFile("$outdir/l2x.sdat", a2s=>$li2txt, b2s=>$xi2txt)
+	or $coldb->logconfess("dbexport() failed for $outdir/l2x.sdat");
+    }
   }
 
   ##-- dump: xf
   if ($coldb->{xf}) {
+    ##-- dump: xf: raw
     $coldb->vlog($coldb->{logExport}, "dbexport(): exporting tuple-frequency index $outdir/xf.dat");
     $coldb->{xf}->setFilters($coldb->{pack_f});
     $coldb->{xf}->saveTextFile("$outdir/xf.dat", keys=>1)
       or $coldb->logconfess("export failed for $outdir/xf.dat");
     $coldb->{xf}->setFilters();
+
+    ##-- dump: xf: stringified
+    if ($export_sdat) {
+      $coldb->vlog($coldb->{logExport}, "dbexport(): exporting stringified tuple-frequency index $outdir/xf.sdat");
+      $coldb->{xf}->saveTextFile("$outdir/xf.sdat", key2s=>$xi2txt)
+      or $coldb->logconfess("dbexport() failed for $outdir/xf.sdat");
+    }
   }
 
   ##-- dump: cof

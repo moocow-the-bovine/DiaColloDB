@@ -300,15 +300,26 @@ sub loadTextFh {
 
 ## $bool = $mmf->saveTextFh($filename_or_fh,%opts)
 ##  + save from text file with lines of the form "A B1 B2..."
+##  + %opts:
+##     b2s=>\&b2s  ##-- stringification code for B items, called as $s=$b2s->($bi)
+##     a2s=>\&a2s  ##-- stringification code for B items, called as $s=$a2s->($bi)
 sub saveTextFh {
   my ($mmf,$fh,%opts) = @_;
 
+  my $a2s    = $opts{a2s};
+  my $b2s    = $opts{b2s};
   my $pack_b = "($mmf->{pack_i})*";
   my $a2b    = $mmf->toArray;
   my $a      = 0;
   foreach (@$a2b) {
     if (defined($_)) {
-      $fh->print($a, "\t", join(' ', unpack($pack_b, $_)), "\n");
+      $fh->print(($a2s ? $a2s->($a) : $a),
+		 "\t",
+		 join(' ',
+		      ($b2s
+		       ? (map {$b2s->($_)} unpack($pack_b,$_))
+		       : unpack($pack_b, $_))),
+		 "\n");
     }
     ++$a;
   }
