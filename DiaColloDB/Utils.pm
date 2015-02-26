@@ -401,9 +401,9 @@ sub s2timestr {
     return "${s}s";
   }
   elsif ($h==0) {
-    return sprintf("%02dm%ss",$m,$s)
+    return sprintf("%2dm%ss",$m,$s)
   }
-  return sprintf("%02dh%02dm%ss",$h,$m,$s);
+  return sprintf("%dh%02dm%ss",$h,$m,$s);
 }
 
 ##==============================================================================

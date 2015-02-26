@@ -126,13 +126,13 @@ our $MMCLASS = 'DiaColloDB::MultiMapFile';
 sub new {
   my $that = shift;
   my $coldb  = bless({
-		     ##-- options
+		      ##-- options
 		      dbdir => undef,
 		      flags => 'r',
 		      #index_w => 0,
 		      #index_l => 1,
-		      bos => undef,
-		      eos => undef,
+		      #bos => undef,
+		      #eos => undef,
 		      pack_id => 'N',
 		      pack_f  => 'N',
 		      pack_date => 'n',
@@ -140,7 +140,7 @@ sub new {
 		      pack_len =>'n',
 		      dmax => 5,
 		      cfmin => 2,
-		      keeptmp => 0,
+		      #keeptmp => 0,
 
 		      ##-- filters
 		      pgood => $PGOOD_DEFAULT,
@@ -159,16 +159,19 @@ sub new {
 		      logProfile => 'trace',
 		      logRequest => 'debug',
 
+		      ##-- administrivia
+		      version => "$VERSION",
+
 		      ##-- enums
-		      #wenum => undef, #DiaColloDB::EnumFile->new(pack_i=>$coldb->{pack_id}, pack_o=>$coldb->{pack_off}, pack_l=>$coldb->{pack_len}),
-		      lenum => undef, #DiaColloDB::EnumFile->new(pack_i=>$coldb->{pack_id}, pack_o=>$coldb->{pack_off}, pack_l=>$coldb->{pack_len}),
-		      xenum => undef, #DiaColloDB::EnumFile::FixedLen->new(pack_i=>$coldb->{pack_id}, pack_s=>$coldb->{pack_x}),
-		      #w2x   => undef, #DiaColloDB::MultiMapFile->new(pack_i=>$coldb->{pack_id}, pack_o=>$coldb->{pack_off}, pack_l=>$coldb->{pack_len}),
-		      l2x   => undef, #DiaColloDB::MultiMapFile->new(pack_i=>$coldb->{pack_id}, pack_o=>$coldb->{pack_off}, pack_l=>$coldb->{pack_len}),
+		      ##wenum => undef, #DiaColloDB::EnumFile->new(pack_i=>$coldb->{pack_id}, pack_o=>$coldb->{pack_off}, pack_l=>$coldb->{pack_len}),
+		      #lenum => undef, #DiaColloDB::EnumFile->new(pack_i=>$coldb->{pack_id}, pack_o=>$coldb->{pack_off}, pack_l=>$coldb->{pack_len}),
+		      #xenum => undef, #DiaColloDB::EnumFile::FixedLen->new(pack_i=>$coldb->{pack_id}, pack_s=>$coldb->{pack_x}),
+		      ##w2x   => undef, #DiaColloDB::MultiMapFile->new(pack_i=>$coldb->{pack_id}, pack_o=>$coldb->{pack_off}, pack_l=>$coldb->{pack_len}),
+		      #l2x   => undef, #DiaColloDB::MultiMapFile->new(pack_i=>$coldb->{pack_id}, pack_o=>$coldb->{pack_off}, pack_l=>$coldb->{pack_len}),
 
 		      ##-- data
-		      xf    => undef, #DiaColloDB::Unigrams->new(packas=>$coldb->{pack_f}),
-		      cof   => undef, #DiaColloDB::Cofreqs->new(pack_f=>$pack_f, pack_i=>$pack_i, dmax=>$dmax, fmin=>$cfmin),
+		      #xf    => undef, #DiaColloDB::Unigrams->new(packas=>$coldb->{pack_f}),
+		      #cof   => undef, #DiaColloDB::Cofreqs->new(pack_f=>$pack_f, pack_i=>$pack_i, dmax=>$dmax, fmin=>$cfmin),
 
 		      @_,	##-- user arguments
 		     },

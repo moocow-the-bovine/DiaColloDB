@@ -642,3 +642,22 @@ $ ./dcdb-create.perl -l kern01-1k.files                 -o kern01-1k.d	# 35.683s
 $ ./dcdb-create.perl -l kern02-1k.files                 -o kern02-1k.d	# 18.603s,  7MB : TOTAL = 54.466, 18MB
 --
 $ ./dcdb-create.perl -u kern01-1k.d kern02-1k.d         -o kern12-1k.u	# 11.230s, 16MB
+
+
+##========================================
+## sizes (-bysent vs -bydoc)
+##  + size(ddc-tabs): 27MB; size(ddc-index) ~= 35.6M (= size(zeit01) * nfiles(1k)/nfiles(zeit01) = 2158M * 1000/60571)
+$ ./dcdb-create.perl -l zeit01-1k.files -o zeit01-1k.bysent-d5.d  -bysent -dmax=5	#  7.0M, 21.403s
+$ ./dcdb-create.perl -l zeit01-1k.files -o zeit01-1k.bysent-d10.d -bysent -dmax=10	#  7.5M, 25.478s
+$ ./dcdb-create.perl -l zeit01-1k.files -o zeit01-1k.bysent-d20.d -bysent -dmax=20	#  7.9M, 29.046s
+$ ./dcdb-create.perl -l zeit01-1k.files -o zeit01-1k.bysent-d40.d -bysent -dmax=40	#  7.9M, 29.392s
+--
+$ ./dcdb-create.perl -l zeit01-1k.files -o zeit01-1k.bypara-d5.d  -bypara -dmax=5	#  7.5M, 24.584s
+$ ./dcdb-create.perl -l zeit01-1k.files -o zeit01-1k.bypara-d10.d -bypara -dmax=10	#  9.5M, 32.672s
+$ ./dcdb-create.perl -l zeit01-1k.files -o zeit01-1k.bypara-d20.d -bypara -dmax=20	# 14.0M, 43.590s
+$ ./dcdb-create.perl -l zeit01-1k.files -o zeit01-1k.bypara-d40.d -bypara -dmax=40	# 18.0M, 57.409s
+--
+$ ./dcdb-create.perl -l zeit01-1k.files -o zeit01-1k.bydoc-d5.d   -bydoc  -dmax=5	#  7.6M, 24.130s
+$ ./dcdb-create.perl -l zeit01-1k.files -o zeit01-1k.bydoc-d10.d  -bydoc  -dmax=10	# 11.0M, 37.948s
+$ ./dcdb-create.perl -l zeit01-1k.files -o zeit01-1k.bydoc-d20.d  -bydoc  -dmax=20	# 18.0M, 57.126s
+$ ./dcdb-create.perl -l zeit01-1k.files -o zeit01-1k.bydoc-d40.d  -bydoc  -dmax=40	# 34.0M, 1m37.068s

@@ -61,6 +61,7 @@ GetOptions(##-- general
 	   ##-- I/O and logging
 	   'timing|times|time|t!' => \$dotime,
 	   'log-level|level|ll=s' => sub { $log{level} = uc($_[1]); },
+	   'log-option|logopt|lo=s' => \%log,
 	   'output|outdir|od|o=s' => \$dbdir,
 	  );
 
@@ -77,7 +78,7 @@ if ($version) {
 ##----------------------------------------------------------------------
 
 ##-- setup logger
-DiaColloDB::Logger->ensureLog();
+DiaColloDB::Logger->ensureLog(%log);
 
 ##-- setup corpus
 push(@ARGV,'-') if (!@ARGV);
@@ -159,6 +160,7 @@ dcdb-create.perl - create a DiaColloDB collocation database from a corpus dump
 
  I/O and Logging Options:
    -log-level LEVEL     ##-- set log-level (default=TRACE)
+   -log-option OPT=VAL  ##-- set log option (e.g. logdate, logtime, file, syslog, stderr, ...)
    -output DIR          ##-- output directory (required)
 
 =cut
