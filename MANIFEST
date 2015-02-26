@@ -23,6 +23,7 @@ DiaColloDB/Profile.pm
 DiaColloDB/Profile/Diff.pm
 DiaColloDB/Profile/Multi.pm
 DiaColloDB/Profile/MultiDiff.pm
+DiaColloDB/Timer.pm
 DiaColloDB/Unigrams.pm
 DiaColloDB/Utils.pm
 dcdb-create.perl

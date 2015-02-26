@@ -53,6 +53,7 @@ our %save = (format=>undef);
 
 our $outfmt  = 'text'; ##-- output format: 'text' or 'json'
 our $pretty  = 1;
+our $dotime  = 1; ##-- report timing?
 
 ##----------------------------------------------------------------------
 ## Command-line processing
@@ -93,6 +94,7 @@ GetOptions(##-- general
 	   'pretty|p!' => sub {$pretty=$_[1]},
 	   'null|noout' => sub {$outfmt=''},
 	   'score-format|sf|format|fmt=s' => \$save{format},
+	   'timing|times|time|T!' => \$dotime,
 	  );
 
 pod2usage({-exitval=>0,-verbose=>0}) if ($help);
@@ -142,6 +144,7 @@ $diff //= @ARGV > 1;
 $query{lemma}  = shift;
 $query{blemma} = @ARGV ? shift : $query{lemma};
 $rel  = "d$rel" if ($diff);
+my $timer = DiaColloDB::Timer->start();
 my $mp = $cli->query($rel, %query)
   or die("$prog: query() failed for relation '$rel', lemma(s) '$query{lemma}' - '$query{blemma}': $cli->{error}");
 
@@ -158,7 +161,12 @@ elsif ($outfmt eq 'html') {
   $mp->trace("saveHtmlFile()");
   $mp->saveHtmlFile('-',%save);
 }
-#$coldb->trace("done.");
+
+##-- cleanup
+$cli->close();
+
+##-- timing
+$cli->info("operation completed in ", $timer->timestr) if ($dotime);
 
 
 __END__
@@ -180,7 +188,7 @@ dcdb-query.perl - query a DiaColloDB
  General Options:
    -help
    -version
-   -verbose LEVEL
+   -[no]time            # do/don't report operation timing (default=do)
 
  DiaColloDB Options:
    -log-level LEVEL     # set minimum DiaColloDB log-level
@@ -202,8 +210,8 @@ dcdb-query.perl - query a DiaColloDB
    -user USER[:PASSWD]  # user credentials for HTTP queries
    -text		# use text output (default)
    -json                # use json output
-   -[no]pretty          # do/don't pretty-print json output (default=do)
    -null                # don't output profile at all
+   -[no]pretty          # do/don't pretty-print json output (default=do)
 
  Arguments:
    DBURL                # DB URL (file://, http://, or list:// ; query part sets local options)

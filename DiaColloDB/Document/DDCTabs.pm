@@ -20,7 +20,7 @@ our @ISA = qw(DiaColloDB::Document);
 ## + %args, object structure:
 ##   (
 ##    ##-- parsing options
-##    eosre => $re,       ##-- EOS regex (default='^$')
+##    eosre => $re,       ##-- EOS regex (empty or undef for file-breaks only; default='^$')
 ##    ##
 ##    ##-- document data
 ##    date   =>$date,     ##-- year

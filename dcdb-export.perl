@@ -13,13 +13,13 @@ use strict;
 
 ##-- program vars
 our $prog       = basename($0);
-our $verbose    = 1;
 our ($help,$version);
 
 our $dbdir      = undef;
 our $outdir     = undef;
 our %coldb      = (flags=>'r');
 our %export     = (export_sdat=>1, export_cof=>1);
+our $dotime     = 1; ##-- report timing?
 
 ##----------------------------------------------------------------------
 ## Command-line processing
@@ -27,9 +27,10 @@ our %export     = (export_sdat=>1, export_cof=>1);
 GetOptions(##-- general
 	   'help|h' => \$help,
 	   'version|V' => \$version,
-	   'verbose|v=i' => \$verbose,
+	   #'verbose|v=i' => \$verbose,
 
 	   ##-- I/O
+	   'timing|times|time|t!' => \$dotime,
 	   'export-sdat|sdat|strings|s!' => \$export{export_sdat},
 	   'export-raw|raw!' => sub { $export{export_sdat}=!$_[1]; },
 	   'export-cof|cof|c!' => \$export{export_cof},
@@ -39,7 +40,7 @@ GetOptions(##-- general
 pod2usage({-exitval=>0,-verbose=>0}) if ($help);
 pod2usage({-exitval=>1,-verbose=>0,-msg=>"$prog: ERROR: no DBDIR specified!"}) if (!@ARGV);
 
-if ($version || $verbose >= 2) {
+if ($version) {
   print STDERR "$prog version $DiaColloDB::VERSION by Bryan Jurish\n";
   exit 0 if ($version);
 }
@@ -61,9 +62,16 @@ $coldb->open($dbdir)
   or die("$prog: DiaColloDB::open() failed for '$dbdir': $!");
 
 ##-- export
+my $timer = DiaColloDB::Timer->start;
 $outdir //= "$dbdir.export";
 $coldb->dbexport($outdir,%export)
   or die("$prog: DiaColloDB::export() failed to '$outdir': $!");
+
+##-- cleanup
+$coldb->close();
+
+##-- timing
+$coldb->info("operation completed in ", $timer->timestr) if ($dotime);
 
 __END__
 
@@ -84,7 +92,7 @@ dcdb-export.perl - export a text representation of a DiaColloDB index
  General Options:
    -help
    -version
-   -verbose LEVEL
+   -[no]time            ##-- do/don't report timing information (default=do)
 
  Export Options:
    -[no]raw             ##-- inverse of -[no]sdat

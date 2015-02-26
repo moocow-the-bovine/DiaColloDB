@@ -20,6 +20,7 @@ use DiaColloDB::Profile::MultiDiff;
 use DiaColloDB::Corpus;
 use DiaColloDB::Persistent;
 use DiaColloDB::Utils qw(:fcntl :json :sort :pack :regex);
+use DiaColloDB::Timer;
 use Fcntl;
 use File::Path qw(make_path remove_tree);
 use strict;

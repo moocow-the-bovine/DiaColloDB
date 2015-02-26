@@ -185,40 +185,40 @@ sub loadTextFh {
   my $N = 0;
   my %f12 = qw(); ##-- ($i2=>$f12, ...)
 
-  ##-- guts
-  binmode($infh,':raw');
-  while (1) {
-    $_ = <$infh>;
-    ($f12,$i1,$i2) = defined($_) ? split(' ',$_,3) : (0,-1,0);
-    chomp($i2);
-    if ($i1 != $i1_cur) {
-      if ($i1_cur != -1) {
-	if ($i1_cur != $pos1) {
-	  ##-- we've skipped one or more $i1 because it had no collocates (e.g. kern01 i1=287123="Untier/1906")
-	  $fh1->print( pack($pack_r1,$pos2,0) x ($i1_cur-$pos1) );
-	}
-	##-- dump r2-records for $i1_cur
-	$f1 = 0;
-	foreach (sort {$a<=>$b} keys %f12) {
-	  $f    = $f12{$_};
-	  $f1  += $f;
-	  $N   += $f;
-	  next if ($f < $fmin); ##-- skip here so we can track "real" marginal frequencies
-	  $fh2->print(pack($pack_r2, $_,$f));
-	  ++$pos2;
-	}
-	##-- dump r1-record for $i1_cur
-	$fh1->print(pack($pack_r1, $pos2,$f1));
-	$pos1  = $i1_cur+1;
+  ##-- guts for inserting records from $i1_cur,%f12,$pos1,$pos2
+  my $insert = sub {
+    if ($i1_cur >= 0) {
+      if ($i1_cur != $pos1) {
+	##-- we've skipped one or more $i1 because it had no collocates (e.g. kern01 i1=287123="Untier/1906")
+	$fh1->print( pack($pack_r1,$pos2,0) x ($i1_cur-$pos1) );
       }
-      $i1_cur   = $i1;
-      %f12      = qw();
+      ##-- dump r2-records for $i1_cur
+      $f1 = 0;
+      foreach (sort {$a<=>$b} keys %f12) {
+	$f    = $f12{$_};
+	$f1  += $f;
+	$N   += $f;
+	next if ($f < $fmin); ##-- skip here so we can track "real" marginal frequencies
+	$fh2->print(pack($pack_r2, $_,$f));
+	++$pos2;
+      }
+      ##-- dump r1-record for $i1_cur
+      $fh1->print(pack($pack_r1, $pos2,$f1));
+      $pos1  = $i1_cur+1;
     }
-    last if ($i1 < 0);
+    $i1_cur = $i1;
+    %f12    = qw();
+  };
 
-    ##-- buffer collocation frequencies
-    $f12{$i2} += $f12;
+  ##-- ye olde loope
+  binmode($infh,':raw');
+  while (defined($_=<$infh>)) {
+    chomp;
+    ($f12,$i1,$i2) = split(' ',$_,3);
+    $insert->() if ($i1 != $i1_cur);  ##-- insert record(s) for $i1_cur
+    $f12{$i2} += $f12;                ##-- buffer co-frequencies for $i1_cur
   }
+  $insert->();                        ##-- write record(s) for final $i1_cur
 
   ##-- adopt final $N and sizes
   $cof->{N} = $N;
@@ -239,7 +239,7 @@ sub loadTextFile_create {
   } else {
     @$cof{keys %opts} = values %opts;
   }
-  $cof->logconfess("loadTextFile(): cannot load unopened database!") if (!$cof->opened);
+  $cof->logconfess("loadTextFile_create(): cannot load unopened database!") if (!$cof->opened);
 
   ##-- common variables
   my $pack_f   = $cof->{pack_f};
@@ -259,46 +259,41 @@ sub loadTextFile_create {
   my ($f12,$i1,$i2);
   my $N = 0;
 
-  ##-- guts
+  ##-- guts for inserting records from $i1_cur,%f12,$pos1,$pos2
+  my $insert1 = sub {
+    if ($i1_cur >= 0) {
+      ##-- dump record for $i1_cur
+      if ($i1_cur != $pos1) {
+	##-- we've skipped one or more $i1 because it had no collocates (e.g. kern01 i1=287123="Untier/1906")
+	$fh1->print( pack($pack_r1,$pos2_prev,0) x ($i1_cur-$pos1) );
+      }
+      $fh1->print(pack($pack_r1, $pos2,$f1_cur));
+      $pos1      = $i1_cur+1;
+      $pos2_prev = $pos2;
+    }
+    $i1_cur = $i1;
+    $f1_cur = 0;
+  };
+
+  ##-- ye olde loope
   binmode($infh,':raw');
   while (defined($_=<$infh>)) {
     ($f12,$i1,$i2) = split(' ',$_,3);
-    #next if ($f12 < $fmin);  ##-- don't skip here so that we can track "real" marginal frequencies
-    if ($i1 != $i1_cur) {
-      if ($i1_cur != -1) {
-	##-- dump record for $i1_cur
-	if ($i1_cur != $pos1) {
-	  ##-- we've skipped one or more $i1 because it had no collocates (e.g. kern01 i1=287123="Untier/1906")
-	  $fh1->print( pack($pack_r1,$pos2_prev,0) x ($i1_cur-$pos1) );
-	}
-	$fh1->print(pack($pack_r1, $pos2,$f1_cur));
-	$pos1      = $i1_cur+1;
-	$pos2_prev = $pos2;
-      }
-      $i1_cur   = $i1;
-      $f1_cur   = 0;
-    }
+    #next if ($f12 < $fmin);  		##-- don't skip here so that we can track "real" marginal frequencies
+    $insert1->() if ($i1 != $i1_cur);	##-- insert record for $i1_cur
 
     ##-- track marginal f($i1) and N
     $f1_cur += $f12;
     $N      += $f12;
-    next if ($f12 < $fmin  ##-- minimum co-occurrence frequency filter
-	     #|| $i1==$i2   ##-- suppress identity collocations (... but we can't eliminate e.g. lemma-identity if using complex tuples!)
+    next if ($f12 < $fmin		##-- minimum co-occurrence frequency filter
+	     #|| $i1==$i2  		##-- suppress identity collocations (... but we can't eliminate e.g. lemma-identity if using complex tuples!)
 	    );
 
     ##-- dump record to $r2
     $fh2->print(pack($pack_r2, $i2,$f12));
     ++$pos2;
   }
-
-  ##-- dump final record for $i1_cur
-  if ($i1_cur != -1) {
-    if ($i1_cur != $pos1) {
-      ##-- we've skipped one or more $i1 because it had no collocates (e.g. kern01 i1=287123="Untier/1906")
-      $fh1->print( pack($pack_r1,$pos2_prev,0) x ($i1_cur-$pos1) );
-    }
-    $fh1->print(pack($pack_r1, $pos2,$f1_cur));
-  }
+  $insert1->(); 			##-- dump final record for $i1_cur
 
   ##-- adopt final $N and sizes
   $cof->{N} = $N;
@@ -452,15 +447,17 @@ sub union {
     or $cof->logconfess("union(): open failed for tempfile $tmpfile: $!");
   binmode($tmpfh,':raw');
 
-  ##-- stage1: extract pairs
+  ##-- stage1: extract pairs and N
   $cof->vlog('trace', "union(): stage1: extract pairs");
   my ($pair,$pcof,$pi2u);
   my $pairi=0;
+  my $N=0;
   foreach $pair (@$pairs) {
     ($pcof,$pi2u) = @$pair;
     $pcof->saveTextFh($tmpfh, i2s=>sub {$pi2u->[$_[0]]})
       or $cof->logconfess("union(): failed to extract pairs for argument $pairi");
     ++$pairi;
+    $N += $pcof->{N};
   }
   $tmpfh->close()
     or $cof->logconfess("union(): failed to close tempfile $tmpfile: $!");
@@ -478,6 +475,9 @@ sub union {
   $sortfh->close()
     or $cof->logconfess("union(): failed to close pipe from sort: $!");
   env_pop();
+
+  ##-- clobber N (after loading text file, since sub-corpus frequency filters will have tweaked it out of proportion)
+  $cof->{N} = $N;
 
   ##-- stage3: header
   $cof->saveHeader()

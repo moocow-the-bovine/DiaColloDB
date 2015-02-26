@@ -12,6 +12,7 @@ use IO::Handle;
 use IO::File;
 use IPC::Run;
 use Fcntl qw(:DEFAULT SEEK_SET SEEK_CUR SEEK_END);
+use Time::HiRes qw(gettimeofday tv_interval);
 use Carp;
 use strict;
 
@@ -31,6 +32,7 @@ our %EXPORT_TAGS =
      math  => [qw($LOG2 log2)],
      regex => [qw(regex)],
      html  => [qw(htmlesc)],
+     time  => [qw(s2hms s2timestr)],
     );
 our @EXPORT_OK = map {@$_} values(%EXPORT_TAGS);
 $EXPORT_TAGS{all} = [@EXPORT_OK];
@@ -373,6 +375,35 @@ sub htmlesc {
   $str =~ s/\</\&lt;/sg;
   $str =~ s/\>/\&gt;/sg;
   return $str;
+}
+
+##==============================================================================
+## Functions: time
+
+## $hms       = PACKAGE::s2hms($seconds,$sfmt="%06.3f")
+## ($h,$m,$s) = PACKAGE::s2hms($seconds,$sfmt="%06.3f")
+sub s2hms {
+  shift(@_) if (UNIVERSAL::isa($_[0],__PACKAGE__));
+  my ($secs,$sfmt) = @_;
+  $sfmt ||= '%06.3f';
+  my $h = int($secs/(60*60));
+  my $m = int($secs/60);
+  my $s = sprintf($sfmt, $secs - ($h*60*60 + $m*60));
+  return wantarray ? ($h,$m,$s) : sprintf("%02d:%02d:%s", $h,$m,$s);
+}
+
+## $timestr = PACKAGE::s2timestr($seconds,$sfmt="%f")
+sub s2timestr {
+  shift(@_) if (UNIVERSAL::isa($_[0],__PACKAGE__));
+  my ($h,$m,$s) = s2hms(@_);
+  if ($h==0 && $m==0) {
+    $s =~ s/^0+(?!\.)//;
+    return "${s}s";
+  }
+  elsif ($h==0) {
+    return sprintf("%02dm%ss",$m,$s)
+  }
+  return sprintf("%02dh%02dm%ss",$h,$m,$s);
 }
 
 ##==============================================================================

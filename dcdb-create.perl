@@ -13,7 +13,6 @@ use strict;
 
 ##-- program vars
 our $prog       = basename($0);
-our $verbose    = 1;
 our ($help,$version);
 
 our %log        = (level=>'TRACE', rootLevel=>'FATAL');
@@ -22,6 +21,7 @@ our $dbdir      = undef;
 our $globargs = 1; ##-- glob @ARGV?
 our $listargs = 0; ##-- args are file-lists?
 our $union    = 0; ##-- args are db-dirs?
+our $dotime   = 1; ##-- report timing?
 our %corpus   = (dclass=>'DDCTabs', dopts=>{});
 our %coldb    = (pack_id=>'N', pack_date=>'n', pack_f=>'N', pack_off=>'N', pack_len=>'n', dmax=>5, cfmin=>2, keeptmp=>0);
 
@@ -35,18 +35,17 @@ sub pack64 {
 GetOptions(##-- general
 	   'help|h' => \$help,
 	   'version|V' => \$version,
-	   'verbose|v=i' => \$verbose,
+	   #'verbose|v=i' => \$verbose,
 
-	   ##-- I/O options
+	   ##-- corpus options
 	   'glob|g!' => \$globargs,
 	   'list|l!' => \$listargs,
 	   'union|u|merge!' => \$union,
 	   'document-class|dclass|dc=s' => \$corpus{dclass},
 	   'document-option|docoption|do=s%' => \$corpus{dopts},
-	   'output|outdir|od|o=s' => \$dbdir,
-
-	   ##-- general
-	   'log-level|level|ll=s' => sub { $log{level} = uc($_[1]); },
+	   'by-sentence|bysentence' => sub { $corpus{dopts}{eosre}='^$' },
+	   'by-paragraph|byparagraph' => sub { $corpus{dopts}{eosre}='^%%\$DDC:BREAK\.p=' },
+	   'by-doc|bydoc|by-file|byfile' => sub { $corpus{dopts}{eosre}='' },
 
 	   ##-- coldb options
 	   'max-distance|maxd|dmax|n=i' => \$coldb{dmax},
@@ -58,11 +57,16 @@ GetOptions(##-- general
 	   'option|O=s%' => \%coldb,
 	   '64bit|64|quad|Q!'   => sub { pack64( $_[1]); },
 	   '32bit|32|long|L|N!' => sub { pack64(!$_[1]); },
+
+	   ##-- I/O and logging
+	   'timing|times|time|t!' => \$dotime,
+	   'log-level|level|ll=s' => sub { $log{level} = uc($_[1]); },
+	   'output|outdir|od|o=s' => \$dbdir,
 	  );
 
 pod2usage({-exitval=>0,-verbose=>0}) if ($help);
 
-if ($version || $verbose >= 2) {
+if ($version) {
   print STDERR "$prog version $DiaColloDB::VERSION by Bryan Jurish\n";
   exit 0 if ($version);
 }
@@ -84,6 +88,7 @@ $corpus->open(\@ARGV, 'glob'=>$globargs, 'list'=>$listargs)
 ##-- create colloc-db
 my $coldb = DiaColloDB->new(%coldb)
   or die("$prog: failed to create new DiaColloDB object: $!");
+my $timer = DiaColloDB::Timer->start();
 if ($union) {
   ##-- union: create from dbdirs
   $coldb->union($corpus->{files}, dbdir=>$dbdir, flags=>'rw')
@@ -94,6 +99,13 @@ if ($union) {
     or die("$prog: DiaColloDB::create() failed: $!");
 }
 
+##-- cleanup
+$coldb->close();
+
+##-- timing
+if ($dotime) {
+  $coldb->info("operation completed in ", $timer->timestr);
+}
 
 __END__
 
@@ -114,7 +126,7 @@ dcdb-create.perl - create a DiaColloDB collocation database from a corpus dump
  General Options:
    -help
    -version
-   -verbose LEVEL
+   -[no]time            ##-- do/don't report execution time
 
  Corpus Options:
    -list , -nolist      ##-- INPUT(s) are/aren't file-lists (default=no)
@@ -122,8 +134,12 @@ dcdb-create.perl - create a DiaColloDB collocation database from a corpus dump
    -dclass CLASS        ##-- set corpus document class (default=DDCTabs)
    -dopt OPT=VAL        ##-- set corpus document option, e.g.
                         ##   eosre=EOSRE        # eos regex (default='^$'; alt. '^%%\$DDC:PAGE=' or '^%%\$DDC:BREAK\.p=')
+   -bysent              ##-- track collocations by sentence (default)
+   -byparagraph         ##-- track collocations by paragraph
+   -bypage              ##-- track collocations by page
+   -bydoc               ##-- track collocations by document
 
- DiaColloDB Options:
+ Indexing Options:
    #-[no]index-w         ##-- do/don't index words (default=don't) : DISABLED
    #-[no]index-l         ##-- do/don't index lemmata (default=do)  : DISABLED
    -[no]keep            ##-- do/ton't keep temporary files (default=don't)

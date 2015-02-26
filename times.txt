@@ -633,3 +633,12 @@ $ time ./coldb-profile.perl kern.d Mann -noout -dates   -lemmas 	# real	0m5.428s
 $ time ./coldb-profile.perl kern.d Mann -noout -nodates -nolemmas	# real	0m04.827s [+4.827 = 100.0%]
 $ time ./coldb-profile.perl kern.d Mann -noout -dates   -nolemmas 	# real	0m08.230s [+3.403 =  70.5%]
 $ time ./coldb-profile.perl kern.d Mann -noout -dates   -lemmas 	# real	0m11.684s [+3.454 =  71.6%]
+
+##========================================
+## union
+$ ./dcdb-create.perl -l kern01-1k.files kern02-1k.files -o kern12-1k.d	# 50.975s, 17MB
+--
+$ ./dcdb-create.perl -l kern01-1k.files                 -o kern01-1k.d	# 35.683s, 11MB
+$ ./dcdb-create.perl -l kern02-1k.files                 -o kern02-1k.d	# 18.603s,  7MB : TOTAL = 54.466, 18MB
+--
+$ ./dcdb-create.perl -u kern01-1k.d kern02-1k.d         -o kern12-1k.u	# 11.230s, 16MB
