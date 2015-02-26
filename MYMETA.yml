@@ -24,4 +24,4 @@ requires:
   IPC::Run: ~
   JSON: ~
   Log::Log4perl: 1.07
-version: 0.01
+version: 0.03

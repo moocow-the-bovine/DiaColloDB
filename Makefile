@@ -14,7 +14,7 @@
 #     ABSTRACT => q[Diachronic collocation index]
 #     AUTHOR => [q[Bryan Jurish <moocow@cpan.org>]]
 #     BUILD_REQUIRES => {  }
-#     EXE_FILES => [q[dcdb-create.perl], q[dcdb-export.perl], q[dcdb-profile.perl]]
+#     EXE_FILES => [q[dcdb-create.perl], q[dcdb-dump.perl], q[dcdb-export.perl], q[dcdb-query.perl]]
 #     NAME => q[DiaColloDB]
 #     NORECURS => q[1]
 #     PREREQ_PM => { File::Map=>undef, IPC::Run=>undef, File::Path=>undef, JSON=>undef, Log::Log4perl=>q[1.07] }
@@ -57,11 +57,11 @@ DIRFILESEP = /
 DFSEP = $(DIRFILESEP)
 NAME = DiaColloDB
 NAME_SYM = DiaColloDB
-VERSION = 0.01
+VERSION = 0.03
 VERSION_MACRO = VERSION
-VERSION_SYM = 0_01
+VERSION_SYM = 0_03
 DEFINE_VERSION = -D$(VERSION_MACRO)=\"$(VERSION)\"
-XS_VERSION = 0.01
+XS_VERSION = 0.03
 XS_VERSION_MACRO = XS_VERSION
 XS_DEFINE_VERSION = -D$(XS_VERSION_MACRO)=\"$(XS_VERSION)\"
 INST_ARCHLIB = blib/arch
@@ -161,8 +161,9 @@ C_FILES  =
 O_FILES  = 
 H_FILES  = 
 MAN1PODS = dcdb-create.perl \
+	dcdb-dump.perl \
 	dcdb-export.perl \
-	dcdb-profile.perl
+	dcdb-query.perl
 MAN3PODS = DiaColloDB/Logger.pm
 
 # Where is the Config information that we are using/depend on
@@ -186,6 +187,10 @@ PERL_ARCHIVE_AFTER =
 
 
 TO_INST_PM = DiaColloDB.pm \
+	DiaColloDB/Client.pm \
+	DiaColloDB/Client/file.pm \
+	DiaColloDB/Client/http.pm \
+	DiaColloDB/Client/list.pm \
 	DiaColloDB/Cofreqs.pm \
 	DiaColloDB/Corpus.pm \
 	DiaColloDB/Document.pm \
@@ -199,7 +204,10 @@ TO_INST_PM = DiaColloDB.pm \
 	DiaColloDB/PackedFile.pm \
 	DiaColloDB/Persistent.pm \
 	DiaColloDB/Profile.pm \
+	DiaColloDB/Profile/Diff.pm \
 	DiaColloDB/Profile/Multi.pm \
+	DiaColloDB/Profile/MultiDiff.pm \
+	DiaColloDB/Timer.pm \
 	DiaColloDB/Unigrams.pm \
 	DiaColloDB/Utils.pm
 
@@ -217,18 +225,32 @@ PM_TO_BLIB = DiaColloDB/EnumFile/FixedMap.pm \
 	$(INST_LIB)/DiaColloDB/Profile/Multi.pm \
 	DiaColloDB/EnumFile.pm \
 	$(INST_LIB)/DiaColloDB/EnumFile.pm \
+	DiaColloDB/Profile/MultiDiff.pm \
+	$(INST_LIB)/DiaColloDB/Profile/MultiDiff.pm \
+	DiaColloDB/Client/http.pm \
+	$(INST_LIB)/DiaColloDB/Client/http.pm \
 	DiaColloDB/Unigrams.pm \
 	$(INST_LIB)/DiaColloDB/Unigrams.pm \
+	DiaColloDB/Client/list.pm \
+	$(INST_LIB)/DiaColloDB/Client/list.pm \
 	DiaColloDB/PackedFile.pm \
 	$(INST_LIB)/DiaColloDB/PackedFile.pm \
 	DiaColloDB/EnumFile/MMap.pm \
 	$(INST_LIB)/DiaColloDB/EnumFile/MMap.pm \
+	DiaColloDB/Client.pm \
+	$(INST_LIB)/DiaColloDB/Client.pm \
 	DiaColloDB.pm \
 	$(INST_LIB)/DiaColloDB.pm \
 	DiaColloDB/Utils.pm \
 	$(INST_LIB)/DiaColloDB/Utils.pm \
+	DiaColloDB/Client/file.pm \
+	$(INST_LIB)/DiaColloDB/Client/file.pm \
+	DiaColloDB/Profile/Diff.pm \
+	$(INST_LIB)/DiaColloDB/Profile/Diff.pm \
 	DiaColloDB/Cofreqs.pm \
 	$(INST_LIB)/DiaColloDB/Cofreqs.pm \
+	DiaColloDB/Timer.pm \
+	$(INST_LIB)/DiaColloDB/Timer.pm \
 	DiaColloDB/Document/DDCTabs.pm \
 	$(INST_LIB)/DiaColloDB/Document/DDCTabs.pm \
 	DiaColloDB/MultiMapFile.pm \
@@ -305,7 +327,7 @@ RCS_LABEL = rcs -Nv$(VERSION_SYM): -q
 DIST_CP = best
 DIST_DEFAULT = tardist
 DISTNAME = DiaColloDB
-DISTVNAME = DiaColloDB-0.01
+DISTVNAME = DiaColloDB-0.03
 
 
 # --- MakeMaker macro section:
@@ -460,14 +482,16 @@ POD2MAN = $(POD2MAN_EXE)
 
 
 manifypods : pure_all  \
+	dcdb-query.perl \
 	dcdb-export.perl \
 	dcdb-create.perl \
-	dcdb-profile.perl \
+	dcdb-dump.perl \
 	DiaColloDB/Logger.pm
 	$(NOECHO) $(POD2MAN) --section=$(MAN1EXT) --perm_rw=$(PERM_RW) \
+	  dcdb-query.perl $(INST_MAN1DIR)/dcdb-query.perl.$(MAN1EXT) \
 	  dcdb-export.perl $(INST_MAN1DIR)/dcdb-export.perl.$(MAN1EXT) \
 	  dcdb-create.perl $(INST_MAN1DIR)/dcdb-create.perl.$(MAN1EXT) \
-	  dcdb-profile.perl $(INST_MAN1DIR)/dcdb-profile.perl.$(MAN1EXT) 
+	  dcdb-dump.perl $(INST_MAN1DIR)/dcdb-dump.perl.$(MAN1EXT) 
 	$(NOECHO) $(POD2MAN) --section=$(MAN3EXT) --perm_rw=$(PERM_RW) \
 	  DiaColloDB/Logger.pm $(INST_MAN3DIR)/DiaColloDB::Logger.$(MAN3EXT) 
 
@@ -479,15 +503,21 @@ manifypods : pure_all  \
 
 # --- MakeMaker installbin section:
 
-EXE_FILES = dcdb-create.perl dcdb-export.perl dcdb-profile.perl
+EXE_FILES = dcdb-create.perl dcdb-dump.perl dcdb-export.perl dcdb-query.perl
 
-pure_all :: $(INST_SCRIPT)/dcdb-export.perl $(INST_SCRIPT)/dcdb-create.perl $(INST_SCRIPT)/dcdb-profile.perl
+pure_all :: $(INST_SCRIPT)/dcdb-query.perl $(INST_SCRIPT)/dcdb-export.perl $(INST_SCRIPT)/dcdb-create.perl $(INST_SCRIPT)/dcdb-dump.perl
 	$(NOECHO) $(NOOP)
 
 realclean ::
 	$(RM_F) \
-	  $(INST_SCRIPT)/dcdb-export.perl $(INST_SCRIPT)/dcdb-create.perl \
-	  $(INST_SCRIPT)/dcdb-profile.perl 
+	  $(INST_SCRIPT)/dcdb-query.perl $(INST_SCRIPT)/dcdb-export.perl \
+	  $(INST_SCRIPT)/dcdb-create.perl $(INST_SCRIPT)/dcdb-dump.perl 
+
+$(INST_SCRIPT)/dcdb-query.perl : dcdb-query.perl $(FIRST_MAKEFILE) $(INST_SCRIPT)$(DFSEP).exists $(INST_BIN)$(DFSEP).exists
+	$(NOECHO) $(RM_F) $(INST_SCRIPT)/dcdb-query.perl
+	$(CP) dcdb-query.perl $(INST_SCRIPT)/dcdb-query.perl
+	$(FIXIN) $(INST_SCRIPT)/dcdb-query.perl
+	-$(NOECHO) $(CHMOD) $(PERM_RWX) $(INST_SCRIPT)/dcdb-query.perl
 
 $(INST_SCRIPT)/dcdb-export.perl : dcdb-export.perl $(FIRST_MAKEFILE) $(INST_SCRIPT)$(DFSEP).exists $(INST_BIN)$(DFSEP).exists
 	$(NOECHO) $(RM_F) $(INST_SCRIPT)/dcdb-export.perl
@@ -501,11 +531,11 @@ $(INST_SCRIPT)/dcdb-create.perl : dcdb-create.perl $(FIRST_MAKEFILE) $(INST_SCRI
 	$(FIXIN) $(INST_SCRIPT)/dcdb-create.perl
 	-$(NOECHO) $(CHMOD) $(PERM_RWX) $(INST_SCRIPT)/dcdb-create.perl
 
-$(INST_SCRIPT)/dcdb-profile.perl : dcdb-profile.perl $(FIRST_MAKEFILE) $(INST_SCRIPT)$(DFSEP).exists $(INST_BIN)$(DFSEP).exists
-	$(NOECHO) $(RM_F) $(INST_SCRIPT)/dcdb-profile.perl
-	$(CP) dcdb-profile.perl $(INST_SCRIPT)/dcdb-profile.perl
-	$(FIXIN) $(INST_SCRIPT)/dcdb-profile.perl
-	-$(NOECHO) $(CHMOD) $(PERM_RWX) $(INST_SCRIPT)/dcdb-profile.perl
+$(INST_SCRIPT)/dcdb-dump.perl : dcdb-dump.perl $(FIRST_MAKEFILE) $(INST_SCRIPT)$(DFSEP).exists $(INST_BIN)$(DFSEP).exists
+	$(NOECHO) $(RM_F) $(INST_SCRIPT)/dcdb-dump.perl
+	$(CP) dcdb-dump.perl $(INST_SCRIPT)/dcdb-dump.perl
+	$(FIXIN) $(INST_SCRIPT)/dcdb-dump.perl
+	-$(NOECHO) $(CHMOD) $(PERM_RWX) $(INST_SCRIPT)/dcdb-dump.perl
 
 
 
@@ -564,7 +594,7 @@ metafile : create_distdir
 	$(NOECHO) $(ECHO) Generating META.yml
 	$(NOECHO) $(ECHO) '--- #YAML:1.0' > META_new.yml
 	$(NOECHO) $(ECHO) 'name:               DiaColloDB' >> META_new.yml
-	$(NOECHO) $(ECHO) 'version:            0.01' >> META_new.yml
+	$(NOECHO) $(ECHO) 'version:            0.03' >> META_new.yml
 	$(NOECHO) $(ECHO) 'abstract:           Diachronic collocation index' >> META_new.yml
 	$(NOECHO) $(ECHO) 'author:' >> META_new.yml
 	$(NOECHO) $(ECHO) '    - Bryan Jurish <moocow@cpan.org>' >> META_new.yml
@@ -855,7 +885,7 @@ testdb_static :: testdb_dynamic
 # --- MakeMaker ppd section:
 # Creates a PPD (Perl Package Description) for a binary distribution.
 ppd :
-	$(NOECHO) $(ECHO) '<SOFTPKG NAME="$(DISTNAME)" VERSION="0.01">' > $(DISTNAME).ppd
+	$(NOECHO) $(ECHO) '<SOFTPKG NAME="$(DISTNAME)" VERSION="0.03">' > $(DISTNAME).ppd
 	$(NOECHO) $(ECHO) '    <ABSTRACT>Diachronic collocation index</ABSTRACT>' >> $(DISTNAME).ppd
 	$(NOECHO) $(ECHO) '    <AUTHOR>Bryan Jurish &lt;moocow@cpan.org&gt;</AUTHOR>' >> $(DISTNAME).ppd
 	$(NOECHO) $(ECHO) '    <IMPLEMENTATION>' >> $(DISTNAME).ppd
@@ -881,12 +911,19 @@ pm_to_blib : $(FIRST_MAKEFILE) $(TO_INST_PM)
 	  DiaColloDB/Profile.pm $(INST_LIB)/DiaColloDB/Profile.pm \
 	  DiaColloDB/Profile/Multi.pm $(INST_LIB)/DiaColloDB/Profile/Multi.pm \
 	  DiaColloDB/EnumFile.pm $(INST_LIB)/DiaColloDB/EnumFile.pm \
+	  DiaColloDB/Profile/MultiDiff.pm $(INST_LIB)/DiaColloDB/Profile/MultiDiff.pm \
+	  DiaColloDB/Client/http.pm $(INST_LIB)/DiaColloDB/Client/http.pm \
 	  DiaColloDB/Unigrams.pm $(INST_LIB)/DiaColloDB/Unigrams.pm \
+	  DiaColloDB/Client/list.pm $(INST_LIB)/DiaColloDB/Client/list.pm \
 	  DiaColloDB/PackedFile.pm $(INST_LIB)/DiaColloDB/PackedFile.pm \
 	  DiaColloDB/EnumFile/MMap.pm $(INST_LIB)/DiaColloDB/EnumFile/MMap.pm \
+	  DiaColloDB/Client.pm $(INST_LIB)/DiaColloDB/Client.pm \
 	  DiaColloDB.pm $(INST_LIB)/DiaColloDB.pm \
 	  DiaColloDB/Utils.pm $(INST_LIB)/DiaColloDB/Utils.pm \
+	  DiaColloDB/Client/file.pm $(INST_LIB)/DiaColloDB/Client/file.pm \
+	  DiaColloDB/Profile/Diff.pm $(INST_LIB)/DiaColloDB/Profile/Diff.pm \
 	  DiaColloDB/Cofreqs.pm $(INST_LIB)/DiaColloDB/Cofreqs.pm \
+	  DiaColloDB/Timer.pm $(INST_LIB)/DiaColloDB/Timer.pm \
 	  DiaColloDB/Document/DDCTabs.pm $(INST_LIB)/DiaColloDB/Document/DDCTabs.pm \
 	  DiaColloDB/MultiMapFile.pm $(INST_LIB)/DiaColloDB/MultiMapFile.pm \
 	  DiaColloDB/Persistent.pm $(INST_LIB)/DiaColloDB/Persistent.pm \

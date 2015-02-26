@@ -29,5 +29,6 @@ DiaColloDB/Utils.pm
 dcdb-create.perl
 dcdb-export.perl
 dcdb-query.perl
+dcdb-dump.perl
 t/00_basic.t
 t/common.plt
