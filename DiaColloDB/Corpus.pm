@@ -50,8 +50,10 @@ sub new {
 ##     list => $bool,     ##-- whether arguments are file-lists
 sub open {
   my ($corpus,$sources,%opts) = @_;
-  @{$corpus->{files}} = $opts{glob} ? (map {glob($_)} @$sources) : @$sources;
-  if ($opts{list}) {
+  $corpus = $corpus->new() if (!ref($corpus));
+  @$corpus{keys %opts} = values %opts;
+  @{$corpus->{files}} = $corpus->{glob} ? (map {glob($_)} @$sources) : @$sources;
+  if ($corpus->{list}) {
     ##-- read file-lists
     my $listfiles    = $corpus->{files};
     $corpus->{files} = [];
@@ -119,6 +121,12 @@ sub idocument {
 ##  + increment iterator
 sub inext {
   ++$_[0]{cur};
+}
+
+## $pos = $corpus->icur()
+##  + returns current position
+sub icur {
+  return $_[0]{cur};
 }
 
 

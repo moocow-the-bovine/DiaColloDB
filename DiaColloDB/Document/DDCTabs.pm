@@ -21,6 +21,7 @@ our @ISA = qw(DiaColloDB::Document);
 ##   (
 ##    ##-- parsing options
 ##    eosre => $re,       ##-- EOS regex (empty or undef for file-breaks only; default='^$')
+##    utf8  => $bool,     ##-- enable utf8 parsing? (default=1)
 ##    ##
 ##    ##-- document data
 ##    date   =>$date,     ##-- year
@@ -33,6 +34,7 @@ our @ISA = qw(DiaColloDB::Document);
 sub new {
   my $that = shift;
   my $doc  = $that->SUPER::new(
+			       utf8=>1,
 			       eosre=>qr{^$},
 			       wf=>0,
 			       pf=>1,
@@ -58,6 +60,7 @@ sub fromFile {
   $doc->{label} = ref($file) ? "$file" : $file;
   my $fh = ref($file) ? $file : IO::File->new("<$file");
   $doc->logconfess("fromFile(): cannot open file '$file': $!") if (!ref($fh));
+  binmode($fh,':utf8') if ($doc->{utf8});
 
   my ($wf,$pf,$lf) = @$doc{qw(wf pf lf)};
   my $tokens   = $doc->{tokens};
