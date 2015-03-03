@@ -218,7 +218,7 @@ sub loadTextFh {
     chomp;
     ($f12,$i1,$i2) = split(' ',$_,3);
     if (!defined($i1)) {
-      $cof->debug("N1 += $f12");
+      #$cof->debug("N1 += $f12");
       $N1 += $f12;		      ##-- load N values
       next;
     }
@@ -228,7 +228,7 @@ sub loadTextFh {
   $insert->();                        ##-- write record(s) for final $i1_cur
 
   ##-- adopt final $N and sizes
-  $cof->debug("FINAL: N1=$N1, N=$N");
+  #$cof->debug("FINAL: N1=$N1, N=$N");
   $cof->{N} = $N1>$N ? $N1 : $N;
   $cof->{size1} = $r1->size;
   $cof->{size2} = $r2->size;

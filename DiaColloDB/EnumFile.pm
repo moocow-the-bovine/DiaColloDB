@@ -270,7 +270,7 @@ sub fromArray {
   my $i = 0;
   foreach (@$i2s) {
     next if (!defined($_));
-    $enum->{s2i}{$i++} = $_;
+    $enum->{s2i}{$_} = $i++;
   }
   $enum->{size} = scalar(@{$enum->{i2s}});
   $enum->{dirty} = 1;
