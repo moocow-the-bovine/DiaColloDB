@@ -20,16 +20,17 @@ our @ISA = qw(DiaColloDB::Logger);
 ##   (
 ##    label  => $label,   ##-- document label (e.g. filename; optional)
 ##    date   =>$date,     ##-- year
-##    eos    =>$eos,      ##-- special token to use for EOS; default=['__$','__$']
-##    tokens =>\@tokens,  ##-- tokens, including EOS
+##    tokens =>\@tokens,  ##-- tokens, including undef for eos
+##    meta   =>\%meta,    ##-- document metadata (e.g. author, title, collection, ...)
 ##   )
 ## + each token in @tokens is a HASH-ref {w=>$word,p=>$pos,l=>$lemma,...}, or undef for EOS
 sub new {
   my $that = shift;
   my $doc  = bless({
-		    label=>undef,
-		    date=>0,
+		    label =>undef,
+		    date  =>0,
 		    tokens=>[],
+		    meta  =>{},
 		    @_, ##-- user arguments
 		   },
 		   ref($that)||$that);

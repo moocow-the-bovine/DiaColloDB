@@ -29,6 +29,7 @@ our @ISA = qw(DiaColloDB::Document);
 ##    pf     =>$ip,       ##-- index-field for $pos attribute (default=1)
 ##    lf     =>$il,       ##-- index-field for $lemma attribute (default=2)
 ##    tokens =>\@tokens,  ##-- tokens, including undef for EOS
+##    meta   =>\%meta,    ##-- document metadata (e.g. author, title, collection, ...)
 ##   )
 ## + each token in @tokens is a HASH-ref {w=>$word,p=>$pos,l=>$lemma,...}
 sub new {
@@ -64,10 +65,12 @@ sub fromFile {
 
   my ($wf,$pf,$lf) = @$doc{qw(wf pf lf)};
   my $tokens   = $doc->{tokens};
+  @$tokens     = qw();
+  my $meta     = $doc->{meta};
+  %$meta       = qw();
   my $eos      = undef;
   my $eosre    = $doc->{eosre};
   $eosre       = qr{$eosre} if ($eosre && !ref($eosre));
-  @$tokens     = ();
   my $last_was_eos = 1;
   my ($w,$p,$l);
   while (defined($_=<$fh>)) {
@@ -80,6 +83,9 @@ sub fromFile {
     if (/^%%/) {
       if (/^%%(?:\$DDC:meta\.date_|\$?date)=([0-9]+)/) {
 	$doc->{date} = $1;
+      }
+      if (/^%%\$DDC:meta\.([^=]+)=(.*)$/) {
+	$meta->{$1} = $2;
       }
       elsif (/^%%\$DDC:index\[([0-9]+)\]=Token\b/ || /^%%\$DDC:index\[([0-9]+)\]=\S+ w$/) {
 	$wf = $doc->{wf} = $1;
