@@ -453,6 +453,13 @@ sub appendSymbols {
   return $enum->{size}=$n;
 }
 
+## $newsize = $enum->addEnum($enum2_or_undef)
+##  + ensures all symbols from $enum2_or_undef are defined (undef:'')
+sub addEnum {
+  my ($e1,$e2) = @_;
+  return $e1->addSymbols(defined($e2) ? $e2->toArray : '');
+}
+
 ##==============================================================================
 ## Methods: lookup
 

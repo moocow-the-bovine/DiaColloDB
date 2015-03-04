@@ -661,3 +661,24 @@ $ ./dcdb-create.perl -l zeit01-1k.files -o zeit01-1k.bydoc-d5.d   -bydoc  -dmax=
 $ ./dcdb-create.perl -l zeit01-1k.files -o zeit01-1k.bydoc-d10.d  -bydoc  -dmax=10	# 11.0M, 37.948s
 $ ./dcdb-create.perl -l zeit01-1k.files -o zeit01-1k.bydoc-d20.d  -bydoc  -dmax=20	# 18.0M, 57.126s
 $ ./dcdb-create.perl -l zeit01-1k.files -o zeit01-1k.bydoc-d40.d  -bydoc  -dmax=40	# 34.0M, 1m37.068s
+
+##========================================
+## sizes (+attrs)
+##  + size(ddc-tabs): 27MB; size(ddc-index) ~= 35.6M (= size(zeit01) * nfiles(1k)/nfiles(zeit01) = 2158M * 1000/60571)
+$ ./dcdb-create.perl -l zeit01-1k.files -o zeit01-1k.d1l   -O=attrs=l     -cfmin=1	# 23.0M, 27.163s
+$ ./dcdb-create.perl -l zeit01-1k.files -o zeit01-1k.d1lp  -O=attrs=l,p   -cfmin=1	# 26.0M, 26.725s
+$ ./dcdb-create.perl -l zeit01-1k.files -o zeit01-1k.d1lpw -O=attrs=l,p,w -cfmin=1	# 32.0M, 28.067s
+--
+$ ./dcdb-create.perl -l zeit01-1k.files -o zeit01-1k.d2l   -O=attrs=l     -cfmin=2	#  7.0M
+$ ./dcdb-create.perl -l zeit01-1k.files -o zeit01-1k.d2lp  -O=attrs=l,p   -cfmin=2	#  9.1M
+$ ./dcdb-create.perl -l zeit01-1k.files -o zeit01-1k.d2lpw -O=attrs=l,p,w -cfmin=2	# 15.0M
+====
+$ b=doc.basename
+$ ./dcdb-create.perl -l zeit01-1k.files -o zeit01-1k.d1lb   -O=attrs=l,$b     -cfmin=1	# 30MB
+$ ./dcdb-create.perl -l zeit01-1k.files -o zeit01-1k.d1lpb  -O=attrs=l,p,$b   -cfmin=1	# 34MB
+$ ./dcdb-create.perl -l zeit01-1k.files -o zeit01-1k.d1lpwb -O=attrs=l,p,w,$b -cfmin=1	# 41MB
+--
+$ ./dcdb-create.perl -l zeit01-1k.files -o zeit01-1k.d2lb   -O=attrs=l,$b     -cfmin=2	# 14MB
+$ ./dcdb-create.perl -l zeit01-1k.files -o zeit01-1k.d2lpb  -O=attrs=l,p,$b   -cfmin=2	# 17MB
+$ ./dcdb-create.perl -l zeit01-1k.files -o zeit01-1k.d2lpwb -O=attrs=l,p,w,$b -cfmin=2	# 24MB
+
