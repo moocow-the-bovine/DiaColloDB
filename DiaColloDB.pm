@@ -926,6 +926,8 @@ sub relation {
 }
 
 ## \@ids = $coldb->enumIds($enum,$req,%opts)
+##  + parses enum IDs for $req, which is one of:
+##    - an ARRAY-ref : 
 ##  + %opts:
 ##     logLevel => $logLevel, ##-- logging level (default=undef)
 ##     logPrefix => $prefix,  ##-- logging prefix (default="enumIds(): fetch ids")
