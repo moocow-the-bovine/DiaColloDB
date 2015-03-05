@@ -360,11 +360,15 @@ BEGIN {
 		  'l' => [map {(uc($_),ucfirst($_),$_)} qw(lemma lem l)],
 		  'w' => [map {(uc($_),ucfirst($_),$_)} qw(token word w)],
 		  'p' => [map {(uc($_),ucfirst($_),$_)} qw(postag tag pt pos p)],
+		  ##
 		  'doc.collection' => [qw(doc.collection collection doc.corpus corpus)],
 		  'doc.textClass'  => [qw(doc.textClass textClass textclass tc doc.genre genre)],
 		  'doc.title'      => [qw(doc.title title)],
 		  'doc.author'     => [qw(doc.author author)],
 		  'doc.basename'   => [qw(doc.basename basename)],
+		  ##
+		  date  => [map {(uc($_),ucfirst($_),$_)} qw(date d)],
+		  slice => [map {(uc($_),ucfirst($_),$_)} qw(dslice slice sl ds s)],
 		 );
   %ATTR_ALIAS = (map {my $a=$_; map {($_=>$a)} @{$ATTR_RALIAS{$a}}} keys %ATTR_RALIAS);
 }
@@ -1201,11 +1205,18 @@ sub compare {
   $rel //= 'cof';
 
   ##-- common variables
-  my ($logProfile,$lenum) = @$coldb{qw(logProfile lenum)};
-  $opts{"a$_"} //= $opts{$_}//'' foreach qw(lemma date slice);
-  $opts{"b$_"} //= $opts{$_}//'' foreach qw(lemma date slice);
-  my %aopts = map {($_=>$opts{"a$_"})} qw(lemma date slice);
-  my %bopts = map {($_=>$opts{"b$_"})} qw(lemma date slice);
+  my $logProfile = $coldb->{logProfile};
+  foreach my $a (@{$coldb->attrs},qw(date slice)) {
+    $opts{"a$a"} = ((map {defined($opts{"a$_"}) ? $opts{"a$_"} : qw()} @{$ATTR_RALIAS{$a}}),
+		    (map {defined($opts{$_})    ? $opts{$_}    : qw()} @{$ATTR_RALIAS{$a}}),
+		   )[0]//'';
+    $opts{"b$a"} = ((map {defined($opts{"b$_"}) ? $opts{"b$_"} : qw()} @{$ATTR_RALIAS{$a}}),
+		    (map {defined($opts{$_})    ? $opts{$_}    : qw()} @{$ATTR_RALIAS{$a}}),
+		   )[0]//'';
+  }
+  delete @opts{keys %ATTR_ALIAS};
+  my %aopts = map {($_=>$opts{"a$_"})} (@{$coldb->attrs},qw(date slice));
+  my %bopts = map {($_=>$opts{"b$_"})} (@{$coldb->attrs},qw(date slice));
   my %popts = (kbest=>-1,cutoff=>'',strings=>0);
 
   ##-- debug
@@ -1233,7 +1244,7 @@ sub compare {
   $coldb->vlog($logProfile, "compare(): diff and stringification");
   my $diff = DiaColloDB::Profile::MultiDiff->new($mpa,$mpb);
   $diff->trim(kbesta=>$opts{kbest}) if ($opts{kbest});
-  $diff->stringify($lenum) if ($opts{strings}//1);
+  $diff->stringify($coldb->{lenum}) if ($opts{strings}//1); ##-- TODO: attribute-sensitive stringification (factor out of profile())
 
   return $diff;
 }

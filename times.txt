@@ -689,13 +689,11 @@ $ ./dcdb-create.perl -l zeit01-1k.files -o zeit01-1k.d2lpwb -O=attrs=l,p,w,$b -c
 ##  + size(ddc-tabs): 707M; size(ddc-index) ~= 1264MB
 $ ./dcdb-create.perl -l kern01.files -o kern01.d     -O=attrs=l     	   	-cfmin=2	# 127M ~ 0.10x ddc
 $ ./dcdb-create.perl -l kern01.files -o kern01.dlp   -O=attrs=l,p               -cfmin=2	# 146M ~ 0.12x ddc
-$ ./dcdb-create.perl -l kern01.files -o kern01.dlpg  -O=attrs=l,p,genre   	-cfmin=2	# 
-$ ./dcdb-create.perl -l kern01.files -o kern01.dlpwg -O=attrs=l,p,w,genre 	-cfmin=2	# 226M ~ 0.18x ddc
+$ ./dcdb-create.perl -l kern01.files -o kern01.dlpg  -O=attrs=l,p,genre   	-cfmin=2	# 226M ~ 0.18x ddc
 
 
 ##========================================
-## times (+attrs, v0.03_0001, kern01.d)
-$ ./dcdb-query.perl kern01.d     Mann -ds=0 -null	# 1.754s ~ 1.0x
-$ ./dcdb-query.perl kern01.dlp   Mann -ds=0 -null	# 2.213s ~ 1.3x
-$ ./dcdb-query.perl kern01.dlpc  Mann -ds=0 -null	#  ~ 
-$ ./dcdb-query.perl kern01.dlpwc Mann -ds=0 -null	# 5.464s ~ 3.1x
+## times (+attrs, v0.03_0001, kern01.d): 		# T1     ~ REL1 (T2     ~ REL2)
+$ ./dcdb-query.perl kern01.d     Mann -ds=0 -null	# 1.754s ~ 1.0x (0.217s ~ 1.00x)
+$ ./dcdb-query.perl kern01.dlp   Mann -ds=0 -null	# 2.213s ~ 1.3x (0.222s ~ 1.02x)
+$ ./dcdb-query.perl kern01.dlpg  Mann -ds=0 -null	# 5.090s ~ 2.9x (0.203s ~ 0.94x)
