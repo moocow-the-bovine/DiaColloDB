@@ -42,6 +42,7 @@ our %query = (
 	      ##
 	      date=>'',
 	      slice=>1,
+	      groupby=>'l',     ##-- result aggregation (empty:all available attributes)
 	      ##
 	      eps => 0,		##-- smoothing constant
 	      score =>'ld',	##-- score func
@@ -74,6 +75,8 @@ GetOptions(##-- general
 	   ##
 	   (map {("${_}date|${_}d=s"=>\$query{"${_}date"})} ('',qw(a b))), 				 ##-- date,adate,bdate
 	   (map {("${_}date-slice|${_}ds|${_}slice|${_}sl|${_}s=s"=>\$query{"${_}slice"})} ('',qw(a b))), ##-- slice,aslice,bslice
+	   ##
+	   'group-by|groupby|group|gb|g=s' => \$query{groupby},
 	   ##
 	   'epsilon|eps|e=f'  => \$query{eps},
 	   'mutual-information|mi'    => sub {$query{score}='mi'},
@@ -199,6 +202,7 @@ dcdb-query.perl - query a DiaColloDB
    -collocs , -unigrams # select profile type (collocations or unigrams; default=-collocs)
    -(a|b)?date DATES    # set target DATE or /REGEX/ or MIN-MAX
    -(a|b)?slice SLICE   # set target date slice (default=1)
+   -groupby ATTRS       # set result aggregation (default=l)
    -f , -fm , -mi , -ld # set scoring function (default=-ld)
    -kbest KBEST         # return only KBEST items per date-slice (default=10)
    -nokbest             # disable k-best pruning

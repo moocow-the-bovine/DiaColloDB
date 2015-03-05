@@ -558,7 +558,7 @@ sub re2i {
   my $utf8 = $enum->{utf8};
 
   if (!ref($re)) {
-    utf8::decode($re) if ($utf8 && !$utf8::is_utf8($re));
+    utf8::decode($re) if ($utf8 && !utf8::is_utf8($re));
     $re = regex($re);
   }
 

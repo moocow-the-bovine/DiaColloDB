@@ -431,6 +431,7 @@ sub trim {
 ##  + guts for stringify: get a map for stringification
 sub stringify_map {
   my ($prf,$i2s) = @_;
+  no warnings 'numeric';
   if (UNIVERSAL::can($i2s,'i2s')) {
     $i2s = { map {($_=>$i2s->i2s($_))} sort {$a<=>$b} keys %{$prf->{$prf->{score}//'f12'}} };
   }
