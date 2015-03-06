@@ -434,10 +434,10 @@ sub trim {
 ##==============================================================================
 ## Stringification
 
-## $i2s = $prf->stringify( $obj)
-## $i2s = $prf->stringify(\@key2str)
-## $i2s = $prf->stringify(\&key2str)
-## $i2s = $prf->stringify(\%key2str)
+## $i2s = $prf->stringify_map( $obj)
+## $i2s = $prf->stringify_map(\@key2str)
+## $i2s = $prf->stringify_map(\&key2str)
+## $i2s = $prf->stringify_map(\%key2str)
 ##  + guts for stringify: get a map for stringification
 sub stringify_map {
   my ($prf,$i2s) = @_;

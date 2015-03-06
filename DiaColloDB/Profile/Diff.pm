@@ -297,17 +297,6 @@ sub _add {
 ##  + see _add() method for %opts
 ##  + INHERITED from DiaColloDB::Profile
 
-## $prf = $prf->_diff($prf2,%opts)
-##  + subtracts $prf2 scores from $prf (destructive)
-##  + $prf and $prf2 must be compatibly compiled
-##  + %opts:
-##     N  => $bool, ##-- whether to subtract N values (default:true)
-##     f1 => $bool, ##-- whether to subtract f1 values (default:true)
-##     f2 => $bool, ##-- whether to subtract f2 values (default:true)
-##     f12 => $bool, ##-- whether to subtract f12 values (default:true)
-##     score => $bool, ##-- whether to subtract score values (default:true)
-##  + INHERITED but probably useless
-
 ## $diff = $prf1->diff($prf2,%opts)
 ##  + returns score-diff of $prf1 and $prf2 frequency data (destructive)
 ##  + %opts: see _diff() method
