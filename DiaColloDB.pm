@@ -239,7 +239,7 @@ sub open {
 
   ##-- open: common options
   my %efopts = (flags=>$flags, pack_i=>$coldb->{pack_id}, pack_o=>$coldb->{pack_off}, pack_l=>$coldb->{pack_len});
-  my %mmopts = %efopts;
+  my %mmopts = (%efopts, pack_l=>$coldb->{pack_id});
 
   ##-- open: attributes
   my $attrs = $coldb->{attrs} = $coldb->attrs(undef,['l']);
@@ -428,7 +428,7 @@ sub create {
 
   ##-- initialize: common flags
   my %efopts = (flags=>$flags, pack_i=>$coldb->{pack_id}, pack_o=>$coldb->{pack_off}, pack_l=>$coldb->{pack_len});
-  my %mmopts = %efopts;
+  my %mmopts = (%efopts, pack_l=>$coldb->{pack_id});
 
   ##-- initialize: attribute enums
   my $aconf = [];  ##-- [{a=>$a, i=>$i, enum=>$aenum, pack_x=>$pack_xa, s2i=>\%s2i, ns=>$nstrings, #a2x=>$a2x, ...}, ]
@@ -815,9 +815,11 @@ sub dbexport {
     or $coldb->logconfess("export failed for $outdir/xenum.dat");
 
   ##-- dump: xenum: stringified
-  $coldb->vlog($coldb->{logExport}, "dbexport(): exporting stringified tuple-enum file $outdir/xenum.sdat");
-  $coldb->{xenum}->saveTextFile("$outdir/xenum.sdat", pack_s=>$xs2txt)
-    or $coldb->logconfess("dbexport() failed for $outdir/xenum.sdat");
+  if ($export_sdat) {
+    $coldb->vlog($coldb->{logExport}, "dbexport(): exporting stringified tuple-enum file $outdir/xenum.sdat");
+    $coldb->{xenum}->saveTextFile("$outdir/xenum.sdat", pack_s=>$xs2txt)
+      or $coldb->logconfess("dbexport() failed for $outdir/xenum.sdat");
+  }
 
   ##-- dump: by attribute: enum
   foreach (@$adata) {
@@ -829,7 +831,7 @@ sub dbexport {
 
   ##-- dump: by attribute: a2x
   foreach (@$adata) {
-     ##-- dump: by attribute: a2x: raw
+    ##-- dump: by attribute: a2x: raw
     $coldb->vlog($coldb->{logExport}, "dbexport(): exporting attribute expansion multimap $outdir/$_->{a}_2x.dat (raw)");
     $_->{a2x}->saveTextFile("$outdir/$_->{a}_2x.dat")
       or $coldb->logconfess("dbexport() failed for $outdir/$_->{a}_2x.dat");
@@ -1024,6 +1026,77 @@ sub xidsByDate {
   return $d2xis;
 }
 
+## \%goupby = $coldb->groupby($groupby_request, %opts)
+## \%goupby = $coldb->groupby(\%groupby,        %opts)
+##  + $grouby_request: ARRAY-ref or space-separated list of attribute names (default=all attributes)
+##  + returns a HASH-ref:
+##    (
+##     req => $request,  ##-- save request
+##     x2g => $x2g,      ##-- group-id extraction code suitable for e.g. DiaColloDB::Cofreqs::profile(groupby=>$x2g)
+##     g2s => $g2s,      ##-- stringification object suitable for DiaColloDB::Profile::stringify() [CODE,enum, or undef]
+##     attrs => \@attrs, ##-- like $coldb->attrs($groupby_request)
+##    )
+### + %opts:
+##     warn => $level,   ##-- log-level for unknown attributes (default: 'warn')
+##     attrs => $bool,   ##-- do/don't parse and normalize attributes (default:1)
+##     g2s  => $bool,    ##-- do/don't generate $g2s (default:1)
+##     x2g  => $bool,    ##-- do/don't generate $x2g (default:1)
+sub groupby {
+  my ($coldb,$gbreq,%opts) = @_;
+  my $wlevel = $opts{warn} // 'warn';
+
+  ##-- get data
+  my $gb = UNIVERSAL::isa($gbreq,'HASH') ? $gbreq : { req=>$gbreq };
+
+  ##-- get groupby-attributes
+  if (!exists($opts{attrs}) || $opts{attrs}) {
+    my ($gba);
+    $gb->{attrs} = [
+		    map {
+		      $gba = $coldb->attrName($_);
+		      if ($gba eq 'x' || !$coldb->{$gba."enum"}) {
+			$coldb->vlog($wlevel, "groupby(): skipping unsupported attribute '$gba' in groupby request");
+			qw();
+		      } else {
+			$gba;
+		      }
+		    } @{$coldb->attrs($gb->{req})}
+		   ];
+  }
+  my $gbattrs = $gb->{attrs};
+
+  ##-- get groupby-sub
+  my $xenum = $coldb->{xenum};
+  if (!exists($opts{x2g}) || $opts{x2g}) {
+    my $gbpack = join('',map {$coldb->{"pack_x$_"}} @$gbattrs);
+    my $gbcode = qq{join(' ',unpack('$gbpack',\$xenum->i2s(\$_[0])))};
+    my $gbsub  = eval qq{sub {$gbcode}};
+    $coldb->vlog($wlevel, "groupby(): could not compile aggregation code sub {$gbcode}: $@") if ($@ || !$gbsub);
+    $@='';
+    $gb->{x2g} = $gbsub;
+  }
+
+  ##-- get stringification sub
+  if (!exists($opts{g2s}) || $opts{g2s}) {
+    if (@$gbattrs == 1) {
+      $gb->{g2s} = $coldb->{$gbattrs->[0]."enum"}; ##-- stringify a single attribute
+    }
+    else {
+      my @gbe = map {$coldb->{$_."enum"}} @$gbattrs;
+      my (@gi);
+      my $g2scode = (q{@gi=split(' ',$_[0]);}
+		     .q{join(" ",}.join(', ', map {"\$gbe[$_]->i2s(\$gi[$_])"} (0..$#gbe)).q{)}
+		    );
+      my $g2s = eval qq{sub {$g2scode}};
+      $coldb->vlog($wlevel, "groupby(): could not compile stringification code sub {$g2scode}: $@") if ($@ || !$g2s);
+      $@='';
+      $gb->{g2s} = $g2s;
+    }
+  }
+
+  return $gb;
+}
+
 ##--------------------------------------------------------------
 ## Profiling: Generic
 
@@ -1051,7 +1124,7 @@ sub xidsByDate {
 sub profile {
   my ($coldb,$rel,%opts) = @_;
 
-  ##-- common variables : TODO - TRIM THESE (remove lenum,l2x)
+  ##-- common variables
   my ($logProfile,$xenum) = @$coldb{qw(logProfile xenum)};
   my $date    = $opts{date}  // '';
   my $slice   = $opts{slice} // 1;
@@ -1062,21 +1135,8 @@ sub profile {
   my $cutoff  = $opts{cutoff} // '';
   my $strings = $opts{strings} // 1;
 
-  ##-- groupby: parse & check
-  my ($gba);
-  $groupby = [
-	      map {
-		$gba = $coldb->attrName($_);
-		if ($gba eq 'x' || !$coldb->{$gba."enum"}) {
-		  $coldb->logwarn("profile(): skipping unsupported attribute '$gba' in groupby clause");
-		  qw();
-		} else {
-		  $gba;
-		}
-	      } @{$coldb->attrs($groupby)}
-	     ];
-
   ##-- variables: by attribute: set $ac->{req} = $USER_REQUEST
+  $groupby  = $coldb->groupby($groupby, g2s=>0,x2g=>0);
   my $attrs = $coldb->attrs();
   my $adata = $coldb->attrData($attrs);
   my ($ac);
@@ -1085,17 +1145,15 @@ sub profile {
   }
 
   ##-- debug
-  $coldb->vlog($coldb->{logRequest},"profile(".join(", ",
-						    "rel=$rel",
-						    (map {"[$_->{a}='$_->{req}']"} @$adata),
-						    "date='$date'",
-						    "slice=$slice",
-						    ("groupby='".join(' ',@$groupby)."'"),
-						    "score=$score",
-						    "eps=$eps",
-						    "kbest=$kbest",
-						    "cutoff=$cutoff",
-						   ).")");
+  $coldb->vlog($coldb->{logRequest},
+	       "profile("
+	       .join(', ',
+		     map {"$_->[0]=".($_->[1]//'')}
+		     ([rel=>$rel],
+		      (map {[$_=>$opts{$_}]} @{$coldb->attrs}),
+		      (map {[$_=>$opts{$_}]} qw(date slice groupby score eps kbest cutoff))
+		     ))
+	       .")");
 
   ##-- sanity check(s)
   my ($reldb);
@@ -1107,7 +1165,7 @@ sub profile {
     $coldb->logwarn($coldb->{error}="profile(): at least one attribute parameter required (supported attributes: ".join(' ',@{$coldb->attrs}).")");
     return undef;
   }
-  if (!@$groupby) {
+  if (!@{$groupby->{attrs}}) {
     $coldb->logconfess($coldb->{error}="profile(): cannot profile with empty groupby clause");
     return undef;
   }
@@ -1136,39 +1194,22 @@ sub profile {
   my $xis = [sort {$a<=>$b} keys %$xiset];
 
   ##-- prepare: parse and filter tuples
-  $coldb->vlog($logProfile, "profile(): parse and filter target tuples");
+  $coldb->vlog($logProfile, "profile(): parse and filter target tuples (date=$date, slice=$slice)");
   my $d2xis = $coldb->xidsByDate($xis, $date, $slice);
 
-  ##-- prepare: aggregation subs (group-by, stringify)
-  $coldb->vlog($logProfile, "profile(): preparing aggregation code");
-  my $gbpack = join('',map {$coldb->{"pack_x$_"}} @$groupby);
-  my $gbcode = qq{join(' ',unpack('$gbpack',\$xenum->i2s(\$_[0])))};
-  my $gbsub  = eval qq{sub {$gbcode}};
-  $coldb->logwarn($coldb->{error}="profile(): could not compile group-by code sub {$gbcode}: $@") if ($@ || !$gbsub);
-  ##
-  my $g2s = undef;
-  if ($strings && @$groupby == 1) {
-    $g2s = $coldb->{$groupby->[0]."enum"}; ##-- stringify a single attribute
-  }
-  elsif ($strings) {
-    my @gbe = map {$coldb->{$_."enum"}} @$groupby;
-    my (@gi);
-    my $g2scode = (q{@gi=split(' ',$_[0]);}
-		   .q{join("\t",}.join(', ', map {"\$gbe[$_]->i2s(\$gi[$_])"} (0..$#gbe)).q{)}
-		  );
-    $g2s = eval qq{sub {$g2scode}};
-    $coldb->logwarn($coldb->{error}="profile(): could not compile stringification code sub {$g2scode}: $@") if ($@ || !$g2s);
-  }
+  ##-- preapre: aggregarion & stringification code
+  $coldb->vlog($logProfile, "profile(): preparing aggregation and stringification code");
+  $coldb->groupby($groupby, attrs=>0,g2s=>$strings);
 
   ##-- profile: get relation profiles (by date-slice)
   $coldb->vlog($logProfile, "profile(): get frequency profile(s)");
   my @dprfs  = qw();
   my ($d,$prf);
   foreach $d (sort {$a<=>$b} keys %$d2xis) {
-    $prf = $reldb->profile($d2xis->{$d}, groupby=>$gbsub);
+    $prf = $reldb->profile($d2xis->{$d}, groupby=>$groupby->{x2g});
     $prf->compile($score, eps=>$eps);
     $prf->trim(kbest=>$kbest, cutoff=>$cutoff);
-    $prf = $prf->stringify($g2s) if ($strings); ##-- TODO: add attributes
+    $prf = $prf->stringify($groupby->{g2s}) if ($strings);
     $prf->{label} = $d;
     push(@dprfs, $prf);
   }
@@ -1206,6 +1247,7 @@ sub compare {
 
   ##-- common variables
   my $logProfile = $coldb->{logProfile};
+  my $groupby    = $coldb->groupby($opts{groupby} || $coldb->attrs);
   foreach my $a (@{$coldb->attrs},qw(date slice)) {
     $opts{"a$a"} = ((map {defined($opts{"a$_"}) ? $opts{"a$_"} : qw()} @{$ATTR_RALIAS{$a}}),
 		    (map {defined($opts{$_})    ? $opts{$_}    : qw()} @{$ATTR_RALIAS{$a}}),
@@ -1217,16 +1259,23 @@ sub compare {
   delete @opts{keys %ATTR_ALIAS};
   my %aopts = map {($_=>$opts{"a$_"})} (@{$coldb->attrs},qw(date slice));
   my %bopts = map {($_=>$opts{"b$_"})} (@{$coldb->attrs},qw(date slice));
-  my %popts = (kbest=>-1,cutoff=>'',strings=>0);
+  my %popts = (kbest=>-1,cutoff=>'',strings=>0, groupby=>$groupby);
 
   ##-- debug
-  $coldb->vlog($coldb->{logRequest},"compare(".join(', ', map {"$_=".($opts{$_}//'')} qw(rel alemma blemma adate bdate aslice bslice score eps kbest cutoff)).")");
+  $coldb->vlog($coldb->{logRequest},
+	       "compare("
+	       .join(', ',
+		     map {"$_->[0]='".($_->[1]//'')."'"}
+		     ([rel=>$rel],
+		      (map {["a$_"=>$opts{"a$_"}]} (@{$coldb->attrs},qw(date slice))),
+		      (map {["b$_"=>$opts{"b$_"}]} (@{$coldb->attrs},qw(date slice))),
+		      (map {[$_=>$opts{$_}]} qw(groupby score eps kbest cutoff)),
+		     ))
+	       .")");
 
   ##-- get profiles to compare
-  my $mpa = $coldb->profile($rel,%opts, %aopts,%popts)
-    or return undef;
-  my $mpb = $coldb->profile($rel,%opts, %bopts,%popts)
-    or return undef;
+  my $mpa = $coldb->profile($rel,%opts, %aopts,%popts) or return undef;
+  my $mpb = $coldb->profile($rel,%opts, %bopts,%popts) or return undef;
 
   ##-- alignment and trimming
   $coldb->vlog($logProfile, "compare(): align and trim");
@@ -1244,7 +1293,7 @@ sub compare {
   $coldb->vlog($logProfile, "compare(): diff and stringification");
   my $diff = DiaColloDB::Profile::MultiDiff->new($mpa,$mpb);
   $diff->trim(kbesta=>$opts{kbest}) if ($opts{kbest});
-  $diff->stringify($coldb->{lenum}) if ($opts{strings}//1); ##-- TODO: attribute-sensitive stringification (factor out of profile())
+  $diff->stringify($groupby->{g2s}) if ($opts{strings}//1);
 
   return $diff;
 }

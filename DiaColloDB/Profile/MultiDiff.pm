@@ -114,6 +114,7 @@ sub saveHtmlFile {
 ##  + subprofiles are aligned cyclically, in stored order
 ##    - this lets you compare e.g. a global profile with a sliced one by
 ##      something like PDL's "implicit threading"
+##    - BUG Fri, 06 Mar 2015 14:17:12 +0100: cyclicity is bogus if not all slices are defined!
 sub align {
   my ($that,$mpa,$mpb) = @_;
   my $psa = $mpa->{profiles};

@@ -116,7 +116,17 @@ sub clone {
 
 ##--------------------------------------------------------------
 ## I/O: JSON
-##  + INHERITED from DiaCollocDB::Persistent
+##  #+ INHERITED from DiaCollocDB::Persistent
+sub TO_JSON__flat {
+  my $p = shift;
+  my $keyf = (grep {defined($p->{$_})} qw(f2 f12),$p->scoreKeys)[0];
+  my @keys = $keyf ? (keys %{$p->{$keyf}}) : qw();
+  return {
+	  (map {exists($p->{$_}) ? ($_=>$p->{$_}) : qw()} qw(label N f1 eps)),
+	  (keys => [map {[split(' ',$_)]} @keys]),
+	  (map {defined($p->{$_}) ? ($_ => [@{$p->{$_}}{@keys}]) : qw()} (qw(f2 f12),$p->scoreKeys)),
+	 };
+}
 
 ##--------------------------------------------------------------
 ## I/O: Text
