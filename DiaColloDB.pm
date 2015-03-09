@@ -346,7 +346,7 @@ sub create_xmap {
   }
   $_ = pack($pack_mmb, sort {$a<=>$b} unpack($pack_mmb,$_//'')) foreach (@v2xi); ##-- ensure multimap target-sets are sorted
 
-  my $v2x = $MMCLASS->new(base=>$base, flags=>'rw', perms=>$coldb->{perms}, pack_i=>$pack_id, pack_o=>$coldb->{pack_off}, pack_l=>$coldb->{pack_len})
+  my $v2x = $MMCLASS->new(base=>$base, flags=>'rw', perms=>$coldb->{perms}, pack_i=>$pack_id, pack_o=>$coldb->{pack_off}, pack_l=>$coldb->{pack_id})
       or $coldb->logconfess("create_xmap(): failed to create $base.*: $!");
   $v2x->fromArray(\@v2xi)
     or $coldb->logconfess("create_xmap(): failed to populate $base.*: $!");
@@ -420,6 +420,12 @@ sub attrData {
     $a = $coldb->attrName($attrs->[$_]);
     {i=>$_, a=>$a, enum=>$coldb->{"${a}enum"}, pack_x=>$coldb->{"pack_x$a"}, a2x=>$coldb->{"${a}2x"}}
   } (0..$#$attrs)];
+}
+
+## $bool = $coldb->hasAttr($attr)
+sub hasAttr {
+  return 0 if (!defined($_[1]));
+  return $_[1] ne 'x' && defined($_[0]{$_[0]->attrName($_[1]).'enum'});
 }
 
 
@@ -1005,7 +1011,7 @@ sub relation {
 ##    - an ARRAY-ref     : list of literal symbol-values
 ##    - a Regexp ref     : regexp for target strings, passed to $enum->re2i()
 ##    - a string /REGEX/ : regexp for target strings, passed to $enum->re2i()
-##    - another string   : space- or comma-separated list of literal values
+##    - another string   : space-, comma-, or |-separated list of literal values
 ##  + %opts:
 ##     logLevel => $logLevel, ##-- logging level (default=undef)
 ##     logPrefix => $prefix,  ##-- logging prefix (default="enumIds(): fetch ids")
@@ -1025,7 +1031,7 @@ sub enumIds {
   else {
     ##-- values: space-separated literals
     $coldb->vlog($opts{logLevel}, $opts{logPrefix}, " (STRINGS)");
-    return [grep {defined($_)} map {$enum->s2i($_)} grep {($_//'') ne ''} map {s{\\(.)}{$1}g; $_} split(/(?:(?<!\\)[\,\s])+/,$req)];
+    return [grep {defined($_)} map {$enum->s2i($_)} grep {($_//'') ne ''} map {s{\\(.)}{$1}g; $_} split(/(?:(?<!\\)[\,\s\|])+/,$req)];
   }
   return [];
 }
@@ -1048,9 +1054,9 @@ sub xidsByDate {
     ($dlo,$dhi) = ($1+0,$2+0);
     $dfilter = sub { $_[0]>=$dlo && $_[0]<=$dhi };
   }
-  elsif ($date && $date =~ /[\s\,]/) {
+  elsif ($date && $date =~ /[\s\,\|]/) {
     ##-- date request: list
-    my %dwant = map {($_=>undef)} grep {($_//'') ne ''} split(/[\s\,]+/,$date);
+    my %dwant = map {($_=>undef)} grep {($_//'') ne ''} split(/[\s\,\|]+/,$date);
     $dfilter  = sub { exists($dwant{$_[0]}) };
   }
   elsif ($date) {
@@ -1088,23 +1094,27 @@ sub xidsByDate {
   return $d2xis;
 }
 
-## \%goupby = $coldb->groupby($groupby_request, %opts)
-## \%goupby = $coldb->groupby(\%groupby,        %opts)
-##  + $grouby_request: ARRAY-ref or space-separated list of attribute names (default=all attributes)
+## \%groupby = $coldb->groupby($groupby_request, %opts)
+## \%groupby = $coldb->groupby(\%groupby,        %opts)
+##  + $grouby_request: ARRAY-ref or space-separated list of attribute requests (default=all attributes)
+##  + each attribute-request is an ARRAY-ref [$attr,$ahaving] or a string "${attr}=${ahaving}"
+##  + each having-request $ahaving is empty or undef (all values), a |-separated LIST or a /REGEX/
 ##  + returns a HASH-ref:
 ##    (
-##     req => $request,  ##-- save request
-##     x2g => $x2g,      ##-- group-id extraction code suitable for e.g. DiaColloDB::Cofreqs::profile(groupby=>$x2g)
-##     g2s => $g2s,      ##-- stringification object suitable for DiaColloDB::Profile::stringify() [CODE,enum, or undef]
-##     attrs => \@attrs,   ##-- like $coldb->attrs($groupby_request)
+##     req => $request,    ##-- save request
+##     x2g => \&x2g,       ##-- group-id extraction code suitable for e.g. DiaColloDB::Cofreqs::profile(groupby=>\&x2g)
+##     g2s => \&g2s,       ##-- stringification object suitable for DiaColloDB::Profile::stringify() [CODE,enum, or undef]
+##     areqs => \@areqs,   ##-- parsed attribute requests ([$attr,$ahaving],...)
+##     attrs => \@attrs,   ##-- like $coldb->attrs($groupby_request), modulo "having" parts
 ##     titles => \@titles, ##-- like map {$coldb->attrTitle($_)} @attrs
 ##    )
 ### + %opts:
 ##     warn => $level,   ##-- log-level for unknown attributes (default: 'warn')
+##     areqs => $bool,   ##-- do/don't parse and normalize attribute requests (default:1)
 ##     attrs => $bool,   ##-- do/don't parse and normalize attributes (default:1)
 ##     titles => $bool,  ##-- do/don't parse and normalize attribute titles (default:1)
-##     g2s  => $bool,    ##-- do/don't generate $g2s (default:1)
-##     x2g  => $bool,    ##-- do/don't generate $x2g (default:1)
+##     g2s  => $bool,    ##-- do/don't generate \&g2s (default:1)
+##     x2g  => $bool,    ##-- do/don't generate \&x2g (default:1)
 sub groupby {
   my ($coldb,$gbreq,%opts) = @_;
   my $wlevel = $opts{warn} // 'warn';
@@ -1112,29 +1122,44 @@ sub groupby {
   ##-- get data
   my $gb = UNIVERSAL::isa($gbreq,'HASH') ? $gbreq : { req=>$gbreq };
 
-  ##-- get groupby-attributes
+  ##-- get attribute requests
+  if (!exists($opts{areqs}) || $opts{areqs}) {
+    my ($gba,$gbareq);
+    $gb->{areqs} = UNIVERSAL::isa($gbreq,'ARRAY') ? $gbreq : [$gb->{req} =~ m{[\s\,]*([^\s\,]|\\.)+?}g];
+
+    ##-- parse requests into [ATTR,HAVING] pairs
+    foreach (@{$gb->{areqs}}) {
+      next if (UNIVERSAL::isa($_,'ARRAY'));
+      ($gba,$gbareq) = m{^([^\s\,\:\=]|\\.)+(?:[\:\=]([^\s\,]|\\.)*)?$} ? ($1,$2) : ($_,undef);
+      $gba    =~ s/\\(.)/$1/g;
+      $gbareq =~ s/\\(.)/$1/g if (defined($gbareq));
+      $_ = [$gba,$gbareq];
+    }
+
+    ##-- check for unsupported attributes
+    @{$gb->{areqs}} = grep {
+      $_->[0] = $coldb->attrName($_->[0]);
+      if (!$coldb->hasAttr($gba)) {
+	$coldb->vlog($wlevel, "groupby(): skipping unsupported attribute '$_->[0]' in groupby request");
+	0;
+      }
+      1;
+    } @{$gb->{areqs}};
+  }
+  my $gbareqs = $gb->{areqs};
+
+  ##-- get attribute names (compat)
   if (!exists($opts{attrs}) || $opts{attrs}) {
-    my ($gba);
-    $gb->{attrs} = [
-		    map {
-		      $gba = $coldb->attrName($_);
-		      if ($gba eq 'x' || !$coldb->{$gba."enum"}) {
-			$coldb->vlog($wlevel, "groupby(): skipping unsupported attribute '$gba' in groupby request");
-			qw();
-		      } else {
-			$gba;
-		      }
-		    } @{$coldb->attrs($gb->{req})}
-		   ];
+    $gb->{attrs} = [map {$_->[0]} @$gbareqs];
   }
   my $gbattrs = $gb->{attrs};
 
-  ##-- get attribute tutles
+  ##-- get attribute tuples
   if (!exists($opts{titles}) || $opts{titles}) {
     $gb->{titles} = [map {$coldb->attrTitle($_)} @$gbattrs];
   }
 
-  ##-- get groupby-sub
+  ##-- get groupby-sub :: TODO: CONTINUE HERE with 'having' filters
   my $xenum = $coldb->{xenum};
   if (!exists($opts{x2g}) || $opts{x2g}) {
     my $gbpack = join('',map {$coldb->{"pack_x$_"}} @$gbattrs);
@@ -1166,6 +1191,44 @@ sub groupby {
   return $gb;
 }
 
+## \%having = $coldb->having($having_request) ::: TODO
+##  + parses 'having' request
+##  + returns a HASH-ref:
+##    (
+##     req => $request,    ##-- save request
+##     str => $str,        ##-- stringified request
+##     a2req => \%a2req,   ##-- attribute-local requests
+##     a2ids => \%a2ids,   ##-- attribute-local IDs
+##     xifilter => \&code, ##-- filter sub
+##    )
+##  + TODO
+sub having {
+  my ($coldb,$req) = @_;
+  my $having  = {req=>$req};
+  my $reqhash = UNIVERSAL::isa($req,'HASH') ? $req : loadJsonString($req);
+
+  ##-- parse attribute requests
+  my $dbattrs = {map {($_->{a}=>$_)} @{$coldb->attrData}};
+  my $a2req   = $having->{a2req} = {};
+  my $a2ids   = $having->{a2ids} = {};
+  my ($ha,$hareq,$adata);
+  while (($ha,$hareq) = each(%$reqhash)) {
+    next if (!defined($hareq));
+    $ha = $coldb->attrName($ha);
+    if ($ha eq 'x' || !($adata=$dbattrs->{$ha})) {
+      $coldb->vlog('warn',"having(): skipping unsupported attribute '$ha' in having request");
+      next;
+    }
+    $a2req->{$ha} = $hareq;
+
+    ##-- compile ids
+    $a2ids->{$ha} = $coldb->enumIds($adata->{enum}, $hareq, logLevel=>$coldb->{logProfile}, logPrefix=>"having(): fetch ids: $ha");
+  }
+
+  ##-- store request string
+  $ha->{str} = to_json($a2req, {utf8=>0,canonical=>1,pretty=>0});
+}
+
 ##--------------------------------------------------------------
 ## Profiling: Generic
 
@@ -1181,6 +1244,7 @@ sub groupby {
 ##     ##-- aggregation parameters
 ##     slice   => $slice,         ##-- date slice (default=1, 0 for global profile)
 ##     groupby => $attrs,         ##-- string or array "ATTR1 [ATTR2...]" : default=$coldb->attrs
+##     #having  => \%attr2value,   ##-- item2 filters (space-separated LIST or ARRAY or /REGEX/[gi]*), or JSON-encoded filters ::: TODO
 ##     ##
 ##     ##-- scoring and trimming parameters
 ##     eps     => $eps,           ##-- smoothing constant (default=0)
@@ -1214,6 +1278,9 @@ sub profile {
   foreach $ac (@$adata) {
     $ac->{req} = (map {defined($opts{$_}) ? $opts{$_} : qw()} @{$ATTR_RALIAS{$ac->{a}}})[0] // '';
   }
+
+  ##-- variables: having: TODO
+  #my $having = $coldb->having($having);
 
   ##-- debug
   $coldb->vlog($coldb->{logRequest},
@@ -1270,7 +1337,7 @@ sub profile {
 
   ##-- preapre: aggregarion & stringification code
   $coldb->vlog($logProfile, "profile(): preparing aggregation and stringification code");
-  $coldb->groupby($groupby, attrs=>0,titles=>1,g2s=>$strings);
+  $coldb->groupby($groupby, areqs=>0,attrs=>0,titles=>1,g2s=>$strings);
 
   ##-- profile: get relation profiles (by date-slice)
   $coldb->vlog($logProfile, "profile(): get frequency profile(s)");

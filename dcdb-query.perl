@@ -66,7 +66,7 @@ GetOptions(##-- general
 
 	   ##-- general
 	   'log-level|level|ll=s' => sub { $log{level} = uc($_[1]); },
-	   'client-option|co|db-option|do|O=s%' => \$cli{opts},
+	   'client-option|db-option|do|O=s%' => \$cli{opts},
 
 	   ##-- query options
 	   'difference|diff|D|compare|comp|cmp!' => \$diff,
@@ -76,7 +76,7 @@ GetOptions(##-- general
 	   ##
 	   (map {("${_}date|${_}d=s"=>\$query{"${_}date"})} ('',qw(a b))), 				  ##-- date,adate,bdate
 	   (map {("${_}date-slice|${_}ds|${_}slice|${_}sl|${_}s=s"=>\$query{"${_}slice"})} ('',qw(a b))), ##-- slice,aslice,bslice
-	   (map {("${_}filter|${_}F|${_}having|${_}has|${_}H=s%"=>\$query{"${_}has"})} ('',qw(a b))),     ##-- has,ahas,bhas
+	   #(map {("${_}filter|${_}F|${_}having|${_}has|${_}H=s%"=>\$query{"${_}has"})} ('',qw(a b))),     ##-- has,ahas,bhas
 	   ##
 	   'group-by|groupby|group|gb|g=s' => \$query{groupby},
 	   ##
@@ -95,7 +95,7 @@ GetOptions(##-- general
 	   'user|U=s' => \$http_user,
 	   'text|t' => sub {$outfmt='text'},
 	   'json|j' => sub {$outfmt='json'},
-	   'html|H' => sub {$outfmt='html'},
+	   'html' => sub {$outfmt='html'},
 	   'pretty|p!' => \$pretty,
 	   'ugly!' => sub {$pretty=!$_[1]},
 	   'null|noout' => sub {$outfmt=''},
@@ -205,7 +205,6 @@ dcdb-query.perl - query a DiaColloDB
    -collocs , -unigrams  # select profile type (collocations or unigrams; default=-collocs)
    -(a|b)?date DATES     # set target DATE or /REGEX/ or MIN-MAX
    -(a|b)?slice SLICE    # set target date slice (default=1)
-   -(a|b)?has ATTR=VAL   # set collocate filter for LIST or /REGEX/ on attribute ATTR
    -groupby ATTRS        # set result aggregation (default=l)
    -f , -fm , -mi , -ld  # set scoring function (default=-ld)
    -kbest KBEST          # return only KBEST items per date-slice (default=10)

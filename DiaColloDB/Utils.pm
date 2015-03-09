@@ -359,6 +359,7 @@ sub regex {
   } elsif ($mods) {
     $re = "(?${mods}:$re)";
   }
+
   return qr{$re};
 }
 
