@@ -90,7 +90,8 @@ sub saveHtmlFile {
   $fh->print("<table><tbody>\n") if ($opts{table}//1);
   $fh->print("<tr>",(
 		     map {"<th>".htmlesc($_)."</th>"}
-		     qw(ascore bscore diff label item2),
+		     qw(ascore bscore diff label),
+		     @{$mp->{titles}//[qw(item2)]},
 		    ),
 	     "</tr>\n"
 	    ) if ($opts{header}//1);
@@ -111,19 +112,25 @@ sub saveHtmlFile {
 ##  @ppairs = $CLASS_OR_OBJECT->align($mp1,$mp2)
 ## \@ppairs = $CLASS_OR_OBJECT->align($mp1,$mp2)
 ##  + aligns subprofile-pairs from $mp1 and $mp2
-##  + subprofiles are aligned cyclically, in stored order
+##  + subprofiles are aligned in stored order
+##  + arguments must be EITHER singletons (1 subprofile) OR of same size
 ##    - this lets you compare e.g. a global profile with a sliced one by
 ##      something like PDL's "implicit threading"
-##    - BUG Fri, 06 Mar 2015 14:17:12 +0100: cyclicity is bogus if not all slices are defined!
 sub align {
   my ($that,$mpa,$mpb) = @_;
   my $psa = $mpa->{profiles};
   my $psb = $mpb->{profiles};
-  my $null = @$psa && @$psb ? undef : DiaColloDB::Profile->new();
-  my @pairs = map {
-    [($psa->[$_ % @$psa]//$null), ($psb->[$_ % @$psb]//$null)]
-  } (0..($#$psa > $#$psb ? $#$psa : $#$psb));
-  return wantarray ? @pairs : \@pairs;
+  if (@$psa==1 || @$psb==1 || @$psa==@$psb) {
+    ##-- align cyclically (allow slices)
+    my @pairs = map {
+      [
+       (@$psa==1 && $_ != 0 ? $psa->[0]->clone(1) : $psa->[$_]),
+       (@$psb==1 && $_ != 0 ? $psb->[0]->clone(1) : $psb->[$_])
+      ]
+    } (0..($#$psa > $#$psb ? $#$psa : $#$psb));
+    return wantarray ? @pairs : \@pairs;
+  }
+  $that->logconfess("align(): cannot align non-trivial multi-profiles of unequal size (".scalar(@$psa)." != ".scalar(@$psb).")");
 }
 
 ## $mpd = $mpd->populate($mp1,$mp2)

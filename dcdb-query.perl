@@ -28,9 +28,9 @@ our $http_user  = undef;
 our $diff = undef;
 our $rel  = 'cof';
 our %query = (
-	      lemma =>'',	##-- selected lemma(ta), arg1
-	      date  =>undef,    ##-- selected date(s), arg1
-	      slice =>undef,    ##-- date slice, arg1
+	      lemma =>'',	##-- selected lemma(ta), common
+	      date  =>undef,    ##-- selected date(s), common
+	      slice =>1,        ##-- date slice, common
 	      ##
 	      #alemma =>'',	##-- selected lemma(ta), arg1
 	      adate  =>undef,	##-- selected date(s), arg1
@@ -40,8 +40,6 @@ our %query = (
 	      bdate  =>undef,	##-- selected date(s), arg2
 	      bslice =>undef,	##-- date slice, arg2
 	      ##
-	      date=>'',
-	      slice=>1,
 	      groupby=>'l',     ##-- result aggregation (empty:all available attributes)
 	      ##
 	      eps => 0,		##-- smoothing constant
@@ -149,7 +147,7 @@ $query{lemma}  = shift;
 $query{blemma} = @ARGV ? shift : $query{lemma};
 $rel  = "d$rel" if ($diff);
 my $timer = DiaColloDB::Timer->start();
-my $mp = $cli->query($rel, %query)
+my $mp = $cli->query($rel, %query,fill=>1)
   or die("$prog: query() failed for relation '$rel', lemma(s) '$query{lemma}' - '$query{blemma}': $cli->{error}");
 
 ##-- dump stringified query

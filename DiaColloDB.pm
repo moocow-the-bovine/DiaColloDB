@@ -91,7 +91,7 @@ our $MMCLASS = 'DiaColloDB::MultiMapFile';
 ##    pack_date => $fmt,  ##-- pack-format for dates (default='n')
 ##    pack_off => $fmt,   ##-- pack-format for file offsets (default='N')
 ##    pack_len => $len,   ##-- pack-format for string lengths (default='n')
-##    dmax => $dmax,      ##-- maximum distance for collocation-frequencies (default=5)
+##    dmax  => $dmax,     ##-- maximum distance for collocation-frequencies (default=5)
 ##    cfmin => $cfmin,    ##-- minimum co-occurrence frequency for Cofreqs (default=2)
 ##    keeptmp => $bool,   ##-- keep temporary files? (default=0)
 ##    ##
@@ -121,6 +121,8 @@ our $MMCLASS = 'DiaColloDB::MultiMapFile';
 ##    ##-- tuple data
 ##    xenum  => $xenum,     ##-- enum: tuples ($dbdir/xenum.*) : [@ais,$di]<=>$xi : N*n<=>N
 ##    pack_x => $fmt,       ##-- symbol pack-format for $xenum : "${pack_id}[Nattrs]${pack_date}"
+##    xdmin => $xdmin,      ##-- minimum date
+##    xdmax => $xdmax,      ##-- maximum date
 ##    ##
 ##    ##-- relation data
 ##    xf    => $xf,       ##-- ug: $xi => $f($xi) : N=>N
@@ -260,6 +262,20 @@ sub open {
   ##-- open: xenum
   $coldb->{xenum} = $XECLASS->new(base=>"$dbdir/xenum", %efopts, pack_s=>$coldb->{pack_x})
       or $coldb->logconfess("open(): failed to open tuple-enum $dbdir/xenum.*: $!");
+  if (!defined($coldb->{xdmin}) || !defined($coldb->{xdmax})) {
+    ##-- hack: guess date-range if not specified
+    $coldb->vlog('warn', "Warning: extracting date-range from xenum: you should update $coldb->{dbdir}/header.json");
+    my $pack_xdate  = '@'.(packsize($coldb->{pack_id}) * scalar(@{$coldb->attrs})).$coldb->{pack_date};
+    my ($dmin,$dmax,$d) = ('inf','-inf');
+    foreach (@{$coldb->{xenum}->toArray}) {
+      next if (!$_);
+      $d = unpack($pack_xdate,$_);
+      $dmin = $d if ($d < $dmin);
+      $dmax = $d if ($d > $dmax);
+    }
+    $coldb->vlog('warn', "extracted date-range \"xdmin\":$dmin, \"xdmax\":$dmax");
+    @$coldb{qw(xdmin xdmax)} = ($dmin,$dmax);
+  }
 
   ##-- open: xf
   $coldb->{xf} = DiaColloDB::Unigrams->new(file=>"$dbdir/xf.dba", flags=>$flags, packas=>$coldb->{pack_f})
@@ -351,10 +367,10 @@ sub attrs {
 }
 
 ## $aname = $CLASS_OR_OBJECT->attrName($attr)
-##  + returns canonical attribute name for $attr
+##  + returns canonical (short) attribute name for $attr
 ##  + supports aliases in %ATTR_ALIAS = ($alias=>$name, ...)
-##  + see also ATTR_RALIAS = ($name=>\@aliases, ...)
-our (%ATTR_ALIAS,%ATTR_RALIAS);
+##  + see also %ATTR_RALIAS = ($name=>\@aliases, ...), %ATTR_TITLE = ($name_or_alias=>$title, ...)
+our (%ATTR_ALIAS,%ATTR_RALIAS,%ATTR_TITLE);
 BEGIN {
   %ATTR_RALIAS = (
 		  'l' => [map {(uc($_),ucfirst($_),$_)} qw(lemma lem l)],
@@ -371,10 +387,25 @@ BEGIN {
 		  slice => [map {(uc($_),ucfirst($_),$_)} qw(dslice slice sl ds s)],
 		 );
   %ATTR_ALIAS = (map {my $a=$_; map {($_=>$a)} @{$ATTR_RALIAS{$a}}} keys %ATTR_RALIAS);
+  %ATTR_TITLE = (
+		 'l'=>'lemma',
+		 'w'=>'word',
+		 'p'=>'pos',
+		);
 }
 sub attrName {
   shift if (UNIVERSAL::isa($_[0],__PACKAGE__));
   return $ATTR_ALIAS{$_[0]} // $_[0];
+}
+
+## $atitle = $CLASS_OR_OBJECT->attrTitle($attr_or_alias)
+##  + returns an attribute title for $attr_or_alias
+sub attrTitle {
+  my ($that,$a) = @_;
+  $a = $that->attrName($a);
+  return $ATTR_TITLE{$a} if (exists($ATTR_TITLE{$a}));
+  $a =~ s/^(?:doc|meta)\.//;
+  return $a;
 }
 
 ## \@attrdata = $coldb->attrData()
@@ -984,12 +1015,14 @@ sub enumIds {
   return [];
 }
 
-## \%slice2xids = $coldb->xidsByDate(\@xids, $dateRequest, $sliceRequest)
+## \%slice2xids = $coldb->xidsByDate(\@xids, $dateRequest, $sliceRequest, $fill)
 ##   + parse and filter \@xids by $dateRequest, $sliceRequest
 ##   + returns a HASH-ref from slice-ids to \@xids in that date-slice
+##   + if $fill is true, returned HASH-ref has a key for each date-slice in range
 sub xidsByDate {
-  my ($coldb,$xids,$date,$slice) = @_;
+  my ($coldb,$xids,$date,$slice,$fill) = @_;
   my $dfilter = undef;
+  my ($dlo,$dhi);
   if ($date && (UNIVERSAL::isa($date,'Regexp') || $date =~ /^\//)) {
     ##-- date request: regex string
     my $dre  = regex($date);
@@ -997,7 +1030,7 @@ sub xidsByDate {
   }
   elsif ($date && $date =~ /^\s*([0-9]+)\s*[\-\:]+\s*([0-9]+)\s*$/) {
     ##-- date request: range MIN:MAX (inclusive)
-    my ($dlo,$dhi) = ($1+0,$2+0);
+    ($dlo,$dhi) = ($1+0,$2+0);
     $dfilter = sub { $_[0]>=$dlo && $_[0]<=$dhi };
   }
   elsif ($date && $date =~ /[\s\,]/) {
@@ -1014,7 +1047,7 @@ sub xidsByDate {
   my $pack_x = $coldb->{pack_x};
   my $pack_i = $coldb->{pack_id};
   my $pack_d = $coldb->{pack_date};
-  my $pack_xd = "@".packsize($pack_i).$pack_d;
+  my $pack_xd = "@".(packsize($pack_i) * scalar(@{$coldb->{attrs}})).$pack_d;
   my $d2xis  = {}; ##-- ($dateKey => \@xis_at_date, ...)
   my ($xi,$d);
   foreach $xi (@$xids) {
@@ -1023,6 +1056,20 @@ sub xidsByDate {
     $d = $slice ? int($d/$slice)*$slice : 0;
     push(@{$d2xis->{$d}}, $xi);
   }
+
+  ##-- force-fill?
+  if ($fill && $slice) {
+    $dlo //= -'inf';
+    $dhi //=  'inf';
+    $dlo   = $coldb->{xdmin} if ($dlo < $coldb->{xdmin});
+    $dhi   = $coldb->{xdmax} if ($dhi > $coldb->{xdmax});
+    $dlo = int($dlo/$slice)*$slice;
+    $dhi = int($dhi/$slice)*$slice;
+    for (my $d=$dlo; $d <= $dhi; $d += $slice) {
+      $d2xis->{$d} //= [];
+    }
+  }
+
   return $d2xis;
 }
 
@@ -1034,11 +1081,13 @@ sub xidsByDate {
 ##     req => $request,  ##-- save request
 ##     x2g => $x2g,      ##-- group-id extraction code suitable for e.g. DiaColloDB::Cofreqs::profile(groupby=>$x2g)
 ##     g2s => $g2s,      ##-- stringification object suitable for DiaColloDB::Profile::stringify() [CODE,enum, or undef]
-##     attrs => \@attrs, ##-- like $coldb->attrs($groupby_request)
+##     attrs => \@attrs,   ##-- like $coldb->attrs($groupby_request)
+##     titles => \@titles, ##-- like map {$coldb->attrTitle($_)} @attrs
 ##    )
 ### + %opts:
 ##     warn => $level,   ##-- log-level for unknown attributes (default: 'warn')
 ##     attrs => $bool,   ##-- do/don't parse and normalize attributes (default:1)
+##     titles => $bool,  ##-- do/don't parse and normalize attribute titles (default:1)
 ##     g2s  => $bool,    ##-- do/don't generate $g2s (default:1)
 ##     x2g  => $bool,    ##-- do/don't generate $x2g (default:1)
 sub groupby {
@@ -1065,11 +1114,16 @@ sub groupby {
   }
   my $gbattrs = $gb->{attrs};
 
+  ##-- get attribute tutles
+  if (!exists($opts{titles}) || $opts{titles}) {
+    $gb->{titles} = [map {$coldb->attrTitle($_)} @$gbattrs];
+  }
+
   ##-- get groupby-sub
   my $xenum = $coldb->{xenum};
   if (!exists($opts{x2g}) || $opts{x2g}) {
     my $gbpack = join('',map {$coldb->{"pack_x$_"}} @$gbattrs);
-    my $gbcode = qq{join(' ',unpack('$gbpack',\$xenum->i2s(\$_[0])))};
+    my $gbcode = qq{join("\t",unpack('$gbpack',\$xenum->i2s(\$_[0])))};
     my $gbsub  = eval qq{sub {$gbcode}};
     $coldb->vlog($wlevel, "groupby(): could not compile aggregation code sub {$gbcode}: $@") if ($@ || !$gbsub);
     $@='';
@@ -1084,8 +1138,8 @@ sub groupby {
     else {
       my @gbe = map {$coldb->{$_."enum"}} @$gbattrs;
       my (@gi);
-      my $g2scode = (q{@gi=split(' ',$_[0]);}
-		     .q{join(" ",}.join(', ', map {"\$gbe[$_]->i2s(\$gi[$_])"} (0..$#gbe)).q{)}
+      my $g2scode = (q{@gi=split(/\t/,$_[0]);}
+		     .q{join("\t",}.join(', ', map {"\$gbe[$_]->i2s(\$gi[$_])"} (0..$#gbe)).q{)}
 		    );
       my $g2s = eval qq{sub {$g2scode}};
       $coldb->vlog($wlevel, "groupby(): could not compile stringification code sub {$g2scode}: $@") if ($@ || !$g2s);
@@ -1121,6 +1175,7 @@ sub groupby {
 ##     ##
 ##     ##-- profiling and debugging parameters
 ##     strings => $bool,          ##-- do/don't stringify (default=do)
+##     fill    => $bool,          ##-- if true, returned multi-profile will have null profiles inserted for missing slices
 sub profile {
   my ($coldb,$rel,%opts) = @_;
 
@@ -1134,9 +1189,10 @@ sub profile {
   my $kbest   = $opts{kbest} // -1;
   my $cutoff  = $opts{cutoff} // '';
   my $strings = $opts{strings} // 1;
+  my $fill    = $opts{fill} // 0;
 
   ##-- variables: by attribute: set $ac->{req} = $USER_REQUEST
-  $groupby  = $coldb->groupby($groupby, g2s=>0,x2g=>0);
+  $groupby  = $coldb->groupby($groupby, g2s=>0,x2g=>0,titles=>0);
   my $attrs = $coldb->attrs();
   my $adata = $coldb->attrData($attrs);
   my ($ac);
@@ -1194,12 +1250,12 @@ sub profile {
   my $xis = [sort {$a<=>$b} keys %$xiset];
 
   ##-- prepare: parse and filter tuples
-  $coldb->vlog($logProfile, "profile(): parse and filter target tuples (date=$date, slice=$slice)");
-  my $d2xis = $coldb->xidsByDate($xis, $date, $slice);
+  $coldb->vlog($logProfile, "profile(): parse and filter target tuples (date=$date, slice=$slice, fill=$fill)");
+  my $d2xis = $coldb->xidsByDate($xis, $date, $slice, $fill);
 
   ##-- preapre: aggregarion & stringification code
   $coldb->vlog($logProfile, "profile(): preparing aggregation and stringification code");
-  $coldb->groupby($groupby, attrs=>0,g2s=>$strings);
+  $coldb->groupby($groupby, attrs=>0,titles=>1,g2s=>$strings);
 
   ##-- profile: get relation profiles (by date-slice)
   $coldb->vlog($logProfile, "profile(): get frequency profile(s)");
@@ -1210,11 +1266,12 @@ sub profile {
     $prf->compile($score, eps=>$eps);
     $prf->trim(kbest=>$kbest, cutoff=>$cutoff);
     $prf = $prf->stringify($groupby->{g2s}) if ($strings);
-    $prf->{label} = $d;
+    $prf->{label}  = $d;
+    $prf->{titles} = $groupby->{titles};
     push(@dprfs, $prf);
   }
 
-  return DiaColloDB::Profile::Multi->new(profiles=>\@dprfs);
+  return DiaColloDB::Profile::Multi->new(profiles=>\@dprfs, titles=>$groupby->{titles});
 }
 
 ##--------------------------------------------------------------
@@ -1259,7 +1316,7 @@ sub compare {
   delete @opts{keys %ATTR_ALIAS};
   my %aopts = map {($_=>$opts{"a$_"})} (@{$coldb->attrs},qw(date slice));
   my %bopts = map {($_=>$opts{"b$_"})} (@{$coldb->attrs},qw(date slice));
-  my %popts = (kbest=>-1,cutoff=>'',strings=>0, groupby=>$groupby);
+  my %popts = (kbest=>-1,cutoff=>'',strings=>0,fill=>1, groupby=>$groupby);
 
   ##-- debug
   $coldb->vlog($coldb->{logRequest},
@@ -1291,8 +1348,8 @@ sub compare {
 
   ##-- diff and stringification
   $coldb->vlog($logProfile, "compare(): diff and stringification");
-  my $diff = DiaColloDB::Profile::MultiDiff->new($mpa,$mpb);
-  $diff->trim(kbesta=>$opts{kbest}) if ($opts{kbest});
+  my $diff = DiaColloDB::Profile::MultiDiff->new($mpa,$mpb,titles=>$groupby->{titles});
+  $diff->trim(kbesta=>$opts{kbest});
   $diff->stringify($groupby->{g2s}) if ($opts{strings}//1);
 
   return $diff;

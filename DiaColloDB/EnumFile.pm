@@ -415,6 +415,10 @@ sub saveTextFh {
 ##==============================================================================
 ## Methods: population (in-memory only)
 
+## $size = $enum->size()
+##  + wraps {size} key
+sub size { return $_[0]{size}; }
+
 ## $newsize = $enum->addSymbols(@symbols)
 ## $newsize = $enum->addSymbols(\@symbols)
 ##  + adds all symbols in @symbols which don't already exists

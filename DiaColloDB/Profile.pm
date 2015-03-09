@@ -47,11 +47,12 @@ our @ISA = qw(DiaColloDB::Persistent);
 ## $prf = CLASS_OR_OBJECT->new(%args)
 ## + %args, object structure:
 ##   (
-##    label => $label,   ##-- string label (used by Multi; undef for none(default))
-##    N   => $N,         ##-- total marginal relation frequency
-##    f1  => $f1,        ##-- total marginal frequency of target word(s)
-##    f2  => \%f2,       ##-- total marginal frequency of collocates: ($i2=>$f2, ...)
-##    f12 => \%f12,      ##-- collocation frequencies, %f12 = ($i2=>$f12, ...)
+##    label => $label,    ##-- string label (used by Multi; undef for none(default))
+##    N   => $N,          ##-- total marginal relation frequency
+##    f1  => $f1,         ##-- total marginal frequency of target word(s)
+##    f2  => \%f2,        ##-- total marginal frequency of collocates: ($i2=>$f2, ...)
+##    f12 => \%f12,       ##-- collocation frequencies, %f12 = ($i2=>$f12, ...)
+##    titles => \@titles, ##-- item group titles (default:undef: unknown)
 ##    #
 ##    eps => $eps,       ##-- smoothing constant (default=0.5)
 ##    score => $func,    ##-- selected scoring function ('f12', 'mi', or 'ld')
@@ -68,24 +69,13 @@ sub new {
 		    f2=>{},
 		    f12=>{},
 		    eps=>0.5,
+		    #titles=>undef,
 		    #mi=>{},
 		    #ld=>{},
 		    #fm=>{},
 		    @_
 		   }, (ref($that)||$that));
   return $prf;
-}
-
-## $label = $prf->label()
-##  + get label
-sub label {
-  return $_[0]{label} // '';
-}
-
-## @keys = $prf->scoreKeys()
-##  + returns known score function keys
-sub scoreKeys {
-  return qw(mi ld fm);
 }
 
 ## $prf2 = $prf->clone()
@@ -95,12 +85,9 @@ sub scoreKeys {
 sub clone {
   my ($prf,$force) = @_;
   return bless({
-		label=>$prf->{label},
-		N=>$prf->{N},
-		f1=>$prf->{f1},
-		f2=>{ %{$prf->{f2}} },
-		f12=>{ %{$prf->{f12}} },
-		(exists($prf->{eps}) ? (eps=>$prf->{eps}) : qw()),
+		(map {defined($prf->{$_}) ? ($_=>$prf->{$_}) : qw()} qw(label N f1 eps)),
+		(map {defined($prf->{$_}) ? ($_=>[@{$prf->{$_}}]) : qw()} qw(titles)),
+		(map {defined($prf->{$_}) ? ($_=>{%{$prf->{$_}}}) : qw()} qw(f2 f12)),
 		($force
 		 ? (
 		    ($prf->{score} ? (score=>$prf->{score}) : qw()),
@@ -112,11 +99,60 @@ sub clone {
 
 
 ##==============================================================================
+## Basic Access
+
+## $label = $prf->label()
+##  + get label
+sub label {
+  return $_[0]{label} // '';
+}
+
+## \@titles_or_undef = $prf->titles()
+##  + get item titles
+sub titles {
+  return $_[0]{titles};
+}
+
+## @keys = $prf->scoreKeys()
+##  + returns known score function keys
+sub scoreKeys {
+  return qw(mi ld fm);
+}
+
+## $bool = $prf->empty()
+##  + returns true iff profile is empty
+sub empty {
+  my $p = shift;
+  return 0 if ($p->{f1});
+  my $f = (grep {defined($p->{$_})} qw(f2 f12),$p->scoreKeys)[0];
+  return !$f || !scalar(keys(%{$p->{$f}}));
+}
+
+##==============================================================================
 ## I/O
 
 ##--------------------------------------------------------------
 ## I/O: JSON
 ##  #+ INHERITED from DiaCollocDB::Persistent
+BEGIN {
+#  *TO_JSON = \&TO_JSON__table;
+}
+
+sub TO_JSON__table {
+  my $p = shift;
+  my @fnames = (grep {defined($p->{$_})} qw(f2 f12),$p->scoreKeys);
+  my @funcs  = @$p{@fnames};
+  my @keys   = @funcs ? (keys %{$funcs[0]}) : qw();
+  my ($key,$func);
+  return {
+	  (map {exists($p->{$_}) ? ($_=>$p->{$_}) : qw()} qw(label N f1 eps score)),
+	  cols => [@fnames,@{$p->titles//[]}],
+	  data => [
+		   (map {$key=$_; [(map {$_->{$key}} @funcs), split(/\t/,$key)]} @keys),
+		  ],
+	 };
+}
+
 sub TO_JSON__flat {
   my $p = shift;
   my $keyf = (grep {defined($p->{$_})} qw(f2 f12),$p->scoreKeys)[0];
@@ -185,7 +221,7 @@ sub saveHtmlFile {
 		     map {"<th>".htmlesc($_)."</th>"}
 		     qw(N f1 f2 f12 score),
 		     (defined($opts{hlabel}) ? $opts{hlabel} : qw()),
-		     qw(item2)
+		     @{$prf->titles//[qw(item2)]},
 		    ),
 	     "</tr>\n"
 	    ) if ($opts{header}//1);
@@ -202,7 +238,7 @@ sub saveHtmlFile {
 			$f12->{$_},
 			sprintf($fmt, $fscore->{$_}//'nan'),
 			(defined($label) ? $label : qw()),
-			$_
+			split(/\t/,$_),
 		       ),
 	       "</tr>\n");
   }
