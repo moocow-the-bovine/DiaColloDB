@@ -386,9 +386,11 @@ sub s2hms {
   shift(@_) if (UNIVERSAL::isa($_[0],__PACKAGE__));
   my ($secs,$sfmt) = @_;
   $sfmt ||= '%06.3f';
-  my $h = int($secs/(60*60));
-  my $m = int($secs/60);
-  my $s = sprintf($sfmt, $secs - ($h*60*60 + $m*60));
+  my $h  = int($secs/(60*60));
+  $secs -= $h*60*60;
+  my $m  = int($secs/60);
+  $secs -= $m*60;
+  my $s = sprintf($sfmt, $secs);
   return wantarray ? ($h,$m,$s) : sprintf("%02d:%02d:%s", $h,$m,$s);
 }
 

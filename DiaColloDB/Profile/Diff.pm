@@ -67,9 +67,19 @@ sub clone {
 	       }, ref($dprf));
 }
 
+##==============================================================================
+## Basic Access
+
 ## ($prf1,$prf2) = $dprf->operands();
 sub operands {
   return @{$_[0]}{qw(prf1 prf2)};
+}
+
+## $bool = $dprf->empty()
+##  + returns true iff both operands are empty
+sub empty {
+  my $dp = shift;
+  return (!$dp->{prf1} || $dp->{prf1}->empty) && (!$dp->{prf2} || $dp->{prf2}->empty);
 }
 
 ##==============================================================================
@@ -151,7 +161,7 @@ sub saveHtmlFile {
 		     map {"<th>".htmlesc($_)."</th>"}
 		     qw(ascore bscore diff),
 		     (defined($opts{hlabel}) ? $opts{hlabel} : qw()),
-		     qw(item2)
+		     @{$dprf->{titles}//[qw(item2)]},
 		    ),
 	     "</tr>\n"
 	    ) if ($opts{header}//1);
@@ -169,7 +179,7 @@ sub saveHtmlFile {
 			sprintf($fmt,$scoreb->{$_}//'nan'),
 			sprintf($fmt,$scored->{$_}//'nan'),
 			(defined($label) ? $label : qw()),
-			$_),
+			split(/\t/,$_)),
 	       "</tr>\n");
   }
   $fh->print("</tbody><table>\n") if ($opts{table}//1);
@@ -296,17 +306,6 @@ sub _add {
 ##  + returns sum of $dprf1 and $dprf2 operatnd frequency data (destructive)
 ##  + see _add() method for %opts
 ##  + INHERITED from DiaColloDB::Profile
-
-## $prf = $prf->_diff($prf2,%opts)
-##  + subtracts $prf2 scores from $prf (destructive)
-##  + $prf and $prf2 must be compatibly compiled
-##  + %opts:
-##     N  => $bool, ##-- whether to subtract N values (default:true)
-##     f1 => $bool, ##-- whether to subtract f1 values (default:true)
-##     f2 => $bool, ##-- whether to subtract f2 values (default:true)
-##     f12 => $bool, ##-- whether to subtract f12 values (default:true)
-##     score => $bool, ##-- whether to subtract score values (default:true)
-##  + INHERITED but probably useless
 
 ## $diff = $prf1->diff($prf2,%opts)
 ##  + returns score-diff of $prf1 and $prf2 frequency data (destructive)

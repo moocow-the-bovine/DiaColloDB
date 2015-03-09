@@ -29,7 +29,7 @@ use strict;
 ##==============================================================================
 ## Globals & Constants
 
-our $VERSION = 0.03;
+our $VERSION = "0.03_0001";
 our @ISA = qw(DiaColloDB::Client);
 
 ## $PGOOD_DEFAULT
@@ -81,8 +81,9 @@ our $MMCLASS = 'DiaColloDB::MultiMapFile';
 ##    ##-- options
 ##    dbdir => $dbdir,    ##-- database directory; REQUIRED
 ##    flags => $fcflags,  ##-- fcntl flags or open()-style mode string; default='r'
-##    #index_w => $bool,   ##-- index surface word-forms? (default=0) : DISABLED
-##    index_l => $bool,   ##-- index lemmata? (default=1) : REDUNDANT
+##    attrs => \@attrs,   ##-- index attributes (input as space-separated or array; compiled to array); default=undef (==>['l'])
+##                        ##    + each attribute can be token-attribute qw(w p l) or a document metadata attribute "doc.ATTR"
+##                        ##    + document "date" attribute is always indexed
 ##    bos => $bos,        ##-- special string to use for BOS, undef or empty for none (default=undef)
 ##    eos => $eos,        ##-- special string to use for EOS, undef or empty for none (default=undef)
 ##    pack_id => $fmt,    ##-- pack-format for IDs (default='N')
@@ -90,7 +91,7 @@ our $MMCLASS = 'DiaColloDB::MultiMapFile';
 ##    pack_date => $fmt,  ##-- pack-format for dates (default='n')
 ##    pack_off => $fmt,   ##-- pack-format for file offsets (default='N')
 ##    pack_len => $len,   ##-- pack-format for string lengths (default='n')
-##    dmax => $dmax,      ##-- maximum distance for collocation-frequencies (default=5)
+##    dmax  => $dmax,     ##-- maximum distance for collocation-frequencies (default=5)
 ##    cfmin => $cfmin,    ##-- minimum co-occurrence frequency for Cofreqs (default=2)
 ##    keeptmp => $bool,   ##-- keep temporary files? (default=0)
 ##    ##
@@ -111,15 +112,19 @@ our $MMCLASS = 'DiaColloDB::MultiMapFile';
 ##    logProfile => $level,     ##-- log-level for verbose profiling messages (default='trace')
 ##    logRequest => $level,     ##-- log-level for request-level profiling messages (default='debug')
 ##    ##
-##    ##-- enums
-##    #wenum => $wenum,    ##-- enum: words  ($dbdir/wenum.*) : $w<=>$wi : A*<=>N # DISABLED
-##    lenum => $wenum,    ##-- enum: lemmas ($dbdir/lenum.*) : $l<=>$li : A*<=>N
-##    xenum => $xenum,    ##-- enum: tuples ($dbdir/xenum.*) : [$li,$di]<=>$xi : NNn<=>N
-##    pack_x => $fmt,     ##-- symbol pack-format for $xenum : "${pack_id}${pack_date}"
+##    ##-- attribute data
+##    ${a}enum => $aenum,   ##-- attribute enum: $aenum : ($dbdir/${a}_enum.*) : $astr<=>$ai : A*<=>N
+##                          ##    e.g.  lemmata: $lenum : ($dbdir/l_enum.*   )  : $lstr<=>$li : A*<=>N
+##    ${a}2x   => $a2x,     ##-- attribute multimap: $a2x : ($dbdir/${a}_2x.*) : $ai=>@xis  : N=>N*
+##    pack_x$a => $fmt      ##-- pack format: extract attribute-id $ai from a packed tuple-string $xs ; $ai=unpack($coldb->{"pack_x$a"},$xs)
 ##    ##
-##    ##-- data
-##    #w2x   => $w2x,      ##-- multimap: word->tuples  ($dbdir/w2x.*) : $wi=>@xis  : N=>N* # DISABLED
-##    l2x   => $l2x,      ##-- multimap: lemma->tuples ($dbdir/l2x.*) : $li=>@xis  : N=>N*
+##    ##-- tuple data
+##    xenum  => $xenum,     ##-- enum: tuples ($dbdir/xenum.*) : [@ais,$di]<=>$xi : N*n<=>N
+##    pack_x => $fmt,       ##-- symbol pack-format for $xenum : "${pack_id}[Nattrs]${pack_date}"
+##    xdmin => $xdmin,      ##-- minimum date
+##    xdmax => $xdmax,      ##-- maximum date
+##    ##
+##    ##-- relation data
 ##    xf    => $xf,       ##-- ug: $xi => $f($xi) : N=>N
 ##    cof   => $cof,      ##-- cf: [$xi1,$xi2] => $f12
 ##   )
@@ -129,8 +134,7 @@ sub new {
 		      ##-- options
 		      dbdir => undef,
 		      flags => 'r',
-		      #index_w => 0,
-		      #index_l => 1,
+		      attrs => undef,
 		      #bos => undef,
 		      #eos => undef,
 		      pack_id => 'N',
@@ -162,14 +166,16 @@ sub new {
 		      ##-- administrivia
 		      version => "$VERSION",
 
-		      ##-- enums
-		      ##wenum => undef, #DiaColloDB::EnumFile->new(pack_i=>$coldb->{pack_id}, pack_o=>$coldb->{pack_off}, pack_l=>$coldb->{pack_len}),
-		      #lenum => undef, #DiaColloDB::EnumFile->new(pack_i=>$coldb->{pack_id}, pack_o=>$coldb->{pack_off}, pack_l=>$coldb->{pack_len}),
-		      #xenum => undef, #DiaColloDB::EnumFile::FixedLen->new(pack_i=>$coldb->{pack_id}, pack_s=>$coldb->{pack_x}),
-		      ##w2x   => undef, #DiaColloDB::MultiMapFile->new(pack_i=>$coldb->{pack_id}, pack_o=>$coldb->{pack_off}, pack_l=>$coldb->{pack_len}),
-		      #l2x   => undef, #DiaColloDB::MultiMapFile->new(pack_i=>$coldb->{pack_id}, pack_o=>$coldb->{pack_off}, pack_l=>$coldb->{pack_len}),
+		      ##-- attributes
+		      #lenum => undef, #$ECLASS->new(pack_i=>$coldb->{pack_id}, pack_o=>$coldb->{pack_off}, pack_l=>$coldb->{pack_len}),
+		      #l2x   => undef, #$MMCLASS->new(pack_i=>$coldb->{pack_id}, pack_o=>$coldb->{pack_off}, pack_l=>$coldb->{pack_len}),
+		      #pack_xl => 'N',
 
-		      ##-- data
+		      ##-- tuples
+		      #xenum  => undef, #$XECLASS::FixedLen->new(pack_i=>$coldb->{pack_id}, pack_s=>$coldb->{pack_x}),
+		      #pack_x => 'Nn',
+
+		      ##-- relations
 		      #xf    => undef, #DiaColloDB::Unigrams->new(packas=>$coldb->{pack_f}),
 		      #cof   => undef, #DiaColloDB::Cofreqs->new(pack_f=>$pack_f, pack_i=>$pack_i, dmax=>$dmax, fmin=>$cfmin),
 
@@ -235,22 +241,46 @@ sub open {
 
   ##-- open: common options
   my %efopts = (flags=>$flags, pack_i=>$coldb->{pack_id}, pack_o=>$coldb->{pack_off}, pack_l=>$coldb->{pack_len});
-  my %mmopts = %efopts;
+  my %mmopts = (%efopts, pack_l=>$coldb->{pack_id});
 
-  ##-- open: l*
-  $coldb->{lenum} = $ECLASS->new(base=>"$dbdir/lenum", %efopts)
-    or $coldb->logconfess("open(): failed to open lemma-enum $dbdir/lenum.*: $!");
-  $coldb->{l2x} = $MMCLASS->new(base=>"$dbdir/l2x", %mmopts)
-    or $coldb->logconfess("open(): failed to open lemma-expansion multimap $dbdir/l2x.*: $!");
+  ##-- open: attributes
+  my $attrs = $coldb->{attrs} = $coldb->attrs(undef,['l']);
+
+  ##-- open: by attribute
+  my $axat = 0;
+  foreach my $a (@$attrs) {
+    ##-- open: ${a}*
+    my $abase = (-r "$dbdir/${a}_enum.hdr" ? "$dbdir/${a}_" : "$dbdir/${a}"); ##-- v0.03-compatibility hack
+    $coldb->{"${a}enum"} = $ECLASS->new(base=>"${abase}enum", %efopts)
+      or $coldb->logconfess("open(): failed to open enum ${abase}enum.*: $!");
+    $coldb->{"${a}2x"} = $MMCLASS->new(base=>"${abase}2x", %mmopts)
+      or $coldb->logconfess("open(): failed to open expansion multimap ${abase}2x.*: $!");
+    $coldb->{"pack_x$a"} //= "\@${axat}$coldb->{pack_id}";
+    $axat += packsize($coldb->{pack_id});
+  }
 
   ##-- open: xenum
   $coldb->{xenum} = $XECLASS->new(base=>"$dbdir/xenum", %efopts, pack_s=>$coldb->{pack_x})
       or $coldb->logconfess("open(): failed to open tuple-enum $dbdir/xenum.*: $!");
+  if (!defined($coldb->{xdmin}) || !defined($coldb->{xdmax})) {
+    ##-- hack: guess date-range if not specified
+    $coldb->vlog('warn', "Warning: extracting date-range from xenum: you should update $coldb->{dbdir}/header.json");
+    my $pack_xdate  = '@'.(packsize($coldb->{pack_id}) * scalar(@{$coldb->attrs})).$coldb->{pack_date};
+    my ($dmin,$dmax,$d) = ('inf','-inf');
+    foreach (@{$coldb->{xenum}->toArray}) {
+      next if (!$_);
+      $d = unpack($pack_xdate,$_);
+      $dmin = $d if ($d < $dmin);
+      $dmax = $d if ($d > $dmax);
+    }
+    $coldb->vlog('warn', "extracted date-range \"xdmin\":$dmin, \"xdmax\":$dmax");
+    @$coldb{qw(xdmin xdmax)} = ($dmin,$dmax);
+  }
 
   ##-- open: xf
   $coldb->{xf} = DiaColloDB::Unigrams->new(file=>"$dbdir/xf.dba", flags=>$flags, packas=>$coldb->{pack_f})
     or $coldb->logconfess("open(): failed to open tuple-unigrams $dbdir/xf.dba: $!");
-  $coldb->{xf}{N} = $coldb->{xN} if ($coldb->{xN} && !$coldb->{xf}{N});
+  $coldb->{xf}{N} = $coldb->{xN} if ($coldb->{xN} && !$coldb->{xf}{N}); ##-- compat
 
   ##-- open: cof
   $coldb->{cof} = DiaColloDB::Cofreqs->new(base=>"$dbdir/cof", flags=>$flags,
@@ -265,7 +295,10 @@ sub open {
 
 ## @dbkeys = $coldb->dbkeys()
 sub dbkeys {
-  return qw(lenum xenum l2x xf cof); #wenum w2x
+  return (
+	  (ref($_[0]) ? (map {($_."enum",$_."2x")} $_[0]->attrs) : qw()),
+	  qw(xenum xf cof),
+	 );
 }
 
 ## $coldb_or_undef = $coldb->close()
@@ -323,6 +356,73 @@ sub create_xmap {
   return $v2x;
 }
 
+## \@attrs = $coldb->attrs()
+## \@attrs = $coldb->attrs($attrs=$coldb->{attrs}, $default=[])
+##  + parse attributes in $attrs as array
+sub attrs {
+  my ($coldb,$attrs,$default) = @_;
+  $attrs //= $coldb->{attrs} // $default // [];
+  return $attrs if (UNIVERSAL::isa($attrs,'ARRAY'));
+  return [grep {defined($_) && $_ ne ''} split(/[\s\,]+/, $attrs)];
+}
+
+## $aname = $CLASS_OR_OBJECT->attrName($attr)
+##  + returns canonical (short) attribute name for $attr
+##  + supports aliases in %ATTR_ALIAS = ($alias=>$name, ...)
+##  + see also %ATTR_RALIAS = ($name=>\@aliases, ...), %ATTR_TITLE = ($name_or_alias=>$title, ...)
+our (%ATTR_ALIAS,%ATTR_RALIAS,%ATTR_TITLE);
+BEGIN {
+  %ATTR_RALIAS = (
+		  'l' => [map {(uc($_),ucfirst($_),$_)} qw(lemma lem l)],
+		  'w' => [map {(uc($_),ucfirst($_),$_)} qw(token word w)],
+		  'p' => [map {(uc($_),ucfirst($_),$_)} qw(postag tag pt pos p)],
+		  ##
+		  'doc.collection' => [qw(doc.collection collection doc.corpus corpus)],
+		  'doc.textClass'  => [qw(doc.textClass textClass textclass tc doc.genre genre)],
+		  'doc.title'      => [qw(doc.title title)],
+		  'doc.author'     => [qw(doc.author author)],
+		  'doc.basename'   => [qw(doc.basename basename)],
+		  ##
+		  date  => [map {(uc($_),ucfirst($_),$_)} qw(date d)],
+		  slice => [map {(uc($_),ucfirst($_),$_)} qw(dslice slice sl ds s)],
+		 );
+  %ATTR_ALIAS = (map {my $a=$_; map {($_=>$a)} @{$ATTR_RALIAS{$a}}} keys %ATTR_RALIAS);
+  %ATTR_TITLE = (
+		 'l'=>'lemma',
+		 'w'=>'word',
+		 'p'=>'pos',
+		);
+}
+sub attrName {
+  shift if (UNIVERSAL::isa($_[0],__PACKAGE__));
+  return $ATTR_ALIAS{$_[0]} // $_[0];
+}
+
+## $atitle = $CLASS_OR_OBJECT->attrTitle($attr_or_alias)
+##  + returns an attribute title for $attr_or_alias
+sub attrTitle {
+  my ($that,$a) = @_;
+  $a = $that->attrName($a);
+  return $ATTR_TITLE{$a} if (exists($ATTR_TITLE{$a}));
+  $a =~ s/^(?:doc|meta)\.//;
+  return $a;
+}
+
+## \@attrdata = $coldb->attrData()
+## \@attrdata = $coldb->attrData(\@attrs=$coldb->attrs)
+##  + get attribute data for \@attrs
+##  + return @attrdata = ({a=>$a, i=>$i, enum=>$aenum, pack_x=>$pack_xa, a2x=>$a2x, ...})
+sub attrData {
+  my ($coldb,$attrs) = @_;
+  $attrs //= $coldb->attrs;
+  my ($a);
+  return [map {
+    $a = $coldb->attrName($attrs->[$_]);
+    {i=>$_, a=>$a, enum=>$coldb->{"${a}enum"}, pack_x=>$coldb->{"pack_x$a"}, a2x=>$coldb->{"${a}2x"}}
+  } (0..$#$attrs)];
+}
+
+
 ##--------------------------------------------------------------
 ## create: from corpus
 
@@ -346,32 +446,46 @@ sub create {
   make_path($dbdir)
     or $coldb->logconfess("create(): could not create DB directory $dbdir: $!");
 
+  ##-- initialize: attributes
+  my $attrs = $coldb->{attrs} = [map {$coldb->attrName($_)} @{$coldb->attrs(undef,['l'])}];
+
   ##-- pack-formats
   my $pack_id    = $coldb->{pack_id};
   my $pack_date  = $coldb->{pack_date};
   my $pack_f     = $coldb->{pack_f};
   my $pack_off   = $coldb->{pack_off};
   my $pack_len   = $coldb->{pack_len};
-  my $pack_x     = $coldb->{pack_x} = $pack_id.$pack_date; ##-- pack("${pack_id}${pack_date}", $li, $date)
+  my $pack_x     = $coldb->{pack_x} = $pack_id."[".scalar(@$attrs)."]".$pack_date;
 
-  ##-- initialize: enums
+  ##-- initialize: common flags
   my %efopts = (flags=>$flags, pack_i=>$coldb->{pack_id}, pack_o=>$coldb->{pack_off}, pack_l=>$coldb->{pack_len});
-  my %mmopts = %efopts;
-  #
-  my $lenum = $coldb->{lenum} = $ECLASS->new(%efopts);
-  my $ls2i  = $lenum->{s2i};
-  my $nl    = 0;
-  #
+  my %mmopts = (%efopts, pack_l=>$coldb->{pack_id});
+
+  ##-- initialize: attribute enums
+  my $aconf = [];  ##-- [{a=>$a, i=>$i, enum=>$aenum, pack_x=>$pack_xa, s2i=>\%s2i, ns=>$nstrings, #a2x=>$a2x, ...}, ]
+  my $axpos = 0;
+  my ($a,$ac);
+  foreach (0..$#$attrs) {
+    push(@$aconf,$ac={i=>$_, a=>($a=$attrs->[$_])});
+    $ac->{enum}   = $coldb->{"${a}enum"} = $ECLASS->new(%efopts);
+    $ac->{pack_x} = $coldb->{"pack_x$a"} = '@'.$axpos.$pack_id;
+    $ac->{s2i}    = $ac->{enum}{s2i};
+    $ac->{ma}     = $1 if ($a =~ /^(?:meta|doc)\.(.*)$/);
+    $axpos       += packsize($pack_id);
+  }
+  my @aconfm = grep { defined($_->{ma})} @$aconf; ##-- meta-attributes
+  my @aconfw = grep {!defined($_->{ma})} @$aconf; ##-- token-attributes
+
+  ##-- initialize: tuple enum
   my $xenum = $coldb->{xenum} = $XECLASS->new(%efopts, pack_s=>$pack_x);
   my $xs2i  = $xenum->{s2i};
   my $nx    = 0;
+
 
   ##-- initialize: corpus token-list (temporary)
   my $tokfile =  "$dbdir/tokens.dat";
   CORE::open(my $tokfh, ">$tokfile")
     or $coldb->logconfess("$0: open failed for $tokfile: $!");
-  #my $tokpack = substr($PDL::Types::pack[$PDL::Types::typehash{PDL_L}{numval}],0,1);
-  #my $tokpack = 'L';
 
   ##-- initialize: filter regexes
   my $pgood = $coldb->{pgood} ? qr{$coldb->{pgood}} : undef;
@@ -392,7 +506,7 @@ sub create {
   ##-- initialize: enums
   $coldb->vlog($coldb->{logCreate},"create(): processing $nfiles corpus file(s)");
   my ($bos,$eos) = @$coldb{qw(bos eos)};
-  my ($doc, $date,$tok,$w,$p,$l,$wi,$li,$x,$xi, $filei);
+  my ($doc, $date,$tok,$w,$p,$l,@ais,$x,$xi, $filei);
   my ($last_was_eos,$bosxi,$eosxi);
   for ($corpus->ibegin(); $corpus->iok; $corpus->inext) {
     $coldb->vlog($coldb->{logCorpusFile}, sprintf("create(): processing files [%3d%%]: %s", 100*$filei/$nfiles, $corpus->ifile))
@@ -400,13 +514,17 @@ sub create {
     $doc  = $corpus->idocument();
     $date = $doc->{date};
 
+    ##-- get meta-attributes
+    @ais = qw();
+    $ais[$_->{i}] = ($_->{s2i}{$doc->{meta}{$_->{ma}}} //= ++$_->{ns}) foreach (@aconfm);
+
     ##-- allocate bos,eos
     undef $bosxi;
     undef $eosxi;
     foreach $w (grep {($_//'') ne ''} $bos,$eos) {
-      $li = $ls2i->{$w} = ++$nl if (!defined($li=$ls2i->{$w}));
-      $x  = pack($pack_x,$li,$date);
-      $xi = $xs2i->{$x} = ++$nx if (!defined($xi=$xs2i->{$x}));
+      $ais[$_->{i}] = ($_->{s2i}{$w} //= ++$_->{ns}) foreach (@aconfw);
+      $x   = pack($pack_x,@ais,$date);
+      $xi  = $xs2i->{$x} = ++$nx if (!defined($xi=$xs2i->{$x}));
       $bosxi = $xi if (defined($bos) && $w eq $bos);
       $eosxi = $xi if (defined($eos) && $w eq $eos);
     }
@@ -426,9 +544,10 @@ sub create {
 		 || (defined($lgood) && $l !~ $lgood)
 		 || (defined($lbad)  && $l =~ $lbad));
 
-	$li = $ls2i->{$l} = ++$nl if (!defined($li=$ls2i->{$l}));
+	##-- get attribute value-ids and build tuple
+	$ais[$_->{i}] = ($_->{s2i}{$tok->{$_->{a}//''}} //= ++$_->{ns}) foreach (@aconfw);
 
-	$x  = pack($pack_x, $li,$date);
+	$x  = pack($pack_x, @ais,$date);
 	$xi = $xs2i->{$x} = ++$nx if (!defined($xi=$xs2i->{$x}));
 
 	$tokfh->print(($last_was_eos && defined($bosxi) ? ($bosxi,"\n") : qw()), $xi,"\n");
@@ -446,20 +565,23 @@ sub create {
   $tokfh->close()
     or $corpus->logconfess("create(): failed to close temporary token storage file '$tokfile': $!");
 
-  ##-- compile: lenum
-  $coldb->vlog($coldb->{logCreate},"create(): creating lemma-enum $dbdir/lenum.*");
-  $lenum->fromHash($ls2i);
-  $lenum->save("$dbdir/lenum")
-    or $coldb->logconfess("create(): failed to save $dbdir/lenum: $!");
-
   ##-- compile: xenum
   $coldb->vlog($coldb->{logCreate}, "create(): creating tuple-enum $dbdir/xenum.*");
   $xenum->fromHash($xs2i);
   $xenum->save("$dbdir/xenum")
     or $coldb->logconfess("create(): failed to save $dbdir/xenum: $!");
 
-  ##-- expansion map: l2x
-  $coldb->create_xmap("$dbdir/l2x",$xs2i,$pack_id,"lemma-expansion multimap");
+  ##-- compile: by attribute
+  foreach $ac (@$aconf) {
+    ##-- compile: by attribte: enum
+    $coldb->vlog($coldb->{logCreate},"create(): creating enum $dbdir/$ac->{a}_enum.*");
+    $ac->{enum}->fromHash($ac->{s2i});
+    $ac->{enum}->save("$dbdir/$ac->{a}_enum")
+      or $coldb->logconfess("create(): failed to save $dbdir/$ac->{a}_enum: $!");
+
+    ##-- compile: by attribute: expansion multimaps
+    $coldb->create_xmap("$dbdir/$ac->{a}_2x",$xs2i,$ac->{pack_x},"attribute expansion multimap");
+  }
 
   ##-- compute unigrams
   $coldb->info("creating tuple unigram index $dbdir/xf.dba");
@@ -519,67 +641,85 @@ sub union {
   make_path($dbdir)
     or $coldb->logconfess("union(): could not create DB directory $dbdir: $!");
 
+  ##-- attributes
+  my $attrs = [map {$coldb->attrName($_)} @{$coldb->attrs(undef,[])}];
+  if (!@$attrs) {
+    ##-- use union of @dbargs attrs
+    my %akeys = qw();
+    foreach (map {@{$_->attrs(undef,['l'])}} @dbargs) {
+      next if (exists($akeys{$_}));
+      $akeys{$_}=undef;
+      push(@$attrs, $_);
+    }
+  }
+  $coldb->{attrs} = $attrs;
+
   ##-- pack-formats
   my $pack_id    = $coldb->{pack_id};
   my $pack_date  = $coldb->{pack_date};
   my $pack_f     = $coldb->{pack_f};
   my $pack_off   = $coldb->{pack_off};
   my $pack_len   = $coldb->{pack_len};
-  my $pack_x     = $coldb->{pack_x} = $pack_id.$pack_date; ##-- pack("${pack_id}${pack_date}", $li, $date)
+  my $pack_x     = $coldb->{pack_x} = $pack_id."[".scalar(@$attrs)."]".$pack_date; ##-- pack("${pack_id}*${pack_date}", @ais, $date)
+
+  ##-- tuple packing
+  $coldb->{"pack_x$attrs->[$_]"} = '@'.($_*packsize($pack_id)).$pack_id foreach (0..$#$attrs);
 
   ##-- common variables: enums
   my %efopts = (flags=>$flags, pack_i=>$coldb->{pack_id}, pack_o=>$coldb->{pack_off}, pack_l=>$coldb->{pack_len});
-  my ($db);
 
-  ##-- lenum: populate
-  $coldb->vlog($coldb->{logCreate}, "union(): creating lemma-enum $dbdir/lenum.*");
-  my $lenum = $coldb->{lenum} = $ECLASS->new(%efopts);
-  my $ls2i  = $lenum->{s2i};
-  my $nl    = 0;
-  my ($ali,$uli,$li2u);
-  foreach $db (@dbargs) {
-    $db->{lenum}->load()
-      or $coldb->logconfess("union(): failed to load lemma-enum for $db->{dbdir}");
-    $li2u = $db->{li2u} = [];
-    $ali  = 0;
-    foreach (@{$db->{lenum}{i2s}}) {
-      $uli = $ls2i->{$_} = $nl++ if (!defined($uli=$ls2i->{$_}));
-      $li2u->[$ali++] = $uli;
+  ##-- union: attribute enums; also sets $db->{"${a}i2u"} for each attribute $a
+  my ($db,$ac,$a,$aenum,$as2i);
+  my $adata = $coldb->attrData($attrs);
+  foreach $ac (@$adata) {
+    $coldb->vlog($coldb->{logCreate}, "union(): creating attribute enum $dbdir/$ac->{a}_enum.*");
+    $a     = $ac->{a};
+    $aenum = $coldb->{"${a}enum"} = $ac->{enum} = $ECLASS->new(%efopts);
+    $as2i  = $aenum->{s2i};
+    foreach $db (@dbargs) {
+      ##-- enum union: guts
+      my $dbenum = $db->{"${a}enum"};
+      $aenum->addEnum($dbenum);
+      $db->{"${a}i2u"} = [ @$as2i{@{$dbenum->toArray}} ];
     }
-    $db->{lenum}->rollback();
+    $aenum->save("$dbdir/${a}_enum")
+      or $coldb->logconfess("union(): failed to save attribute enum $dbdir/${a}_enum: $!");
   }
-  $lenum->fromHash($ls2i);
-  $lenum->save("$dbdir/lenum")
-    or $coldb->logconfess("union(): failed to save $dbdir/lenum: $!");
 
-  ##-- xenum: populate
+  ##-- union: xenum
   $coldb->vlog($coldb->{logCreate}, "union(): creating tuple-enum $dbdir/xenum.*");
   my $xenum = $coldb->{xenum} = $XECLASS->new(%efopts, pack_s=>$pack_x);
   my $xs2i  = $xenum->{s2i};
   my $nx    = 0;
-  my ($db_pack_x,$xi2u,$axi,@dbx,$uxs,$uxi);
   foreach $db (@dbargs) {
-    $db->{xenum}->load()
-      or $coldb->logconfess("union(): failed to load tuple-enum for $db->{dbdir}");
-    $db_pack_x = $db->{pack_x};
-    $li2u      = $db->{li2u};
-    $xi2u      = $db->{xi2u} = [];
-    $axi       = 0;
-    foreach (@{$db->{xenum}{i2s}}) {
-      @dbx    = unpack($db_pack_x,$_);
-      $dbx[0] = $li2u->[$dbx[0]//0];
-      $uxs    = pack($pack_x,@dbx);
-      $uxi    = $xs2i->{$uxs} = $nx++ if (!defined($uxi=$xs2i->{$uxs}));
-      $xi2u->[$axi++] = $uxi;
+    my $db_pack_x  = $db->{pack_x};
+    my $dbattrs = $db->{attrs};
+    my %a2dbxi  = map { ($dbattrs->[$_]=>$_) } (0..$#$dbattrs);
+    my %a2i2u   = map { ($_=>$db->{"${_}i2u"}) } @$attrs;
+    my $xi2u    = $db->{xi2u} = [];
+    my $dbxi    = 0;
+    my (@dbx,@ux,$uxs,$uxi);
+    foreach (@{$db->{xenum}->toArray}) {
+      @dbx = unpack($db_pack_x,$_);
+      $uxs = pack($pack_x,
+		  (map  {
+		    (exists($a2dbxi{$_})
+		     ? $a2i2u{$_}[$dbx[$a2dbxi{$_}]//0]//0
+		     : $a2i2u{$_}[0])
+		  } @$attrs),
+		  $dbx[$#dbx]//0);
+      $uxi = $xs2i->{$uxs} = $nx++ if (!defined($uxi=$xs2i->{$uxs}));
+      $xi2u->[$dbxi++] = $uxi;
     }
-    $db->{xenum}->rollback();
   }
   $xenum->fromHash($xs2i);
   $xenum->save("$dbdir/xenum")
     or $coldb->logconfess("union(): failed to save $dbdir/xenum: $!");
 
-  ##-- expansion map: l2x
-  $coldb->create_xmap("$dbdir/l2x",$xs2i,$pack_id,"lemma-expansion multimap");
+  ##-- union: expansion maps
+  foreach (@$adata) {
+    $coldb->create_xmap("$dbdir/$_->{a}_2x",$xs2i,$_->{pack_x},"attribute expansion multimap");
+  }
 
   ##-- unigrams: populate
   $coldb->vlog($coldb->{logCreate}, "union(): creating tuple unigram index $dbdir/xf.*");
@@ -600,7 +740,7 @@ sub union {
     or $coldb->logconfess("union(): could not populate co-frequency index $dbdir/cof.*: $!");
 
   ##-- cleanup
-  delete @$_{qw(li2u xi2u)} foreach (@dbargs);
+  delete @$_{('xi2u', map {"${_}i2u"} @$attrs)} foreach (@dbargs);
 
   ##-- save header
   $coldb->saveHeader()
@@ -619,7 +759,7 @@ sub union {
 ## @keys = $coldb->headerKeys()
 ##  + keys to save as header
 sub headerKeys {
-  return grep {!ref($_[0]{$_}) && $_ !~ m{^(?:dbdir$|flags$|perms$|log)}} keys %{$_[0]};
+  return (qw(attrs), grep {!ref($_[0]{$_}) && $_ !~ m{^(?:dbdir$|flags$|perms$|log)}} keys %{$_[0]});
 }
 
 ## $bool = $coldb->loadHeaderData()
@@ -669,57 +809,69 @@ sub dbexport {
     or $coldb->logconfess("dbexport(): could not export header to $outdir/header.json: $!");
 
   ##-- dump: load enums
+  my $adata  = $coldb->attrData();
   $coldb->vlog($coldb->{logExport}, "dbexport(): loading enums to memory");
-  $coldb->{lenum}->load() if ($coldb->{lenum} && !$coldb->{lenum}->loaded);
   $coldb->{xenum}->load() if ($coldb->{xenum} && !$coldb->{xenum}->loaded);
+  foreach (@$adata) {
+    $_->{enum}->load() if ($_->{enum} && !$_->{enum}->loaded);
+  }
 
   ##-- dump: common: stringification
-  my ($li2txt,$xs2txt,$xi2txt);
+  my $pack_x = $coldb->{pack_x};
+  my ($xs2txt,$xi2txt);
   if ($export_sdat) {
     $coldb->vlog($coldb->{logExport}, "dbexport(): preparing tuple-stringification structures");
-    my ($li,$d);
-    my $pack_x = $coldb->{pack_x};
-    my $li2s   = $coldb->{lenum}->toArray;
-    my $xi2s   = $coldb->{xenum}->toArray;
-    $li2txt = sub { return $li2s->[$_[0]//0]//''; };
+
+    foreach (@$adata) {
+      my $i2s     = $_->{i2s} = $_->{enum}->toArray;
+      $_->{i2txt} = sub { return $i2s->[$_[0]//0]//''; };
+    }
+
+    my $xi2s = $coldb->{xenum}->toArray;
+    my @ai2s = map {$_->{i2s}} @$adata;
+    my (@x);
     $xs2txt = sub {
-      ($li,$d) = unpack($pack_x,$_[0]);
-      return join("\t", $li2s->[$li//0]//'', $d//0);
+      @x = unpack($pack_x,$_[0]);
+      return join("\t", (map {$ai2s[$_][$x[$_]//0]//''} (0..$#ai2s)), $x[$#x]//0);
     };
     $xi2txt = sub {
-      ($li,$d) = unpack($pack_x,$xi2s->[$_[0]//'']//'');
-      return join("\t", $li2s->[$li//0]//'', $d//0);
+      @x = unpack($pack_x, $xi2s->[$_[0]//0]//'');
+      return join("\t", (map {$ai2s[$_][$x[$_]//0]//''} (0..$#ai2s)), $x[$#x]//0);
     };
   }
 
-  ##-- dump: lenum
-  $coldb->vlog($coldb->{logExport}, "dbexport(): exporting lemma-enum file $outdir/lenum.dat");
-  $coldb->{lenum}->saveTextFile("$outdir/lenum.dat")
-    or $coldb->logconfess("dbexport() failed for $outdir/lenum.dat");
-
   ##-- dump: xenum: raw
-  my $pack_x = $coldb->{pack_x};
   $coldb->vlog($coldb->{logExport}, "dbexport(): exporting raw tuple-enum file $outdir/xenum.dat");
   $coldb->{xenum}->saveTextFile("$outdir/xenum.dat", pack_s=>$pack_x)
     or $coldb->logconfess("export failed for $outdir/xenum.dat");
 
   ##-- dump: xenum: stringified
-  $coldb->vlog($coldb->{logExport}, "dbexport(): exporting stringified tuple-enum file $outdir/xenum.sdat");
-  $coldb->{xenum}->saveTextFile("$outdir/xenum.sdat", pack_s=>$xs2txt)
-    or $coldb->logconfess("dbexport() failed for $outdir/xenum.sdat");
+  if ($export_sdat) {
+    $coldb->vlog($coldb->{logExport}, "dbexport(): exporting stringified tuple-enum file $outdir/xenum.sdat");
+    $coldb->{xenum}->saveTextFile("$outdir/xenum.sdat", pack_s=>$xs2txt)
+      or $coldb->logconfess("dbexport() failed for $outdir/xenum.sdat");
+  }
 
-  ##-- dump: l2x
-  if ($coldb->{l2x}) {
-    ##-- dump: l2x: raw
-    $coldb->vlog($coldb->{logExport}, "dbexport(): exporting raw lemma-expansion multimap $outdir/l2x.dat");
-    $coldb->{l2x}->saveTextFile("$outdir/l2x.dat")
-      or $coldb->logconfess("dbexport() failed for $outdir/l2x.dat");
+  ##-- dump: by attribute: enum
+  foreach (@$adata) {
+    ##-- dump: by attribute: enum
+    $coldb->vlog($coldb->{logExport}, "dbexport(): exporting attribute enum file $outdir/$_->{a}_enum.dat");
+    $_->{enum}->saveTextFile("$outdir/$_->{a}_enum.dat")
+      or $coldb->logconfess("dbexport() failed for $outdir/$_->{a}_enum.dat");
+  }
 
-    ##-- dump: l2x: stringified
+  ##-- dump: by attribute: a2x
+  foreach (@$adata) {
+    ##-- dump: by attribute: a2x: raw
+    $coldb->vlog($coldb->{logExport}, "dbexport(): exporting attribute expansion multimap $outdir/$_->{a}_2x.dat (raw)");
+    $_->{a2x}->saveTextFile("$outdir/$_->{a}_2x.dat")
+      or $coldb->logconfess("dbexport() failed for $outdir/$_->{a}_2x.dat");
+
+    ##-- dump: by attribute: a2x: stringified
     if ($export_sdat) {
-      $coldb->vlog($coldb->{logExport}, "dbexport(): exporting stringified lemma-expansion multimap $outdir/l2x.sdat");
-      $coldb->{l2x}->saveTextFile("$outdir/l2x.sdat", a2s=>$li2txt, b2s=>$xi2txt)
-	or $coldb->logconfess("dbexport() failed for $outdir/l2x.sdat");
+      $coldb->vlog($coldb->{logExport}, "dbexport(): exporting attribute expansion multimap $outdir/$_->{a}_2x.sdat (strings)");
+      $_->{a2x}->saveTextFile("$outdir/$_->{a}_2x.sdat", a2s=>$_->{i2txt}, b2s=>$xi2txt)
+	or $coldb->logconfess("dbexport() failed for $outdir/$_->{a}_2x.sdat");
     }
   }
 
@@ -747,14 +899,6 @@ sub dbexport {
       or $coldb->logconfess("export failed for $outdir/cof.dat");
 
     if ($export_sdat) {
-      $coldb->vlog($coldb->{logExport}, "dbexport(): preparing tuple-stringification index");
-      my ($li,$d);
-      my $xi2s   = $coldb->{xenum}->toArray;
-      my $li2s   = $coldb->{lenum}->toArray;
-      my $xi2txt = sub {
-	($li,$d) = unpack($pack_x,$xi2s->[$_[0]//'']//'');
-	return join("\t", $li2s->[$li//0]//'', $d//0);
-      };
       $coldb->vlog($coldb->{logExport}, "dbexport(): exporting stringified co-frequency index $outdir/cof.sdat");
       $coldb->{cof}->saveTextFile("$outdir/cof.sdat", i2s=>$xi2txt)
 	or $coldb->logconfess("export failed for $outdir/cof.sdat");
@@ -842,6 +986,11 @@ sub relation {
 }
 
 ## \@ids = $coldb->enumIds($enum,$req,%opts)
+##  + parses enum IDs for $req, which is one of:
+##    - an ARRAY-ref     : list of literal symbol-values
+##    - a Regexp ref     : regexp for target strings, passed to $enum->re2i()
+##    - a string /REGEX/ : regexp for target strings, passed to $enum->re2i()
+##    - another string   : space- or comma-separated list of literal values
 ##  + %opts:
 ##     logLevel => $logLevel, ##-- logging level (default=undef)
 ##     logPrefix => $prefix,  ##-- logging prefix (default="enumIds(): fetch ids")
@@ -849,49 +998,56 @@ sub enumIds {
   my ($coldb,$enum,$req,%opts) = @_;
   $opts{logPrefix} //= "enumIds(): fetch ids";
   if (UNIVERSAL::isa($req,'ARRAY')) {
-    ##-- lemmas: array
+    ##-- values: array
     $coldb->vlog($opts{logLevel}, $opts{logPrefix}, " (ARRAY)");
     return [map {$enum->s2i($_)} @$req];
   }
-  elsif ($req =~ m{^/}) {
-    ##-- lemmas: regex
+  elsif (UNIVERSAL::isa($req,'Regexp') || $req =~ m{^/}) {
+    ##-- values: regex
     $coldb->vlog($opts{logLevel}, $opts{logPrefix}, " (REGEX)");
     return $enum->re2i($req);
   }
   else {
-    ##-- lemmas: space-separated literals
+    ##-- values: space-separated literals
     $coldb->vlog($opts{logLevel}, $opts{logPrefix}, " (STRINGS)");
     return [grep {defined($_)} map {$enum->s2i($_)} grep {($_//'') ne ''} map {s{\\(.)}{$1}g; $_} split(/(?:(?<!\\)[\,\s])+/,$req)];
   }
   return [];
 }
 
-## \%slice2xids = $coldb->xidsByDate(\@xids, $dateRequest, $sliceRequest)
+## \%slice2xids = $coldb->xidsByDate(\@xids, $dateRequest, $sliceRequest, $fill)
 ##   + parse and filter \@xids by $dateRequest, $sliceRequest
 ##   + returns a HASH-ref from slice-ids to \@xids in that date-slice
+##   + if $fill is true, returned HASH-ref has a key for each date-slice in range
 sub xidsByDate {
-  my ($coldb,$xids,$date,$slice) = @_;
+  my ($coldb,$xids,$date,$slice,$fill) = @_;
   my $dfilter = undef;
-  if ($date && $date =~ /^\//) {
+  my ($dlo,$dhi);
+  if ($date && (UNIVERSAL::isa($date,'Regexp') || $date =~ /^\//)) {
+    ##-- date request: regex string
     my $dre  = regex($date);
     $dfilter = sub { $_[0] =~ $dre };
   }
   elsif ($date && $date =~ /^\s*([0-9]+)\s*[\-\:]+\s*([0-9]+)\s*$/) {
-    my ($dlo,$dhi) = ($1+0,$2+0);
+    ##-- date request: range MIN:MAX (inclusive)
+    ($dlo,$dhi) = ($1+0,$2+0);
     $dfilter = sub { $_[0]>=$dlo && $_[0]<=$dhi };
   }
   elsif ($date && $date =~ /[\s\,]/) {
+    ##-- date request: list
     my %dwant = map {($_=>undef)} grep {($_//'') ne ''} split(/[\s\,]+/,$date);
     $dfilter  = sub { exists($dwant{$_[0]}) };
   }
   elsif ($date) {
+    ##-- date request: single value
     $dfilter = sub { $_[0] == $date };
   }
+
   my $xenum  = $coldb->{xenum};
   my $pack_x = $coldb->{pack_x};
   my $pack_i = $coldb->{pack_id};
   my $pack_d = $coldb->{pack_date};
-  my $pack_xd = "@".packsize($pack_i).$pack_d;
+  my $pack_xd = "@".(packsize($pack_i) * scalar(@{$coldb->{attrs}})).$pack_d;
   my $d2xis  = {}; ##-- ($dateKey => \@xis_at_date, ...)
   my ($xi,$d);
   foreach $xi (@$xids) {
@@ -900,7 +1056,99 @@ sub xidsByDate {
     $d = $slice ? int($d/$slice)*$slice : 0;
     push(@{$d2xis->{$d}}, $xi);
   }
+
+  ##-- force-fill?
+  if ($fill && $slice) {
+    $dlo //= -'inf';
+    $dhi //=  'inf';
+    $dlo   = $coldb->{xdmin} if ($dlo < $coldb->{xdmin});
+    $dhi   = $coldb->{xdmax} if ($dhi > $coldb->{xdmax});
+    $dlo = int($dlo/$slice)*$slice;
+    $dhi = int($dhi/$slice)*$slice;
+    for (my $d=$dlo; $d <= $dhi; $d += $slice) {
+      $d2xis->{$d} //= [];
+    }
+  }
+
   return $d2xis;
+}
+
+## \%goupby = $coldb->groupby($groupby_request, %opts)
+## \%goupby = $coldb->groupby(\%groupby,        %opts)
+##  + $grouby_request: ARRAY-ref or space-separated list of attribute names (default=all attributes)
+##  + returns a HASH-ref:
+##    (
+##     req => $request,  ##-- save request
+##     x2g => $x2g,      ##-- group-id extraction code suitable for e.g. DiaColloDB::Cofreqs::profile(groupby=>$x2g)
+##     g2s => $g2s,      ##-- stringification object suitable for DiaColloDB::Profile::stringify() [CODE,enum, or undef]
+##     attrs => \@attrs,   ##-- like $coldb->attrs($groupby_request)
+##     titles => \@titles, ##-- like map {$coldb->attrTitle($_)} @attrs
+##    )
+### + %opts:
+##     warn => $level,   ##-- log-level for unknown attributes (default: 'warn')
+##     attrs => $bool,   ##-- do/don't parse and normalize attributes (default:1)
+##     titles => $bool,  ##-- do/don't parse and normalize attribute titles (default:1)
+##     g2s  => $bool,    ##-- do/don't generate $g2s (default:1)
+##     x2g  => $bool,    ##-- do/don't generate $x2g (default:1)
+sub groupby {
+  my ($coldb,$gbreq,%opts) = @_;
+  my $wlevel = $opts{warn} // 'warn';
+
+  ##-- get data
+  my $gb = UNIVERSAL::isa($gbreq,'HASH') ? $gbreq : { req=>$gbreq };
+
+  ##-- get groupby-attributes
+  if (!exists($opts{attrs}) || $opts{attrs}) {
+    my ($gba);
+    $gb->{attrs} = [
+		    map {
+		      $gba = $coldb->attrName($_);
+		      if ($gba eq 'x' || !$coldb->{$gba."enum"}) {
+			$coldb->vlog($wlevel, "groupby(): skipping unsupported attribute '$gba' in groupby request");
+			qw();
+		      } else {
+			$gba;
+		      }
+		    } @{$coldb->attrs($gb->{req})}
+		   ];
+  }
+  my $gbattrs = $gb->{attrs};
+
+  ##-- get attribute tutles
+  if (!exists($opts{titles}) || $opts{titles}) {
+    $gb->{titles} = [map {$coldb->attrTitle($_)} @$gbattrs];
+  }
+
+  ##-- get groupby-sub
+  my $xenum = $coldb->{xenum};
+  if (!exists($opts{x2g}) || $opts{x2g}) {
+    my $gbpack = join('',map {$coldb->{"pack_x$_"}} @$gbattrs);
+    my $gbcode = qq{join("\t",unpack('$gbpack',\$xenum->i2s(\$_[0])))};
+    my $gbsub  = eval qq{sub {$gbcode}};
+    $coldb->vlog($wlevel, "groupby(): could not compile aggregation code sub {$gbcode}: $@") if ($@ || !$gbsub);
+    $@='';
+    $gb->{x2g} = $gbsub;
+  }
+
+  ##-- get stringification sub
+  if (!exists($opts{g2s}) || $opts{g2s}) {
+    if (@$gbattrs == 1) {
+      $gb->{g2s} = $coldb->{$gbattrs->[0]."enum"}; ##-- stringify a single attribute
+    }
+    else {
+      my @gbe = map {$coldb->{$_."enum"}} @$gbattrs;
+      my (@gi);
+      my $g2scode = (q{@gi=split(/\t/,$_[0]);}
+		     .q{join("\t",}.join(', ', map {"\$gbe[$_]->i2s(\$gi[$_])"} (0..$#gbe)).q{)}
+		    );
+      my $g2s = eval qq{sub {$g2scode}};
+      $coldb->vlog($wlevel, "groupby(): could not compile stringification code sub {$g2scode}: $@") if ($@ || !$g2s);
+      $@='';
+      $gb->{g2s} = $g2s;
+    }
+  }
+
+  return $gb;
 }
 
 ##--------------------------------------------------------------
@@ -911,12 +1159,13 @@ sub xidsByDate {
 ##  + %opts:
 ##    (
 ##     ##-- selection parameters
-##     lemma => $lemma1,          ##-- string or array or regex "/REGEX/[gi]*"        : REQUIRED
+##     $attrOrAlias => $value1,   ##-- string or array or regex "/REGEX/[gi]*"        : at least one REQUIRED
+##     #lemma => $lemma1,         ##-- string or array or regex "/REGEX/[gi]*"        : REQUIRED
 ##     date  => $date1,           ##-- string or array or range "MIN-MAX" (inclusive) : default=all
 ##     ##
 ##     ##-- aggregation parameters
-##     #groupby => $attrs,         ##-- string or array; ("lemma"|"date")* : default=lemma,date : NYI
 ##     slice   => $slice,         ##-- date slice (default=1, 0 for global profile)
+##     groupby => $attrs,         ##-- string or array "ATTR1 [ATTR2...]" : default=$coldb->attrs
 ##     ##
 ##     ##-- scoring and trimming parameters
 ##     eps     => $eps,           ##-- smoothing constant (default=0)
@@ -926,23 +1175,41 @@ sub xidsByDate {
 ##     ##
 ##     ##-- profiling and debugging parameters
 ##     strings => $bool,          ##-- do/don't stringify (default=do)
+##     fill    => $bool,          ##-- if true, returned multi-profile will have null profiles inserted for missing slices
 sub profile {
   my ($coldb,$rel,%opts) = @_;
 
   ##-- common variables
-  my ($logProfile,$lenum,$xenum,$l2x) = @$coldb{qw(logProfile lenum xenum l2x)};
-  my ($l,$li,$lxids,@xids);
-  my $lemma   = $opts{lemma} // '';
+  my ($logProfile,$xenum) = @$coldb{qw(logProfile xenum)};
   my $date    = $opts{date}  // '';
   my $slice   = $opts{slice} // 1;
+  my $groupby = $opts{groupby} || $coldb->attrs;
   my $score   = $opts{score} // 'f';
   my $eps     = $opts{eps} // 0;
   my $kbest   = $opts{kbest} // -1;
   my $cutoff  = $opts{cutoff} // '';
   my $strings = $opts{strings} // 1;
+  my $fill    = $opts{fill} // 0;
+
+  ##-- variables: by attribute: set $ac->{req} = $USER_REQUEST
+  $groupby  = $coldb->groupby($groupby, g2s=>0,x2g=>0,titles=>0);
+  my $attrs = $coldb->attrs();
+  my $adata = $coldb->attrData($attrs);
+  my ($ac);
+  foreach $ac (@$adata) {
+    $ac->{req} = (map {defined($opts{$_}) ? $opts{$_} : qw()} @{$ATTR_RALIAS{$ac->{a}}})[0] // '';
+  }
 
   ##-- debug
-  $coldb->vlog($coldb->{logRequest},"profile(rel=$rel, lemma='$lemma', date='$date', slice=$slice, score=$score, eps=$eps, kbest=$kbest, cutoff=$cutoff)");
+  $coldb->vlog($coldb->{logRequest},
+	       "profile("
+	       .join(', ',
+		     map {"$_->[0]=".($_->[1]//'')}
+		     ([rel=>$rel],
+		      (map {[$_=>$opts{$_}]} @{$coldb->attrs}),
+		      (map {[$_=>$opts{$_}]} qw(date slice groupby score eps kbest cutoff))
+		     ))
+	       .")");
 
   ##-- sanity check(s)
   my ($reldb);
@@ -950,42 +1217,61 @@ sub profile {
     $coldb->logwarn($coldb->{error}="profile(): unknown relation '".($rel//'-undef-')."'");
     return undef;
   }
-  if ($lemma eq '') {
-    $coldb->logwarn($coldb->{error}="profile(): missing required parameter 'lemma'");
+  if (!grep {$_->{req} ne ''} @$adata) {
+    $coldb->logwarn($coldb->{error}="profile(): at least one attribute parameter required (supported attributes: ".join(' ',@{$coldb->attrs}).")");
+    return undef;
+  }
+  if (!@{$groupby->{attrs}}) {
+    $coldb->logconfess($coldb->{error}="profile(): cannot profile with empty groupby clause");
     return undef;
   }
 
-  ##-- prepare: get target lemmata
-  my $lis = $coldb->enumIds($lenum,$lemma,logLevel=>$logProfile, logPrefix=>"profile(): get target lemmata");
-  if (!@$lis) {
-    $coldb->logwarn($coldb->{error}="profile(): no lemmata matching user query '$lemma'");
-    return undef;
+  ##-- prepare: get target IDs (by attribute)
+  foreach $ac (grep {$_->{req} ne ''} @$adata) {
+    $ac->{reqids} = $coldb->enumIds($ac->{enum},$ac->{req},logLevel=>$logProfile,logPrefix=>"profile(): get target $ac->{a}-values");
+    if (!@{$ac->{reqids}}) {
+      $coldb->logwarn($coldb->{error}="profile(): no $ac->{a}-attribute values match user query '$ac->{req}'");
+      return undef;
+    }
   }
 
-  ##-- prpare: map lemmas => tuple-ids
+  ##-- prepare: get tuple-ids (by attribute)
   $coldb->vlog($logProfile, "profile(): get target tuple IDs");
-  my $xis = [sort {$a<=>$b} map {@{$l2x->fetch($_)}} @$lis];
+  my $xiset = undef;
+  foreach $ac (grep {$_->{reqids}} @$adata) {
+    my $axiset = {};
+    @$axiset{map {@{$ac->{a2x}->fetch($_)}} @{$ac->{reqids}}} = qw();
+    if (!$xiset) {
+      $xiset = $axiset;
+    } else {
+      delete @$xiset{grep {!exists $axiset->{$_}} keys %$xiset};
+    }
+  }
+  my $xis = [sort {$a<=>$b} keys %$xiset];
 
   ##-- prepare: parse and filter tuples
-  $coldb->vlog($logProfile, "profile(): parse and filter target tuples");
-  my $d2xis = $coldb->xidsByDate($xis, $date, $slice);
+  $coldb->vlog($logProfile, "profile(): parse and filter target tuples (date=$date, slice=$slice, fill=$fill)");
+  my $d2xis = $coldb->xidsByDate($xis, $date, $slice, $fill);
 
-  ##-- profile: get low-level co-frequency profiles
+  ##-- preapre: aggregarion & stringification code
+  $coldb->vlog($logProfile, "profile(): preparing aggregation and stringification code");
+  $coldb->groupby($groupby, attrs=>0,titles=>1,g2s=>$strings);
+
+  ##-- profile: get relation profiles (by date-slice)
   $coldb->vlog($logProfile, "profile(): get frequency profile(s)");
-  my $pack_i = $coldb->{pack_id};
-  my $gbsub  = sub { unpack($pack_i,$xenum->i2s($_[0])) };
   my @dprfs  = qw();
   my ($d,$prf);
   foreach $d (sort {$a<=>$b} keys %$d2xis) {
-    $prf = $reldb->profile($d2xis->{$d}, groupby=>$gbsub);
+    $prf = $reldb->profile($d2xis->{$d}, groupby=>$groupby->{x2g});
     $prf->compile($score, eps=>$eps);
     $prf->trim(kbest=>$kbest, cutoff=>$cutoff);
-    $prf = $prf->stringify($lenum) if ($strings);
-    $prf->{label} = $d;
+    $prf = $prf->stringify($groupby->{g2s}) if ($strings);
+    $prf->{label}  = $d;
+    $prf->{titles} = $groupby->{titles};
     push(@dprfs, $prf);
   }
 
-  return DiaColloDB::Profile::Multi->new(profiles=>\@dprfs);
+  return DiaColloDB::Profile::Multi->new(profiles=>\@dprfs, titles=>$groupby->{titles});
 }
 
 ##--------------------------------------------------------------
@@ -1017,21 +1303,36 @@ sub compare {
   $rel //= 'cof';
 
   ##-- common variables
-  my ($logProfile,$lenum) = @$coldb{qw(logProfile lenum)};
-  $opts{"a$_"} //= $opts{$_}//'' foreach qw(lemma date slice);
-  $opts{"b$_"} //= $opts{$_}//'' foreach qw(lemma date slice);
-  my %aopts = map {($_=>$opts{"a$_"})} qw(lemma date slice);
-  my %bopts = map {($_=>$opts{"b$_"})} qw(lemma date slice);
-  my %popts = (kbest=>-1,cutoff=>'',strings=>0);
+  my $logProfile = $coldb->{logProfile};
+  my $groupby    = $coldb->groupby($opts{groupby} || $coldb->attrs);
+  foreach my $a (@{$coldb->attrs},qw(date slice)) {
+    $opts{"a$a"} = ((map {defined($opts{"a$_"}) ? $opts{"a$_"} : qw()} @{$ATTR_RALIAS{$a}}),
+		    (map {defined($opts{$_})    ? $opts{$_}    : qw()} @{$ATTR_RALIAS{$a}}),
+		   )[0]//'';
+    $opts{"b$a"} = ((map {defined($opts{"b$_"}) ? $opts{"b$_"} : qw()} @{$ATTR_RALIAS{$a}}),
+		    (map {defined($opts{$_})    ? $opts{$_}    : qw()} @{$ATTR_RALIAS{$a}}),
+		   )[0]//'';
+  }
+  delete @opts{keys %ATTR_ALIAS};
+  my %aopts = map {($_=>$opts{"a$_"})} (@{$coldb->attrs},qw(date slice));
+  my %bopts = map {($_=>$opts{"b$_"})} (@{$coldb->attrs},qw(date slice));
+  my %popts = (kbest=>-1,cutoff=>'',strings=>0,fill=>1, groupby=>$groupby);
 
   ##-- debug
-  $coldb->vlog($coldb->{logRequest},"compare(".join(', ', map {"$_=".($opts{$_}//'')} qw(rel alemma blemma adate bdate aslice bslice score eps kbest cutoff)).")");
+  $coldb->vlog($coldb->{logRequest},
+	       "compare("
+	       .join(', ',
+		     map {"$_->[0]='".($_->[1]//'')."'"}
+		     ([rel=>$rel],
+		      (map {["a$_"=>$opts{"a$_"}]} (@{$coldb->attrs},qw(date slice))),
+		      (map {["b$_"=>$opts{"b$_"}]} (@{$coldb->attrs},qw(date slice))),
+		      (map {[$_=>$opts{$_}]} qw(groupby score eps kbest cutoff)),
+		     ))
+	       .")");
 
   ##-- get profiles to compare
-  my $mpa = $coldb->profile($rel,%opts, %aopts,%popts)
-    or return undef;
-  my $mpb = $coldb->profile($rel,%opts, %bopts,%popts)
-    or return undef;
+  my $mpa = $coldb->profile($rel,%opts, %aopts,%popts) or return undef;
+  my $mpb = $coldb->profile($rel,%opts, %bopts,%popts) or return undef;
 
   ##-- alignment and trimming
   $coldb->vlog($logProfile, "compare(): align and trim");
@@ -1047,9 +1348,9 @@ sub compare {
 
   ##-- diff and stringification
   $coldb->vlog($logProfile, "compare(): diff and stringification");
-  my $diff = DiaColloDB::Profile::MultiDiff->new($mpa,$mpb);
-  $diff->trim(kbesta=>$opts{kbest}) if ($opts{kbest});
-  $diff->stringify($lenum) if ($opts{strings}//1);
+  my $diff = DiaColloDB::Profile::MultiDiff->new($mpa,$mpb,titles=>$groupby->{titles});
+  $diff->trim(kbesta=>$opts{kbest});
+  $diff->stringify($groupby->{g2s}) if ($opts{strings}//1);
 
   return $diff;
 }

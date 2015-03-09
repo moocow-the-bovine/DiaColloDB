@@ -415,6 +415,10 @@ sub saveTextFh {
 ##==============================================================================
 ## Methods: population (in-memory only)
 
+## $size = $enum->size()
+##  + wraps {size} key
+sub size { return $_[0]{size}; }
+
 ## $newsize = $enum->addSymbols(@symbols)
 ## $newsize = $enum->addSymbols(\@symbols)
 ##  + adds all symbols in @symbols which don't already exists
@@ -451,6 +455,13 @@ sub appendSymbols {
   }
   $enum->{dirty} = 1;
   return $enum->{size}=$n;
+}
+
+## $newsize = $enum->addEnum($enum2_or_undef)
+##  + ensures all symbols from $enum2_or_undef are defined (undef:'')
+sub addEnum {
+  my ($e1,$e2) = @_;
+  return $e1->addSymbols(defined($e2) ? $e2->toArray : '');
 }
 
 ##==============================================================================
@@ -550,8 +561,10 @@ sub re2i {
   my ($enum,$re) = @_;
   my $utf8 = $enum->{utf8};
 
-  utf8::decode($re) if ($utf8);
-  $re = regex($re) if (!ref($re));
+  if (!ref($re)) {
+    utf8::decode($re) if ($utf8 && !utf8::is_utf8($re));
+    $re = regex($re);
+  }
 
   my $i2s  = $enum->{i2s};
   if ($enum->loaded || !$enum->opened) {

@@ -4,6 +4,7 @@ ntoks = 32002213 ~ 32M # echo `du -b kern/index/kern01/kern01._storage_Token  | 
 size(ddc_index) = 1.3G # du -h kern/index/kern01 # = 1264 MB = 1293632 KB = 1323040793 B
 size(xml_txt)   = 324M # ssh kira du -hs dstar/corpora/kern/build/xml_txt
 size(xml_ddc)   = 5.2G # ssh kira du -hs dstar/corpora/kern/build/ddc_xml
+size(ddc_tabs)  = 707M
 : size(ddc_index) ~ 41 bytes/tok
 
 ##-- reference: kern01-1k
@@ -661,3 +662,38 @@ $ ./dcdb-create.perl -l zeit01-1k.files -o zeit01-1k.bydoc-d5.d   -bydoc  -dmax=
 $ ./dcdb-create.perl -l zeit01-1k.files -o zeit01-1k.bydoc-d10.d  -bydoc  -dmax=10	# 11.0M, 37.948s
 $ ./dcdb-create.perl -l zeit01-1k.files -o zeit01-1k.bydoc-d20.d  -bydoc  -dmax=20	# 18.0M, 57.126s
 $ ./dcdb-create.perl -l zeit01-1k.files -o zeit01-1k.bydoc-d40.d  -bydoc  -dmax=40	# 34.0M, 1m37.068s
+
+##========================================
+## sizes (+attrs, v0.03_0001)
+##  + size(ddc-tabs): 27MB; size(ddc-index) ~= 35.6M (= size(zeit01) * nfiles(1k)/nfiles(zeit01) = 2158M * 1000/60571)
+##  + reference = size(ddc_index) 35.6M
+$ ./dcdb-create.perl -l zeit01-1k.files -o zeit01-1k.d1l   -O=attrs=l     -cfmin=1	# 23.0M, 27.163s ~ 0.65x ddc
+$ ./dcdb-create.perl -l zeit01-1k.files -o zeit01-1k.d1lp  -O=attrs=l,p   -cfmin=1	# 26.0M, 26.725s ~ 0.73x ddc
+$ ./dcdb-create.perl -l zeit01-1k.files -o zeit01-1k.d1lpw -O=attrs=l,p,w -cfmin=1	# 32.0M, 28.067s ~ 0.90x ddc
+--
+$ ./dcdb-create.perl -l zeit01-1k.files -o zeit01-1k.d2l   -O=attrs=l     -cfmin=2	#  7.0M ~ 0.20x ddc
+$ ./dcdb-create.perl -l zeit01-1k.files -o zeit01-1k.d2lp  -O=attrs=l,p   -cfmin=2	#  9.1M ~ 0.26x ddc
+$ ./dcdb-create.perl -l zeit01-1k.files -o zeit01-1k.d2lpw -O=attrs=l,p,w -cfmin=2	# 15.0M ~ 0.42x ddc
+====
+$ b=doc.basename
+$ ./dcdb-create.perl -l zeit01-1k.files -o zeit01-1k.d1lb   -O=attrs=l,$b     -cfmin=1	# 30MB ~ 0.90x ddc
+$ ./dcdb-create.perl -l zeit01-1k.files -o zeit01-1k.d1lpb  -O=attrs=l,p,$b   -cfmin=1	# 34MB ~ 0.96x ddc
+$ ./dcdb-create.perl -l zeit01-1k.files -o zeit01-1k.d1lpwb -O=attrs=l,p,w,$b -cfmin=1	# 41MB ~ 1.15x ddc
+--
+$ ./dcdb-create.perl -l zeit01-1k.files -o zeit01-1k.d2lb   -O=attrs=l,$b     -cfmin=2	# 14MB ~ 0.39x ddc
+$ ./dcdb-create.perl -l zeit01-1k.files -o zeit01-1k.d2lpb  -O=attrs=l,p,$b   -cfmin=2	# 17MB ~ 0.48x ddc
+$ ./dcdb-create.perl -l zeit01-1k.files -o zeit01-1k.d2lpwb -O=attrs=l,p,w,$b -cfmin=2	# 24MB ~ 0.67x ddc
+
+##========================================
+## sizes (+attrs, v0.03_0001, kern01.d)
+##  + size(ddc-tabs): 707M; size(ddc-index) ~= 1264MB
+$ ./dcdb-create.perl -l kern01.files -o kern01.d     -O=attrs=l     	   	-cfmin=2	# 127M ~ 0.10x ddc
+$ ./dcdb-create.perl -l kern01.files -o kern01.dlp   -O=attrs=l,p               -cfmin=2	# 146M ~ 0.12x ddc
+$ ./dcdb-create.perl -l kern01.files -o kern01.dlpg  -O=attrs=l,p,genre   	-cfmin=2	# 226M ~ 0.18x ddc
+
+
+##========================================
+## times (+attrs, v0.03_0001, kern01.d): 		# T1     ~ REL1 (T2     ~ REL2)
+$ ./dcdb-query.perl kern01.d     Mann -ds=0 -null	# 1.754s ~ 1.0x (0.217s ~ 1.00x)
+$ ./dcdb-query.perl kern01.dlp   Mann -ds=0 -null	# 2.213s ~ 1.3x (0.222s ~ 1.02x)
+$ ./dcdb-query.perl kern01.dlpg  Mann -ds=0 -null	# 5.090s ~ 2.9x (0.203s ~ 0.94x)

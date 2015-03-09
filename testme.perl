@@ -870,8 +870,160 @@ sub test_client_diff {
 
   exit 0;
 }
-test_client_diff(@ARGV);
+#test_client_diff(@ARGV);
 
+##==============================================================================
+## bench: set intersection
+
+## (\@a,\@b) = makesets($N, $na,$nb, $nab)
+sub makesets {
+  my ($N,$na,$nb,$nboth) = @_;
+  $nboth //= 0;
+  $na -= $nboth;
+  $nb -= $nboth;
+  my %a  = map {(int(rand($N))=>undef)} (1..($na > 0 ? $na : 0));
+  my %b  = map {(int(rand($N))=>undef)} (1..($nb > 0 ? $nb : 0));
+  my %ab = map {(int(rand($N))=>undef)} (1..$nboth);
+  @a{keys %ab} = undef;
+  @b{keys %ab} = undef;
+  return ([keys %a],[keys %b]);
+}
+
+sub intersect_l {
+  my @l1 = sort {$a<=>$b} @{$_[0]};
+  my @l2 = sort {$a<=>$b} @{$_[1]};
+  my @l  = qw();
+  my $i2 = 0;
+ i1:
+  foreach $e1 (@l1) {
+  i2:
+    for (; $i2 <= $#l2; ++$i2) {
+      last if ($l2[$i2] >= $e1);
+    }
+    push(@l,$e1) if (($l2[$i2]//-1)==$e1);
+  }
+  return \@l;
+}
+
+sub intersect_h {
+  return {map {($_=>undef)} grep {exists($_[1]{$_})} keys %{$_[0]}};
+}
+
+sub intersect_lh {
+  my ($l1,$l2) = @_;
+  ($l1,$l2) = ($l2,$l1) if ($#$l2 < $#$l1);
+  my %h1 = (map {($_=>undef)} @$l1);
+  return [grep {exists $h1{$_}} @$l2];
+}
+
+sub bench_intersect {
+  my ($N,$na,$nb,$nboth) = @_;
+  $N     ||= 6000000;
+  $na    ||= 100;
+  $nb    ||= 100;
+  $nboth ||= 10;
+
+  #my $l1 = [qw(84 11 64 95 94 14 48 52 30 62)];
+  #my $l2 = [qw(84 11 21 70 14 18 46 89 55)];
+  ###-- intersection: qw(11 14 84)
+
+  my ($l1,$l2) = makesets($N,$na,$nb,$nboth);
+  my $h1 = {map {($_=>undef)} @$l1};
+  my $h2 = {map {($_=>undef)} @$l2};
+
+  my $l12_l  = intersect_l($l1,$l2);
+  my $l12_lh = intersect_lh($l1,$l2);
+  my $l12_h = intersect_h($h1,$h2);
+
+  print STDERR "$0: benchmarking N=$N, na=$na, nb=$nb, nboth=$nboth\n";
+  cmpthese(-3,
+	   {
+	    'intersect_l' => sub { intersect_l($l1,$l2) },
+	    'intersect_lh' => sub { intersect_lh($l1,$l2) },
+	    'intersect_h' => sub { intersect_h($h1,$h2) },
+	   });
+  # ./testme.perl: benchmarking N=6000000, na=100, nb=100, nboth=10
+  #                 Rate  intersect_l intersect_lh  intersect_h
+  # intersect_l  10273/s           --         -57%         -78%
+  # intersect_lh 24127/s         135%           --         -47%
+  # intersect_h  45662/s         344%          89%           --
+  ##
+  # ./testme.perl: benchmarking N=6000000, na=100, nb=10000, nboth=10
+  #                 Rate  intersect_l intersect_lh  intersect_h
+  # intersect_l    182/s           --         -84%        -100%
+  # intersect_lh  1151/s         533%           --         -97%
+  # intersect_h  44797/s       24538%        3793%           --
+
+  exit 0;
+}
+#bench_intersect(@ARGV);
+
+##==============================================================================
+## bench: binary encoding
+
+use MIME::Base64 qw(encode_base64 decode_base64);
+sub bench_binencode {
+  my $bin = pack('N*', 0..1023);
+
+  ##-- encode
+  my $e_uu  = pack('u',$bin);
+  my $e_64  = encode_base64($bin);
+
+  ##-- decode
+  my $d_uu = unpack('u',$e_uu);
+  my $d_64 = decode_base64($e_64);
+
+  ##-- check
+  die("$0: uuencoding failed") if ($d_uu ne $bin);
+  die("$0: base64 failed") if ($d_64 ne $bin);
+
+  my ($tmp);
+  cmpthese(-3,
+	   {
+	    'uuencode' => sub { $tmp=unpack('u',pack('u',$bin)); },
+	    'base64'   => sub { $tmp=decode_base64(encode_base64($bin,'')); },
+	   });
+  #             Rate uuencode   base64
+  # uuencode 28822/s       --     -54%
+  # base64   63047/s     119%       --
+
+  exit 0;
+}
+#bench_binencode();
+
+
+##==============================================================================
+## bench: binary encoding
+
+sub bench_isort {
+  my ($N,$len) = @_;
+  $N //= 6000000;
+  $n //= 1000;
+
+  my @l = map {int(rand($N))." ".int(rand(42))} (1..$n);
+
+  my ($tmp);
+  no warnings 'numeric';
+  cmpthese(-3,
+	   {
+	    '<=>'     => sub { $tmp=[sort {$a<=>$b} @l] },
+	    'cmp'     => sub { $tmp=[sort {$a cmp $b} @l]; },
+	    'len+cmp' => sub { $tmp=[sort {(length($a)<=>length($b)) || ($a cmp $b)} @l]; },
+	   });
+  ## plain integers:
+  #           Rate len+cmp     cmp     <=>
+  # len+cmp  726/s      --    -73%    -82%
+  # cmp     2730/s    276%      --    -32%
+  # <=>     4022/s    454%     47%      --
+
+  ## "$i1 $i2" strings:
+  # len+cmp  731/s      --    -69%    -77%
+  # cmp     2327/s    218%      --    -26%
+  # <=>     3130/s    328%     34%      --
+
+  exit 0;
+}
+bench_isort();
 
 ##==============================================================================
 ## MAIN

@@ -48,10 +48,9 @@ GetOptions(##-- general
 	   'by-doc|bydoc|by-file|byfile' => sub { $corpus{dopts}{eosre}='' },
 
 	   ##-- coldb options
+	   'index-attributes|attributes|attrs|a=s' => \$coldb{attrs},
 	   'max-distance|maxd|dmax|n=i' => \$coldb{dmax},
 	   'min-cofrequency|min-cf|mincf|cfmin=i' => \$coldb{cfmin},
-	   #'index-words|words|iw!' => \$coldb{index_w},
-	   #'index-lemmata|index-lemmas|lemmata|lemmas|il!' => \$coldb{index_l},
 	   'keeptmp|keep' => \$coldb{keeptmp},
 	   'nofilters|F' => sub { $coldb{$_}=undef foreach (qw(pgood pbad wgood wbad lgood lbad)); },
 	   'option|O=s%' => \%coldb,
@@ -105,7 +104,8 @@ $coldb->close();
 
 ##-- timing
 if ($dotime) {
-  $coldb->info("operation completed in ", $timer->timestr);
+  (my $du = `du -h "$dbdir"`) =~ s/\s.*\z//s;
+  $coldb->info("operation completed in ", $timer->timestr, "; db size = ${du}B");
 }
 
 __END__
@@ -141,8 +141,8 @@ dcdb-create.perl - create a DiaColloDB collocation database from a corpus dump
    -bydoc               ##-- track collocations by document
 
  Indexing Options:
-   #-[no]index-w         ##-- do/don't index words (default=don't) : DISABLED
-   #-[no]index-l         ##-- do/don't index lemmata (default=do)  : DISABLED
+   -attrs ATTRS         ##-- select index attributes (default=l)
+                        ##   known attributes: l, p, w, doc.title, ...
    -[no]keep            ##-- do/ton't keep temporary files (default=don't)
    -nofilters           ##-- disable default regex-filters
    -64bit               ##-- use 64-bit quads where available

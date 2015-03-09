@@ -236,8 +236,10 @@ sub re2i {
   my ($enum,$re) = @_;
   my $utf8 = $enum->{utf8};
 
-  utf8::decode($re) if ($utf8);
-  $re = regex($re) if (!ref($re));
+  if (!ref($re)) {
+    utf8::decode($re) if ($utf8 && !utf8::is_utf8($re));
+    $re = regex($re);
+  }
 
   my $i2s  = $enum->{i2s};
   if ($enum->loaded || !$enum->opened) {

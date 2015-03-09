@@ -28,9 +28,9 @@ our $http_user  = undef;
 our $diff = undef;
 our $rel  = 'cof';
 our %query = (
-	      lemma =>'',	##-- selected lemma(ta), arg1
-	      date  =>undef,    ##-- selected date(s), arg1
-	      slice =>undef,    ##-- date slice, arg1
+	      lemma =>'',	##-- selected lemma(ta), common
+	      date  =>undef,    ##-- selected date(s), common
+	      slice =>1,        ##-- date slice, common
 	      ##
 	      #alemma =>'',	##-- selected lemma(ta), arg1
 	      adate  =>undef,	##-- selected date(s), arg1
@@ -40,8 +40,7 @@ our %query = (
 	      bdate  =>undef,	##-- selected date(s), arg2
 	      bslice =>undef,	##-- date slice, arg2
 	      ##
-	      date=>'',
-	      slice=>1,
+	      groupby=>'l',     ##-- result aggregation (empty:all available attributes)
 	      ##
 	      eps => 0,		##-- smoothing constant
 	      score =>'ld',	##-- score func
@@ -75,6 +74,8 @@ GetOptions(##-- general
 	   (map {("${_}date|${_}d=s"=>\$query{"${_}date"})} ('',qw(a b))), 				 ##-- date,adate,bdate
 	   (map {("${_}date-slice|${_}ds|${_}slice|${_}sl|${_}s=s"=>\$query{"${_}slice"})} ('',qw(a b))), ##-- slice,aslice,bslice
 	   ##
+	   'group-by|groupby|group|gb|g=s' => \$query{groupby},
+	   ##
 	   'epsilon|eps|e=f'  => \$query{eps},
 	   'mutual-information|mi'    => sub {$query{score}='mi'},
 	   'log-dice|logdice|ld|dice' => sub {$query{score}='ld'},
@@ -91,7 +92,8 @@ GetOptions(##-- general
 	   'text|t' => sub {$outfmt='text'},
 	   'json|j' => sub {$outfmt='json'},
 	   'html|H' => sub {$outfmt='html'},
-	   'pretty|p!' => sub {$pretty=$_[1]},
+	   'pretty|p!' => \$pretty,
+	   'ugly!' => sub {$pretty=!$_[1]},
 	   'null|noout' => sub {$outfmt=''},
 	   'score-format|sf|format|fmt=s' => \$save{format},
 	   'timing|times|time|T!' => \$dotime,
@@ -145,7 +147,7 @@ $query{lemma}  = shift;
 $query{blemma} = @ARGV ? shift : $query{lemma};
 $rel  = "d$rel" if ($diff);
 my $timer = DiaColloDB::Timer->start();
-my $mp = $cli->query($rel, %query)
+my $mp = $cli->query($rel, %query,fill=>1)
   or die("$prog: query() failed for relation '$rel', lemma(s) '$query{lemma}' - '$query{blemma}': $cli->{error}");
 
 ##-- dump stringified query
@@ -199,6 +201,7 @@ dcdb-query.perl - query a DiaColloDB
    -collocs , -unigrams # select profile type (collocations or unigrams; default=-collocs)
    -(a|b)?date DATES    # set target DATE or /REGEX/ or MIN-MAX
    -(a|b)?slice SLICE   # set target date slice (default=1)
+   -groupby ATTRS       # set result aggregation (default=l)
    -f , -fm , -mi , -ld # set scoring function (default=-ld)
    -kbest KBEST         # return only KBEST items per date-slice (default=10)
    -nokbest             # disable k-best pruning

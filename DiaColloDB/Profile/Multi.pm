@@ -23,11 +23,13 @@ our @ISA = qw(DiaColloDB::Persistent);
 ## + %args, object structure:
 ##   (
 ##    profiles => \@profiles,   ##-- ($profile, ...) : sub-profiles, with {label} key
+##    titles   => \@titles,     ##-- item group titles (default:undef: unknown)
 ##   )
 sub new {
   my $that = shift;
   my $mp   = bless({
 		    profiles=>[],
+		    #titles=>undef,
 		    @_
 		   }, (ref($that)||$that));
   return $mp;
@@ -42,6 +44,7 @@ sub clone {
   my $profiles = $mp->{profiles};
   return bless({
 		profiles=>[map {$_->clone(@_)} @$profiles],
+		($mp->{titles} ? (titles=>[@{$mp->{titles}}]) : qw()),
 	       }, ref($mp)
 	      );
 }
@@ -101,7 +104,7 @@ sub saveHtmlFile {
 		     map {"<th>".htmlesc($_)."</th>"}
 		     qw(N f1 f2 f12 score),
 		     qw(label),
-		     qw(item2)
+		     @{$mp->{titles}//[qw(item2)]},
 		    ),
 	     "</tr>\n"
 	    ) if ($opts{header}//1);
@@ -135,10 +138,13 @@ sub uncompile {
 }
 
 ## $mp_or_undef = $mp->trim(%opts)
+##  + new %opts:
+##    empty => $bool,   ##-- remove empty profiles (default=true)
 ##  + calls $prf->trim(%opts) for each sub-profile $prf
 sub trim {
-  my $mp = shift;
-  $_->trim(@_) or return undef foreach (@{$mp->{profiles}});
+  my ($mp,%opts) = @_;
+  @{$mp->{profiles}} = grep {!$_->empty} @{$mp->{profiles}} if (!exists($opts{empty}) || $opts{empty});
+  $_->trim(%opts) or return undef foreach (@{$mp->{profiles}});
   return $mp;
 }
 

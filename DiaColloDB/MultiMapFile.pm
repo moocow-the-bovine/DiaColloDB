@@ -26,7 +26,7 @@ our @ISA = qw(DiaColloDB::Persistent);
 ##    flags => $flags,     ##-- default: 'r'
 ##    pack_i => $pack_i,   ##-- integer pack template (default='N')
 ##    pack_o => $pack_o,   ##-- file offset pack template (default='N')
-##    pack_l => $pack_l,   ##-- string-length pack template (default='n')
+##    pack_l => $pack_l,   ##-- set-length pack template (default='N')
 ##    size => $size,       ##-- number of mapped , like scalar(@data)
 ##    ##
 ##    ##-- in-memory construction
@@ -50,7 +50,7 @@ sub new {
 		     size => 0,
 		     pack_i => 'N',
 		     pack_o => 'N',
-		     pack_l => 'n',
+		     pack_l => 'N',
 
 		     a2b=>[],
 
@@ -198,11 +198,11 @@ sub toArray {
   my ($buf,$bsz);
   for (CORE::seek($bfh,0,SEEK_SET); !eof($bfh); ) {
     CORE::read($bfh, $buf, $len_l)==$len_l
-	or $mmf->logconfess("toArray(): read() failed on $mmf->{base}.mb for target-set size at offset ", tell($bfh));
+	or $mmf->logconfess("toArray(): read() failed on $mmf->{base}.mb for target-set size at offset ", tell($bfh), ", item ", scalar(@a2b));
     $bsz = $len_i * unpack($pack_l, $buf);
 
     CORE::read($bfh, $buf, $bsz)==$bsz
-	or $mmf->logconfess("toArray(): read() failed on $mmf->{base}.mb for target-set of $bsz bytes ", tell($bfh));
+	or $mmf->logconfess("toArray(): read() failed on $mmf->{base}.mb for target-set of $bsz bytes at offset ", tell($bfh), ", item ", scalar(@a2b));
     push(@a2b, $buf);
   }
   push(@a2b, @{$mmf->{a2b}}[scalar(@a2b)..$#{$mmf->{a2b}}]) if ($mmf->dirty);
