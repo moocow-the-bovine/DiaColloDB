@@ -17,7 +17,7 @@ our ($help,$version);
 
 our $dbdir      = undef;
 our $outdir     = undef;
-our %coldb      = (flags=>'rw');
+our %coldb      = (flags=>'r');
 our $dotime     = 1; ##-- report timing?
 
 ##----------------------------------------------------------------------
