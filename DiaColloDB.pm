@@ -503,8 +503,9 @@ sub create {
     $logFileN = 1 if ($logFileN < 1);
   }
 
-  ##-- initialize: enums
+  ##-- initialize: enums, date-range
   $coldb->vlog($coldb->{logCreate},"create(): processing $nfiles corpus file(s)");
+  my ($xdmin,$xdmax) = ('inf','-inf');
   my ($bos,$eos) = @$coldb{qw(bos eos)};
   my ($doc, $date,$tok,$w,$p,$l,@ais,$x,$xi, $filei);
   my ($last_was_eos,$bosxi,$eosxi);
@@ -513,6 +514,10 @@ sub create {
       if ($logFileN && ($filei++ % $logFileN)==0);
     $doc  = $corpus->idocument();
     $date = $doc->{date};
+
+    ##-- get date-range
+    $xdmin = $date if ($date < $xdmin);
+    $xdmax = $date if ($date > $xdmax);
 
     ##-- get meta-attributes
     @ais = qw();
@@ -560,6 +565,8 @@ sub create {
       }
     }
   }
+  ##-- store date-range
+  @$coldb{qw(xdmin xdmax)} = ($xdmin,$xdmax);
 
   ##-- close token storage
   $tokfh->close()
@@ -684,6 +691,14 @@ sub union {
     }
     $aenum->save("$dbdir/${a}_enum")
       or $coldb->logconfess("union(): failed to save attribute enum $dbdir/${a}_enum: $!");
+  }
+
+  ##-- union: date-range
+  $coldb->vlog($coldb->{logCreate}, "union(): computing date-range");
+  @$coldb{qw(xdmin xdmax)} = qw(inf -inf);
+  foreach $db (@dbargs) {
+    $coldb->{xdmin} = $db->{xdmin} if ($db->{xdmin} < $coldb->{xdmin});
+    $coldb->{xdmax} = $db->{xdmax} if ($db->{xdmax} > $coldb->{xdmax});
   }
 
   ##-- union: xenum

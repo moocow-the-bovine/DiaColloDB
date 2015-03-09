@@ -31,14 +31,17 @@ our %query = (
 	      lemma =>'',	##-- selected lemma(ta), common
 	      date  =>undef,    ##-- selected date(s), common
 	      slice =>1,        ##-- date slice, common
+	      having=>{},       ##-- result filters, common
 	      ##
-	      #alemma =>'',	##-- selected lemma(ta), arg1
+	      #alemma=>'',	##-- selected lemma(ta), arg1
 	      adate  =>undef,	##-- selected date(s), arg1
 	      aslice =>undef,	##-- date slice, arg1
+	      ahaving=>{},         ##-- result filters, arg1
 	      ##
-	      blemma=>'',	##-- selected lemma(ta), arg2
+	      blemma =>'',	##-- selected lemma(ta), arg2
 	      bdate  =>undef,	##-- selected date(s), arg2
 	      bslice =>undef,	##-- date slice, arg2
+	      bhaving=>{},         ##-- result filters, arg2
 	      ##
 	      groupby=>'l',     ##-- result aggregation (empty:all available attributes)
 	      ##
@@ -63,7 +66,7 @@ GetOptions(##-- general
 
 	   ##-- general
 	   'log-level|level|ll=s' => sub { $log{level} = uc($_[1]); },
-	   'option|O=s%' => \$cli{opts},
+	   'client-option|co|db-option|do|O=s%' => \$cli{opts},
 
 	   ##-- query options
 	   'difference|diff|D|compare|comp|cmp!' => \$diff,
@@ -71,8 +74,9 @@ GetOptions(##-- general
 	   'collocations|collocs|cofreqs|cof|co|f12|f2|12|2' => sub { $rel='cof' },
 	   'unigrams|ug|u|f1|1' => sub { $rel='xf' },
 	   ##
-	   (map {("${_}date|${_}d=s"=>\$query{"${_}date"})} ('',qw(a b))), 				 ##-- date,adate,bdate
+	   (map {("${_}date|${_}d=s"=>\$query{"${_}date"})} ('',qw(a b))), 				  ##-- date,adate,bdate
 	   (map {("${_}date-slice|${_}ds|${_}slice|${_}sl|${_}s=s"=>\$query{"${_}slice"})} ('',qw(a b))), ##-- slice,aslice,bslice
+	   (map {("${_}filter|${_}F|${_}having|${_}has|${_}H=s%"=>\$query{"${_}has"})} ('',qw(a b))),     ##-- has,ahas,bhas
 	   ##
 	   'group-by|groupby|group|gb|g=s' => \$query{groupby},
 	   ##
@@ -147,8 +151,8 @@ $query{lemma}  = shift;
 $query{blemma} = @ARGV ? shift : $query{lemma};
 $rel  = "d$rel" if ($diff);
 my $timer = DiaColloDB::Timer->start();
-my $mp = $cli->query($rel, %query,fill=>1)
-  or die("$prog: query() failed for relation '$rel', lemma(s) '$query{lemma}' - '$query{blemma}': $cli->{error}");
+my $mp = $cli->query($rel, %query)
+  or die("$prog: query() failed for relation '$rel', lemma(s) '$query{lemma}'".($diff ? " - '$query{blemma}'" : '').": $cli->{error}");
 
 ##-- dump stringified query
 if ($outfmt eq 'text') {
@@ -190,31 +194,32 @@ dcdb-query.perl - query a DiaColloDB
  General Options:
    -help
    -version
-   -[no]time            # do/don't report operation timing (default=do)
+   -[no]time             # do/don't report operation timing (default=do)
 
  DiaColloDB Options:
-   -log-level LEVEL     # set minimum DiaColloDB log-level
-   -O KEY=VALUE         # set DiaColloDB::Client option
+   -log-level LEVEL      # set minimum DiaColloDB log-level
+   -O KEY=VALUE          # set DiaColloDB::Client option
 
  Query Options:
-   -profile , -diff     # select profile operation (default=-profile)
-   -collocs , -unigrams # select profile type (collocations or unigrams; default=-collocs)
-   -(a|b)?date DATES    # set target DATE or /REGEX/ or MIN-MAX
-   -(a|b)?slice SLICE   # set target date slice (default=1)
-   -groupby ATTRS       # set result aggregation (default=l)
-   -f , -fm , -mi , -ld # set scoring function (default=-ld)
-   -kbest KBEST         # return only KBEST items per date-slice (default=10)
-   -nokbest             # disable k-best pruning
-   -cutoff CUTOFF       # set minimum score for returned items (default=none)
-   -nocutoff            # disable cutoff pruning
-   -[no]strings         # debug: do/don't stringify returned profile (default=do)
+   -profile , -diff      # select profile operation (default=-profile)
+   -collocs , -unigrams  # select profile type (collocations or unigrams; default=-collocs)
+   -(a|b)?date DATES     # set target DATE or /REGEX/ or MIN-MAX
+   -(a|b)?slice SLICE    # set target date slice (default=1)
+   -(a|b)?has ATTR=VAL   # set collocate filter for LIST or /REGEX/ on attribute ATTR
+   -groupby ATTRS        # set result aggregation (default=l)
+   -f , -fm , -mi , -ld  # set scoring function (default=-ld)
+   -kbest KBEST          # return only KBEST items per date-slice (default=10)
+   -nokbest              # disable k-best pruning
+   -cutoff CUTOFF        # set minimum score for returned items (default=none)
+   -nocutoff             # disable cutoff pruning
+   -[no]strings          # debug: do/don't stringify returned profile (default=do)
 
  I/O Options:
-   -user USER[:PASSWD]  # user credentials for HTTP queries
-   -text		# use text output (default)
-   -json                # use json output
-   -null                # don't output profile at all
-   -[no]pretty          # do/don't pretty-print json output (default=do)
+   -user USER[:PASSWD]   # user credentials for HTTP queries
+   -text		 # use text output (default)
+   -json                 # use json output
+   -null                 # don't output profile at all
+   -[no]pretty           # do/don't pretty-print json output (default=do)
 
  Arguments:
    DBURL                # DB URL (file://, http://, or list:// ; query part sets local options)
