@@ -1143,6 +1143,52 @@ sub xidsByDate {
   return $d2xis;
 }
 
+## \@areqs = $coldb->parseRequest([[$attr1,$val1],...], %opts)
+## \@areqs = $coldb->parseRequest(["$attr1:$val1",...], %opts)
+## \@areqs = $coldb->parseRequest({$attr1=>$val1, ...}, %opts)
+## \@areqs = $coldb->parseRequest("$attr1:$val1, ...", %opts)
+##   + guts for parsing user target and groupby requests
+##   + returns an ARRAY-ref [[$attr1,$val1], ...]
+##   + %opts:
+##     warn  => $level,       ##-- log-level for unknown attributes (default: 'warn')
+##     logas => $reqtype,     ##-- request type for warnings
+sub parseRequest {
+  my ($coldb,$req,%opts) = @_;
+  my $wlevel = $opts{warn} // 'warn';
+
+  ##-- parse into attribute-local requests
+  my $areqs = (UNIVERSAL::isa($req,'ARRAY') ? [@$req]
+	       : (UNIVERSAL::isa($req,'HASH') ? [%$req]
+		  : [grep {defined($_)} ($req =~ m{[\s\,]*((?:[^\s\,]|\\.)+)?}g)]));
+
+  ##-- parse each attribute-local request into [ATTR,VAL] pairs
+  my ($a,$areq);
+  foreach (@$areqs) {
+    if (UNIVERSAL::isa($_,'ARRAY')) {
+      next;
+    } elsif (UNIVERSAL::isa($_,'HASH')) {
+      $_ = [%$_];
+      next;
+    }
+    ($a,$areq) = m{^((?:[^\s\,\:\=]|\\.)+)(?:[\:\=]((?:[^\s\,]|\\.)*))?$} ? ($1,$2) : ($_,undef);
+    $a    =~ s/\\(.)/$1/g;
+    $areq =~ s/\\(.)/$1/g if (defined($areq));
+    $_ = [$a,$areq];
+  }
+
+  ##-- check for unsupported attributes
+  @$areqs = grep {
+    $_->[0] = $coldb->attrName($_->[0]);
+    if (!$coldb->hasAttr($_->[0])) {
+      $coldb->vlog($wlevel, "parseRequest(): skipping unsupported attribute '$_->[0]' in ".($opts{logas}//'')." request");
+      0;
+    }
+    1;
+  } @$areqs;
+
+  return $areqs;
+}
+
 ## \%groupby = $coldb->groupby($groupby_request, %opts)
 ## \%groupby = $coldb->groupby(\%groupby,        %opts)
 ##  + $grouby_request: ARRAY-ref or space-separated list of attribute requests (default=all attributes)
@@ -1168,28 +1214,7 @@ sub groupby {
   my $gb = { req=>$gbreq };
 
   ##-- get attribute requests
-  my ($gba,$gbareq);
-  $gb->{areqs} = UNIVERSAL::isa($gb->{req},'ARRAY') ? $gb->{req} : [grep {defined($_)} ($gb->{req} =~ m{[\s\,]*((?:[^\s\,]|\\.)+)?}g)];
-
-  ##-- parse requests into [ATTR,HAVING] pairs
-  foreach (@{$gb->{areqs}}) {
-    next if (UNIVERSAL::isa($_,'ARRAY'));
-    ($gba,$gbareq) = m{^((?:[^\s\,\:\=]|\\.)+)(?:[\:\=]((?:[^\s\,]|\\.)*))?$} ? ($1,$2) : ($_,undef);
-    $gba    =~ s/\\(.)/$1/g;
-    $gbareq =~ s/\\(.)/$1/g if (defined($gbareq));
-    $_ = [$gba,$gbareq];
-  }
-
-  ##-- check for unsupported attributes
-  @{$gb->{areqs}} = grep {
-    $_->[0] = $coldb->attrName($_->[0]);
-    if (!$coldb->hasAttr($_->[0])) {
-      $coldb->vlog($wlevel, "groupby(): skipping unsupported attribute '$_->[0]' in groupby request");
-      0;
-    }
-    1;
-  } @{$gb->{areqs}};
-  my $gbareqs = $gb->{areqs};
+  my $gbareqs = $gb->{areqs} = $coldb->parseRequest($gb->{req}, warn=>$wlevel, logas=>'groupby');
 
   ##-- get attribute names (compat)
   my $gbattrs = $gb->{attrs} = [map {$_->[0]} @$gbareqs];
