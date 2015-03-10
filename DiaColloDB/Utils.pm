@@ -13,6 +13,7 @@ use IO::File;
 use IPC::Run;
 use Fcntl qw(:DEFAULT SEEK_SET SEEK_CUR SEEK_END);
 use Time::HiRes qw(gettimeofday tv_interval);
+use POSIX qw(strftime);
 use Carp;
 use strict;
 
@@ -32,7 +33,9 @@ our %EXPORT_TAGS =
      math  => [qw($LOG2 log2)],
      regex => [qw(regex)],
      html  => [qw(htmlesc)],
-     time  => [qw(s2hms s2timestr)],
+     time  => [qw(s2hms s2timestr timestamp)],
+     file  => [qw(file_mtime file_timestamp du_file du_glob)],
+     si    => [qw(si_str)],
     );
 our @EXPORT_OK = map {@$_} values(%EXPORT_TAGS);
 $EXPORT_TAGS{all} = [@EXPORT_OK];
@@ -407,6 +410,69 @@ sub s2timestr {
     return sprintf("%2dm%ss",$m,$s)
   }
   return sprintf("%dh%02dm%ss",$h,$m,$s);
+}
+
+## $rfc_timestamp = PACAKGE->timestamp()
+## $rfc_timestamp = PACAKGE->timestamp($time)
+sub timestamp {
+  shift if (UNIVERSAL::isa($_[0],__PACKAGE__));
+  return POSIX::strftime("%Y-%m-%dT%H:%M:%SZ", gmtime(@_ ? $_[0] : qw()));
+}
+
+##==============================================================================
+## Functions: file
+
+## $mtime = PACKAGE->file_mtime($file_or_fh)
+sub file_mtime {
+  shift if (UNIVERSAL::isa($_[0],__PACKAGE__));
+  return (stat($_[0]))[9] // 0;
+}
+
+## $timestamp = PACKAGE->file_timestamp($file_or_fh)
+sub file_timestamp {
+  shift if (UNIVERSAL::isa($_[0],__PACKAGE__));
+  return file_timestamp(file_mtime(@_));
+}
+
+## $nbytes = du_file(@filenames_or_fh)
+sub du_file {
+  shift if (UNIVERSAL::isa($_[0],__PACKAGE__));
+  my $du = 0;
+  $du += -s $_ foreach (@_);
+  return $du;
+}
+
+## $nbytes = du_glob(@globs)
+sub du_glob {
+  shift if (UNIVERSAL::isa($_[0],__PACKAGE__));
+  return du_file(map {glob($_)} @_);
+}
+
+##==============================================================================
+## Utils: SI
+
+## $str = si_str($float)
+sub si_str {
+  shift if (UNIVERSAL::isa($_[0],__PACKAGE__));
+  my $x = shift;
+  return sprintf("%.2fY", $x/10**24) if ($x >= 10**24);  ##-- yotta
+  return sprintf("%.2fZ", $x/10**21) if ($x >= 10**21);  ##-- zetta
+  return sprintf("%.2fE", $x/10**18) if ($x >= 10**18);  ##-- exa
+  return sprintf("%.2fP", $x/10**15) if ($x >= 10**15);  ##-- peta
+  return sprintf("%.2fT", $x/10**12) if ($x >= 10**12);  ##-- tera
+  return sprintf("%.2fG", $x/10**9)  if ($x >= 10**9);   ##-- giga
+  return sprintf("%.2fM", $x/10**6)  if ($x >= 10**6);   ##-- mega
+  return sprintf("%.2fk", $x/10**3)  if ($x >= 10**3);   ##-- kilo
+  return sprintf("%.2f",  $x)        if ($x >= 0);       ##-- (natural units)
+  return sprintf("%.2fm", $x*10**3)  if ($x >= 10**-3);  ##-- milli
+  return sprintf("%.2fu", $x*10**6)  if ($x >= 10**-6);  ##-- micro
+  return sprintf("%.2fn", $x*10**9)  if ($x >= 10**-9);  ##-- nano
+  return sprintf("%.2fp", $x*10**12) if ($x >= 10**-12); ##-- pico
+  return sprintf("%.2ff", $x*10**15) if ($x >= 10**-15); ##-- femto
+  return sprintf("%.2fa", $x*10**18) if ($x >= 10**-18); ##-- atto
+  return sprintf("%.2fz", $x*10**21) if ($x >= 10**-21); ##-- zepto
+  return sprintf("%.2fy", $x*10**24) if ($x >= 10**-24); ##-- yocto
+  return sprintf("%.2g", $x); ##-- default
 }
 
 ##==============================================================================

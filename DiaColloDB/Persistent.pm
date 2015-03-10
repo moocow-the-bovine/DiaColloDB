@@ -5,7 +5,7 @@
 
 
 package DiaColloDB::Persistent;
-use DiaColloDB::Utils qw();
+use DiaColloDB::Utils qw(:file);
 use IO::File;
 use strict;
 
@@ -13,6 +13,18 @@ use strict;
 ## Globals & Constants
 
 our @ISA = qw(DiaColloDB::Logger);
+
+##==============================================================================
+## disk usage
+
+## $nbytes = $obj->du()
+##  + default implementation returns size for $obj->{file} or $obj->{base}
+sub du {
+  my $obj = shift;
+  return du_file($obj->{file})    if ($obj->{file});
+  return du_glob("$obj->{base}*") if ($obj->{base});
+  return undef;
+}
 
 ##==============================================================================
 ## I/O

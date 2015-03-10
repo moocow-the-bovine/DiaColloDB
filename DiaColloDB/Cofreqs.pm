@@ -527,9 +527,8 @@ sub f12 {
 ## $prf = $cof->profile(\@xids, %opts)
 ##  + get co-frequency profile for @xids (db must be opened)
 ##  + %opts:
-##     groupby => \&gbsub,  ##-- key-extractor $key2 = $gbsub->($i2)
+##     groupby => \&gbsub,  ##-- key-extractor $key2_or_undef = $gbsub->($i2)
 sub profile {
-  #use bytes; ##-- deprecated in perl v5.18.2
   my ($cof,$ids,%opts) = @_;
   $ids   = [$ids] if (!UNIVERSAL::isa($ids,'ARRAY'));
   my $r1 = $cof->{r1};
@@ -557,6 +556,7 @@ sub profile {
       $r2->getraw(\$buf) or last;
       ($i2,$f12)    = unpack($pack2, $buf);
       $key2         = $groupby ? $groupby->($i2) : $i2;
+      next if (!defined($key2)); ##-- item2 selection via groupby sub
       $pf2->{$key2}  += unpack($pack1f, $r1->fetchraw($i2,\$buf));
       $pf12->{$key2} += $f12;
     }

@@ -2,6 +2,7 @@
 
 use lib qw(. lib);
 use DiaColloDB;
+use DiaColloDB::Utils qw(:si);
 use Getopt::Long qw(:config no_ignore_case);
 use Pod::Usage;
 use File::Basename qw(basename);
@@ -100,6 +101,7 @@ if ($union) {
 }
 
 ##-- cleanup
+#my $du = si_str($coldb->du());
 $coldb->close();
 
 ##-- timing

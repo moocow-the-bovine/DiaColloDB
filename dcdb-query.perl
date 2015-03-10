@@ -43,7 +43,7 @@ our %query = (
 	      bslice =>undef,	##-- date slice, arg2
 	      bhaving=>{},         ##-- result filters, arg2
 	      ##
-	      groupby=>'l',     ##-- result aggregation (empty:all available attributes)
+	      groupby=>'l',     ##-- result aggregation (empty:all available attributes, no restrictions)
 	      ##
 	      eps => 0,		##-- smoothing constant
 	      score =>'ld',	##-- score func
@@ -205,7 +205,7 @@ dcdb-query.perl - query a DiaColloDB
    -collocs , -unigrams  # select profile type (collocations or unigrams; default=-collocs)
    -(a|b)?date DATES     # set target DATE or /REGEX/ or MIN-MAX
    -(a|b)?slice SLICE    # set target date slice (default=1)
-   -groupby ATTRS        # set result aggregation (default=l)
+   -groupby GROUPBY      # set result aggregation (default=l)
    -f , -fm , -mi , -ld  # set scoring function (default=-ld)
    -kbest KBEST          # return only KBEST items per date-slice (default=10)
    -nokbest              # disable k-best pruning
@@ -222,8 +222,13 @@ dcdb-query.perl - query a DiaColloDB
 
  Arguments:
    DBURL                # DB URL (file://, http://, or list:// ; query part sets local options)
-   LEMMA1               # space-separated target1 string(s) list or /REGEX/
-   LEMMA2               # space-separated target2 string(s) list or /REGEX/
+   LEMMA1               # space-separated target1 string(s) LIST or /REGEX/
+   LEMMA2               # space-separated target2 string(s) LIST or /REGEX/
+
+ Grouping and Filtering:
+   GROUPBY is a space- or comma-separated list of the form ATTR1[:FILTER1] ..., where:
+   - ATTR is the name or alias of a supported attribute (e.g. 'lemma', 'pos', etc.), and
+   - FILTER is either a |-separated LIST of literal values or a /REGEX/[gimsadlu]*
 
 =cut
 

@@ -5,7 +5,7 @@
 
 package DiaColloDB::Unigrams;
 use DiaColloDB::PackedFile;
-use DiaColloDB::Utils qw(:sort :env :run :pack);
+use DiaColloDB::Utils qw(:sort :env :run :pack :file);
 use Fcntl qw(:seek);
 use strict;
 
@@ -45,6 +45,15 @@ sub new {
 			       @_
 			      );
   return $ug;
+}
+
+##==============================================================================
+## API: disk usage
+
+## $nbytes = $obj->du()
+##  + default implementation returns size for $obj->{file} or $obj->{base}
+sub du {
+  return du_glob("$_[0]{file}*");
 }
 
 ##==============================================================================
@@ -166,9 +175,8 @@ sub union {
 ## $prf = $ug->profile(\@xids, %opts)
 ##  + get frequency profile for @xids (db must be opened)
 ##  + %opts:
-##     groupby => \&gbsub,  ##-- key-extractor $key2 = $gbsub->($i2)
+##     groupby => \&gbsub,  ##-- key-extractor $key2_or_undef = $gbsub->($i2)
 sub profile {
-  #use bytes; ##-- deprecated in perl v5.18.2
   my ($ug,$ids,%opts) = @_;
   $ids   = [$ids] if (!UNIVERSAL::isa($ids,'ARRAY'));
 
@@ -186,6 +194,7 @@ sub profile {
     $f     = unpack($packf,$buf);
     $pf1  += $f;
     $key2  = $groupby ? $groupby->($i) : $i;
+    next if (!defined($key2));
     $pf2->{$key2}  += $f
   }
 
