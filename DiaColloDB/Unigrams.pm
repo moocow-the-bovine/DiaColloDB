@@ -50,10 +50,10 @@ sub new {
 ##==============================================================================
 ## API: disk usage
 
-## $nbytes = $obj->du()
-##  + default implementation returns size for $obj->{file} or $obj->{base}
-sub du {
-  return du_glob("$_[0]{file}*");
+## @files = $obj->diskFiles()
+##  + returns disk storage files, used by du() and timestamp()
+sub diskFiles {
+  return ($_[0]{file}, "$_[0]{file}.hdr");
 }
 
 ##==============================================================================

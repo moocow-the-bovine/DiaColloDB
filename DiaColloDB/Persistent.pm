@@ -15,15 +15,39 @@ use strict;
 our @ISA = qw(DiaColloDB::Logger);
 
 ##==============================================================================
-## disk usage
+## disk usage, timestamp
+
+## @files = $obj->diskFiles()
+##  + returns disk storage files, used by du() and timestamp()
+##  + default implementation returns $obj->{file} or glob("$obj->{base}*")
+sub diskFiles {
+  my $obj = shift;
+  return ($obj->{file}) if ($obj->{file});
+  return glob("$obj->{base}*") if ($obj->{base});
+  return qw();
+}
 
 ## $nbytes = $obj->du()
-##  + default implementation returns size for $obj->{file} or $obj->{base}
+##  + default implementation wraps du_file($obj->diskFiles)
 sub du {
-  my $obj = shift;
-  return du_file($obj->{file})    if ($obj->{file});
-  return du_glob("$obj->{base}*") if ($obj->{base});
-  return undef;
+  return du_file($_[0]->diskFiles);
+}
+
+## $mtime = $obj->mtime()
+##  + default returns newest mtime for $obj->diskFiles()
+sub mtime {
+  my $obj   = shift;
+  my $mtime = 0;
+  foreach (map {file_mtime($_)} $obj->diskFiles) {
+    $mtime = $_ if ($_ > $mtime);
+  }
+  return $mtime;
+}
+
+## $timestamp = $obj->timestamp()
+##  + default returns timestamp for $obj->mtime()
+sub timestamp {
+  return DiaColloDB::Utils::timestamp($_[0]->mtime);
 }
 
 ##==============================================================================

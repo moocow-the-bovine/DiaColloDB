@@ -438,7 +438,7 @@ sub file_timestamp {
 sub du_file {
   shift if (UNIVERSAL::isa($_[0],__PACKAGE__));
   my $du = 0;
-  $du += -s $_ foreach (@_);
+  $du += (-s $_)//0 foreach (@_);
   return $du;
 }
 

@@ -324,15 +324,11 @@ sub opened {
 	 );
 }
 
-
-## $nbytes = $obj->du()
+## @files = $obj->diskFiles()
 ##  + get db size (must be opened)
-sub du {
+sub diskFiles {
   my $coldb = shift;
-  my $du    = 0;
-  $du += $_->du() foreach (grep {UNIVERSAL::can(ref($_),'du')} values(%$coldb));
-  $du += du_file("$coldb->{dbdir}/header.json");
-  return $du;
+  return ("$coldb->{dbdir}/header.json", map {$_->diskFiles} grep {UNIVERSAL::can(ref($_),'diskFiles')} values %$coldb);
 }
 
 ##==============================================================================
@@ -963,14 +959,18 @@ sub dbinfo {
   my $adata = $coldb->attrData();
   my $du    = $coldb->du();
   my $info  = {
-	       %{$coldb->{info}//{}},
-
-	       du_b => $du,
-	       du_h => si_str($du),
-
+	       ##-- literals
 	       (map {exists($coldb->{$_}) ? ($_=>$coldb->{$_}) : qw()}
 		qw(dbdir bos eos dmax cfmin xdmin xdmax version label collection maintainer)),
 
+	       ##-- disk usage
+	       du_b => $du,
+	       du_h => si_str($du),
+
+	       ##-- timestamp
+	       timestamp => $coldb->timestamp,
+
+	       ##-- attributes
 	       attrs => [map {
 		 {(
 		   name  => $_->{a},
@@ -980,7 +980,11 @@ sub dbinfo {
 		 )}
 	       } @$adata],
 
+	       ##-- relations
 	       relations => [grep {UNIVERSAL::can(ref($coldb->{$_}),'profile')} keys %$coldb],
+
+	       ##-- overrides
+	       %{$coldb->{info}//{}},
 	      };
   return $info;
 }
