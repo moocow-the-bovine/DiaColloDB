@@ -1034,42 +1034,89 @@ sub debug_enum {
 
   ##-- variables
   use bytes;
-  my ($sbufr,$sxbufr) = @$enum{qw(sbufr sxbufr)};
-  my ($pack_l,$len_l,$pack_i,$pack_o,$len_sx) = @$enum{qw(pack_l len_o pack_i pack_o len_sx)};
-  my $s_size  = length($$sbufr);
-  my $sx_size = length($$sxbufr);
+  my ($sbufr,$sxbufr,$ixbufr) = @$enum{qw(sbufr sxbufr ixbufr)};
+  my ($pack_l,$len_l,$pack_i,$len_i,$pack_o,$len_o,$len_sx) = @$enum{qw(pack_l len_l pack_i len_i pack_o len_o len_sx)};
 
   ##-- read sx records
   DiaColloDB->ensureLog();
   $enum->debug("reading sx records");
   my ($sx_off,$o,$i);
+  my $sx_size = length($$sxbufr);
   my $pack_sx = $pack_o.$pack_i;
   my @i2sx    = qw(); ##-- $i2sx[$i] = [$off,$si]
   for ($sx_off=0; $sx_off < $sx_size; $sx_off += $len_sx) {
     ($o,$i)   = unpack($pack_sx,substr($$sxbufr,$sx_off,$len_sx));
     $i2sx[$i] = [$o,$sx_off/$len_sx];
   }
-  $enum->debug("loaded ", scalar(@i2sx), " sx-records");
+  $enum->debug(scalar(@i2sx), " sx-records loaded");
+
+  ##-- check ix records
+  $enum->debug("checking sx<->ix consistency");
+  my $ix_size = length($$ixbufr);
+  my ($ix_off,$i_off, $sx);
+  for ($ix_off=0; $ix_off < $ix_size; $ix_off += $len_o) {
+    $i     = $ix_off / $len_o;
+    $i_off = unpack($pack_o, substr($$ixbufr, $ix_off, $len_o));
+
+    $sx = $i2sx[$i];
+    if ($sx->[0] != $i_off) {
+      die("$0: sx<->ix offset mismatch for i=$i, sxi=$sx->[1]: sx-offset=$sx->[0] != ix-offset=$i_off");
+    }
+  }
+  $enum->debug(($ix_size/$len_o)." ix-records checked out ok");
 
   ##-- check s records
   $enum->debug("checking s<->sx consistency");
-  my ($s_off,$s_len,$s_buf, $sx);
+  my $s_size  = length($$sbufr);
+  my $n_s     = 0;
+  my ($s_off,$s_len,$s_buf);
   for ($s_off=0, $i=0; $s_off < $s_size; ++$i) {
-    $s_len  = unpack($pack_l,substr($$sbufr,$s_off,$len_l));
-    $s_buf  = substr($$sbufr,$s_off+$len_l,$s_len);
+    $s_len = unpack($pack_l,substr($$sbufr,$s_off,$len_l));
+    $s_buf = substr($$sbufr,$s_off+$len_l,$s_len);
     $s_buf = substr($s_buf,0,16)."..." if (length($s_buf) > 16);
 
     ##-- check for offset mismatch
     $sx = $i2sx[$i];
     if ($sx->[0] != $s_off) {
-      die("$0: offset mismatch for i=$i, sxi=$sx->[1], s=$s_buf: sx-offset=$sx->[0] != s-offset=$s_off");
+      die("$0: s<->sx offset mismatch for i=$i, sxi=$sx->[1], s='$s_buf': sx-offset=$sx->[0] != s-offset=$s_off");
     }
 
     ##-- update
     $s_off += $len_l + $s_len;
+    ++$n_s;
   }
+  $enum->debug("$n_s s-records checked out ok");
+
+  $enum->debug("enum $enum->{base} appears consistent");
+  exit 0;
 }
 debug_enum(@ARGV);
+
+
+sub debug_churn_enum_a {
+  my $efile = shift || 'taz.d/l_enum';
+  my $ofile = shift || 'tmp.aenum';
+  my $enum  = DiaColloDB::EnumFile::MMap->new(base=>$efile);
+
+  my $i2s   = $enum->toArray;
+  my $e2    = $enum->new->fromArray($i2s);
+  $e2->save($ofile);
+  exit 0;
+}
+#debug_churn_enum_a(@ARGV);
+
+sub debug_churn_enum_h {
+  my $efile = shift || 'taz.d/l_enum';
+  my $ofile = shift || 'tmp.henum';
+  my $enum  = DiaColloDB::EnumFile::MMap->new(base=>$efile);
+
+  $enum->load();
+  my $s2i = $enum->{s2i};
+  my $e2  = $enum->new->fromHash($s2i);
+  $e2->save($ofile);
+  exit 0;
+}
+#debug_churn_enum_h(@ARGV);
 
 
 ##==============================================================================
