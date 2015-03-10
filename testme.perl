@@ -993,7 +993,7 @@ sub bench_binencode {
 
 
 ##==============================================================================
-## bench: binary encoding
+## bench: integer sorting
 
 sub bench_isort {
   my ($N,$len) = @_;
@@ -1023,7 +1023,54 @@ sub bench_isort {
 
   exit 0;
 }
-bench_isort();
+#bench_isort();
+
+##==============================================================================
+## debug: taz buggy enum
+
+sub debug_enum {
+  my $efile = shift || 'taz.d/l_enum';
+  my $enum  = DiaColloDB::EnumFile::MMap->new(base=>$efile);
+
+  ##-- variables
+  use bytes;
+  my ($sbufr,$sxbufr) = @$enum{qw(sbufr sxbufr)};
+  my ($pack_l,$len_l,$pack_i,$pack_o,$len_sx) = @$enum{qw(pack_l len_o pack_i pack_o len_sx)};
+  my $s_size  = length($$sbufr);
+  my $sx_size = length($$sxbufr);
+
+  ##-- read sx records
+  DiaColloDB->ensureLog();
+  $enum->debug("reading sx records");
+  my ($sx_off,$o,$i);
+  my $pack_sx = $pack_o.$pack_i;
+  my @i2sx    = qw(); ##-- $i2sx[$i] = [$off,$si]
+  for ($sx_off=0; $sx_off < $sx_size; $sx_off += $len_sx) {
+    ($o,$i)   = unpack($pack_sx,substr($$sxbufr,$sx_off,$len_sx));
+    $i2sx[$i] = [$o,$sx_off/$len_sx];
+  }
+  $enum->debug("loaded ", scalar(@i2sx), " sx-records");
+
+  ##-- check s records
+  $enum->debug("checking s<->sx consistency");
+  my ($s_off,$s_len,$s_buf, $sx);
+  for ($s_off=0, $i=0; $s_off < $s_size; ++$i) {
+    $s_len  = unpack($pack_l,substr($$sbufr,$s_off,$len_l));
+    $s_buf  = substr($$sbufr,$s_off+$len_l,$s_len);
+    $s_buf = substr($s_buf,0,16)."..." if (length($s_buf) > 16);
+
+    ##-- check for offset mismatch
+    $sx = $i2sx[$i];
+    if ($sx->[0] != $s_off) {
+      die("$0: offset mismatch for i=$i, sxi=$sx->[1], s=$s_buf: sx-offset=$sx->[0] != s-offset=$s_off");
+    }
+
+    ##-- update
+    $s_off += $len_l + $s_len;
+  }
+}
+debug_enum(@ARGV);
+
 
 ##==============================================================================
 ## MAIN

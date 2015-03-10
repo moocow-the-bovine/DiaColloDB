@@ -66,6 +66,10 @@ if (!$class && -f "$infile.hdr") {
 }
 die("$0: no -class specified and not found in header") if (!$class);
 
+##-- sanitize class
+$class = "DiaColloDB::$class" if ($class !~ /^DiaColloDB::/ && !UNIVERSAL::can($class,'new'));
+die("$0: no 'new' method for class '$class'") if (!UNIVERSAL::can($class,'new'));
+
 ##-- load object
 my $obj = $class->new(%opts)
   or die("$0: could not create object of class '$class' for '$infile': $!");

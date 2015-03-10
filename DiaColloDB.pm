@@ -1163,7 +1163,26 @@ sub groupby {
   my $xenum = $coldb->{xenum};
   if (!exists($opts{x2g}) || $opts{x2g}) {
     my $gbpack = join('',map {$coldb->{"pack_x$_"}} @$gbattrs);
-    my $gbcode = qq{join("\t",unpack('$gbpack',\$xenum->i2s(\$_[0])))};
+    my ($ids);
+    my @gbids  = (map {$ids=$_; {map {($_=>undef)} @$ids}}
+		  map {
+		    (($_->[1]//'') ne ''
+		     ? $coldb->enumIds($coldb->{"$_->[0]enum"}, $_->[1], logLevel=>$coldb->{logProfile}, logPrefix=>"groupby(): fetch filter ids: $_->[0]")
+		     : undef)
+		  } @$gbareqs);
+    my ($gbcode,@gis);
+    if (grep {$_} @gbids) {
+      ##-- group-by code: with having-filters
+      $gbcode = (''
+		 .qq{ \@gis=unpack('$gbpack',\$xenum->i2s(\$_[0]));}
+		 .qq{ return undef if (}.join(' || ', map {"!exists(\$gbids[$_]{\$gis[$_]}"} grep {defined($gbids[$_])} (0..$#gbids)).qq{);}
+		 .qq{ return join("\t",\@gis);}
+		);
+    }
+    else {
+      ##-- group-by code: no filters
+      $gbcode = qq{join("\t",unpack('$gbpack',\$xenum->i2s(\$_[0])))};
+    }
     my $gbsub  = eval qq{sub {$gbcode}};
     $coldb->vlog($wlevel, "groupby(): could not compile aggregation code sub {$gbcode}: $@") if ($@ || !$gbsub);
     $@='';
