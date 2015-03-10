@@ -2,7 +2,7 @@
 
 use lib qw(. lib);
 use DiaColloDB;
-use Getopt::Long;
+use Getopt::Long qw(:config no_ignore_case);
 
 our $mode = 'check';
 our $outbase = 'check-enum.out';
@@ -17,6 +17,7 @@ GetOptions(
 
 if (!@ARGV || $help) {
   print STDERR <<EOF;
+
 Usage: $0 [OPTIONS] ENUM
 
  Options:
@@ -96,6 +97,7 @@ sub enum_check {
 
 sub churn_array {
   my $enum  = shift;
+  $enum->info("churning $enum->{base}.* -> $outbase.* via array");
   my $i2s   = $enum->toArray;
   my $e2    = $enum->new->fromArray($i2s);
   $e2->save($outbase)
@@ -105,6 +107,7 @@ sub churn_array {
 
 sub churn_hash {
   my $enum  = shift;
+  $enum->info("churning $enum->{base}.* -> $outbase.* via hash");
   $enum->load();
   my $s2i = $enum->{s2i};
   my $e2  = $enum->new->fromHash($s2i);
