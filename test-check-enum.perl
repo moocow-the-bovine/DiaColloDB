@@ -125,7 +125,7 @@ DiaColloDB->ensureLog();
 
 ##-- open enum
 my $efile = shift(@ARGV);
-my $enum  = DiaColloDB::EnumFile::MMap->new(base=>$efile)
+my $enum  = DiaColloDB::EnumFile::MMap->new(base=>$efile, flags=>'r')
   or die("$0: open failed for enum '$efile.*': $!");
 
 ##-- guts
