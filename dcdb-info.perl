@@ -15,9 +15,9 @@ use strict;
 our $prog       = basename($0);
 our ($help,$version);
 
-our $dbdir      = undef;
+our $dburl      = undef;
 our $outdir     = undef;
-our %coldb      = (flags=>'r');
+our %cli        = (flags=>'r');
 
 ##----------------------------------------------------------------------
 ## Command-line processing
@@ -29,7 +29,7 @@ GetOptions(##-- general
 	  );
 
 pod2usage({-exitval=>0,-verbose=>0}) if ($help);
-pod2usage({-exitval=>1,-verbose=>0,-msg=>"$prog: ERROR: no DBDIR specified!"}) if (!@ARGV);
+pod2usage({-exitval=>1,-verbose=>0,-msg=>"$prog: ERROR: no DBURL specified!"}) if (!@ARGV);
 
 if ($version) {
   print STDERR "$prog version $DiaColloDB::VERSION by Bryan Jurish\n";
@@ -45,19 +45,23 @@ if ($version) {
 DiaColloDB::Logger->ensureLog();
 
 ##-- open colloc-db
-$dbdir = shift(@ARGV);
-$dbdir =~ s{/$}{};
-my $coldb = DiaColloDB->new(%coldb)
-  or die("$prog: failed to create new DiaColloDB object: $!");
-$coldb->open($dbdir)
-  or die("$prog: DiaColloDB::open() failed for '$dbdir': $!");
+$dburl = shift(@ARGV);
+my ($cli);
+if ($dburl !~ m{^[a-zA-Z]+://}) {
+  ##-- hack for local directory URLs without scheme
+  $cli = DiaColloDB->new(dbdir=>$dburl,%cli);
+} else {
+  ##-- use client interface for any URL with a scheme
+  $cli = DiaColloDB::Client->new($dburl,%cli);
+}
+die("$prog: failed to create new DiaColloDB::Client object for $dburl: $!") if (!$cli);
 
 ##-- get info
-my $info = $coldb->dbinfo()
-  or die("$prog: DiaColloDB::export() failed get db info for '$dbdir': $!");
+my $info = $cli->dbinfo()
+  or die("$prog: dbinfo() failed for '$dburl': $cli->{error}");
 
 ##-- cleanup
-$coldb->close();
+$cli->close();
 
 ##-- dump info
 DiaColloDB::Utils::saveJsonFile($info,'-');

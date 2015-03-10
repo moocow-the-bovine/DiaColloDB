@@ -31,17 +31,14 @@ our %query = (
 	      lemma =>'',	##-- selected lemma(ta), common
 	      date  =>undef,    ##-- selected date(s), common
 	      slice =>1,        ##-- date slice, common
-	      having=>{},       ##-- result filters, common
 	      ##
 	      #alemma=>'',	##-- selected lemma(ta), arg1
 	      adate  =>undef,	##-- selected date(s), arg1
 	      aslice =>undef,	##-- date slice, arg1
-	      ahaving=>{},         ##-- result filters, arg1
 	      ##
 	      blemma =>'',	##-- selected lemma(ta), arg2
 	      bdate  =>undef,	##-- selected date(s), arg2
 	      bslice =>undef,	##-- date slice, arg2
-	      bhaving=>{},         ##-- result filters, arg2
 	      ##
 	      groupby=>'l',     ##-- result aggregation (empty:all available attributes, no restrictions)
 	      ##
@@ -76,7 +73,6 @@ GetOptions(##-- general
 	   ##
 	   (map {("${_}date|${_}d=s"=>\$query{"${_}date"})} ('',qw(a b))), 				  ##-- date,adate,bdate
 	   (map {("${_}date-slice|${_}ds|${_}slice|${_}sl|${_}s=s"=>\$query{"${_}slice"})} ('',qw(a b))), ##-- slice,aslice,bslice
-	   #(map {("${_}filter|${_}F|${_}having|${_}has|${_}H=s%"=>\$query{"${_}has"})} ('',qw(a b))),     ##-- has,ahas,bhas
 	   ##
 	   'group-by|groupby|group|gb|g=s' => \$query{groupby},
 	   ##

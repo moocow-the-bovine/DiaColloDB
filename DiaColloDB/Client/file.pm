@@ -64,6 +64,18 @@ sub opened {
 }
 
 ##==============================================================================
+## db-info
+
+## \%info = $cli->dbinfo()
+sub dbinfo {
+  my $cli = shift;
+  $cli->logconfess($cli->{error}="profile(): no db opened!") if (!$cli->opened);
+  delete $cli->{error};
+  $cli->{error} = $cli->{db}{error} if (!defined(my $info = $cli->{db}->dbinfo(@_)));
+  return $info;
+}
+
+##==============================================================================
 ## Profiling
 
 ##--------------------------------------------------------------
@@ -74,7 +86,7 @@ sub opened {
 ##  + %opts: as for DiaColloDB::profile()
 sub profile {
   my $cli = shift;
-  $cli->logconfess("profile(): no db opened!") if (!$cli->opened);
+  $cli->logconfess($cli->{error}="profile(): no db opened!") if (!$cli->opened);
   delete $cli->{error};
   $cli->{error} = $cli->{db}{error} if (!defined(my $mp = $cli->{db}->profile(@_)));
   return $mp;
@@ -88,7 +100,7 @@ sub profile {
 ##  + %opts: as for DiaColloDB::compare()
 sub compare {
   my $cli = shift;
-  $cli->logconfess("compare(): no db opened!") if (!$cli->opened);
+  $cli->logconfess($cli->{error}="compare(): no db opened!") if (!$cli->opened);
   delete $cli->{error};
   $cli->{error} = $cli->{db}{error} if (!defined(my $mp = $cli->{db}->compare(@_)));
   return $mp;

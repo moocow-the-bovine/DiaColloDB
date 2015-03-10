@@ -92,11 +92,11 @@ sub opened {
 ##--------------------------------------------------------------
 ## Profiling: Generic: HTTP wrappers
 
-## $obj_or_undef = $cli->jget(\%query_form,$class)
-##  + wrapper for http requests
+## $obj_or_undef = $cli->jget($url,\%query_form,$class)
+##  + wrapper for json http requests
 sub jget {
-  my ($cli,$form,$class) = @_;
-  my $uri = URI->new($cli->{url});
+  my ($cli,$url,$form,$class) = @_;
+  my $uri = URI->new($url // $cli->{url});
   $uri->query_form( {%{$cli->{params}//{}}, %$form} );
   my $req = HTTP::Request->new('GET',"$uri");
   $req->authorization_basic($cli->{user}, $cli->{password}) if (defined($cli->{user}) && defined($cli->{password}));
@@ -111,6 +111,16 @@ sub jget {
 }
 
 ##--------------------------------------------------------------
+## dbinfo
+
+## \%info = $cli->dbinfo()
+sub dbinfo {
+  my $cli = shift;
+  (my $url = $cli->{url}) =~ s{/profile.*$}{/info.perl};
+  return $cli->jget($url, {},'DiaColloDB::Persistent');
+}
+
+##--------------------------------------------------------------
 ## Profiling: Generic
 
 ## $mprf_or_undef = $cli->profile($relation, %opts)
@@ -120,7 +130,7 @@ sub jget {
 sub profile {
   my ($cli,$rel,%opts) = @_;
   delete @opts{qw(alemma adate aslice blemma bdate bslice)};
-  return $cli->jget({profile=>$rel, %opts, format=>'json'},'DiaColloDB::Profile::Multi');
+  return $cli->jget($cli->{url}, {profile=>$rel, %opts, format=>'json'},'DiaColloDB::Profile::Multi');
 }
 
 ##--------------------------------------------------------------
@@ -131,7 +141,7 @@ sub profile {
 ##  + %opts: as for DiaColloDB::compare()
 sub compare {
   my ($cli,$rel,%opts) = @_;
-  return $cli->jget({profile=>"d$rel", %opts, format=>'json'},'DiaColloDB::Profile::MultiDiff');
+  return $cli->jget($cli->{url}, {profile=>"d$rel", %opts, format=>'json'},'DiaColloDB::Profile::MultiDiff');
 }
 
 ##==============================================================================
