@@ -28,4 +28,7 @@ ltt
 ^tmp
 ^relcount
 ^relgen
+^w2v
+dump.mak
+\#
 ^(?:timeus|times|compare|countnotes|timeprof)\b
