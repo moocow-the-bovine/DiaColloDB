@@ -205,6 +205,7 @@ sub flush {
   $sxfh->seek(0,SEEK_SET);
 
   ##-- dump $base.es, $base.eix
+  #no warnings 'uninitialized';
   my $i2s    = $enum->{i2s};
   my $utf8   = $enum->{utf8};
   my ($pack_o,$pack_l,$len_l) = @$enum{qw(pack_o pack_l len_l)};
@@ -213,14 +214,14 @@ sub flush {
   my $i     = 0;
   my ($s);
   foreach (@$i2s) {
-    $s = ($_ // '');
+    $s = ($_ //= '');
     utf8::encode($s) if ($utf8 && utf8::is_utf8($s));
     $sfh->print(pack("${pack_l}/A", $s))
       or $enum->logconfess("flush(): failed to write string '$s' at offset $off to $enum->{base}.es");
     $ixfh->print(pack($pack_o,$off))
       or $enum->logconfess("flush(): failed to write ix-record for id=$i to $enum->{base}.eix");
     push(@$i2off, $off);
-    $off += $len_l + length($_);
+    $off += $len_l + length($s);
     ++$i;
   }
   CORE::truncate($sfh, $sfh->tell());
