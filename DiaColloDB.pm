@@ -1125,7 +1125,7 @@ sub groupby {
   ##-- get attribute requests
   if (!exists($opts{areqs}) || $opts{areqs}) {
     my ($gba,$gbareq);
-    $gb->{areqs} = UNIVERSAL::isa($gbreq,'ARRAY') ? $gbreq : [$gb->{req} =~ m{[\s\,]*([^\s\,]|\\.)+?}g];
+    $gb->{areqs} = UNIVERSAL::isa($gb->{req},'ARRAY') ? $gb->{req} : [$gb->{req} =~ m{[\s\,]*([^\s\,]|\\.)+?}g];
 
     ##-- parse requests into [ATTR,HAVING] pairs
     foreach (@{$gb->{areqs}}) {
@@ -1139,7 +1139,7 @@ sub groupby {
     ##-- check for unsupported attributes
     @{$gb->{areqs}} = grep {
       $_->[0] = $coldb->attrName($_->[0]);
-      if (!$coldb->hasAttr($gba)) {
+      if (!$coldb->hasAttr($_->[0])) {
 	$coldb->vlog($wlevel, "groupby(): skipping unsupported attribute '$_->[0]' in groupby request");
 	0;
       }
