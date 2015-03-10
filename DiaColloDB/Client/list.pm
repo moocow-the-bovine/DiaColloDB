@@ -96,6 +96,24 @@ sub opened {
 }
 
 ##==============================================================================
+## dbinfo
+
+## \%info = $cli->dbinfo()
+##   + returned info is {dtrs=>\@dtr_info, fudge=>$coef},
+sub dbinfo {
+  my $cli  = shift;
+  my $dtrs = [];
+  my ($dinfo);
+  foreach (@{$cli->{clis}}) {
+    $dinfo = $_->dbinfo()
+      or $cli->logconfess("dbinfo() failed for client URL $_->{url}: $_->{error}");
+    $dinfo->{url} = $_->{url};
+    push(@$dtrs,$dinfo);
+  }
+  return {dtrs=>$dtrs, fudge=>$cli->{fudge}};
+}
+
+##==============================================================================
 ## Profiling
 
 ##--------------------------------------------------------------

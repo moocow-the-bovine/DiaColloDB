@@ -114,10 +114,13 @@ sub jget {
 ## dbinfo
 
 ## \%info = $cli->dbinfo()
+##   + adds 'url' key
 sub dbinfo {
   my $cli = shift;
-  (my $url = $cli->{url}) =~ s{/profile.*$}{/info.perl};
-  return $cli->jget($url, {},'DiaColloDB::Persistent');
+  (my $url = $cli->{url}) =~ s{/profile.*$}{};
+  my $info = $cli->jget("$url/info.perl", {},'DiaColloDB::Persistent');
+  $info->{url} = "$url/";
+  return $info;
 }
 
 ##--------------------------------------------------------------
