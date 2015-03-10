@@ -6,7 +6,7 @@
 package DiaColloDB::EnumFile::FixedLen;
 use DiaColloDB::EnumFile;
 use DiaColloDB::Logger;
-use DiaColloDB::Utils qw(:fcntl :json :regex);
+use DiaColloDB::Utils qw(:fcntl :json :regex :pack);
 use Fcntl qw(:DEFAULT :seek);
 use strict;
 
@@ -39,10 +39,10 @@ our @ISA = qw(DiaColloDB::EnumFile);
 ##    loaded => $bool,     ##-- true if file data has been loaded to memory
 ##    ##
 ##    ##-- EnumFile: pack lengths (after open())
-##    len_i => $len_i,     ##-- bytes::length(pack($pack_i,0))
-##    #len_o => $len_o,     ##-- bytes::length(pack($pack_o,0)) ; OVERRIDE: unused
-##    #len_l => $len_l,     ##-- bytes::length(pack($pack_l,0)) ; OVERRIDE: unused
-##    len_s => $len_s,     ##-- bytes::length(pack($pack_s,0)); OVERRIDE: new
+##    len_i => $len_i,     ##-- packsize($pack_i)
+##    #len_o => $len_o,     ##-- packsize($pack_o) ; OVERRIDE: unused
+##    #len_l => $len_l,     ##-- packsize($pack_l) ; OVERRIDE: unused
+##    len_s => $len_s,     ##-- packsize($pack_s); OVERRIDE: new
 ##    len_sx => $len_sx,   ##-- $len_s + $len_i ; OVERRIDE: new value
 ##    ##
 ##    ##-- EnumFile: filehandles (after open())
@@ -87,9 +87,8 @@ sub open {
     or $enum->logconfess("open failed for $base.fix: $!");
 
   ##-- pack lengths
-  use bytes;
-  $enum->{len_i}  = length(pack($enum->{pack_i},0));
-  $enum->{len_s}  = length(pack($enum->{pack_s},0));
+  $enum->{len_i}  = packsize($enum->{pack_i});
+  $enum->{len_s}  = packsize($enum->{pack_s});
   $enum->{len_sx} = $enum->{len_s} + $enum->{len_i};
 
   ##-- flags
@@ -181,7 +180,8 @@ sub flush {
 sub toArray {
   my $enum = shift;
   return $enum->{i2s} if ($enum->loaded || !$enum->opened);
-  use bytes;
+
+  #use bytes; ##-- deprecated in perl v5.18.2
   my $ixfh   = $enum->{ixfh};
   my $ixlen  = (-s $ixfh);
   my ($ixbuf,@i2s);
@@ -305,7 +305,7 @@ sub s2i {
 ##  + gets indices for all (packed) strings matching $regex
 ##  + if $pack_s is specified, is will be used to unpack strings (default=$enum->{pack_s}), only the first unpacked element will be tested
 sub re2i {
-  use bytes;
+  #use bytes; ##-- deprecated in perl v5.18.2
   my ($enum,$re,$pack_s) = @_;
   $re = regex($re) if (!ref($re));
 

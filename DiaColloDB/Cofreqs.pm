@@ -529,7 +529,7 @@ sub f12 {
 ##  + %opts:
 ##     groupby => \&gbsub,  ##-- key-extractor $key2 = $gbsub->($i2)
 sub profile {
-  use bytes;
+  #use bytes; ##-- deprecated in perl v5.18.2
   my ($cof,$ids,%opts) = @_;
   $ids   = [$ids] if (!UNIVERSAL::isa($ids,'ARRAY'));
   my $r1 = $cof->{r1};
@@ -537,7 +537,7 @@ sub profile {
   my $pack1 = $r1->{packas};
   my $pack2 = $r2->{packas};
   my $pack1i = $cof->{pack_i};
-  my $pack1f = "@".length(pack($cof->{pack_i},0)).$cof->{pack_f};
+  my $pack1f = "@".packsize($cof->{pack_i}).$cof->{pack_f};
   my $size1  = $cof->{size1} // ($cof->{size1}=$r1->size);
   my $size2  = $cof->{size2} // ($cof->{size2}=$r2->size);
   my $groupby = $opts{groupby};

@@ -153,10 +153,11 @@ sub setFilters {
   $pf->{filter_store} = packFilterStore($packfmt);
   if (!defined($pf->{reclen}) && defined($pf->{filter_store})) {
     ##-- guess record length from pack filter output
-    use bytes;
+    ##use bytes; ##-- deprecated in perl v5.18.2
     no warnings;
     local $_ = 0;
     $pf->{filter_store}->();
+    utf8::encode($_) if (utf8::is_utf8($_));
     $pf->{reclen} = length($_);
   }
   return $pf;

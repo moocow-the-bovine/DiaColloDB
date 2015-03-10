@@ -5,7 +5,7 @@
 
 package DiaColloDB::Unigrams;
 use DiaColloDB::PackedFile;
-use DiaColloDB::Utils qw(:sort :env :run);
+use DiaColloDB::Utils qw(:sort :env :run :pack);
 use Fcntl qw(:seek);
 use strict;
 
@@ -168,7 +168,7 @@ sub union {
 ##  + %opts:
 ##     groupby => \&gbsub,  ##-- key-extractor $key2 = $gbsub->($i2)
 sub profile {
-  use bytes;
+  #use bytes; ##-- deprecated in perl v5.18.2
   my ($ug,$ids,%opts) = @_;
   $ids   = [$ids] if (!UNIVERSAL::isa($ids,'ARRAY'));
 

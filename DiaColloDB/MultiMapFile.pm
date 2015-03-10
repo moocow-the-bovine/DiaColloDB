@@ -6,7 +6,7 @@
 package DiaColloDB::MultiMapFile;
 use DiaColloDB::Logger;
 use DiaColloDB::Persistent;
-use DiaColloDB::Utils qw(:fcntl :json);
+use DiaColloDB::Utils qw(:fcntl :json :pack);
 use Fcntl qw(:DEFAULT :seek);
 use strict;
 
@@ -99,12 +99,12 @@ sub open {
     or $mmf->logconfess("open failed for $base.ma: $!");
   $mmf->{bfh} = fcopen("$base.mb", $flags, $mmf->{perms})
     or $mmf->logconfess("open failed for $base.mb: $!");
+  binmode($_,':raw') foreach (@$mmf{qw(afh bfh)});
 
   ##-- pack lengths
-  use bytes;
-  $mmf->{len_i} = length(pack($mmf->{pack_i},0));
-  $mmf->{len_o} = length(pack($mmf->{pack_o},0));
-  $mmf->{len_l} = length(pack($mmf->{pack_l},0));
+  $mmf->{len_i} = packsize($mmf->{pack_i});
+  $mmf->{len_o} = packsize($mmf->{pack_o});
+  $mmf->{len_l} = packsize($mmf->{pack_l});
   $mmf->{len_a} = $mmf->{len_o} + $mmf->{len_l};
 
   return $mmf;
@@ -154,7 +154,7 @@ sub flush {
   $mmf->saveHeader()
     or $mmf->logconfess("flush(): failed to store header $mmf->{base}.hdr: $!");
 
-  use bytes;
+  #use bytes; ##-- deprecated in perl v5.18.2
   my ($afh,$bfh) = @$mmf{qw(afh bfh)};
   $afh->seek(0,SEEK_SET);
   $bfh->seek(0,SEEK_SET);
@@ -191,7 +191,8 @@ sub flush {
 sub toArray {
   my $mmf = shift;
   return $mmf->{a2b} if (!$mmf->opened);
-  use bytes;
+
+  #use bytes; ##-- deprecated in perl v5.18.2
   my ($pack_l,$len_l,$pack_i,$len_i) = @$mmf{qw(pack_l len_l pack_i len_i)};
   my $bfh    = $mmf->{bfh};
   my @a2b    = qw();

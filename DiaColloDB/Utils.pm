@@ -280,9 +280,9 @@ sub csortuc_to {
 ## $len = PACKAGE::packsize($packfmt,@args)
 ##  + get pack-size for $packfmt with args @args
 sub packsize {
-  use bytes;
+  use bytes; #use bytes; ##-- deprecated in perl v5.18.2
   no warnings;
-  return length(pack($_[0],@_[1..$#_]));
+  return bytes::length(pack($_[0],@_[1..$#_]));
 }
 
 ## \&filter_sub = PACKAGE::packFilterStore($pack_template)

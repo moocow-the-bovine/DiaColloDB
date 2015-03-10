@@ -5,7 +5,7 @@
 
 package DiaColloDB::EnumFile;
 use DiaColloDB::Persistent;
-use DiaColloDB::Utils qw(:fcntl :json :regex);
+use DiaColloDB::Utils qw(:fcntl :pack :json :regex);
 use Fcntl qw(:DEFAULT :seek);
 use strict;
 
@@ -37,9 +37,9 @@ our @ISA = qw(DiaColloDB::Persistent);
 ##    loaded => $bool,     ##-- true if file data has been loaded to memory
 ##    ##
 ##    ##-- pack lengths (after open())
-##    len_i => $len_i,     ##-- bytes::length(pack($pack_i,0))
-##    len_o => $len_o,     ##-- bytes::length(pack($pack_o,0))
-##    len_l => $len_l,     ##-- bytes::length(pack($pack_l,0))
+##    len_i => $len_i,     ##-- packsize($pack_i)
+##    len_o => $len_o,     ##-- packsize($pack_o)
+##    len_l => $len_l,     ##-- packsize($pack_l)
 ##    len_sx => $len_sx,   ##-- $len_o + $len_i
 ##    ##
 ##    ##-- filehandles (after open())
@@ -115,12 +115,13 @@ sub open {
     or $enum->logconfess("open failed for $base.eix: $!");
   $enum->{sxfh} = fcopen("$base.esx", $flags, $enum->{perms})
     or $enum->logconfess("open failed for $base.esx: $!");
+  binmode($_,':raw') foreach (@$enum{qw(sfh ixfh sxfh)});
 
   ##-- pack lengths
-  use bytes;
-  $enum->{len_i} = length(pack($enum->{pack_i},0));
-  $enum->{len_o} = length(pack($enum->{pack_o},0));
-  $enum->{len_l} = length(pack($enum->{pack_l},0));
+  #use bytes; ##-- deprecated in perl v5.18.2
+  $enum->{len_i} = packsize($enum->{pack_i});
+  $enum->{len_o} = packsize($enum->{pack_o});
+  $enum->{len_l} = packsize($enum->{pack_l});
   $enum->{len_sx} = $enum->{len_o} + $enum->{len_i};
 
   ##-- flags
@@ -197,7 +198,7 @@ sub flush {
   $enum->saveHeader()
     or $enum->logconfess("flush(): failed to store header $enum->{base}.hdr: $!");
 
-  use bytes;
+  #use bytes; ##-- deprecated in perl v5.18.2
   my ($sfh,$ixfh,$sxfh) = @$enum{qw(sfh ixfh sxfh)};
   $sfh->seek(0,SEEK_SET);
   $ixfh->seek(0,SEEK_SET);
@@ -205,14 +206,17 @@ sub flush {
 
   ##-- dump $base.es, $base.eix
   my $i2s    = $enum->{i2s};
+  my $utf8   = $enum->{utf8};
   my ($pack_o,$pack_l,$len_l) = @$enum{qw(pack_o pack_l len_l)};
   my $i2off = []; ##-- >[$i] => $offset
   my $off   = 0;
   my $i     = 0;
+  my ($s);
   foreach (@$i2s) {
-    $_ //= '';
-    $sfh->print(pack("${pack_l}/A", $_))
-      or $enum->logconfess("flush(): failed to write string '$_' at offset $off to $enum->{base}.es");
+    $s = ($_ // '');
+    utf8::encode($s) if ($utf8 && utf8::is_utf8($s));
+    $sfh->print(pack("${pack_l}/A", $s))
+      or $enum->logconfess("flush(): failed to write string '$s' at offset $off to $enum->{base}.es");
     $ixfh->print(pack($pack_o,$off))
       or $enum->logconfess("flush(): failed to write ix-record for id=$i to $enum->{base}.eix");
     push(@$i2off, $off);
@@ -240,10 +244,11 @@ sub flush {
 ## I/O: memory <-> file
 
 ## \@i2s = $enum->toArray()
+##  + array items are still encoded
 sub toArray {
   my $enum = shift;
   return $enum->{i2s} if ($enum->loaded || !$enum->opened);
-  use bytes;
+  #use bytes; ##-- deprecated in perl v5.18.2
   my $pack_l = $enum->{pack_l};
   my $len_l  = $enum->{len_l};
   my $sfh    = $enum->{sfh};
@@ -573,7 +578,7 @@ sub re2i {
   }
 
   ##-- iteration a la toArray
-  #use bytes;
+  #use bytes; ##-- deprecated in perl v5.18.2
   my $pack_l = $enum->{pack_l};
   my $len_l  = $enum->{len_l};
   my $sfh    = $enum->{sfh};

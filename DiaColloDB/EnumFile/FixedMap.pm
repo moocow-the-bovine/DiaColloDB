@@ -5,7 +5,7 @@
 
 package DiaColloDB::EnumFile::FixedMap;
 use DiaColloDB::EnumFile::FixedLen;
-use DiaColloDB::Utils qw(:fcntl :json :regex);
+use DiaColloDB::Utils qw(:fcntl :json :regex :pack);
 use File::Map qw(map_handle);
 use Fcntl qw(:DEFAULT :seek);
 use strict;
@@ -38,10 +38,10 @@ our @ISA = qw(DiaColloDB::EnumFile::FixedLen);
 ##    loaded => $bool,     ##-- true if file data has been loaded to memory
 ##    ##
 ##    ##-- EnumFile: pack lengths (after open())
-##    len_i => $len_i,     ##-- bytes::length(pack($pack_i,0))
-##    #len_o => $len_o,     ##-- bytes::length(pack($pack_o,0)) ; OVERRIDE/FixedLen: unused
-##    #len_l => $len_l,     ##-- bytes::length(pack($pack_l,0)) ; OVERRIDE/FixedLen: unused
-##    len_s => $len_s,     ##-- bytes::length(pack($pack_s,0)); OVERRIDE/FixedLen: new
+##    len_i => $len_i,     ##-- packsize($pack_i)
+##    #len_o => $len_o,     ##-- packsize($pack_o) ; OVERRIDE/FixedLen: unused
+##    #len_l => $len_l,     ##-- packsize($pack_l) ; OVERRIDE/FixedLen: unused
+##    len_s => $len_s,     ##-- packsize($pack_s); OVERRIDE/FixedLen: new
 ##    len_sx => $len_sx,   ##-- $len_s + $len_i ; OVERRIDE/FixedLen: new value
 ##    ##
 ##    ##-- EnumFile: filehandles (after open())
@@ -208,7 +208,6 @@ sub s2i {
 ##  + gets indices for all (packed) strings matching $regex
 ##  + if $pack_s is specified, is will be used to unpack strings (default=$enum->{pack_s}), only the first unpacked element will be tested
 sub re2i {
-  use bytes;
   my ($enum,$re,$pack_s) = @_;
   $re = regex($re) if (!ref($re));
 
