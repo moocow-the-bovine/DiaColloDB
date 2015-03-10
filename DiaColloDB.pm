@@ -1281,7 +1281,7 @@ sub profile {
   my ($logProfile,$xenum) = @$coldb{qw(logProfile xenum)};
   my $date    = $opts{date}  // '';
   my $slice   = $opts{slice} // 1;
-  my $groupby = $opts{groupby} || $coldb->attrs;
+  my $groupby = $opts{groupby} || [@{$coldb->attrs}];
   my $score   = $opts{score} // 'f';
   my $eps     = $opts{eps} // 0;
   my $kbest   = $opts{kbest} // -1;
@@ -1295,7 +1295,7 @@ sub profile {
   my $adata = $coldb->attrData($attrs);
   my ($ac);
   foreach $ac (@$adata) {
-    $ac->{req} = (map {defined($opts{$_}) ? $opts{$_} : qw()} @{$ATTR_RALIAS{$ac->{a}}})[0] // '';
+    $ac->{req} = (map {defined($opts{$_}) ? $opts{$_} : qw()} @{$ATTR_RALIAS{$ac->{a}}//[$ac->{a}]})[0] // '';
   }
 
   ##-- variables: having: TODO
@@ -1405,7 +1405,7 @@ sub compare {
 
   ##-- common variables
   my $logProfile = $coldb->{logProfile};
-  my $groupby    = $coldb->groupby($opts{groupby} || $coldb->attrs);
+  my $groupby    = $coldb->groupby($opts{groupby} || [@{$coldb->attrs}]);
   foreach my $a (@{$coldb->attrs},qw(date slice)) {
     $opts{"a$a"} = ((map {defined($opts{"a$_"}) ? $opts{"a$_"} : qw()} @{$ATTR_RALIAS{$a}}),
 		    (map {defined($opts{$_})    ? $opts{$_}    : qw()} @{$ATTR_RALIAS{$a}}),
