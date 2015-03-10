@@ -110,6 +110,7 @@ sub churn_hash {
   $enum->info("churning $enum->{base}.* -> $outbase.* via hash");
   $enum->load();
   my $s2i = $enum->{s2i};
+  delete @$s2i{grep {($s2i->{$_}//'') eq ''} keys %$s2i}; ##-- simulate missing entries
   my $e2  = $enum->new->fromHash($s2i);
   $e2->save($outbase)
     or die("$0: failed to save to '$outbase': $!");
