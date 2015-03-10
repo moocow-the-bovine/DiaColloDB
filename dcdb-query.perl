@@ -28,16 +28,16 @@ our $http_user  = undef;
 our $diff = undef;
 our $rel  = 'cof';
 our %query = (
-	      lemma =>'',	##-- selected lemma(ta), common
-	      date  =>undef,    ##-- selected date(s), common
+	      query =>'',	##-- target query, common
+	      date  =>undef,    ##-- target date(s), common
 	      slice =>1,        ##-- date slice, common
 	      ##
-	      #alemma=>'',	##-- selected lemma(ta), arg1
-	      adate  =>undef,	##-- selected date(s), arg1
+	      #aquery=>'',	##-- target query(ta), arg1
+	      adate  =>undef,	##-- target date(s), arg1
 	      aslice =>undef,	##-- date slice, arg1
 	      ##
-	      blemma =>'',	##-- selected lemma(ta), arg2
-	      bdate  =>undef,	##-- selected date(s), arg2
+	      bquery =>'',	##-- target query, arg2
+	      bdate  =>undef,	##-- target date(s), arg2
 	      bslice =>undef,	##-- date slice, arg2
 	      ##
 	      groupby=>'l',     ##-- result aggregation (empty:all available attributes, no restrictions)
@@ -101,7 +101,7 @@ GetOptions(##-- general
 
 pod2usage({-exitval=>0,-verbose=>0}) if ($help);
 pod2usage({-exitval=>1,-verbose=>0,-msg=>"$prog: ERROR: no DBURL specified!"}) if (@ARGV<1);
-pod2usage({-exitval=>1,-verbose=>0,-msg=>"$prog: ERROR: no LEMMA1 specified!"}) if (@ARGV<2);
+pod2usage({-exitval=>1,-verbose=>0,-msg=>"$prog: ERROR: no QUERY specified!"}) if (@ARGV<2);
 
 if ($version) {
   print STDERR "$prog version $DiaColloDB::VERSION by Bryan Jurish\n";
@@ -143,12 +143,12 @@ die("$prog: failed to create new DiaColloDB::Client object for $dburl: $!") if (
 ##-- client query
 do { utf8::decode($_) if (!utf8::is_utf8($_)) } foreach (@ARGV);
 $diff //= @ARGV > 1;
-$query{lemma}  = shift;
-$query{blemma} = @ARGV ? shift : $query{lemma};
+$query{query}  = shift;
+$query{bquery} = @ARGV ? shift : $query{query};
 $rel  = "d$rel" if ($diff);
 my $timer = DiaColloDB::Timer->start();
 my $mp = $cli->query($rel, %query)
-  or die("$prog: query() failed for relation '$rel', lemma(s) '$query{lemma}'".($diff ? " - '$query{blemma}'" : '').": $cli->{error}");
+  or die("$prog: query() failed for relation '$rel', query '$query{query}'".($diff ? " - '$query{bquery}'" : '').": $cli->{error}");
 
 ##-- dump stringified query
 if ($outfmt eq 'text') {

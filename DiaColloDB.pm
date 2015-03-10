@@ -96,7 +96,7 @@ our $MMCLASS = 'DiaColloDB::MultiMapFile';
 ##    cfmin => $cfmin,    ##-- minimum co-occurrence frequency for Cofreqs (default=2)
 ##    keeptmp => $bool,   ##-- keep temporary files? (default=0)
 ##    ##
-##    ##-- filtering
+##    ##-- source filtering (for create())
 ##    pgood  => $regex,   ##-- positive filter regex for part-of-speech tags
 ##    pbad   => $regex,   ##-- negative filter regex for part-of-speech tags
 ##    wgood  => $regex,   ##-- positive filter regex for word text
@@ -112,6 +112,9 @@ our $MMCLASS = 'DiaColloDB::MultiMapFile';
 ##    logExport => $level,      ##-- log-level for export messages (default='info')
 ##    logProfile => $level,     ##-- log-level for verbose profiling messages (default='trace')
 ##    logRequest => $level,     ##-- log-level for request-level profiling messages (default='debug')
+##    ##
+##    ##-- runtime limits
+##    maxExpand => $size,       ##-- maximum number of elements in query expansions (default=65535)
 ##    ##
 ##    ##-- attribute data
 ##    ${a}enum => $aenum,   ##-- attribute enum: $aenum : ($dbdir/${a}_enum.*) : $astr<=>$ai : A*<=>N
@@ -163,6 +166,9 @@ sub new {
 		      logExport => 'info',
 		      logProfile => 'trace',
 		      logRequest => 'debug',
+
+		      ##-- limits
+		      maxExpand => 65535,
 
 		      ##-- administrivia
 		      version => "$VERSION",
@@ -1149,12 +1155,16 @@ sub xidsByDate {
 ## \@areqs = $coldb->parseRequest("$attr1:$val1, ...", %opts)
 ##   + guts for parsing user target and groupby requests
 ##   + returns an ARRAY-ref [[$attr1,$val1], ...]
+##   + each value $vali is empty or undef (all values), a |-separated LIST, or a /REGEX/
+##   + backslash-escapes in $attr, $val are allowed (but may have to be doubled)
 ##   + %opts:
 ##     warn  => $level,       ##-- log-level for unknown attributes (default: 'warn')
 ##     logas => $reqtype,     ##-- request type for warnings
+##     default => $attr,      ##-- default attribute (for query requests)
 sub parseRequest {
   my ($coldb,$req,%opts) = @_;
   my $wlevel = $opts{warn} // 'warn';
+  my $default = $opts{default};
 
   ##-- parse into attribute-local requests
   my $areqs = (UNIVERSAL::isa($req,'ARRAY') ? [@$req]
@@ -1170,9 +1180,11 @@ sub parseRequest {
       $_ = [%$_];
       next;
     }
-    ($a,$areq) = m{^((?:[^\s\,\:\=]|\\.)+)(?:[\:\=]((?:[^\s\,]|\\.)*))?$} ? ($1,$2) : ($_,undef);
+    ($a,$areq) = m{^((?:[^\s\,\:\=]|\\.)*)(?:[\:\=]((?:[^\s\,]|\\.)*))?$} ? ($1,$2) : ($_,undef);
     $a    =~ s/\\(.)/$1/g;
     $areq =~ s/\\(.)/$1/g if (defined($areq));
+    ($a,$areq) = ($default,$a) if ($default && !defined($areq));
+    $a    = $default if ($a eq '');
     $_ = [$a,$areq];
   }
 
@@ -1191,9 +1203,7 @@ sub parseRequest {
 
 ## \%groupby = $coldb->groupby($groupby_request, %opts)
 ## \%groupby = $coldb->groupby(\%groupby,        %opts)
-##  + $grouby_request: ARRAY-ref or space-separated list of attribute requests (default=all attributes)
-##  + each attribute-request is an ARRAY-ref [$attr,$ahaving] or a string "${attr}=${ahaving}"
-##  + each having-request $ahaving is empty or undef (all values), a |-separated LIST or a /REGEX/
+##  + $grouby_request : see parseRequest()
 ##  + returns a HASH-ref:
 ##    (
 ##     req => $request,    ##-- save request
@@ -1203,7 +1213,7 @@ sub parseRequest {
 ##     attrs => \@attrs,   ##-- like $coldb->attrs($groupby_request), modulo "having" parts
 ##     titles => \@titles, ##-- like map {$coldb->attrTitle($_)} @attrs
 ##    )
-### + %opts:
+##  + %opts:
 ##     warn => $level,   ##-- log-level for unknown attributes (default: 'warn')
 sub groupby {
   my ($coldb,$gbreq,%opts) = @_;
@@ -1240,7 +1250,7 @@ sub groupby {
     ##-- group-by code: with having-filters
     $gbcode = (''
 	       .qq{ \@gi=unpack('$gbpack',\$xenum->i2s(\$_[0]));}
-	       .qq{ return undef if (}.join(' || ', map {"!exists(\$gbids[$_]{\$gi[$_]}"} grep {defined($gbids[$_])} (0..$#gbids)).qq{));}
+	       .qq{ return undef if (}.join(' || ', map {"!exists(\$gbids[$_]{\$gi[$_]})"} grep {defined($gbids[$_])} (0..$#gbids)).qq{);}
 	       .qq{ return join("\t",\@gi);}
 	      );
   }
@@ -1279,7 +1289,7 @@ sub groupby {
 ##  + %opts:
 ##    (
 ##     ##-- selection parameters
-##     $attrOrAlias => $value,    ##-- string or array or regex "/REGEX/[gi]*"        : at least one REQUIRED (e.g. lemma=>$lemma)
+##     query => $query,           ##-- target request ATTR:REQ...
 ##     date  => $date1,           ##-- string or array or range "MIN-MAX" (inclusive) : default=all
 ##     ##
 ##     ##-- aggregation parameters
@@ -1300,6 +1310,7 @@ sub profile {
 
   ##-- common variables
   my ($logProfile,$xenum) = @$coldb{qw(logProfile xenum)};
+  my $query   = (grep {defined($_)} @opts{qw(query q lemma lem l)})[0] // '';
   my $date    = $opts{date}  // '';
   my $slice   = $opts{slice} // 1;
   my $groupby = $opts{groupby} || [@{$coldb->attrs}];
@@ -1311,21 +1322,22 @@ sub profile {
   my $fill    = $opts{fill} // 0;
 
   ##-- variables: by attribute: set $ac->{req} = $USER_REQUEST
-  $groupby  = $coldb->groupby($groupby);
-  my $attrs = $coldb->attrs();
-  my $adata = $coldb->attrData($attrs);
-  my ($ac);
-  foreach $ac (@$adata) {
-    $ac->{req} = (map {defined($opts{$_}) ? $opts{$_} : qw()} @{$ATTR_RALIAS{$ac->{a}}//[$ac->{a}]})[0] // '';
+  $groupby   = $coldb->groupby($groupby);
+  my $attrs  = $coldb->attrs();
+  my $adata  = $coldb->attrData($attrs);
+  my $a2data = {map {($_->{a}=>$_)} @$adata};
+  my $areqs  = $coldb->parseRequest($query, logas=>'query', default=>$attrs->[0]);
+  foreach (@$areqs) {
+    $a2data->{$_->[0]}{req} = $_->[1];
   }
 
   ##-- debug
   $coldb->vlog($coldb->{logRequest},
 	       "profile("
 	       .join(', ',
-		     map {"$_->[0]=".($_->[1]//'')}
+		     map {"$_->[0]='".($_->[1]//'')."'"}
 		     ([rel=>$rel],
-		      (map {[$_=>$opts{$_}]} @{$coldb->attrs}),
+		      [query=>$query],
 		      [groupby=>$groupby->{req}],
 		      (map {[$_=>$opts{$_}]} qw(date slice score eps kbest cutoff)),
 		     ))
@@ -1337,8 +1349,8 @@ sub profile {
     $coldb->logwarn($coldb->{error}="profile(): unknown relation '".($rel//'-undef-')."'");
     return undef;
   }
-  if (!grep {$_->{req} ne ''} @$adata) {
-    $coldb->logwarn($coldb->{error}="profile(): at least one attribute parameter required (supported attributes: ".join(' ',@{$coldb->attrs}).")");
+  if (!@$areqs) {
+    $coldb->logwarn($coldb->{error}="profile(): no target attributes specified (supported attributes: ".join(' ',@{$coldb->attrs}).")");
     return undef;
   }
   if (!@{$groupby->{attrs}}) {
@@ -1347,7 +1359,8 @@ sub profile {
   }
 
   ##-- prepare: get target IDs (by attribute)
-  foreach $ac (grep {$_->{req} ne ''} @$adata) {
+  my ($ac);
+  foreach $ac (grep {($_->{req}//'') ne ''} @$adata) {
     $ac->{reqids} = $coldb->enumIds($ac->{enum},$ac->{req},logLevel=>$logProfile,logPrefix=>"profile(): get target $ac->{a}-values");
     if (!@{$ac->{reqids}}) {
       $coldb->logwarn($coldb->{error}="profile(): no $ac->{a}-attribute values match user query '$ac->{req}'");
@@ -1368,6 +1381,10 @@ sub profile {
     }
   }
   my $xis = [sort {$a<=>$b} keys %$xiset];
+  if ($coldb->{maxExpand}>0 && @$xis > $coldb->{maxExpand}) {
+    $coldb->logwarn("profile(): Warning: target set exceeds max expansion size (",scalar(@$xis)." > $coldb->{maxExpand}): truncating");
+    $#$xis = $coldb->{maxExpand}-1;
+  }
 
   ##-- prepare: parse and filter tuples
   $coldb->vlog($logProfile, "profile(): parse and filter target tuples (date=$date, slice=$slice, fill=$fill)");
@@ -1398,8 +1415,8 @@ sub profile {
 ##  + %opts:
 ##    (
 ##     ##-- selection parameters
-##     (a|b)?$attrOrAlias => $val,  ##-- string or array or regex "/REGEX/[gi]*" , a:arg1, b:arg2, '':default
-##     (a|b)?date  => $date1,           ##-- string or array or range "MIN-MAX" (inclusive) : default=all
+##     (a|b)?query => $query,       ##-- target query as for parseRequest()
+##     (a|b)?date  => $date1,       ##-- string or array or range "MIN-MAX" (inclusive) : default=all
 ##     ##
 ##     ##-- aggregation parameters
 ##     groupby     => $groupby,     ##-- string or array "ATTR1[:HAVING1] ...": default=$coldb->attrs; see groupby() method
@@ -1421,7 +1438,12 @@ sub compare {
   ##-- common variables
   my $logProfile = $coldb->{logProfile};
   my $groupby    = $coldb->groupby($opts{groupby} || [@{$coldb->attrs}]);
-  foreach my $a (@{$coldb->attrs},qw(date slice)) {
+  foreach my $ab (qw(a b)) {
+    $opts{"${ab}query"} = ((grep {defined($_)} @opts{map {"${ab}$_"} qw(query q lemma lem l)}),
+			   (grep {defined($_)} @opts{qw(query q lemma lem l)})
+			  )[0]//'';
+  }
+  foreach my $a (qw(date slice)) {
     $opts{"a$a"} = ((map {defined($opts{"a$_"}) ? $opts{"a$_"} : qw()} @{$ATTR_RALIAS{$a}}),
 		    (map {defined($opts{$_})    ? $opts{$_}    : qw()} @{$ATTR_RALIAS{$a}}),
 		   )[0]//'';
@@ -1430,8 +1452,8 @@ sub compare {
 		   )[0]//'';
   }
   delete @opts{keys %ATTR_ALIAS};
-  my %aopts = map {($_=>$opts{"a$_"})} (@{$coldb->attrs},qw(date slice));
-  my %bopts = map {($_=>$opts{"b$_"})} (@{$coldb->attrs},qw(date slice));
+  my %aopts = map {($_=>$opts{"a$_"})} (qw(query date slice));
+  my %bopts = map {($_=>$opts{"b$_"})} (qw(query date slice));
   my %popts = (kbest=>-1,cutoff=>'',strings=>0,fill=>1, groupby=>$groupby);
 
   ##-- debug
@@ -1440,8 +1462,8 @@ sub compare {
 	       .join(', ',
 		     map {"$_->[0]='".($_->[1]//'')."'"}
 		     ([rel=>$rel],
-		      (map {["a$_"=>$opts{"a$_"}]} (@{$coldb->attrs},qw(date slice))),
-		      (map {["b$_"=>$opts{"b$_"}]} (@{$coldb->attrs},qw(date slice))),
+		      (map {["a$_"=>$opts{"a$_"}]} (qw(query date slice))),
+		      (map {["b$_"=>$opts{"b$_"}]} (qw(query date slice))),
 		      [groupby=>$groupby->{req}],
 		      (map {[$_=>$opts{$_}]} qw(score eps kbest cutoff)),
 		     ))
