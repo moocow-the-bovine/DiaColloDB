@@ -1480,7 +1480,7 @@ sub compare {
   my ($pa,$pb,%pkeys);
   foreach (@$ppairs) {
     ($pa,$pb) = @$_;
-    %pkeys = map {($_=>undef)} (@{$pa->which(%trim)}, @{$pb->which(%trim)});
+    %pkeys = map {($_=>undef)} (($pa ? @{$pa->which(%trim)} : qw()), ($pb ? @{$pb->which(%trim)} : qw()));
     $pa->trim(keep=>\%pkeys);
     $pb->trim(keep=>\%pkeys);
   }
