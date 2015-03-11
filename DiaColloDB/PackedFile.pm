@@ -477,7 +477,8 @@ sub loadTextFh {
 ##==============================================================================
 ## API: tie interface
 
-## $tied = >TIEARRAY($class, $file, $flags, %opts)
+## $tied = tie(@array, $class, $file, $flags, %opts)
+## $tied = TIEARRAY($class, $file, $flags, %opts)
 sub TIEARRAY {
   my ($that,$file,$flags,%opts) = @_;
   $flags //= 'r';

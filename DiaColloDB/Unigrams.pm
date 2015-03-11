@@ -151,6 +151,7 @@ sub union {
   my ($pair,$pug,$pdata,$pi2u,$pxi);
   foreach $pair (@$pairs) {
     ($pug,$pi2u) = @$pair;
+    $pi2u  = $pi2u->toArray() if (UNIVERSAL::can($pi2u,'toArray'));
     $pdata = $pug->toArray();
     $pxi   = 0;
     foreach (@$pdata) {

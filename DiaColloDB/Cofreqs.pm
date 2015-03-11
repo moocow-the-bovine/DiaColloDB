@@ -441,6 +441,7 @@ sub create {
 ##  + merge multiple unigram unigram indices from \@pairs into new object
 ##  + @pairs : array of pairs ([$cof,\@xi2u],...)
 ##    of unigram-objects $cof and tuple-id maps \@xi2u for $cof
+##    - \@xi2u may also be a mapping object supporting a toArray() method
 ##  + %opts: clobber %$cof
 ##  + implicitly flushes the new index
 sub union {
@@ -462,6 +463,7 @@ sub union {
   my $pairi=0;
   foreach $pair (@$pairs) {
     ($pcof,$pi2u) = @$pair;
+    $pi2u         = $pi2u->toArray() if (UNIVERSAL::can($pi2u,'toArray'));
     $pcof->saveTextFh($tmpfh, i2s=>sub {$pi2u->[$_[0]]})
       or $cof->logconfess("union(): failed to extract pairs for argument $pairi");
     ++$pairi;
@@ -488,7 +490,7 @@ sub union {
     or $cof->logconfess("union(): failed to save header: $!");
 
   ##-- unlink temp file
-  unlink($tmpfile) if (!$cof->{keeptmp});
+  CORE::unlink($tmpfile) if (!$cof->{keeptmp});
 
   return $cof;
 }

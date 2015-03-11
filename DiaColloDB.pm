@@ -637,7 +637,7 @@ sub create {
   $coldb->vlog($coldb->{logCreate}, "create(): DB $dbdir created.");
 
   ##-- cleanup
-  unlink($tokfile) if (!$coldb->{keeptmp});
+  CORE::unlink($tokfile) if (!$coldb->{keeptmp});
 
   return $coldb;
 }
@@ -647,7 +647,7 @@ sub create {
 
 ## $coldb = $CLASS_OR_OBJECT->union(\@coldbs_or_dbdirs,%opts)
 ##  + populates $coldb as union over @coldbs_or_dbdirs
-##  + clobbers argument dbs {li2u}, {xi2u}
+##  + clobbers argument dbs {_union_${a}i2u}, {_union_xi2u}, {_union_argi}
 BEGIN { *merge = \&union; }
 sub union {
   my ($coldb,$args,%opts) = @_;
@@ -669,16 +669,19 @@ sub union {
 
   ##-- attributes
   my $attrs = [map {$coldb->attrName($_)} @{$coldb->attrs(undef,[])}];
+  my ($db,$dba);
   if (!@$attrs) {
-    ##-- use union of @dbargs attrs
-    my %akeys = qw();
-    foreach (map {@{$_->attrs(undef,['l'])}} @dbargs) {
-      next if (exists($akeys{$_}));
-      $akeys{$_}=undef;
-      push(@$attrs, $_);
+    ##-- use intersection of @dbargs attrs
+    my @dbakeys = map {$db=$_; scalar {map {($_=>undef)} @{$db->attrs}}} @dbargs;
+    my %akeys   = qw();
+    foreach $dba (map {@{$_->attrs}} @dbargs) {
+      next if (exists($akeys{$dba}) || grep {!exists($_->{$dba})} @dbakeys);
+      $akeys{$dba}=undef;
+      push(@$attrs, $dba);
     }
   }
   $coldb->{attrs} = $attrs;
+  $coldb->logconfess("union(): no attributes defined and intersection over db attributes is empty!") if (!@$attrs);
 
   ##-- pack-formats
   my $pack_id    = $coldb->{pack_id};
@@ -694,19 +697,26 @@ sub union {
   ##-- common variables: enums
   my %efopts = (flags=>$flags, pack_i=>$coldb->{pack_id}, pack_o=>$coldb->{pack_off}, pack_l=>$coldb->{pack_len});
 
-  ##-- union: attribute enums; also sets $db->{"${a}i2u"} for each attribute $a
-  my ($db,$ac,$a,$aenum,$as2i);
+  ##-- union: attribute enums; also sets $db->{"_union_${a}i2u"} for each attribute $a
+  ##   + $db->{"${a}i2u"} is a PackedFile temporary in $dbdir/"${a}_i2u.tmp${argi}"
+  my ($ac,$a,$aenum,$as2i,$argi);
   my $adata = $coldb->attrData($attrs);
   foreach $ac (@$adata) {
     $coldb->vlog($coldb->{logCreate}, "union(): creating attribute enum $dbdir/$ac->{a}_enum.*");
     $a     = $ac->{a};
     $aenum = $coldb->{"${a}enum"} = $ac->{enum} = $ECLASS->new(%efopts);
     $as2i  = $aenum->{s2i};
-    foreach $db (@dbargs) {
+    foreach $argi (0..$#dbargs) {
       ##-- enum union: guts
+      $db        = $dbargs[$argi];
       my $dbenum = $db->{"${a}enum"};
       $aenum->addEnum($dbenum);
-      $db->{"${a}i2u"} = [ @$as2i{@{$dbenum->toArray}} ];
+      $db->{"_union_argi"}    = $argi;
+      $db->{"_union_${a}i2u"} = (DiaColloDB::PackedFile
+				 ->new(file=>"$dbdir/${a}_i2u.tmp${argi}", flags=>'rw', packas=>$coldb->{pack_id})
+				 ->fromArray( [@$as2i{@{$dbenum->toArray}}] ))
+	or $coldb->logconfess("union(): failed to create temporary $dbdir/${a}_i2u.tmp${argi}");
+      $db->{"_union_${a}i2u"}->flush();
     }
     $aenum->save("$dbdir/${a}_enum")
       or $coldb->logconfess("union(): failed to save attribute enum $dbdir/${a}_enum: $!");
@@ -729,8 +739,9 @@ sub union {
     my $db_pack_x  = $db->{pack_x};
     my $dbattrs = $db->{attrs};
     my %a2dbxi  = map { ($dbattrs->[$_]=>$_) } (0..$#$dbattrs);
-    my %a2i2u   = map { ($_=>$db->{"${_}i2u"}) } @$attrs;
-    my $xi2u    = $db->{xi2u} = [];
+    my %a2i2u = map { ($_=>$db->{"_union_${_}i2u"}) } @$attrs;
+    $argi       = $db->{_union_argi};
+    my $xi2u    = $db->{_union_xi2u} = DiaColloDB::PackedFile->new(file=>"$dbdir/x_i2u.tmp${argi}", flags=>'rw', packas=>$coldb->{pack_id});
     my $dbxi    = 0;
     my (@dbx,@ux,$uxs,$uxi);
     foreach (@{$db->{xenum}->toArray}) {
@@ -738,13 +749,15 @@ sub union {
       $uxs = pack($pack_x,
 		  (map  {
 		    (exists($a2dbxi{$_})
-		     ? $a2i2u{$_}[$dbx[$a2dbxi{$_}]//0]//0
-		     : $a2i2u{$_}[0])
+		     ? $a2i2u{$_}->fetch($dbx[$a2dbxi{$_}]//0)//0
+		     : $a2i2u{$_}->fetch(0)//0)
 		  } @$attrs),
 		  $dbx[$#dbx]//0);
       $uxi = $xs2i->{$uxs} = $nx++ if (!defined($uxi=$xs2i->{$uxs}));
-      $xi2u->[$dbxi++] = $uxi;
+      $xi2u->store($dbxi++, $uxi);
     }
+    $xi2u->flush()
+      or $coldb->logconfess("could not flush temporary $dbdir/x_i2u.tmp${argi}");
   }
   $xenum->fromHash($xs2i);
   $xenum->save("$dbdir/xenum")
@@ -755,11 +768,14 @@ sub union {
     $coldb->create_xmap("$dbdir/$_->{a}_2x",$xs2i,$_->{pack_x},"attribute expansion multimap");
   }
 
+  ##-- intermediate cleanup: xs2i
+  undef $xs2i;
+
   ##-- unigrams: populate
   $coldb->vlog($coldb->{logCreate}, "union(): creating tuple unigram index $dbdir/xf.*");
   $coldb->{xf} = DiaColloDB::Unigrams->new(file=>"$dbdir/xf.dba", flags=>$flags, packas=>$pack_f)
     or $coldb->logconfess("union(): could not create $dbdir/xf.*: $!");
-  $coldb->{xf}->union([map {[@$_{qw(xf xi2u)}]} @dbargs])
+  $coldb->{xf}->union([map {[@$_{qw(xf _union_xi2u)}]} @dbargs])
     or $coldb->logconfess("union(): could not populate unigram index $dbdir/xf.*: $!");
 
   ##-- co-frequencies: populate
@@ -770,11 +786,20 @@ sub union {
 					   keeptmp=>$coldb->{keeptmp},
 					  )
     or $coldb->logconfess("create(): failed to open co-frequency index $dbdir/cof.*: $!");
-  $coldb->{cof}->union([map {[@$_{qw(cof xi2u)}]} @dbargs])
+  $coldb->{cof}->union([map {[@$_{qw(cof _union_xi2u)}]} @dbargs])
     or $coldb->logconfess("union(): could not populate co-frequency index $dbdir/cof.*: $!");
 
   ##-- cleanup
-  delete @$_{('xi2u', map {"${_}i2u"} @$attrs)} foreach (@dbargs);
+  if (!$coldb->{keeptmp}) {
+    $coldb->vlog($coldb->{logCreate}, "union(): cleaning up temporary files");
+    foreach $db (@dbargs) {
+      foreach my $pfkey ('_union_xi2u', map {"_union_${_}i2u"} @$attrs) {
+	$db->{$pfkey}->unlink() if ($db->{$pfkey}->can('unlink'));
+	delete $db->{$pfkey};
+      }
+      delete $db->{_union_argi};
+    }
+  }
 
   ##-- save header
   $coldb->saveHeader()

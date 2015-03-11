@@ -50,6 +50,16 @@ sub timestamp {
   return DiaColloDB::Utils::timestamp($_[0]->mtime);
 }
 
+## $bool = $obj->unlink()
+##  + unlinks disk files
+##  + implcitly calls $obj->close() if available
+sub unlink {
+  my $obj   = shift;
+  my @files = $obj->diskFiles();
+  $obj->close() if ($obj->can('close'));
+  CORE::unlink(grep {-e $_} @files);
+}
+
 ##==============================================================================
 ## I/O
 
