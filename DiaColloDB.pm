@@ -1192,10 +1192,12 @@ sub parseRequest {
   @$areqs = grep {
     $_->[0] = $coldb->attrName($_->[0]);
     if (!$coldb->hasAttr($_->[0])) {
+      $coldb->logconfess($coldb->{error}="parseRequest(): unsupported attribute '$_->[0]' in ".($opts{logas}//'')." request") if (!$opts{relax});
       $coldb->vlog($wlevel, "parseRequest(): skipping unsupported attribute '$_->[0]' in ".($opts{logas}//'')." request");
-      0;
+      0
+    } else {
+      1
     }
-    1;
   } @$areqs;
 
   return $areqs;
@@ -1214,7 +1216,8 @@ sub parseRequest {
 ##     titles => \@titles, ##-- like map {$coldb->attrTitle($_)} @attrs
 ##    )
 ##  + %opts:
-##     warn => $level,   ##-- log-level for unknown attributes (default: 'warn')
+##     warn  => $level,    ##-- log-level for unknown attributes (default: 'warn')
+##     relax => $bool,     ##-- allow unsupported attributes (default=0)
 sub groupby {
   my ($coldb,$gbreq,%opts) = @_;
   return $gbreq if (UNIVERSAL::isa($gbreq,'HASH'));
@@ -1224,7 +1227,7 @@ sub groupby {
   my $gb = { req=>$gbreq };
 
   ##-- get attribute requests
-  my $gbareqs = $gb->{areqs} = $coldb->parseRequest($gb->{req}, warn=>$wlevel, logas=>'groupby');
+  my $gbareqs = $gb->{areqs} = $coldb->parseRequest($gb->{req}, %opts,logas=>'groupby');
 
   ##-- get attribute names (compat)
   my $gbattrs = $gb->{attrs} = [map {$_->[0]} @$gbareqs];
@@ -1232,7 +1235,7 @@ sub groupby {
   ##-- get attribute titles
   $gb->{titles} = [map {$coldb->attrTitle($_)} @$gbattrs];
 
-  ##-- get groupby-sub :: TODO: CONTINUE HERE with 'having' filters
+  ##-- get groupby-sub
   my $xenum = $coldb->{xenum};
   my $gbpack = join('',map {$coldb->{"pack_x$_"}} @$gbattrs);
   my ($ids);
@@ -1259,7 +1262,7 @@ sub groupby {
     $gbcode = qq{join("\t",unpack('$gbpack',\$xenum->i2s(\$_[0])))};
   }
   my $gbsub  = eval qq{sub {$gbcode}};
-  $coldb->vlog($wlevel, "groupby(): could not compile aggregation code sub {$gbcode}: $@") if ($@ || !$gbsub);
+  $coldb->logconfess($coldb->{error}="groupby(): could not compile aggregation code sub {$gbcode}: $@") if (!$gbsub);
   $@='';
   $gb->{x2g} = $gbsub;
 
@@ -1273,7 +1276,7 @@ sub groupby {
 		   .q{join("\t",}.join(', ', map {"\$gbe[$_]->i2s(\$gi[$_])"} (0..$#gbe)).q{)}
 		    );
     my $g2s = eval qq{sub {$g2scode}};
-    $coldb->vlog($wlevel, "groupby(): could not compile stringification code sub {$g2scode}: $@") if ($@ || !$g2s);
+    $coldb->logconfess($coldb->{error}="groupby(): could not compile stringification code sub {$g2scode}: $@") if (!$g2s);
     $@='';
     $gb->{g2s} = $g2s;
   }
