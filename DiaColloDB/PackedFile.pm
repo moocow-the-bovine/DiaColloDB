@@ -385,6 +385,19 @@ sub bsearch {
   return undef;
 }
 
+##==============================================================================
+## distk usage, timestamp, etc
+##  + see DiaColloDB::Persistent
+
+## @files = $obj->diskFiles()
+##  + returns disk storage files, used by du() and timestamp()
+##  + default implementation returns $obj->{file} or glob("$obj->{base}*")
+sub diskFiles {
+  my $obj = shift;
+  return ($obj->{file}, $obj->{file}.".hdr") if (ref($obj) && defined($obj->{file}));
+  return qw();
+}
+
 
 ##==============================================================================
 ## I/O

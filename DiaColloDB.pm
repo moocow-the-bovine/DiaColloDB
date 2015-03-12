@@ -312,7 +312,7 @@ sub dbkeys {
 sub close {
   my $coldb = shift;
   return $coldb if (!ref($coldb));
-  $coldb->vlog($coldb->{logOpen}, "close()");
+  $coldb->vlog($coldb->{logOpen}, "close(".($coldb->{dbdir}//'').")");
   foreach ($coldb->dbkeys) {
     next if (!defined($coldb->{$_}));
     return undef if (!$coldb->{$_}->close());
@@ -714,7 +714,7 @@ sub union {
       $db->{"_union_argi"}    = $argi;
       $db->{"_union_${a}i2u"} = (DiaColloDB::PackedFile
 				 ->new(file=>"$dbdir/${a}_i2u.tmp${argi}", flags=>'rw', packas=>$coldb->{pack_id})
-				 ->fromArray( [@$as2i{@{$dbenum->toArray}}] ))
+				 ->fromArray( [@$as2i{$dbenum ? @{$dbenum->toArray} : ''}] ))
 	or $coldb->logconfess("union(): failed to create temporary $dbdir/${a}_i2u.tmp${argi}");
       $db->{"_union_${a}i2u"}->flush();
     }
@@ -1266,7 +1266,7 @@ sub groupby {
   my ($ids);
   my @gbids  = (
 		map {
-		  (($_->[1]//'') ne ''
+		  (($_->[1]//'*') ne '*'
 		   ? {
 		      map {($_=>undef)}
 		      @{$coldb->enumIds($coldb->{"$_->[0]enum"}, $_->[1], logLevel=>$coldb->{logProfile}, logPrefix=>"groupby(): fetch filter ids: $_->[0]")}

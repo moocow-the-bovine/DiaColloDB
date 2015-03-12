@@ -96,7 +96,7 @@ if ($union) {
     or die("$prog: DiaColloDB::union() failed: $!");
 } else {
   ##-- !union: create from corpus
-  $coldb->create($corpus, dbdir=>$dbdir, flags=>'rw')
+  $coldb->create($corpus, dbdir=>$dbdir, flags=>'rw', attrs=>($coldb{attrs}||'l,p'))
     or die("$prog: DiaColloDB::create() failed: $!");
 }
 
@@ -143,7 +143,7 @@ dcdb-create.perl - create a DiaColloDB collocation database from a corpus dump
    -bydoc               ##-- track collocations by document
 
  Indexing Options:
-   -attrs ATTRS         ##-- select index attributes (default=l)
+   -attrs ATTRS         ##-- select index attributes (default=l,p)
                         ##   known attributes: l, p, w, doc.title, ...
    -[no]keep            ##-- do/ton't keep temporary files (default=don't)
    -nofilters           ##-- disable default regex-filters
