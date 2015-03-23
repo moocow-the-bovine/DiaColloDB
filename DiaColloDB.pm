@@ -710,6 +710,7 @@ sub union {
       ##-- enum union: guts
       $db        = $dbargs[$argi];
       my $dbenum = $db->{"${a}enum"};
+      $coldb->vlog($coldb->{logCreate}, "union(): processing $dbenum->{base}.*");
       $aenum->addEnum($dbenum);
       $db->{"_union_argi"}    = $argi;
       $db->{"_union_${a}i2u"} = (DiaColloDB::PackedFile
@@ -736,6 +737,7 @@ sub union {
   my $xs2i  = $xenum->{s2i};
   my $nx    = 0;
   foreach $db (@dbargs) {
+    $coldb->vlog($coldb->{logCreate}, "union(): processing $db->{xenum}{base}.*");
     my $db_pack_x  = $db->{pack_x};
     my $dbattrs = $db->{attrs};
     my %a2dbxi  = map { ($dbattrs->[$_]=>$_) } (0..$#$dbattrs);
