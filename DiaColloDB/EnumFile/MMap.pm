@@ -225,6 +225,7 @@ sub s2i {
   if ($ilo==$ihi) {
     ##-- get sx-record @ $ilo
     ($soff,$si) = unpack($enum->{pack_o}.$enum->{pack_i}, substr($$sxbufr, $ilo*$len_sx, $len_sx));
+    return undef if (!defined($soff));
 
     ##-- get string for sx-record
     $slen = unpack($pack_l, substr($$sbufr, $soff, $len_l));

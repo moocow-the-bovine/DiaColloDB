@@ -1154,6 +1154,11 @@ sub test_tied_enum {
   }
   #print Data::Dumper->Dump([$i2s,$s2i], [qw(i2s s2i)]), "\n";
 
+  ##-- get size
+  print "--scalar(i2s)--\n";
+  my $n = scalar @$i2s;
+  print "scalar(i2s) = $n\n";
+
   ##-- dump
   print "--dump--\n";
   $e->saveTextFile('-');
