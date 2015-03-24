@@ -35,6 +35,7 @@ our @ISA = qw(DiaColloDB::Persistent);
 ##    i2s => \@i2s,        ##-- maps integers to symbols
 ##    dirty => $bool,      ##-- true if in-memory structures are not in-sync with file data
 ##    loaded => $bool,     ##-- true if file data has been loaded to memory
+##    shared => $bool,     ##-- true to avoid closing filehandles on close() or DESTROY() (default=false)
 ##    ##
 ##    ##-- pack lengths (after open())
 ##    len_i => $len_i,     ##-- packsize($pack_i)
@@ -136,9 +137,12 @@ sub close {
   if ($enum->opened && fcwrite($enum->{flags})) {
     $enum->flush() or return undef;
   }
-  !defined($enum->{sxfh}) or $enum->{sxfh}->close() or return undef;
-  !defined($enum->{ixfh}) or $enum->{ixfh}->close() or return undef;
-  !defined($enum->{sfh})  or $enum->{sfh}->close() or return undef;
+  if (!$enum->{shared}) {
+    !defined($enum->{sxfh}) or $enum->{sxfh}->close() or return undef;
+    !defined($enum->{ixfh}) or $enum->{ixfh}->close() or return undef;
+    !defined($enum->{sfh})  or $enum->{sfh}->close() or return undef;
+  }
+  delete @$enum{qw(sxfh ixfh sfh)};
   $enum->{s2i} //= {};
   $enum->{i2s} //= [];
   undef $enum->{base};
@@ -424,6 +428,10 @@ sub saveTextFh {
 ## $size = $enum->size()
 ##  + wraps {size} key
 sub size { return $_[0]{size}; }
+
+## $newsize = $enum->setsize($newsize)
+##  + wraps {size} key
+sub setsize { return $_[0]{size}=$_[1]; }
 
 ## $newsize = $enum->addSymbols(@symbols)
 ## $newsize = $enum->addSymbols(\@symbols)

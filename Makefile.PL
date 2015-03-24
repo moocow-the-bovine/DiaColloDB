@@ -11,7 +11,7 @@ WriteMakefile
    VERSION_FROM	=> 'DiaColloDB.pm',
 
    PREREQ_PM    => {
-		    'File::Path'    => undef,  ##-- make_tree, remove_path
+		    'File::Path'    => undef,  ##-- make_tree, remove_path; 2.08_01
 		    'File::Map'     => undef,  # 0.63
 		    'JSON'          => undef,  # 2.53
 		    'IPC::Run'      => undef,  # 0.94

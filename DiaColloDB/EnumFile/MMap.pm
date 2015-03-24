@@ -37,6 +37,7 @@ our @ISA = qw(DiaColloDB::EnumFile);
 ##    i2s => \@i2s,        ##-- maps integers to symbols
 ##    dirty => $bool,      ##-- true if in-memory structures are not in-sync with file data
 ##    loaded => $bool,     ##-- true if file data has been loaded to memory
+##    shared => $bool,     ##-- true to avoid closing filehandles on close() or DESTROY() (default=false)
 ##    ##
 ##    ##-- EnumFile: pack lengths (after open())
 ##    len_i => $len_i,     ##-- bytes::length(pack($pack_i,0))

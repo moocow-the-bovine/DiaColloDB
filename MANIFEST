@@ -15,6 +15,7 @@ DiaColloDB/EnumFile.pm
 DiaColloDB/EnumFile/FixedLen.pm
 DiaColloDB/EnumFile/FixedMap.pm
 DiaColloDB/EnumFile/MMap.pm
+DiaColloDB/EnumFile/Tied.pm
 DiaColloDB/Logger.pm
 DiaColloDB/MultiMapFile.pm
 DiaColloDB/PackedFile.pm

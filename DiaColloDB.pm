@@ -10,6 +10,7 @@ use DiaColloDB::EnumFile;
 use DiaColloDB::EnumFile::MMap;
 use DiaColloDB::EnumFile::FixedLen;
 use DiaColloDB::EnumFile::FixedMap;
+use DiaColloDB::EnumFile::Tied;
 use DiaColloDB::MultiMapFile;
 use DiaColloDB::PackedFile;
 use DiaColloDB::Unigrams;

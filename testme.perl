@@ -9,6 +9,7 @@ use File::Find;
 use File::Basename qw(basename);
 use Time::HiRes qw(gettimeofday tv_interval);
 use JSON;
+use Data::Dumper;
 use Benchmark qw(timethese cmpthese);
 
 ##==============================================================================
@@ -1090,7 +1091,7 @@ sub debug_enum {
   $enum->debug("enum $enum->{base} appears consistent");
   exit 0;
 }
-debug_enum(@ARGV);
+#debug_enum(@ARGV);
 
 
 sub debug_churn_enum_a {
@@ -1117,6 +1118,19 @@ sub debug_churn_enum_h {
   exit 0;
 }
 #debug_churn_enum_h(@ARGV);
+
+##==============================================================================
+## test: tied enums
+
+sub test_tied_enum {
+  my $ebase = shift || "corpus1.d/p_enum";
+
+  my ($i2s,$s2i) = DiaColloDB::EnumFile->tiepair(base=>$ebase);
+
+  print Data::Dumper->Dump([$i2s,$s2i], [qw(i2s s2i)]);
+  exit 0;
+}
+test_tied_enum(@ARGV);
 
 
 ##==============================================================================
