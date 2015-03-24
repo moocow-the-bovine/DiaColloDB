@@ -3,6 +3,9 @@
 ## Author: Bryan Jurish <moocow@cpan.org>
 ## Descript: collocation db: flat fixed-length record-oriented files: tied interface
 
+package DiaColloDB::EnumFile::Tied;
+1;
+
 package DiaColloDB::EnumFile;
 use Carp;
 use strict;
