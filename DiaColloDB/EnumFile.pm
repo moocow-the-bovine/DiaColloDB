@@ -553,6 +553,7 @@ sub s2i {
     ##-- get sx-record @ $ilo
     CORE::seek($sxfh, $ilo*$len_sx, SEEK_SET)
 	or $enum->logconfess("s2i(): seek() failed on $enum->{base}.esx for item $ilo");
+    return undef if ($sxfh->eof);
     CORE::read($sxfh, $buf, $len_sx)==$len_sx
 	or $enum->logconfess("s2i(): read() failed on $enum->{base}.esx for item $ilo");
     ($soff,$si) = unpack($enum->{pack_o}.$enum->{pack_i}, $buf);
