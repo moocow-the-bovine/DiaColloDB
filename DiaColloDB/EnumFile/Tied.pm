@@ -13,7 +13,6 @@ use strict;
 ## $enum = $CLASS->tienew(%opts,class=>$enumFileClass)
 ## $enum = $CLASS->tienew($enum)
 ##  + returns $enum if specified, otherwise a new EnumFile object for %opts
-##  + sets $enum->{shared}=1
 sub tienew {
   my $that = shift;
   my $enum;
@@ -27,7 +26,7 @@ sub tienew {
     $enum     = $class->new(%opts)
       or $that->logconfess("tienew(): could not create enum object of class '$class'");
   }
-  $enum->{shared} = 1;
+  #$enum->{shared} = 1;  ##-- refs are shared, so we should be o.k. with auto-close
   return $enum;
 }
 
@@ -85,11 +84,15 @@ sub FETCHSIZE {
 
 ## $val = $tied->STORE($index,$val)
 sub STORE {
+  ${$_[0]}->{dirty} = 1;
+  ${$_[0]}->setsize($_[1]+1) if ($_[1] >= ${$_[0]}->size);
   return ${$_[0]}->{i2s}[$_[1]] = $_[2];
 }
 
 ## $count = $tied->STORESIZE($count)
+##  + not quite safe
 sub STORESIZE {
+  ${$_[0]}->{dirty} = 1;
   return ${$_[0]}->setsize($_[1]);
 }
 
@@ -99,7 +102,7 @@ sub EXISTS {
 }
 
 ## undef = $tied->DELETE($index)
-##  + not properly supported
+##  + not properly supported; just deletes from in-memory cache
 sub DELETE {
   return delete ${$_[0]}->{i2s}[$_[1]];
 }
@@ -150,6 +153,8 @@ sub TIEHASH {
 
 ## $val = $tied->STORE($key, $value)
 sub STORE {
+  ${$_[0]}->{dirty} = 1;
+  ${$_[0]}->setsize($_[2]+1) if ($_[2] >= ${$_[0]}->size);
   return ${$_[0]}->{s2i}{$_[1]} = $_[2];
 }
 
@@ -164,19 +169,22 @@ sub FIRSTKEY {
 }
 
 ## $key = $tied->NEXTKEY($lastkey)
+##  + only works for enums without index-gaps
 sub NEXTKEY {
-  return undef if (!defined(my $i = ${$_[0]}->s2i($_[1])));
-  return ${$_[0]}->i2s($i+1);
+  my $i = ${$_[0]}->s2i($_[1]);
+  return undef if (!defined($i) || ++$i >= ${$_[0]}->size);
+  return ${$_[0]}->i2s($i);
 }
 
 ## $bool = $tied->EXISTS($key)
 sub EXISTS {
-  return defined(${$_[0]}->s2i($_[1]));
+  return ${$_[0]}->s2i($_[1]);
 }
 
 ## undef = $tied->DELETE($key)
-##  + probably buggy
+##  + not properly supported; just deletes from in-memory cache
 sub DELETE {
+  ${$_[0]}->{dirty} = 1;
   delete ${$_[0]}->{s2i}{$_[1]};
 }
 

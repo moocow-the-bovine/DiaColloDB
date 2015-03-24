@@ -123,7 +123,7 @@ sub toArray {
   my $enum = shift;
   return $enum->{i2s} if ($enum->loaded || !$enum->opened);
   my @i2s = unpack("(A[$enum->{len_s}])*", ${$enum->{ixbufr}});
-  push(@i2s, @{$enum->{i2s}[scalar(@i2s)..$#{$enum->{i2s}}]}) if ($enum->dirty);
+  push(@i2s, @{$enum->{i2s}}[scalar(@i2s)..$#{$enum->{i2s}}]) if ($enum->dirty);
   return \@i2s;
 }
 
@@ -168,6 +168,7 @@ sub toArray {
 sub i2s {
   #my ($enum,$i) = @_;
   return undef if ($_[1] >= $_[0]{size});
+#  return $s  if (defined(my $s=$_[0]{i2s}[$_[1]]));
   return substr(${$_[0]{ixbufr}}, $_[1]*$_[0]{len_s}, $_[0]{len_s});
 }
 
@@ -176,12 +177,14 @@ sub i2s {
 ##   + binary search; enum must be opened
 sub s2i {
   my ($enum,$key,$ilo,$ihi) = @_;
-  $ilo //= 0;
-  $ihi //= $enum->{size}; #(-s $enum->{sxfh}) / $enum->{len_sx};
 
   my ($sxbufr,$len_s,$len_sx) = @$enum{qw(sxbufr len_s len_sx)};
+  $ilo //= 0;
+  $ihi //= $enum->{dirty} ? (length($$sxbufr)/$len_sx) : $enum->{size};
 
   my ($imid,$s,$si);
+#  return $s if (defined($s=$enum->{s2i}{$key}));
+
   while ($ilo < $ihi) {
     $imid = ($ihi+$ilo) >> 1;
 

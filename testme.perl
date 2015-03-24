@@ -1124,10 +1124,40 @@ sub debug_churn_enum_h {
 
 sub test_tied_enum {
   my $ebase = shift || "corpus1.d/p_enum";
+  DiaColloDB->ensureLog();
 
-  my ($i2s,$s2i) = DiaColloDB::EnumFile->tiepair(base=>$ebase);
+  my ($i2s,$s2i) = DiaColloDB::EnumFile->tiepair(base=>$ebase, class=>'DiaColloDB::EnumFile::MMap');
+  print "--new; i2s~", ${tied(@$i2s)}, " ; s2i~", ${tied(%$s2i)}, "}--\n";
+  #print Data::Dumper->Dump([$i2s,$s2i], [qw(i2s s2i)]), "\n";
 
-  print Data::Dumper->Dump([$i2s,$s2i], [qw(i2s s2i)]);
+  if (0) {
+    print "--untie(i2s)--\n";
+    untie(@$i2s);
+    print Data::Dumper->Dump([$i2s,$s2i], [qw(i2s s2i)]) ,"\n";
+    ##
+    print "--untie(s2i)--\n";
+    untie(%$s2i);
+    print Data::Dumper->Dump([$i2s,$s2i], [qw(i2s s2i)]), "\n";
+  }
+
+  ##-- test data manipulation
+  my $e = ${tied(@$i2s)};
+  my $s = 'foo';
+  my $i = $e->size();
+  print "--insert($i : $s)--\n";
+  $s2i->{$s} = $i;
+  $i2s->[$i] = $s;
+  print "i2s($i)=$i2s->[$i]\n";
+  print "s2i($s)=$s2i->{$s}\n";
+  while (my ($key,$val) = each %$s2i) {
+    print "$key=$val\n";
+  }
+  #print Data::Dumper->Dump([$i2s,$s2i], [qw(i2s s2i)]), "\n";
+
+  ##-- dump
+  print "--dump--\n";
+  $e->saveTextFile('-');
+
   exit 0;
 }
 test_tied_enum(@ARGV);

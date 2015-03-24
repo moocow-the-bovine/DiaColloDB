@@ -192,7 +192,7 @@ sub toArray {
       or $enum->logconfess("toArray(): read() failed for $ixlen bytes from $enum->{base}.fix: $!");
   @i2s = unpack("(A[$enum->{len_s}])*", $ixbuf);
   undef $ixbuf;
-  push(@i2s, @{$enum->{i2s}[scalar(@i2s)..$#{$enum->{i2s}}]}) if ($enum->dirty);
+  push(@i2s, @{$enum->{i2s}}[scalar(@i2s)..$#{$enum->{i2s}}]) if ($enum->dirty);
   return \@i2s;
 }
 
@@ -245,12 +245,14 @@ sub headerKeys {
 ## Methods: lookup
 
 ## $s_or_undef = $enum->i2s($i)
-##  + enum must be opened
+##   + in-memory cache overrides file contents
 sub i2s {
   my ($enum,$i) = @_;
   return undef if ($i >= $enum->{size});
 
   my ($buf,$soff,$slen);
+  return $buf if (defined($buf=$enum->{i2s}[$i]));
+
   CORE::seek($enum->{ixfh}, $i*$enum->{len_s}, SEEK_SET)
       or $enum->logconfess("i2s(): seek() failed on $enum->{base}.fix for i=$i");
   CORE::read($enum->{ixfh},$buf,$enum->{len_s})==$enum->{len_s}
@@ -261,15 +263,17 @@ sub i2s {
 
 ## $i_or_undef = $enum->s2i($s)
 ## $i_or_undef = $enum->s2i($s, $ilo,$ihi)
-##   + binary search; enum must be opened
+##   + binary search; in-memory cache overrides file contents
 sub s2i {
   my ($enum,$key,$ilo,$ihi) = @_;
-  $ilo //= 0;
-  $ihi //= $enum->{size}; #(-s $enum->{sxfh}) / $enum->{len_sx};
 
   my ($sxfh,$len_s,$len_sx) = @$enum{qw(sxfh len_s len_sx)};
+  $ilo //= 0;
+  $ihi //= $enum->{dirty} ? ((-s $sxfh)/$len_sx) : $enum->{size};
 
   my ($imid,$buf,$s,$si);
+  return $buf if (defined($buf=$enum->{s2i}{$key}));
+
   while ($ilo < $ihi) {
     $imid = ($ihi+$ilo) >> 1;
 

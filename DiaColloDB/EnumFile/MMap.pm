@@ -141,9 +141,9 @@ sub opened {
 ## \@i2s = $enum->toArray()
 sub toArray {
   my $enum = shift;
-  return $enum->{i2s} if ($enum->loaded || !$enum->opened);
+  return $enum->{i2s}//[] if ($enum->loaded || !$enum->opened);
   my @i2s = unpack("($enum->{pack_l}/A)*", ${$enum->{sbufr}});
-  push(@i2s, @{$enum->{i2s}[scalar(@i2s)..$#{$enum->{i2s}}]}) if ($enum->dirty);
+  push(@i2s, @{$enum->{i2s}}[scalar(@i2s)..$#{$enum->{i2s}}]) if ($enum->dirty && $enum->{i2s});
   return \@i2s;
 }
 
@@ -175,14 +175,17 @@ sub toArray {
 ## Methods: lookup
 
 ## $s_or_undef = $enum->i2s($i)
-##  + enum must be opened
+##   + in-memory cache overrides file contents
 sub i2s {
   my ($enum,$i) = @_;
   return undef if ($i >= $enum->{size});
 
-  my $soff = unpack($enum->{pack_o}, substr(${$enum->{ixbufr}}, $i*$enum->{len_o}, $enum->{len_o}));
+  my $buf;
+  return $buf  if (defined($buf=$enum->{i2s}[$i]));
+
+  my $soff = unpack($enum->{pack_o}, substr(${$enum->{ixbufr}}, $i*$enum->{len_o}, $enum->{len_o})) // return undef;
   my $slen = unpack($enum->{pack_l}, substr(${$enum->{sbufr}},  $soff, $enum->{len_l}));
-  my $buf  = substr(${$enum->{sbufr}}, $soff+$enum->{len_l}, $slen);
+  $buf     = substr(${$enum->{sbufr}}, $soff+$enum->{len_l}, $slen);
   utf8::decode($buf) if ($enum->{utf8});
   return $buf;
 }
@@ -192,13 +195,15 @@ sub i2s {
 ##   + binary search; enum must be opened
 sub s2i {
   my ($enum,$key,$ilo,$ihi) = @_;
-  utf8::encode($key) if ($enum->{utf8} && utf8::is_utf8($key));
-  $ilo //= 0;
-  $ihi //= $enum->{size}; #(-s $enum->{sxfh}) / $enum->{len_sx};
 
   my ($sxbufr,$sbufr,$len_sx,$pack_o,$len_o,$pack_l,$len_l) = @$enum{qw(sxbufr sbufr len_sx pack_o len_o pack_l len_l)};
+  $ilo //= 0;
+  $ihi //= $enum->{dirty} ? (length($$sxbufr)/$len_sx) : $enum->{size};
 
   my ($imid,$buf,$soff,$slen,$si);
+  return $buf if (defined($buf=$enum->{s2i}{$key}));
+
+  utf8::encode($key) if ($enum->{utf8} && utf8::is_utf8($key));
   while ($ilo < $ihi) {
     $imid = ($ihi+$ilo) >> 1;
 

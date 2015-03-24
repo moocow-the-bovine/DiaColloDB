@@ -22,7 +22,7 @@ our @ISA = qw(DiaColloDB::Persistent);
 ##   (
 ##    base => $base,       ##-- database basename; use files "${base}.es", "${base}.esx", "${base}.eix", "${base}.hdr"
 ##    perms => $perms,     ##-- default: 0666 & ~umask
-##    flags => $flags,     ##-- default: 'rw'
+##    flags => $flags,     ##-- default: 'r'
 ##    pack_i => $pack_i,   ##-- integer pack template (default='N')
 ##    pack_o => $pack_o,   ##-- file offset pack template (default='N')
 ##    pack_l => $pack_l,   ##-- string-length pack template (default='n')
@@ -53,7 +53,7 @@ sub new {
   my $enum  = bless({
 		     base => undef,
 		     perms => (0666 & ~umask),
-		     flags => 'ra',
+		     flags => 'r',
 		     utf8 => 1,
 		     size => 0,
 		     pack_i => 'N',
@@ -430,7 +430,7 @@ sub saveTextFh {
 sub size { return $_[0]{size}; }
 
 ## $newsize = $enum->setsize($newsize)
-##  + wraps {size} key
+##  + realy just wraps {size} key
 sub setsize { return $_[0]{size}=$_[1]; }
 
 ## $newsize = $enum->addSymbols(@symbols)
@@ -482,12 +482,13 @@ sub addEnum {
 ## Methods: lookup
 
 ## $s_or_undef = $enum->i2s($i)
-##  + enum must be opened
+##   + in-memory cache overrides file contents
 sub i2s {
   my ($enum,$i) = @_;
   return undef if ($i >= $enum->{size});
-
   my ($buf,$soff,$slen);
+  return $buf if (defined($buf=$enum->{i2s}[$i]));
+
   CORE::seek($enum->{ixfh}, $i*$enum->{len_o}, SEEK_SET)
       or $enum->logconfess("i2s(): seek() failed on $enum->{base}.eix for i=$i");
   CORE::read($enum->{ixfh},$buf,$enum->{len_o})==$enum->{len_o}
@@ -509,16 +510,18 @@ sub i2s {
 
 ## $i_or_undef = $enum->s2i($s)
 ## $i_or_undef = $enum->s2i($s, $ilo,$ihi)
-##   + binary search; enum must be opened
+##   + binary search; in-memory cache overrides file contents
 sub s2i {
   my ($enum,$key,$ilo,$ihi) = @_;
-  utf8::encode($key) if ($enum->{utf8} && utf8::is_utf8($key));
-  $ilo //= 0;
-  $ihi //= $enum->{size}; #(-s $enum->{sxfh}) / $enum->{len_sx};
 
   my ($sxfh,$sfh,$len_sx,$pack_o,$len_o,$pack_l,$len_l) = @$enum{qw(sxfh sfh len_sx pack_o len_o pack_l len_l)};
+  $ilo //= 0;
+  $ihi //= $enum->{dirty} ? ((-s $sxfh)/$len_sx) : $enum->{size};
 
   my ($imid,$buf,$soff,$slen,$si);
+  return $buf if (defined($buf=$enum->{s2i}{$key}));
+
+  utf8::encode($key) if ($enum->{utf8} && utf8::is_utf8($key));
   while ($ilo < $ihi) {
     $imid = ($ihi+$ilo) >> 1;
 
