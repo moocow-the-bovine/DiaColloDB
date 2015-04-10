@@ -30,7 +30,7 @@ use strict;
 ##==============================================================================
 ## Globals & Constants
 
-our $VERSION = "0.05.001";
+our $VERSION = "0.06.001";
 our @ISA = qw(DiaColloDB::Client);
 
 ## $PGOOD_DEFAULT
@@ -96,6 +96,8 @@ our $MMCLASS = 'DiaColloDB::MultiMapFile';
 ##    dmax  => $dmax,     ##-- maximum distance for collocation-frequencies (default=5)
 ##    cfmin => $cfmin,    ##-- minimum co-occurrence frequency for Cofreqs (default=2)
 ##    keeptmp => $bool,   ##-- keep temporary files? (default=0)
+##    indexds => $bool,   ##-- create 'ds' (distributional-semantic) relation (default=1)
+##    dsopts  => \%opts,  ##-- options for 'ds' relation
 ##    ##
 ##    ##-- source filtering (for create())
 ##    pgood  => $regex,   ##-- positive filter regex for part-of-speech tags
@@ -130,8 +132,8 @@ our $MMCLASS = 'DiaColloDB::MultiMapFile';
 ##    xdmax => $xdmax,      ##-- maximum date
 ##    ##
 ##    ##-- tuple data (-dates)
-##    #tenum  => $tenum,     ##-- enum: attribute-tuples (no dates), only if $coldb->{indexAttrs}
-##    #pack_t => $fmt,       ##-- symbol pack-format for $tenum : "${pack_id}[Nattrs]"
+##    tenum  => $tenum,     ##-- enum: attribute-tuples (no dates), only if $coldb->{indexAttrs}
+##    pack_t => $fmt,       ##-- symbol pack-format for $tenum : "${pack_id}[Nattrs]"
 ##    ##
 ##    ##-- relation data
 ##    xf    => $xf,       ##-- ug: $xi => $f($xi) : N=>N
@@ -154,6 +156,17 @@ sub new {
 		      dmax => 5,
 		      cfmin => 2,
 		      #keeptmp => 0,
+		      indexds => 1,
+		      dsopts => {
+				 class=>'LSI',
+				 minFreq=>10,
+				 monDocFreq=>5,
+				 twRaw=>1,
+				 twCooked=>1,
+				 svdr=>64,
+				 weightByCat=>0,
+				 nullCat=>undef,
+				},
 
 		      ##-- filters
 		      pgood => $PGOOD_DEFAULT,
@@ -183,9 +196,13 @@ sub new {
 		      #l2x   => undef, #$MMCLASS->new(pack_i=>$coldb->{pack_id}, pack_o=>$coldb->{pack_off}, pack_l=>$coldb->{pack_id}),
 		      #pack_xl => 'N',
 
-		      ##-- tuples
+		      ##-- tuples (+dates)
 		      #xenum  => undef, #$XECLASS::FixedLen->new(pack_i=>$coldb->{pack_id}, pack_s=>$coldb->{pack_x}),
 		      #pack_x => 'Nn',
+
+		      ##-- tuples (-dates)
+		      #tenum  => undef, #$XECLASS::FixedLen->new(pack_i=>$coldb->{pack_id}, pack_s=>$coldb->{pack_t}),
+		      #pack_t => 'N',
 
 		      ##-- relations
 		      #xf    => undef, #DiaColloDB::Unigrams->new(packas=>$coldb->{pack_f}),
@@ -196,6 +213,7 @@ sub new {
 		     ref($that)||$that);
   $coldb->{class}  = ref($coldb);
   $coldb->{pack_x} = $coldb->{pack_id} . $coldb->{pack_date};
+  $coldb->{pack_t} = $coldb->{pack_id};
   if (defined($coldb->{dbdir})) {
     ##-- avoid initial close() if called with dbdir=>$dbdir argument
     my $dbdir = $coldb->{dbdir};
@@ -289,6 +307,12 @@ sub open {
     @$coldb{qw(xdmin xdmax)} = ($dmin,$dmax);
   }
 
+  ##-- open: tenum
+  if ($coldb->{indexds}) {
+    $coldb->{tenum} = $XECLASS->new(base=>"$dbdir/tenum", %efopts, pack_s=>$coldb->{pack_t})
+      or $coldb->logconfess("open(): failed to open tuple-enum $dbdir/tenum.*: $!");
+  }
+
   ##-- open: xf
   $coldb->{xf} = DiaColloDB::Unigrams->new(file=>"$dbdir/xf.dba", flags=>$flags, packas=>$coldb->{pack_f})
     or $coldb->logconfess("open(): failed to open tuple-unigrams $dbdir/xf.dba: $!");
@@ -309,7 +333,7 @@ sub open {
 sub dbkeys {
   return (
 	  (ref($_[0]) ? (map {($_."enum",$_."2x")} $_[0]->attrs) : qw()),
-	  qw(xenum xf cof),
+	  qw(xenum tenum xf cof ds),
 	 );
 }
 
@@ -479,7 +503,8 @@ sub create {
   my $pack_f     = $coldb->{pack_f};
   my $pack_off   = $coldb->{pack_off};
   my $pack_len   = $coldb->{pack_len};
-  my $pack_x     = $coldb->{pack_x} = $pack_id."[".scalar(@$attrs)."]".$pack_date;
+  my $pack_t     = $coldb->{pack_t} = $pack_id."[".scalar(@$attrs)."]";
+  my $pack_x     = $coldb->{pack_x} = $pack_t.$pack_date;
 
   ##-- initialize: common flags
   my %efopts = (flags=>$flags, pack_i=>$coldb->{pack_id}, pack_o=>$coldb->{pack_off}, pack_l=>$coldb->{pack_len});
@@ -500,8 +525,15 @@ sub create {
   my @aconfm = grep { defined($_->{ma})} @$aconf; ##-- meta-attributes
   my @aconfw = grep {!defined($_->{ma})} @$aconf; ##-- token-attributes
 
-  ##-- initialize: tuple enum
+  ##-- initialize: tuple enum(s)
+  ##   + CONTINUE HERE:
+  ##     - do we really want $index_t, $tenum, etc in DiaColloDB directly?
+  ##     - idea: factor out DiaCollDB::Relation w/ subclasses Cofreqs, Unigrams, (*)DSem
+  ##       + build & tweak local enums in DSem::create()
+  ##       + requires farming out profile() and compare() methods into Relation as well
+  my $index_t = $coldb->{indexds};
   my $xenum = $coldb->{xenum} = $XECLASS->new(%efopts, pack_s=>$pack_x);
+  my $tenum = $coldb->{tenum} = $index_t ? $XECLASS->new(%efopts, pack_s=>$pack_t) : undef;
   my $xs2i  = $xenum->{s2i};
   my $nx    = 0;
 
@@ -601,6 +633,14 @@ sub create {
   $xenum->fromHash($xs2i);
   $xenum->save("$dbdir/xenum")
     or $coldb->logconfess("create(): failed to save $dbdir/xenum: $!");
+
+  ##-- compile: tenum
+  if ($index_t) {
+    $coldb->vlog($coldb->{logCreate}, "create(): creating date-less tuple-enum $dbdir/tenum.*");
+    $xenum->fromHash($xs2i);
+    $xenum->save("$dbdir/xenum")
+      or $coldb->logconfess("create(): failed to save $dbdir/xenum: $!");
+  }
 
   ##-- compile: by attribute
   foreach $ac (@$aconf) {
