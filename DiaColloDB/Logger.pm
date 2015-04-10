@@ -30,6 +30,7 @@ BEGIN {
        stderr    => 1,
        logdate   => 1,
        logtime   => 1,
+       logwhich  => [qw(DiaColloDB DocClassify DTA.CAB DTA.TokWrap)],
        file      => undef,
        rotate    => undef, ##-- default: haveFileRotate()
        syslog    => 0,
@@ -49,6 +50,7 @@ BEGIN {
 ##     stderr    => $bool,            ##-- whether to log to stderr (default=1)
 ##     logtime   => $bool,            ##-- whether to log time-stamps on stderr (default=0)
 ##     logdate   => $bool,            ##-- whether to log date+time-stamps on stderr (default=0)
+##     logwhich  => \@classes,        ##-- log4perl-style classes to log (default=qw(DiaColloDB DocClassify DTA.CAB DTA.TokWrap))
 ##     file      => $filename,        ##-- log to $filename if true
 ##     rotate    => $bool,            ##-- use Log::Dispatch::FileRotate if available and $filename is true
 ##     syslog    => $bool,            ##-- use Log::Dispatch::Syslog if available and true (default=false)
@@ -76,14 +78,18 @@ log4perl.oneMessagePerAppender = 1     ##-- suppress duplicate messages to the s
   }
 
   if ($opts{stderr} || $opts{file} || $opts{syslog}) {
-    ##-- local package logger
-    $cfg .= "log4perl.logger.DiaColloDB = $opts{level}, ".join(", ",
-							     ($opts{stderr} ? 'AppStderr' : qw()),
-							     ($opts{file}   ? 'AppFile'   : qw()),
-							     ($opts{syslog} ? 'AppSyslog' : qw()),
-							    )."\n"
-							      if ($opts{level});
-
+    ##-- local package logger(s)
+    if ($opts{level}) {
+      my $which = $opts{logwhich} // [qw(DiaColloDB DocClassify DTA.CAB DTA.TokWrap)];
+      $which    = [grep {($_//'') ne ''} split(/[\,\s]+/,$which)] if ($which && !ref($which));
+      foreach (@$which) {
+	$cfg .= "log4perl.logger.$_ = $opts{level}, ".join(", ",
+							   ($opts{stderr} ? 'AppStderr' : qw()),
+							   ($opts{file}   ? 'AppFile'   : qw()),
+							   ($opts{syslog} ? 'AppSyslog' : qw()),
+							  )."\n";
+      }
+    }
     ##-- avoid duplicate messages
     $cfg .= "log4perl.additivity.DTA = 0\n";
   }
@@ -95,7 +101,7 @@ log4perl.PatternLayout.cspec.G = sub { return File::Basename::basename(\"$::0\")
 ";
 
   ##-- appender: stderr
-  my $stderr_date = ($opts{logdate} ? '%d{yyyy-MM-dd HH:mm:ss} '
+  my $stderr_date = (($opts{logdate} && $opts{logtime}) ? '%d{yyyy-MM-dd HH:mm:ss} '
 		     : ($opts{logtime} ? '%d{HH:mm:ss} ' : ''));
   $cfg .= "
 ##-- Appender: AppStderr

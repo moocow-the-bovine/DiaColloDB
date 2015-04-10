@@ -123,11 +123,15 @@ our $MMCLASS = 'DiaColloDB::MultiMapFile';
 ##    ${a}2x   => $a2x,     ##-- attribute multimap: $a2x : ($dbdir/${a}_2x.*) : $ai=>@xis  : N=>N*
 ##    pack_x$a => $fmt      ##-- pack format: extract attribute-id $ai from a packed tuple-string $xs ; $ai=unpack($coldb->{"pack_x$a"},$xs)
 ##    ##
-##    ##-- tuple data
+##    ##-- tuple data (+dates)
 ##    xenum  => $xenum,     ##-- enum: tuples ($dbdir/xenum.*) : [@ais,$di]<=>$xi : N*n<=>N
 ##    pack_x => $fmt,       ##-- symbol pack-format for $xenum : "${pack_id}[Nattrs]${pack_date}"
 ##    xdmin => $xdmin,      ##-- minimum date
 ##    xdmax => $xdmax,      ##-- maximum date
+##    ##
+##    ##-- tuple data (-dates)
+##    #tenum  => $tenum,     ##-- enum: attribute-tuples (no dates), only if $coldb->{indexAttrs}
+##    #pack_t => $fmt,       ##-- symbol pack-format for $tenum : "${pack_id}[Nattrs]"
 ##    ##
 ##    ##-- relation data
 ##    xf    => $xf,       ##-- ug: $xi => $f($xi) : N=>N
@@ -448,7 +452,7 @@ sub hasAttr {
 
 ## $bool = $coldb->create($corpus,%opts)
 ##  + %opts:
-##     clobber %$coldb
+##     $key => $val,  ##-- clobbers $coldb->{$key}
 sub create {
   my ($coldb,$corpus,%opts) = @_;
   $coldb = $coldb->new() if (!ref($coldb));
