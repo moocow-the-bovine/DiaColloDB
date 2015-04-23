@@ -2,7 +2,7 @@
 
 use lib '.';
 use DiaColloDB;
-use DiaColloDB::Utils qw(:json);
+use DiaColloDB::Utils qw(:json :time);
 use Getopt::Long qw(:config no_ignore_case);
 use Pod::Usage;
 use File::Basename qw(basename);
@@ -148,6 +148,10 @@ $diff //= @ARGV > 1;
 $query{query}  = shift;
 $query{bquery} = @ARGV ? shift : $query{query};
 $rel  = "d$rel" if ($diff);
+
+if ($niters != 1) {
+  $cli->info("performing $niters query iterations");
+}
 my $timer = DiaColloDB::Timer->start();
 foreach my $iter (1..$niters) {
   my $mp = $cli->query($rel, %query)
@@ -174,7 +178,9 @@ $cli->close();
 
 ##-- timing
 if ($dotime || $niters > 1) {
-  $cli->info("operation completed in ", $timer->timestr, " (", s2timestr($timer->elapsed/$niters), " iter/sec)");
+  $cli->info("operation completed in ", $timer->timestr,
+	     ($niters > 1 ? sprintf(" (%.2f iter/sec)", $niters/$timer->elapsed) : qw()),
+	    );
 }
 
 
