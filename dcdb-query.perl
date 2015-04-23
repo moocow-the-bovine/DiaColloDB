@@ -53,6 +53,7 @@ our %save = (format=>undef);
 our $outfmt  = 'text'; ##-- output format: 'text' or 'json'
 our $pretty  = 1;
 our $dotime  = 1; ##-- report timing?
+our $niters  = 1; ##-- number of benchmark iterations
 
 ##----------------------------------------------------------------------
 ## Command-line processing
@@ -97,6 +98,7 @@ GetOptions(##-- general
 	   'null|noout' => sub {$outfmt=''},
 	   'score-format|sf|format|fmt=s' => \$save{format},
 	   'timing|times|time|T!' => \$dotime,
+	   'bench|n-iterations|iterations|iters|i=i' => \$niters,
 	  );
 
 pod2usage({-exitval=>0,-verbose=>0}) if ($help);
@@ -147,28 +149,33 @@ $query{query}  = shift;
 $query{bquery} = @ARGV ? shift : $query{query};
 $rel  = "d$rel" if ($diff);
 my $timer = DiaColloDB::Timer->start();
-my $mp = $cli->query($rel, %query)
-  or die("$prog: query() failed for relation '$rel', query '$query{query}'".($diff ? " - '$query{bquery}'" : '').": $cli->{error}");
+foreach my $iter (1..$niters) {
+  my $mp = $cli->query($rel, %query)
+    or die("$prog: query() failed for relation '$rel', query '$query{query}'".($diff ? " - '$query{bquery}'" : '').": $cli->{error}");
 
-##-- dump stringified query
-if ($outfmt eq 'text') {
-  $mp->trace("saveTextFile()");
-  $mp->saveTextFile('-',%save);
-}
-elsif ($outfmt eq 'json') {
-  $mp->trace("saveJsonFile()");
-  $mp->saveJsonFile('-', pretty=>$pretty,canonical=>$pretty); #utf8=>0
-}
-elsif ($outfmt eq 'html') {
-  $mp->trace("saveHtmlFile()");
-  $mp->saveHtmlFile('-',%save);
+  ##-- dump stringified query
+  my $outfile = ($iter==1 ? '-' : '/dev/null');
+  if ($outfmt eq 'text') {
+    $mp->trace("saveTextFile()");
+    $mp->saveTextFile($outfile,%save);
+  }
+  elsif ($outfmt eq 'json') {
+    $mp->trace("saveJsonFile()");
+    $mp->saveJsonFile($outfile, pretty=>$pretty,canonical=>$pretty); #utf8=>0
+  }
+  elsif ($outfmt eq 'html') {
+    $mp->trace("saveHtmlFile()");
+    $mp->saveHtmlFile($outfile,%save);
+  }
 }
 
 ##-- cleanup
 $cli->close();
 
 ##-- timing
-$cli->info("operation completed in ", $timer->timestr) if ($dotime);
+if ($dotime || $niters > 1) {
+  $cli->info("operation completed in ", $timer->timestr, " (", s2timestr($timer->elapsed/$niters), " iter/sec)");
+}
 
 
 __END__
@@ -191,6 +198,7 @@ dcdb-query.perl - query a DiaColloDB
    -help
    -version
    -[no]time             # do/don't report operation timing (default=do)
+   -iters NITERS         # benchmark NITERS iterations of query
 
  DiaColloDB Options:
    -log-level LEVEL      # set minimum DiaColloDB log-level
