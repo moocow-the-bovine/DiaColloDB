@@ -30,7 +30,7 @@ use strict;
 ##==============================================================================
 ## Globals & Constants
 
-our $VERSION = "0.05.001";
+our $VERSION = "0.06.001";
 our @ISA = qw(DiaColloDB::Client);
 
 ## $PGOOD_DEFAULT
@@ -1193,7 +1193,7 @@ sub xidsByDate {
 ##     warn  => $level,       ##-- log-level for unknown attributes (default: 'warn')
 ##     logas => $reqtype,     ##-- request type for warnings
 ##     default => $attr,      ##-- default attribute (for query requests)
-sub parseRequest {
+sub parseRequestNative {
   my ($coldb,$req,%opts) = @_;
   my $wlevel = $opts{warn} // 'warn';
   my $default = $opts{default};
@@ -1202,6 +1202,89 @@ sub parseRequest {
   my $areqs = (UNIVERSAL::isa($req,'ARRAY') ? [@$req]
 	       : (UNIVERSAL::isa($req,'HASH') ? [%$req]
 		  : [grep {defined($_)} ($req =~ m{[\s\,]*((?:[^\s\,]|\\.)+)?}g)]));
+
+  ##-- parse each attribute-local request into [ATTR,VAL] pairs
+  my ($a,$areq);
+  foreach (@$areqs) {
+    if (UNIVERSAL::isa($_,'ARRAY')) {
+      next;
+    } elsif (UNIVERSAL::isa($_,'HASH')) {
+      $_ = [%$_];
+      next;
+    }
+    ($a,$areq) = m{^((?:[^\s\,\:\=]|\\.)*)(?:[\:\=]((?:[^\s\,]|\\.)*))?$} ? ($1,$2) : ($_,undef);
+    $a    =~ s/\\(.)/$1/g;
+    $areq =~ s/\\(.)/$1/g if (defined($areq));
+    ($a,$areq) = ($default,$a) if ($default && !defined($areq));
+    $a    = $default if ($a eq '');
+    $_ = [$a,$areq];
+  }
+
+  ##-- check for unsupported attributes
+  @$areqs = grep {
+    $_->[0] = $coldb->attrName($_->[0]);
+    if (!$coldb->hasAttr($_->[0])) {
+      $coldb->logconfess($coldb->{error}="parseRequest(): unsupported attribute '$_->[0]' in ".($opts{logas}//'')." request") if (!$opts{relax});
+      $coldb->vlog($wlevel, "parseRequest(): skipping unsupported attribute '$_->[0]' in ".($opts{logas}//'')." request");
+      0
+    } else {
+      1
+    }
+  } @$areqs;
+
+  return $areqs;
+}
+
+## \@areqs = $coldb->parseRequestDDC([[$attr1,$val1],...], %opts)
+## \@areqs = $coldb->parseRequestDDC(["$attr1:$val1",...], %opts)
+## \@areqs = $coldb->parseRequestDDC({$attr1=>$val1, ...}, %opts)
+## \@areqs = $coldb->parseRequestDDC("$attr1:$val1, ...", %opts)
+## \@areqs = $coldb->parseRequestDDC($ddcQueryString, %opts)
+##   + guts for parsing user target and groupby requests
+##   + returns an ARRAY-ref \@areqs of DDC::XS::CQToken objects
+##   + %opts:
+##     warn  => $level,       ##-- log-level for unknown attributes (default: 'warn')
+##     logas => $reqtype,     ##-- request type for warnings
+##     default => $attr,      ##-- default attribute (for query requests)
+use DDC::XS;
+sub parseRequestDDC {
+  my ($coldb,$req,%opts) = @_;
+  my $wlevel = $opts{warn} // 'warn';
+  my $default = $opts{default};
+
+  ##-- parse into attribute-local requests
+  my $areqs = (UNIVERSAL::isa($req,'ARRAY') ? [@$req]
+	       : (UNIVERSAL::isa($req,'HASH') ? [%$req]
+		  : undef));
+  if (!defined($areqs)) {
+    my ($q);
+    eval { $q = DDC::XS->parse($req); };
+
+    ##-- backwards-compatibilty hack: native parse
+    if (!$q && $req =~ /[\s\,]/) {
+      undef $@;
+      $areqs     = [];
+      my $areqs0 = $coldb->parseRequestNative($req,%opts);
+      my ($aq);
+      foreach $areq (@$areqs0) {
+	if ($areq->[1] =~ m{^/}) {
+	  $aq = DDC::XS::CQTokRegex->new($areq->[0],$areq->[1]);
+	}
+	elsif ($areq->[1] =~ m{\|}) {
+	  $aq = DDC::XS::CQTokSet->new($areq->[0], $areq->[1], [split(/\|/,$areq->[1])]);
+	}
+	else {
+	  $aq = DDC::XS::CQTokInfl->new($areq->[0],$areq->[1]);
+	}
+	push(@$areqs,$aq);
+      }
+    }
+    ##-- CONTINUE HERE: extract requests from parsed ddc query object
+    ## + fallbacks: it would be nice to allow comma-as-WITH in ddc queries directly
+    ## + issue: we need to detect filters in "real" ddc queries
+    ## + issue: we should think about auto-dispatch of db backend (diacollo vs ddc) depending on query
+    ## + issue: abstract relation API (--> vector-sem, ddc)
+  }
 
   ##-- parse each attribute-local request into [ATTR,VAL] pairs
   my ($a,$areq);
