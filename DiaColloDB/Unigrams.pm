@@ -4,6 +4,7 @@
 ## Description: collocation db, unigram database (using DiaColloDB::PackedFile)
 
 package DiaColloDB::Unigrams;
+use DiaColloDB::Relation;
 use DiaColloDB::PackedFile;
 use DiaColloDB::Utils qw(:sort :env :run :pack :file);
 use Fcntl qw(:seek);
@@ -12,7 +13,7 @@ use strict;
 ##==============================================================================
 ## Globals & Constants
 
-our @ISA = qw(DiaColloDB::PackedFile);
+our @ISA = qw(DiaColloDB::PackedFile DiaColloDB::Relation);
 
 ##==============================================================================
 ## Constructors etc.
@@ -39,11 +40,11 @@ our @ISA = qw(DiaColloDB::PackedFile);
 ##   )
 sub new {
   my $that = shift;
-  my $ug   = $that->SUPER::new(
-			       N=>0,
-			       packas=>'N',
-			       @_
-			      );
+  my $ug   = $that->DiaColloDB::PackedFile::new(
+						N=>0,
+						packas=>'N',
+						@_
+					       );
   return $ug;
 }
 
@@ -77,7 +78,7 @@ sub diskFiles {
 ##==============================================================================
 ## Relation API: create
 
-## $bool = CLASS_OR_OBJECT->create($tokdat_file,%opts)
+## $ug = $CLASS_OR_OBJECT->create($coldb,$tokdat_file,%opts)
 ##  + populates current database from $tokdat_file,
 ##    a tt-style text file containing 1 token-id perl line with optional blank lines
 ##  + %opts: clobber %$ug, also:
@@ -85,7 +86,7 @@ sub diskFiles {
 ##     size=>$size,  ##-- set initial size
 ##    )
 sub create {
-  my ($ug,$datfile,%opts) = @_;
+  my ($ug,$coldb,$datfile,%opts) = @_;
 
   ##-- create/clobber
   $ug = $ug->new() if (!ref($ug));
@@ -132,14 +133,14 @@ sub create {
 ##==============================================================================
 ## Relation API: union
 
-## $ug = CLASS_OR_OBJECT->union(\@pairs, %opts)
+## $ug = CLASS_OR_OBJECT->union($coldb, \@pairs, %opts)
 ##  + merge multiple co-frequency indices into new object
 ##  + @pairs : array of pairs ([$ug,\@xi2u],...)
 ##    of unigram-objects $ug and tuple-id maps \@xi2u for $ug
 ##  + %opts: clobber %$ug
 ##  + implicitly flushes the new index
 sub union {
-  my ($ug,$pairs,%opts) = @_;
+  my ($ug,$coldb,$pairs,%opts) = @_;
 
   ##-- create/clobber
   $ug = $ug->new() if (!ref($ug));
@@ -171,13 +172,13 @@ sub union {
 }
 
 ##==============================================================================
-## Relation API: profile
+## Relation API: default: profiling
 
-## $prf = $ug->profile(\@xids, %opts)
+## $prf = $ug->subprofile(\@xids, %opts)
 ##  + get frequency profile for @xids (db must be opened)
 ##  + %opts:
 ##     groupby => \&gbsub,  ##-- key-extractor $key2_or_undef = $gbsub->($i2)
-sub profile {
+sub subprofile {
   my ($ug,$ids,%opts) = @_;
   $ids   = [$ids] if (!UNIVERSAL::isa($ids,'ARRAY'));
 

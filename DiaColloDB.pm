@@ -13,6 +13,7 @@ use DiaColloDB::EnumFile::FixedMap;
 use DiaColloDB::EnumFile::Tied;
 use DiaColloDB::MultiMapFile;
 use DiaColloDB::PackedFile;
+use DiaColloDB::Relation;
 use DiaColloDB::Unigrams;
 use DiaColloDB::Cofreqs;
 use DiaColloDB::Profile;
@@ -620,7 +621,7 @@ sub create {
     or $coldb->logconfess("create(): could not create $dbdir/xf.dba: $!");
   $xfdb->setsize($xenum->{size})
     or $coldb->logconfess("create(): could not set unigram index size = $xenum->{size}: $!");
-  $xfdb->create($tokfile)
+  $xfdb->create($coldb, $tokfile)
     or $coldb->logconfess("create(): failed to create unigram index: $!");
 
   ##-- compute collocation frequencies
@@ -631,7 +632,7 @@ sub create {
 						     keeptmp=>$coldb->{keeptmp},
 						    )
     or $coldb->logconfess("create(): failed to create co-frequency index $dbdir/cof.*: $!");
-  $cof->create($tokfile)
+  $cof->create($coldb, $tokfile)
     or $coldb->logconfess("create(): failed to create co-frequency index: $!");
 
   ##-- save header
@@ -782,7 +783,7 @@ sub union {
   $coldb->vlog($coldb->{logCreate}, "union(): creating tuple unigram index $dbdir/xf.*");
   $coldb->{xf} = DiaColloDB::Unigrams->new(file=>"$dbdir/xf.dba", flags=>$flags, packas=>$pack_f)
     or $coldb->logconfess("union(): could not create $dbdir/xf.*: $!");
-  $coldb->{xf}->union([map {[@$_{qw(xf _union_xi2u)}]} @dbargs])
+  $coldb->{xf}->union($coldb, [map {[@$_{qw(xf _union_xi2u)}]} @dbargs])
     or $coldb->logconfess("union(): could not populate unigram index $dbdir/xf.*: $!");
 
   ##-- co-frequencies: populate
@@ -793,7 +794,7 @@ sub union {
 					   keeptmp=>$coldb->{keeptmp},
 					  )
     or $coldb->logconfess("create(): failed to open co-frequency index $dbdir/cof.*: $!");
-  $coldb->{cof}->union([map {[@$_{qw(cof _union_xi2u)}]} @dbargs])
+  $coldb->{cof}->union($coldb, [map {[@$_{qw(cof _union_xi2u)}]} @dbargs])
     or $coldb->logconfess("union(): could not populate co-frequency index $dbdir/cof.*: $!");
 
   ##-- cleanup
@@ -1019,7 +1020,7 @@ sub dbinfo {
 	       } @$adata],
 
 	       ##-- relations
-	       relations => [grep {UNIVERSAL::can(ref($coldb->{$_}),'profile')} keys %$coldb],
+	       relations => [grep {UNIVERSAL::isa(ref($coldb->{$_}),'DiaColloDB::Relation')} keys %$coldb],
 
 	       ##-- overrides
 	       %{$coldb->{info}//{}},
@@ -1193,6 +1194,7 @@ sub xidsByDate {
 ##     warn  => $level,       ##-- log-level for unknown attributes (default: 'warn')
 ##     logas => $reqtype,     ##-- request type for warnings
 ##     default => $attr,      ##-- default attribute (for query requests)
+BEGIN { *parseRequest = \&parseRequestNative; }
 sub parseRequestNative {
   my ($coldb,$req,%opts) = @_;
   my $wlevel = $opts{warn} // 'warn';
@@ -1246,6 +1248,8 @@ sub parseRequestNative {
 ##     warn  => $level,       ##-- log-level for unknown attributes (default: 'warn')
 ##     logas => $reqtype,     ##-- request type for warnings
 ##     default => $attr,      ##-- default attribute (for query requests)
+=pod
+
 use DDC::XS;
 sub parseRequestDDC {
   my ($coldb,$req,%opts) = @_;
@@ -1317,6 +1321,8 @@ sub parseRequestDDC {
 
   return $areqs;
 }
+
+=cut
 
 ## \%groupby = $coldb->groupby($groupby_request, %opts)
 ## \%groupby = $coldb->groupby(\%groupby,        %opts)
@@ -1423,31 +1429,22 @@ sub groupby {
 ##     ##-- profiling and debugging parameters
 ##     strings => $bool,          ##-- do/don't stringify (default=do)
 ##     fill    => $bool,          ##-- if true, returned multi-profile will have null profiles inserted for missing slices
+##    )
+##  + sets default %opts and wraps $coldb->relation($rel)->profile($coldb, %opts)
 sub profile {
   my ($coldb,$rel,%opts) = @_;
 
-  ##-- common variables
-  my ($logProfile,$xenum) = @$coldb{qw(logProfile xenum)};
-  my $query   = (grep {defined($_)} @opts{qw(query q lemma lem l)})[0] // '';
-  my $date    = $opts{date}  // '';
-  my $slice   = $opts{slice} // 1;
-  my $groupby = $opts{groupby} || [@{$coldb->attrs}];
-  my $score   = $opts{score} // 'f';
-  my $eps     = $opts{eps} // 0;
-  my $kbest   = $opts{kbest} // -1;
-  my $cutoff  = $opts{cutoff} // '';
-  my $strings = $opts{strings} // 1;
-  my $fill    = $opts{fill} // 0;
-
-  ##-- variables: by attribute: set $ac->{req} = $USER_REQUEST
-  $groupby   = $coldb->groupby($groupby);
-  my $attrs  = $coldb->attrs();
-  my $adata  = $coldb->attrData($attrs);
-  my $a2data = {map {($_->{a}=>$_)} @$adata};
-  my $areqs  = $coldb->parseRequest($query, logas=>'query', default=>$attrs->[0]);
-  foreach (@$areqs) {
-    $a2data->{$_->[0]}{req} = $_->[1];
-  }
+  ##-- defaults
+  $opts{query}     = (grep {defined($_)} @opts{qw(query q lemma lem l)})[0] // '';
+  $opts{date}    //= '';
+  $opts{slide}   //= 1;
+  $opts{groupby} ||= [$coldb->attrs];
+  $opts{score}   //= 'f';
+  $opts{eps}     //= 0;
+  $opts{kbest}   //= -1;
+  $opts{cutoff}  //= '';
+  $opts{strings} //= 1;
+  $opts{fill}    //= 0;
 
   ##-- debug
   $coldb->vlog($coldb->{logRequest},
@@ -1455,74 +1452,21 @@ sub profile {
 	       .join(', ',
 		     map {"$_->[0]='".($_->[1]//'')."'"}
 		     ([rel=>$rel],
-		      [query=>$query],
-		      [groupby=>$groupby->{req}],
+		      [query=>$opts{query}],
+		      [groupby=>UNIVERSAL::isa($opts{groupby},'ARRAY') ? join(',', @{$opts{groupby}}) : $opts{groupby}],
 		      (map {[$_=>$opts{$_}]} qw(date slice score eps kbest cutoff)),
 		     ))
 	       .")");
 
-  ##-- sanity check(s)
+  ##-- relation
   my ($reldb);
   if (!defined($reldb=$coldb->relation($rel||'cof'))) {
     $coldb->logwarn($coldb->{error}="profile(): unknown relation '".($rel//'-undef-')."'");
     return undef;
   }
-  if (!@$areqs) {
-    $coldb->logwarn($coldb->{error}="profile(): no target attributes specified (supported attributes: ".join(' ',@{$coldb->attrs}).")");
-    return undef;
-  }
-  if (!@{$groupby->{attrs}}) {
-    $coldb->logconfess($coldb->{error}="profile(): cannot profile with empty groupby clause");
-    return undef;
-  }
 
-  ##-- prepare: get target IDs (by attribute)
-  my ($ac);
-  foreach $ac (grep {($_->{req}//'') ne ''} @$adata) {
-    $ac->{reqids} = $coldb->enumIds($ac->{enum},$ac->{req},logLevel=>$logProfile,logPrefix=>"profile(): get target $ac->{a}-values");
-    if (!@{$ac->{reqids}}) {
-      $coldb->logwarn($coldb->{error}="profile(): no $ac->{a}-attribute values match user query '$ac->{req}'");
-      return undef;
-    }
-  }
-
-  ##-- prepare: get tuple-ids (by attribute)
-  $coldb->vlog($logProfile, "profile(): get target tuple IDs");
-  my $xiset = undef;
-  foreach $ac (grep {$_->{reqids}} @$adata) {
-    my $axiset = {};
-    @$axiset{map {@{$ac->{a2x}->fetch($_)}} @{$ac->{reqids}}} = qw();
-    if (!$xiset) {
-      $xiset = $axiset;
-    } else {
-      delete @$xiset{grep {!exists $axiset->{$_}} keys %$xiset};
-    }
-  }
-  my $xis = [sort {$a<=>$b} keys %$xiset];
-  if ($coldb->{maxExpand}>0 && @$xis > $coldb->{maxExpand}) {
-    $coldb->logwarn("profile(): Warning: target set exceeds max expansion size (",scalar(@$xis)." > $coldb->{maxExpand}): truncating");
-    $#$xis = $coldb->{maxExpand}-1;
-  }
-
-  ##-- prepare: parse and filter tuples
-  $coldb->vlog($logProfile, "profile(): parse and filter target tuples (date=$date, slice=$slice, fill=$fill)");
-  my $d2xis = $coldb->xidsByDate($xis, $date, $slice, $fill);
-
-  ##-- profile: get relation profiles (by date-slice)
-  $coldb->vlog($logProfile, "profile(): get frequency profile(s)");
-  my @dprfs  = qw();
-  my ($d,$prf);
-  foreach $d (sort {$a<=>$b} keys %$d2xis) {
-    $prf = $reldb->profile($d2xis->{$d}, groupby=>$groupby->{x2g});
-    $prf->compile($score, eps=>$eps);
-    $prf->trim(kbest=>$kbest, cutoff=>$cutoff);
-    $prf = $prf->stringify($groupby->{g2s}) if ($strings);
-    $prf->{label}  = $d;
-    $prf->{titles} = $groupby->{titles};
-    push(@dprfs, $prf);
-  }
-
-  return DiaColloDB::Profile::Multi->new(profiles=>\@dprfs, titles=>$groupby->{titles});
+  ##-- delegate
+  return $reldb->profile($coldb,%opts);
 }
 
 ##--------------------------------------------------------------
@@ -1548,14 +1492,14 @@ sub profile {
 ##     ##
 ##     ##-- profiling and debugging parameters
 ##     strings => $bool,          ##-- do/don't stringify (default=do)
+##    )
+##  + sets default %opts and wraps $coldb->relation($rel)->compare($coldb, %opts)
 BEGIN { *diff = \&compare; }
 sub compare {
   my ($coldb,$rel,%opts) = @_;
   $rel //= 'cof';
 
-  ##-- common variables
-  my $logProfile = $coldb->{logProfile};
-  my $groupby    = $coldb->groupby($opts{groupby} || [@{$coldb->attrs}]);
+  ##-- defaults and '[ab]OPTION' parsing
   foreach my $ab (qw(a b)) {
     $opts{"${ab}query"} = ((grep {defined($_)} @opts{map {"${ab}$_"} qw(query q lemma lem l)}),
 			   (grep {defined($_)} @opts{qw(query q lemma lem l)})
@@ -1570,9 +1514,6 @@ sub compare {
 		   )[0]//'';
   }
   delete @opts{keys %ATTR_ALIAS};
-  my %aopts = map {($_=>$opts{"a$_"})} (qw(query date slice));
-  my %bopts = map {($_=>$opts{"b$_"})} (qw(query date slice));
-  my %popts = (kbest=>-1,cutoff=>'',strings=>0,fill=>1, groupby=>$groupby);
 
   ##-- debug
   $coldb->vlog($coldb->{logRequest},
@@ -1582,34 +1523,20 @@ sub compare {
 		     ([rel=>$rel],
 		      (map {["a$_"=>$opts{"a$_"}]} (qw(query date slice))),
 		      (map {["b$_"=>$opts{"b$_"}]} (qw(query date slice))),
-		      [groupby=>$groupby->{req}],
+		      [groupby=>(UNIVERSAL::isa($opts{groupby},'ARRAY') ? join(',',@{$opts{groupby}}) : $opts{groupby})],
 		      (map {[$_=>$opts{$_}]} qw(score eps kbest cutoff)),
 		     ))
 	       .")");
 
-  ##-- get profiles to compare
-  my $mpa = $coldb->profile($rel,%opts, %aopts,%popts) or return undef;
-  my $mpb = $coldb->profile($rel,%opts, %bopts,%popts) or return undef;
-
-  ##-- alignment and trimming
-  $coldb->vlog($logProfile, "compare(): align and trim");
-  my $ppairs = DiaColloDB::Profile::MultiDiff->align($mpa,$mpb);
-  my %trim   = (kbest=>($opts{kbest}//-1), cutoff=>($opts{cutoff}//''));
-  my ($pa,$pb,%pkeys);
-  foreach (@$ppairs) {
-    ($pa,$pb) = @$_;
-    %pkeys = map {($_=>undef)} (($pa ? @{$pa->which(%trim)} : qw()), ($pb ? @{$pb->which(%trim)} : qw()));
-    $pa->trim(keep=>\%pkeys);
-    $pb->trim(keep=>\%pkeys);
+  ##-- relation
+  my ($reldb);
+  if (!defined($reldb=$coldb->relation($rel||'cof'))) {
+    $coldb->logwarn($coldb->{error}="profile(): unknown relation '".($rel//'-undef-')."'");
+    return undef;
   }
 
-  ##-- diff and stringification
-  $coldb->vlog($logProfile, "compare(): diff and stringification");
-  my $diff = DiaColloDB::Profile::MultiDiff->new($mpa,$mpb,titles=>$groupby->{titles});
-  $diff->trim(kbesta=>$opts{kbest});
-  $diff->stringify($groupby->{g2s}) if ($opts{strings}//1);
-
-  return $diff;
+  ##-- delegate
+  return $reldb->compare($coldb,%opts);
 }
 
 ##==============================================================================
