@@ -23,6 +23,7 @@ use DiaColloDB::Corpus;
 use DiaColloDB::Persistent;
 use DiaColloDB::Utils qw(:fcntl :json :sort :pack :regex :file :si);
 use DiaColloDB::Timer;
+use DDC::XS; ##-- for query parsing
 use Fcntl;
 use File::Path qw(make_path remove_tree);
 use strict;
@@ -1069,6 +1070,7 @@ sub dbinfo {
 ##--------------------------------------------------------------
 ## Profiling: Utils
 
+##~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 ## $relname = $coldb->relname($rel)
 ##  + returns an appropriate relation name for profile() and friends
 ##  + returns $rel if $coldb->{$rel} supports a profile() method
@@ -1087,6 +1089,7 @@ sub relname {
   return $rel;
 }
 
+##~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 ## $obj_or_undef = $coldb->relation($rel)
 ##  + returns an appropriate relation-like object for profile() and friends
 ##  + wraps $coldb->{$coldb->relname($rel)}
@@ -1094,8 +1097,10 @@ sub relation {
   return $_[0]->{$_[0]->relname($_[1])};
 }
 
+##~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 ## \@ids = $coldb->enumIds($enum,$req,%opts)
 ##  + parses enum IDs for $req, which is one of:
+##    - a DDC::XS::CQTokExact, ::CQTokInfl, ::CQTokSet, ::CQTokSetInfl, or ::CQTokRegex : interpreted
 ##    - an ARRAY-ref     : list of literal symbol-values
 ##    - a Regexp ref     : regexp for target strings, passed to $enum->re2i()
 ##    - a string /REGEX/ : regexp for target strings, passed to $enum->re2i()
@@ -1106,24 +1111,48 @@ sub relation {
 sub enumIds {
   my ($coldb,$enum,$req,%opts) = @_;
   $opts{logPrefix} //= "enumIds(): fetch ids";
-  if (UNIVERSAL::isa($req,'ARRAY')) {
-    ##-- values: array
+  if (UNIVERSAL::isa($req,'DDC::XS::CQTokInfl') || UNIVERSAL::isa($req,'DDC::XS::CQTokExact')) {
+    ##-- CQuery: CQTokExact
+    $coldb->vlog($opts{logLevel}, $opts{logPrefix}, " (", ref($req), ")");
+    return [$enum->s2i($req->getValue)];
+  }
+  elsif (UNIVERSAL::isa($req,'DDC::XS::CQTokSet') || UNIVERSAL::isa($req,'DDC::XS::CQTokSetInfl')) {
+    ##-- CQuery: CQTokSet
+    $coldb->vlog($opts{logLevel}, $opts{logPrefix}, " (", ref($req), ")");
+    return [map {$enum->s2i($_)} @{$req->getValues}];
+  }
+  elsif (UNIVERSAL::isa($req,'DDC::XS::CQTokRegex')) {
+    ##-- CQuery: CQTokRegex
+    $coldb->vlog($opts{logLevel}, $opts{logPrefix}, " (", ref($req), ")");
+    return $enum->re2i($req->getValue);
+  }
+  elsif (UNIVERSAL::isa($req,'DDC::XS::CQTokAny')) {
+    $coldb->vlog($opts{logLevel}, $opts{logPrefix}, " (", ref($req), ")");
+    return undef;
+  }
+  elsif (UNIVERSAL::isa($req,'ARRAY')) {
+    ##-- compat: array
     $coldb->vlog($opts{logLevel}, $opts{logPrefix}, " (ARRAY)");
     return [map {$enum->s2i($_)} @$req];
   }
   elsif (UNIVERSAL::isa($req,'Regexp') || $req =~ m{^/}) {
-    ##-- values: regex
+    ##-- compat: regex
     $coldb->vlog($opts{logLevel}, $opts{logPrefix}, " (REGEX)");
     return $enum->re2i($req);
   }
-  else {
-    ##-- values: space-separated literals
+  elsif (!ref($req)) {
+    ##-- compat: space-, comma-, or |-separated literals
     $coldb->vlog($opts{logLevel}, $opts{logPrefix}, " (STRINGS)");
     return [grep {defined($_)} map {$enum->s2i($_)} grep {($_//'') ne ''} map {s{\\(.)}{$1}g; $_} split(/(?:(?<!\\)[\,\s\|])+/,$req)];
+  }
+  else {
+    ##-- reference: unhandled
+    $coldb->logconfess($coldb->{error}="$opts{logPrefix}: can't handle request of type ".ref($req));
   }
   return [];
 }
 
+##~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 ## \%slice2xids = $coldb->xidsByDate(\@xids, $dateRequest, $sliceRequest, $fill)
 ##   + parse and filter \@xids by $dateRequest, $sliceRequest
 ##   + returns a HASH-ref from slice-ids to \@xids in that date-slice
@@ -1182,135 +1211,235 @@ sub xidsByDate {
   return $d2xis;
 }
 
-## \@areqs = $coldb->parseRequest([[$attr1,$val1],...], %opts)
-## \@areqs = $coldb->parseRequest(["$attr1:$val1",...], %opts)
-## \@areqs = $coldb->parseRequest({$attr1=>$val1, ...}, %opts)
-## \@areqs = $coldb->parseRequest("$attr1:$val1, ...", %opts)
-##   + guts for parsing user target and groupby requests
-##   + returns an ARRAY-ref [[$attr1,$val1], ...]
-##   + each value $vali is empty or undef (all values), a |-separated LIST, or a /REGEX/
-##   + backslash-escapes in $attr, $val are allowed (but may have to be doubled)
-##   + %opts:
-##     warn  => $level,       ##-- log-level for unknown attributes (default: 'warn')
-##     logas => $reqtype,     ##-- request type for warnings
-##     default => $attr,      ##-- default attribute (for query requests)
-BEGIN { *parseRequest = \&parseRequestNative; }
-sub parseRequestNative {
-  my ($coldb,$req,%opts) = @_;
-  my $wlevel = $opts{warn} // 'warn';
-  my $default = $opts{default};
-
-  ##-- parse into attribute-local requests
-  my $areqs = (UNIVERSAL::isa($req,'ARRAY') ? [@$req]
-	       : (UNIVERSAL::isa($req,'HASH') ? [%$req]
-		  : [grep {defined($_)} ($req =~ m{[\s\,]*((?:[^\s\,]|\\.)+)?}g)]));
-
-  ##-- parse each attribute-local request into [ATTR,VAL] pairs
-  my ($a,$areq);
-  foreach (@$areqs) {
-    if (UNIVERSAL::isa($_,'ARRAY')) {
-      next;
-    } elsif (UNIVERSAL::isa($_,'HASH')) {
-      $_ = [%$_];
-      next;
-    }
-    ($a,$areq) = m{^((?:[^\s\,\:\=]|\\.)*)(?:[\:\=]((?:[^\s\,]|\\.)*))?$} ? ($1,$2) : ($_,undef);
-    $a    =~ s/\\(.)/$1/g;
-    $areq =~ s/\\(.)/$1/g if (defined($areq));
-    ($a,$areq) = ($default,$a) if ($default && !defined($areq));
-    $a    = $default if ($a eq '');
-    $_ = [$a,$areq];
-  }
-
-  ##-- check for unsupported attributes
-  @$areqs = grep {
-    $_->[0] = $coldb->attrName($_->[0]);
-    if (!$coldb->hasAttr($_->[0])) {
-      $coldb->logconfess($coldb->{error}="parseRequest(): unsupported attribute '$_->[0]' in ".($opts{logas}//'')." request") if (!$opts{relax});
-      $coldb->vlog($wlevel, "parseRequest(): skipping unsupported attribute '$_->[0]' in ".($opts{logas}//'')." request");
-      0
-    } else {
-      1
-    }
-  } @$areqs;
-
-  return $areqs;
+##~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+## $compiler = $coldb->qcompiler();
+##  + get DDC::XS::CQueryCompiler for this object (cached in $coldb->{_qcompiler})
+sub qcompiler {
+  return $_[0]{_qcompiler} ||= DDC::XS::CQueryCompiler->new();
 }
 
-## \@areqs = $coldb->parseRequestDDC([[$attr1,$val1],...], %opts)
-## \@areqs = $coldb->parseRequestDDC(["$attr1:$val1",...], %opts)
-## \@areqs = $coldb->parseRequestDDC({$attr1=>$val1, ...}, %opts)
-## \@areqs = $coldb->parseRequestDDC("$attr1:$val1, ...", %opts)
-## \@areqs = $coldb->parseRequestDDC($ddcQueryString, %opts)
-##   + guts for parsing user target and groupby requests
-##   + returns an ARRAY-ref \@areqs of DDC::XS::CQToken objects
-##   + %opts:
+##~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+## $cquery = $coldb->parseQuery([[$attr1,$val1],...], %opts) ##-- compat: ARRAY-of-ARRAYs
+## $cquery = $coldb->parseQuery(["$attr1:$val1",...], %opts) ##-- compat: ARRAY-of-requests
+## $cquery = $coldb->parseQuery({$attr1=>$val1, ...}, %opts) ##-- compat: HASH
+## $cquery = $coldb->parseQuery("$attr1=$val1, ...", %opts)  ##-- compat: string
+## $cquery = $coldb->parseQuery($ddcQueryString, %opts)      ##-- ddc string (with shorthand ","->WITH, "&&"->WITH)
+##  + guts for parsing user target and groupby requests
+##  + returns a DDC::XS::CQuery object representing the request
+##  + index-only items "$l" are mapped to $l=@{}
+##  + %opts:
 ##     warn  => $level,       ##-- log-level for unknown attributes (default: 'warn')
 ##     logas => $reqtype,     ##-- request type for warnings
 ##     default => $attr,      ##-- default attribute (for query requests)
-use DDC::XS;
-sub parseRequestDDC {
+sub parseQuery {
   my ($coldb,$req,%opts) = @_;
+  my $req0   = $req;
   my $wlevel = $opts{warn} // 'warn';
-  my $default = $opts{default};
+  my $defaultIndex = $opts{default};
 
-  ##-- parse into attribute-local requests
+  ##-- compat: accept ARRAY or HASH requests
   my $areqs = (UNIVERSAL::isa($req,'ARRAY') ? [@$req]
 	       : (UNIVERSAL::isa($req,'HASH') ? [%$req]
 		  : undef));
-  if (!defined($areqs)) {
-    my ($q);
-    eval { $q = DDC::XS->parse($req); };
 
-    ##-- backwards-compatibilty hack: native parse
-    if (!$q && $req =~ /[\s\,]/) {
-      undef $@;
-      $areqs     = [];
-      my $areqs0 = $coldb->parseRequestNative($req,%opts);
-      my ($aq);
-      foreach my $areq (@$areqs0) {
-	if ($areq->[1] =~ m{^/}) {
-	  $aq = DDC::XS::CQTokRegex->new($areq->[0],$areq->[1]);
-	}
-	elsif ($areq->[1] =~ m{\|}) {
-	  $aq = DDC::XS::CQTokSet->new($areq->[0], $areq->[1], [split(/\|/,$areq->[1])]);
-	}
-	else {
-	  $aq = DDC::XS::CQTokInfl->new($areq->[0],$areq->[1]);
-	}
-	push(@$areqs,$aq);
+  ##-- compat: parse into attribute-local requests $areqs=[[$attr1,$areq1],...]
+  my $sepre  = qr{[\s\,]};
+  my $wordre = qr{(?:[^\s,:=\$\"\{\}\@]|\\.)};
+  my $reqre  = qr{(?:${wordre}+[:=])?${wordre}+};
+  if (!$areqs && $req =~ m/^${sepre}*			##-- initial separators (optional)
+			   (?:${reqre}${sepre}+)*	##-- separated components
+			   (?:${reqre})			##-- final component
+			   ${sepre}*			##-- final separators (optional)
+			   $/x) {
+    $areqs = [grep {defined($_)} ($req =~ m{[\s\,]*((?:[^\s\,]|\\.)+)?}g)];
+    my ($a,$areq);
+    foreach (@$areqs) {
+      if (UNIVERSAL::isa($_,'ARRAY')) {
+	next;
+      } elsif (UNIVERSAL::isa($_,'HASH')) {
+	$_ = [%$_];
+	next;
       }
+      ($a,$areq) = m{^((?:[^\s\,\:\=]|\\.)*)(?:[\:\=]((?:[^\s\,]|\\.)*))?$} ? ($1,$2) : ($_,undef);
+      $a    =~ s/\\(.)/$1/g;
+      $areq =~ s/\\(.)/$1/g if (defined($areq));
+      ($a,$areq) = ('',$a) if (defined($defaultIndex) && !defined($areq));
+      $a = $defaultIndex//'' if (($a//'') eq '');
+      $a =~ s/^\$//;
+      $_ = [$a,$areq];
     }
-    ##-- CONTINUE HERE: extract requests from parsed ddc query object
-    ## + fallbacks: it would be nice to allow comma-as-WITH in ddc queries directly
-    ## + issue: we need to detect filters in "real" ddc queries
-    ## + issue: we should think about auto-dispatch of db backend (diacollo vs ddc) depending on query
-    ## + issue: abstract relation API (--> vector-sem, ddc)
   }
 
-  ##-- parse each attribute-local request into [ATTR,VAL] pairs
-  my ($a,$areq);
-  foreach (@$areqs) {
-    if (UNIVERSAL::isa($_,'ARRAY')) {
-      next;
-    } elsif (UNIVERSAL::isa($_,'HASH')) {
-      $_ = [%$_];
+  ##-- construct DDC query $q
+  my ($q);
+  if ($areqs) {
+    ##-- <v0.06-style attribute-wise request in @$areqs; construct DDC query by hand
+    my ($a,$areq,$aq);
+    foreach (@$areqs) {
+      ($a,$areq) = @$_;
+      if (UNIVERSAL::isa($areq,'DDC::XS::CQuery')) {
+	##-- attribute value: ddc query object
+	$aq = $areq;
+	$aq->setIndexName($a) if ($aq->can('setIndexName') && $a ne '');
+      }
+      elsif (UNIVERSAL::isa($areq,'ARRAY')) {
+	##-- attribute value: array --> CQTokSet @{VAL1,...,VALN}
+	$aq = DDC::XS::CQTokSet->new($a, '', $areq);
+      }
+      elsif (UNIVERSAL::isa($areq,'RegExp') || ($areq && $areq =~ m{^/})) {
+	##-- attribute value: regex --> CQTokRegex /REGEX/
+	my $re = regex($areq)."";
+	$re    =~ s{^\(\?\^\:(.*)\)$}{$1};
+	$aq = DDC::XS::CQTokRegex->new($a, $re);
+      }
+      else {
+	##-- attribute value: space- or |-separated literals --> CQTokExact $a=@VAL or CQTokSet $a=@{VAL1,...VALN} or CQTokAny $a=*
+	##   + also applies to empty $areq, e.g. in groupby clauses
+	my $vals = [grep {($_//'') ne ''} map {s{\\(.)}{$1}g; $_} split(/(?:(?<!\\)[\,\s\|])+/,($areq//''))];
+	$aq = (@$vals<=1
+	       ? (($vals->[0]//'*') eq '*'
+		  ? DDC::XS::CQTokAny->new($a,'*')
+		  : DDC::XS::CQTokExact->new($a,$vals->[0]))
+	       : DDC::XS::CQTokSet->new($a,($areq//''),$vals));
+      }
+      ##-- push request to query
+      $q = $q ? DDC::XS::CQWith->new($q,$aq) : $aq;
+    }
+  }
+  else {
+    ##-- >=v0.06: ddc request parsing: allow shorthands (',' --> 'WITH'), ('INDEX=VAL' --> '$INDEX=VAL'), and ($INDEX --> $INDEX=@{})
+    my $compiler = $coldb->qcompiler();
+    my ($err);
+    while (!defined($q)) {
+      #$coldb->trace("req=$req\n");
+      undef $@;
+      eval { $q=$compiler->ParseQuery($req); };
+      last if (!($err=$@) && defined($q));
+      if ($err =~ /syntax error/) {
+	if ($err =~ /unexpected ','/) {
+	  ##-- (X Y) --> (X WITH Y)
+	  $req =~ s/(?!<\\)\s*,\s*/ WITH /;
+	  next;
+	}
+	elsif ($err =~ /expecting '='/) {
+	  ##-- ($INDEX) --> ($INDEX=*) (for group-by)
+	  $req =~ s/(\$\w+)(?!\s*\=)/$1=*/;
+	  next;
+	}
+	elsif ($err =~ /unexpected SYMBOL, expecting INTEGER at line \d+, near token \`([^\']*)\'/) {
+	  ##-- (INDEX=) --> ($INDEX=)
+	  my $tok = $1;
+	  $req =~ s/(?!<\$)(\S+)\s*=\s*\Q$tok\E/\$$1=$tok/;
+	  next;
+	}
+      }
+      $coldb->logconfess("parseQuery(): could not parse request '$req0': ", ($err//''));
+    }
+  }
+
+  ##-- tweak query: map CQAnd to CQWith (traverses tree)
+  my @stack = ({node=>\$q,parent=>undef,slot=>undef});
+  my ($item,$nodr);
+  while (defined($item=pop(@stack))) {
+    my $nodr = $item->{node};
+    if (UNIVERSAL::isa($$nodr,'DDC::XS::CQAnd')) {
+      my $newnode = DDC::XS::CQWith->new($$nodr->getDtr1,$$nodr->getDtr2);
+      $nodr = \$newnode;
+      if ($item->{parent}) {
+	${$item->{parent}}->can("set".$item->{slot})->(${$item->{parent}}, $$nodr);
+      }
+      else {
+	$q = $newnode;
+      }
+    }
+    ##-- recurse
+    if (UNIVERSAL::isa($$nodr, 'DDC::XS::CQuery')) {
+      foreach my $slot ($$nodr->members) {
+	my $subnode = $$nodr->can('get'.$slot)->($$nodr);
+	push(@stack, {node=>\$subnode, parent=>$nodr, slot=>$slot}) if (UNIVERSAL::isa($subnode,'DDC::XS::CQuery'));
+      }
+    }
+  }
+
+  return $q;
+}
+
+##~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+## \@aqs = $coldb->queryAttributes($cquery,%opts)
+##  + utility for decomposing DDC queries into attribute-wise requests
+##   + returns an ARRAY-ref [[$attr1,$val1], ...]
+##   + each value $vali is empty or undef (all values), a CQTokSet, a CQTokExact, CQTokRegex, or CQTokAny
+##   + chokes on unsupported query types or filters
+##   + %opts:
+##     warn  => $level,       ##-- log-level for unknown attributes (default: 'warn')
+##     logas => $reqtype,     ##-- request type for warnings
+##     default => $attr,      ##-- default attribute (for query requests)
+sub queryAttributes {
+  my ($coldb,$cquery,%opts) = @_;
+  my $wlevel = $opts{warn} // 'warn';
+  my $default = $opts{default};
+  my $logas  = $opts{logas}//'';
+
+  my $warnsub = sub {
+    $coldb->logconfess($coldb->{error}="queryAttributes(): can't handle ".join('',@_)) if (!$opts{relax});
+    $coldb->vlog($wlevel, "queryAttributes(): ignoring ", @_);
+  };
+
+  my $areqs = [];
+  my ($q,$a,$aq);
+  foreach $q (@{$cquery->Descendants}) {
+    if    ($q->isa('DDC::XS::CQWith')) {
+      ##-- CQWith: ignore (just recurse)
       next;
     }
-    ($a,$areq) = m{^((?:[^\s\,\:\=]|\\.)*)(?:[\:\=]((?:[^\s\,]|\\.)*))?$} ? ($1,$2) : ($_,undef);
-    $a    =~ s/\\(.)/$1/g;
-    $areq =~ s/\\(.)/$1/g if (defined($areq));
-    ($a,$areq) = ($default,$a) if ($default && !defined($areq));
-    $a    = $default if ($a eq '');
-    $_ = [$a,$areq];
+    elsif ($q->isa('DDC::XS::CQueryOptions')) {
+      ##-- CQueryOptions: check for nontrivial user requests
+      $warnsub->("#WITHIN clause") if (@{$q->getWithin});
+      $warnsub->("#CNTXT clause") if ($q->getContextSentencesCount);
+    }
+    elsif ($q->isa('DDC::XS::CQToken')) {
+      ##-- CQToken: create attribute clause
+      $warnsub->("negated query clause in $logas request (".$q->toString.")") if ($q->getNegated);
+      $warnsub->("explicit term-expansion chain in $logas request (".$q->toString.")") if ($q->can('getExpanders') && @{$q->getExpanders});
+
+      my $a = $q->getIndexName || $default;
+      if (ref($q) =~ /^DDC::XS::CQTok(?:Exact|Set|Regex|Any)$/) {
+	$aq = $q;
+      } elsif (ref($q) eq 'DDC::XS::CQTokInfl') {
+	$aq = DDC::XS::CQTokExact->new($q->getIndexName, $q->getValue);
+      } elsif (ref($q) eq 'DDC::XS::CQTokSetInfl') {
+	$aq = DDC::XS::CQTokSet->new($q->getIndexName, $q->getValue, $q->getValues);
+      } elsif (ref($q) eq 'DDC::XS::CQTokPrefix') {
+	$aq = DDC::XS::CQTokRegex->new($q->getIndexName, '^'.quotemeta($q->getValue));
+      } elsif (ref($q) eq 'DDC::XS::CQTokSuffix') {
+	$aq = DDC::XS::CQTokRegex->new($q->getIndexName, quotemeta($q->getValue).'$');
+      } elsif (ref($q) eq 'DDC::XS::CQTokInfix') {
+	$aq = DDC::XS::CQTokRegex->new($q->getIndexName, quotemeta($q->getValue));
+      } else {
+	$warnsub->("token query clause of type ".ref($q)." in $logas request (".$q->toString.")");
+      }
+      $aq=undef if ($aq && $aq->isa('DDC::XS::CQTokAny')); ##-- empty value, e.g. for groupby
+      push(@$areqs, [$a,$aq]);
+    }
+    elsif ($q->isa('DDC::XS::CQFilter')) {
+      ##-- CQFilter
+      if ($q->isa('DDC::XS::CQFRandomSort') || $q->isa('DDC::XS::CQFRankSort')) {
+	next;
+      } elsif ($q->isa('DDC::XS::CQFSort') && ($q->getArg1 ne '' || $q->getArg2 ne '')) {
+	$warnsub->("filter of type ".ref($q)." with nontrivial bounds in $logas request (".$q->toString.")");
+      }
+    }
+    else {
+      ##-- something else
+      $warnsub->("query clause of type ".ref($q)." in $logas request (".$q->toString.")");
+    }
   }
 
   ##-- check for unsupported attributes
   @$areqs = grep {
     $_->[0] = $coldb->attrName($_->[0]);
     if (!$coldb->hasAttr($_->[0])) {
-      $coldb->logconfess($coldb->{error}="parseRequest(): unsupported attribute '$_->[0]' in ".($opts{logas}//'')." request") if (!$opts{relax});
-      $coldb->vlog($wlevel, "parseRequest(): skipping unsupported attribute '$_->[0]' in ".($opts{logas}//'')." request");
+      $warnsub->("unsupported attribute '$_->[0]' in $logas request");
       0
     } else {
       1
@@ -1320,6 +1449,17 @@ sub parseRequestDDC {
   return $areqs;
 }
 
+##~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+## \@aqs = $coldb->parseRequest($request, %opts)
+##  + guts for parsing user target and groupby requests into
+##  + see parseQuery() method for supported $request formats and %opts
+##  + wraps $coldb->queryAttributes($coldb->parseQuery($request,%opts))
+sub parseRequest {
+  my ($coldb,$req,%opts) = @_;
+  return $coldb->queryAttributes($coldb->parseQuery($req,%opts),%opts);
+}
+
+##~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 ## \%groupby = $coldb->groupby($groupby_request, %opts)
 ## \%groupby = $coldb->groupby(\%groupby,        %opts)
 ##  + $grouby_request : see parseRequest()
@@ -1358,7 +1498,7 @@ sub groupby {
   my ($ids);
   my @gbids  = (
 		map {
-		  (($_->[1]//'*') ne '*'
+		  ($_->[1] && !UNIVERSAL::isa($_->[1],'DDC::XS::CQTokAny')
 		   ? {
 		      map {($_=>undef)}
 		      @{$coldb->enumIds($coldb->{"$_->[0]enum"}, $_->[1], logLevel=>$coldb->{logProfile}, logPrefix=>"groupby(): fetch filter ids: $_->[0]")}

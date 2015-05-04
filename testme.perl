@@ -1170,17 +1170,18 @@ sub test_tied_enum {
 ##==============================================================================
 ## test: parseRequest via ddc
 
-sub test_ddcparse {
+sub test_ddcparse0 {
   my $dbdir = shift || 'kern.d';
-  my $req0  = shift || 'l, p=ADJA';
+  my $req0  = shift || '$l=@Haus, $p=ADJA';
   my $req   = $req0;
   my $defaultIndex = undef; #''; ##-- default index name; set to undef for groupby parsing
 
-  ##-- backwards-compatibility: parse into attribute-local requests $areqs=[[$attr1,$areq1],...]
+  ##-- compat: accept ARRAY or HASH requests
   my $areqs = (UNIVERSAL::isa($req,'ARRAY') ? [@$req]
 	       : (UNIVERSAL::isa($req,'HASH') ? [%$req]
 		  : undef));
 
+  ##-- compat: parse into attribute-local requests $areqs=[[$attr1,$areq1],...]
   my $sepre  = qr{[\s\,]};
   my $wordre = qr{(?:[^\s,:=\$\"\{\}\@]|\\.)};
   my $reqre  = qr{(?:${wordre}+[:=])?${wordre}+};
@@ -1301,15 +1302,29 @@ sub test_ddcparse {
   print "qreq1=$req\n";
   print "qstr=", $q->toString, "\n";
 
-  if (0) {
-    my $coldb = DiaColloDB->new(dbdir=>$dbdir) or die("$0: failed to open $dbdir/: $!");
-    my $areqs = $coldb->parseRequestDCC($req);
-    print Data::Dumper->Dump([$areqs],[qw(areqs)]);
-  }
+  exit 0;
+}
+#test_ddcparse(@ARGV);
+
+##--------------------------------------------------------------
+sub test_ddcparse1 {
+  my $dbdir = shift || 'kern.d';
+  my $req   = shift || '$l, $p';
+  my $defaultIndex = undef; #''; ##-- default index name; set to undef for groupby parsing
+
+  my $coldb = DiaColloDB->new(dbdir=>$dbdir) or die("$0: failed to open $dbdir/: $!");
+  my $q      = $coldb->parseQuery($req);
+
+  ##-- dump query
+  #print Data::Dumper->Dump([$q->toHash],[qw(qhash)]);
+  print "qreq=$req\n";
+  print "qstr=", $q->toString, "\n";
+
 
   exit 0;
 }
-test_ddcparse(@ARGV);
+test_ddcparse1(@ARGV);
+
 
 
 ##==============================================================================
