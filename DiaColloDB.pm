@@ -1248,8 +1248,6 @@ sub parseRequestNative {
 ##     warn  => $level,       ##-- log-level for unknown attributes (default: 'warn')
 ##     logas => $reqtype,     ##-- request type for warnings
 ##     default => $attr,      ##-- default attribute (for query requests)
-=pod
-
 use DDC::XS;
 sub parseRequestDDC {
   my ($coldb,$req,%opts) = @_;
@@ -1270,7 +1268,7 @@ sub parseRequestDDC {
       $areqs     = [];
       my $areqs0 = $coldb->parseRequestNative($req,%opts);
       my ($aq);
-      foreach $areq (@$areqs0) {
+      foreach my $areq (@$areqs0) {
 	if ($areq->[1] =~ m{^/}) {
 	  $aq = DDC::XS::CQTokRegex->new($areq->[0],$areq->[1]);
 	}
@@ -1321,8 +1319,6 @@ sub parseRequestDDC {
 
   return $areqs;
 }
-
-=cut
 
 ## \%groupby = $coldb->groupby($groupby_request, %opts)
 ## \%groupby = $coldb->groupby(\%groupby,        %opts)
