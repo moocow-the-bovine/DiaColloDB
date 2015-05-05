@@ -32,7 +32,7 @@ use strict;
 ##==============================================================================
 ## Globals & Constants
 
-our $VERSION = "0.06.002";
+our $VERSION = "0.06.003";
 our @ISA = qw(DiaColloDB::Client);
 
 ## $PGOOD_DEFAULT
@@ -1153,14 +1153,10 @@ sub enumIds {
 }
 
 ##~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-## \%slice2xids = $coldb->xidsByDate(\@xids, $dateRequest, $sliceRequest, $fill)
-##   + parse and filter \@xids by $dateRequest, $sliceRequest
-##   + returns a HASH-ref from slice-ids to \@xids in that date-slice
-##   + if $fill is true, returned HASH-ref has a key for each date-slice in range
-sub xidsByDate {
-  my ($coldb,$xids,$date,$slice,$fill) = @_;
-  my $dfilter = undef;
-  my ($dlo,$dhi);
+## ($dfilter,$dlo,$dhi) = $coldb->parseDateRequest($dateRequest, $sliceRequest, $fill)
+sub parseDateRequest {
+  my ($coldb,$date,$slice,$fill) = @_;
+  my ($dfilter,$dlo,$dhi);
   if ($date && (UNIVERSAL::isa($date,'Regexp') || $date =~ /^\//)) {
     ##-- date request: regex string
     my $dre  = regex($date);
@@ -1181,6 +1177,29 @@ sub xidsByDate {
     $dfilter = sub { $_[0] == $date };
   }
 
+  ##-- force-fill?
+  if ($fill && $slice) {
+    $dlo //= -'inf';
+    $dhi //=  'inf';
+    $dlo   = $coldb->{xdmin} if ($dlo < $coldb->{xdmin});
+    $dhi   = $coldb->{xdmax} if ($dhi > $coldb->{xdmax});
+    $dlo = int($dlo/$slice)*$slice;
+    $dhi = int($dhi/$slice)*$slice;
+  }
+
+  return wantarray ? ($dfilter,$dlo,$dhi) : $dfilter;
+}
+
+##~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+## \%slice2xids = $coldb->xidsByDate(\@xids, $dateRequest, $sliceRequest, $fill)
+##   + parse and filter \@xids by $dateRequest, $sliceRequest
+##   + returns a HASH-ref from slice-ids to \@xids in that date-slice
+##   + if $fill is true, returned HASH-ref has a key for each date-slice in range
+sub xidsByDate {
+  my ($coldb,$xids,$date,$slice,$fill) = @_;
+  my ($dfilter,$dlo,$dhi) = $coldb->parseDateRequest($date,$slice,$fill);
+
+  ##-- filter xids
   my $xenum  = $coldb->{xenum};
   my $pack_x = $coldb->{pack_x};
   my $pack_i = $coldb->{pack_id};
@@ -1197,12 +1216,6 @@ sub xidsByDate {
 
   ##-- force-fill?
   if ($fill && $slice) {
-    $dlo //= -'inf';
-    $dhi //=  'inf';
-    $dlo   = $coldb->{xdmin} if ($dlo < $coldb->{xdmin});
-    $dhi   = $coldb->{xdmax} if ($dhi > $coldb->{xdmax});
-    $dlo = int($dlo/$slice)*$slice;
-    $dhi = int($dhi/$slice)*$slice;
     for (my $d=$dlo; $d <= $dhi; $d += $slice) {
       $d2xis->{$d} //= [];
     }
@@ -1244,7 +1257,7 @@ sub parseQuery {
 
   ##-- compat: parse into attribute-local requests $areqs=[[$attr1,$areq1],...]
   my $sepre  = qr{[\s\,]};
-  my $wordre = qr{(?:\\.|[^\s,:=\$\"\{\}\@])};
+  my $wordre = qr{(?:\\.|[^\s,:=\$\"\{\}\@\#\[\]])};
   my $reqre  = qr{(?:${wordre}+[:=])?${wordre}+};
   if (!$areqs && $req =~ m/^${sepre}*			##-- initial separators (optional)
 			   (?:${reqre}${sepre}+)*	##-- separated components

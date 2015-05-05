@@ -1170,160 +1170,49 @@ sub test_tied_enum {
 ##==============================================================================
 ## test: parseRequest via ddc
 
-sub test_ddcparse0 {
-  my $dbdir = shift || 'kern.d';
-  my $req0  = shift || '$l=@Haus, $p=ADJA';
-  my $req   = $req0;
-  my $defaultIndex = undef; #''; ##-- default index name; set to undef for groupby parsing
-
-  ##-- compat: accept ARRAY or HASH requests
-  my $areqs = (UNIVERSAL::isa($req,'ARRAY') ? [@$req]
-	       : (UNIVERSAL::isa($req,'HASH') ? [%$req]
-		  : undef));
-
-  ##-- compat: parse into attribute-local requests $areqs=[[$attr1,$areq1],...]
-  my $sepre  = qr{[\s\,]};
-  my $wordre = qr{(?:[^\s,:=\$\"\{\}\@]|\\.)};
-  my $reqre  = qr{(?:${wordre}+[:=])?${wordre}+};
-  if (!$areqs && $req =~ m/^${sepre}*			##-- initial separators (optional)
-			   (?:${reqre}${sepre}+)*	##-- separated components
-			   (?:${reqre})			##-- final component
-			   ${sepre}*			##-- final separators (optional)
-			   $/x) {
-    $areqs = [grep {defined($_)} ($req =~ m{[\s\,]*((?:[^\s\,]|\\.)+)?}g)];
-    my ($a,$areq);
-    foreach (@$areqs) {
-      if (UNIVERSAL::isa($_,'ARRAY')) {
-	next;
-      } elsif (UNIVERSAL::isa($_,'HASH')) {
-	$_ = [%$_];
-	next;
-      }
-      ($a,$areq) = m{^((?:[^\s\,\:\=]|\\.)*)(?:[\:\=]((?:[^\s\,]|\\.)*))?$} ? ($1,$2) : ($_,undef);
-      $a    =~ s/\\(.)/$1/g;
-      $areq =~ s/\\(.)/$1/g if (defined($areq));
-      ($a,$areq) = ('',$a) if (defined($defaultIndex) && !defined($areq));
-      $a = $defaultIndex//'' if (($a//'') eq '');
-      $a =~ s/^\$//;
-      $_ = [$a,$areq];
-    }
-  }
-
-
-  my ($q);
-  my $compiler = DDC::XS::CQueryCompiler->new();
-  if (!$areqs) {
-    ##-- ddc request parsing: allow shorthands (',' --> 'WITH'), ('INDEX=VAL' --> '$INDEX=VAL'), and ($INDEX --> $INDEX=@{})
-    my ($err);
-    while (!defined($q)) {
-      print STDERR "DEBUG: req=$req\n";
-      undef $@;
-      eval { $q=$compiler->ParseQuery($req); };
-      last if (!($err=$@) && defined($q));
-      if ($err =~ /syntax error/) {
-	if ($err =~ /unexpected ','/) {
-	  ##-- (X Y) --> (X WITH Y)
-	  $req =~ s/(?!<\\)\s*,\s*/ WITH /;
-	  next;
-	}
-	elsif ($err =~ /expecting '='/) {
-	  ##-- ($INDEX) --> ($INDEX=@{}) (for group-by)
-	  $req =~ s/(\$\w+)(?!\s*\=)/$1=\@{}/;
-	  next;
-	}
-	elsif ($err =~ /unexpected SYMBOL, expecting INTEGER at line \d+, near token \`([^\']*)\'/) {
-	  ##-- (INDEX=) --> ($INDEX=)
-	  my $tok = $1;
-	  $req =~ s/(?!<\$)(\S+)\s*=\s*\Q$tok\E/\$$1=$tok/;
-	  next;
-	}
-      }
-      die("$0: could not parse query '$req': $@");
-    }
-  }
-  else {
-    ##-- old-style attribute-wise request in @$areqs; construct DDC query
-    my ($a,$areq,$aq);
-    foreach (@$areqs) {
-      ($a,$areq) = @$_;
-      if (UNIVERSAL::isa($areq,'DDC::XS::CQuery')) {
-	##-- attribute value: ddc query object
-	$aq = $areq;
-	$aq->setIndexName($a) if ($aq->can('setIndexName') && $a ne '');
-      }
-      elsif (UNIVERSAL::isa($areq,'ARRAY')) {
-	##-- attribute value: array --> CQTokSet @{VAL1,...,VALN}
-	$aq = DDC::XS::CQTokSet->new($a, '', $areq);
-      }
-      elsif (UNIVERSAL::isa($areq,'RegExp') || ($areq && $areq =~ m{^/})) {
-	##-- attribute value: regex --> CQTokRegex /REGEX/
-	my $re = regex($areq)."";
-	$re    =~ s{^\(\?\^\:(.*)\)$}{$1};
-	$aq = DDC::XS::CQTokRegex->new($a, $re);
-      }
-      else {
-	##-- attribute value: space- or |-separated literals --> CQTokExact @VAL or CQTokSet @{VAL1,...VALN}
-	##   + also applies to empty $areq, e.g. in groupby clauses
-	my $vals = [grep {($_//'') ne ''} map {s{\\(.)}{$1}g; $_} split(/(?:(?<!\\)[\,\s\|])+/,($areq//''))];
-	$aq = @$vals==1 ? DDC::XS::CQTokExact->new($a,$vals->[0]) : DDC::XS::CQTokSet->new($a,($areq//''),$vals);
-      }
-      ##-- push request to query
-      $q = $q ? DDC::XS::CQWith->new($q,$aq) : $aq;
-    }
-  }
-
-  ##-- tweak query: map CQAnd to CQWith (traverses tree)
-  my @stack = ({node=>\$q,parent=>undef,slot=>undef});
-  my ($item,$nodr);
-  while (defined($item=pop(@stack))) {
-    my $nodr = $item->{node};
-    if (UNIVERSAL::isa($$nodr,'DDC::XS::CQAnd')) {
-      my $newnode = DDC::XS::CQWith->new($$nodr->getDtr1,$$nodr->getDtr2);
-      $nodr = \$newnode;
-      if ($item->{parent}) {
-	${$item->{parent}}->can("set".$item->{slot})->(${$item->{parent}}, $$nodr);
-      }
-      else {
-	$q = $newnode;
-      }
-    }
-    ##-- recurse
-    if (UNIVERSAL::isa($$nodr, 'DDC::XS::CQuery')) {
-      foreach my $slot ($$nodr->members) {
-	my $subnode = $$nodr->can('get'.$slot)->($$nodr);
-	push(@stack, {node=>\$subnode, parent=>$nodr, slot=>$slot}) if (UNIVERSAL::isa($subnode,'DDC::XS::CQuery'));
-      }
-    }
-  }
-
-  ##-- dump query
-  #print Data::Dumper->Dump([$q->toHash],[qw(qhash)]);
-  print "qreq0=$req0\n";
-  print "qreq1=$req\n";
-  print "qstr=", $q->toString, "\n";
-
-  exit 0;
-}
-#test_ddcparse(@ARGV);
-
 ##--------------------------------------------------------------
-sub test_ddcparse1 {
+sub test_ddcparse {
   my $dbdir = shift || 'kern.d';
   my $req   = shift || '$l, $p';
   my $defaultIndex = undef; #''; ##-- default index name; set to undef for groupby parsing
 
   my $coldb = DiaColloDB->new(dbdir=>$dbdir) or die("$0: failed to open $dbdir/: $!");
-  my $q      = $coldb->parseQuery($req);
+  my $q     = $coldb->parseQuery($req);
 
   ##-- dump query
   #print Data::Dumper->Dump([$q->toHash],[qw(qhash)]);
   print "qreq=$req\n";
   print "qstr=", $q->toString, "\n";
 
+  exit 0;
+}
+#test_ddcparse(@ARGV);
+
+
+##--------------------------------------------------------------
+use DiaColloDB::DDC;
+sub test_ddcrel {
+  my $dbdir = shift || 'kern.d';
+  my %opts  = map {split(/=/,$_,2)} @_;
+
+  $opts{query}   ||= 'Haus, $p=NN #has[author,/kant/]';
+  $opts{groupby} ||= '$l,$p=ADJA';
+  $opts{slice}   ||= 0;
+  $opts{date}    ||= '1900:1999';
+
+  my $coldb = DiaColloDB->new(dbdir=>$dbdir) or die("$0: failed to open $dbdir/: $!");
+  my $rel   = DiaColloDB::DDC->fromDB($coldb, ddcServer=>'localhost:52000');
+
+  my ($qcount,$limit) = $rel->countQuery($coldb, %opts);
+
+  ##-- dump query
+  #print Data::Dumper->Dump([$q->toHash],[qw(qhash)]);
+  print "limit=$limit\n";
+  print "qstr=", $qcount->toString, "\n";
 
   exit 0;
 }
-test_ddcparse1(@ARGV);
+test_ddcrel(@ARGV);
 
 
 

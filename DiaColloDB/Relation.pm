@@ -87,7 +87,7 @@ sub profile {
   ##-- common variables
   my $logProfile = $coldb->{logProfile};
 
-  ##-- variables: by attribute: set $ac->{req} = $USER_REQUEST
+  ##-- variables: by attribute
   my $groupby= $coldb->groupby($opts{groupby});
   my $attrs  = $coldb->attrs();
   my $adata  = $coldb->attrData($attrs);
