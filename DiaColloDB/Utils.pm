@@ -356,7 +356,7 @@ sub regex {
   return $re if (ref($re));
   $re =~ s/^\s*\///;
 
-  my $mods = ($re =~ s/\/([gimsadlu]*)\s*$// ? $1 : '');
+  my $mods = ($re =~ s/\/([gimsadlux]*)\s*$// ? $1 : '');
   if ($mods =~ s/g//g) {
     $re = "^(?${mods}:${re})\$";  ##-- parse /g modifier a la ddc
   } elsif ($mods) {

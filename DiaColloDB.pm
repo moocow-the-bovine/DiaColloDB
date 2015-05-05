@@ -1244,56 +1244,57 @@ sub parseQuery {
 
   ##-- compat: parse into attribute-local requests $areqs=[[$attr1,$areq1],...]
   my $sepre  = qr{[\s\,]};
-  my $wordre = qr{(?:[^\s,:=\$\"\{\}\@]|\\.)};
+  my $wordre = qr{(?:\\.|[^\s,:=\$\"\{\}\@])};
   my $reqre  = qr{(?:${wordre}+[:=])?${wordre}+};
   if (!$areqs && $req =~ m/^${sepre}*			##-- initial separators (optional)
 			   (?:${reqre}${sepre}+)*	##-- separated components
 			   (?:${reqre})			##-- final component
 			   ${sepre}*			##-- final separators (optional)
 			   $/x) {
-    $areqs = [grep {defined($_)} ($req =~ m{[\s\,]*((?:[^\s\,]|\\.)+)?}g)];
-    my ($a,$areq);
-    foreach (@$areqs) {
-      if (UNIVERSAL::isa($_,'ARRAY')) {
-	next;
-      } elsif (UNIVERSAL::isa($_,'HASH')) {
-	$_ = [%$_];
-	next;
-      }
-      ($a,$areq) = m{^((?:[^\s\,\:\=]|\\.)*)(?:[\:\=]((?:[^\s\,]|\\.)*))?$} ? ($1,$2) : ($_,undef);
-      $a    =~ s/\\(.)/$1/g;
-      $areq =~ s/\\(.)/$1/g if (defined($areq));
-      ($a,$areq) = ('',$a) if (defined($defaultIndex) && !defined($areq));
-      $a = $defaultIndex//'' if (($a//'') eq '');
-      $a =~ s/^\$//;
-      $_ = [$a,$areq];
-    }
+    $areqs = [grep {defined($_)} ($req =~ m/${sepre}*(${reqre})/g)];
   }
 
   ##-- construct DDC query $q
   my ($q);
   if ($areqs) {
-    ##-- <v0.06-style attribute-wise request in @$areqs; construct DDC query by hand
+    ##-- compat: diacollo<=v0.06-style attribute-wise request in @$areqs; construct DDC query by hand
     my ($a,$areq,$aq);
     foreach (@$areqs) {
-      ($a,$areq) = @$_;
+      if (UNIVERSAL::isa($_,'ARRAY')) {
+	##-- compat: attribute request: ARRAY
+	($a,$areq) = @$_;
+      } elsif (UNIVERSAL::isa($_,'HASH')) {
+	##-- compat: attribute request: HASH
+	($a,$areq) = %$_;
+      } else {
+	##-- compat: attribute request: STRING (native)
+	($a,$areq) = m{^((?:[^\s\,\:\=]|\\.)*)(?:[\:\=]((?:[^\s\,]|\\.)*))?$} ? ($1,$2) : ($_,undef);
+	$a    =~ s/\\(.)/$1/g;
+	$areq =~ s/\\(.)/$1/g if (defined($areq));
+      }
+
+      ##-- compat: parse defaults
+      ($a,$areq) = ('',$a)   if (defined($defaultIndex) && !defined($areq));
+      $a = $defaultIndex//'' if (($a//'') eq '');
+      $a =~ s/^\$//;
+
       if (UNIVERSAL::isa($areq,'DDC::XS::CQuery')) {
-	##-- attribute value: ddc query object
+	##-- compat: value: ddc query object
 	$aq = $areq;
 	$aq->setIndexName($a) if ($aq->can('setIndexName') && $a ne '');
       }
       elsif (UNIVERSAL::isa($areq,'ARRAY')) {
-	##-- attribute value: array --> CQTokSet @{VAL1,...,VALN}
+	##-- compat: value: array --> CQTokSet @{VAL1,...,VALN}
 	$aq = DDC::XS::CQTokSet->new($a, '', $areq);
       }
       elsif (UNIVERSAL::isa($areq,'RegExp') || ($areq && $areq =~ m{^/})) {
-	##-- attribute value: regex --> CQTokRegex /REGEX/
+	##-- compat: value: regex --> CQTokRegex /REGEX/
 	my $re = regex($areq)."";
 	$re    =~ s{^\(\?\^\:(.*)\)$}{$1};
 	$aq = DDC::XS::CQTokRegex->new($a, $re);
       }
       else {
-	##-- attribute value: space- or |-separated literals --> CQTokExact $a=@VAL or CQTokSet $a=@{VAL1,...VALN} or CQTokAny $a=*
+	##-- compat: value: space- or |-separated literals --> CQTokExact $a=@VAL or CQTokSet $a=@{VAL1,...VALN} or CQTokAny $a=*
 	##   + also applies to empty $areq, e.g. in groupby clauses
 	my $vals = [grep {($_//'') ne ''} map {s{\\(.)}{$1}g; $_} split(/(?:(?<!\\)[\,\s\|])+/,($areq//''))];
 	$aq = (@$vals<=1
@@ -1307,7 +1308,7 @@ sub parseQuery {
     }
   }
   else {
-    ##-- >=v0.06: ddc request parsing: allow shorthands (',' --> 'WITH'), ('INDEX=VAL' --> '$INDEX=VAL'), and ($INDEX --> $INDEX=@{})
+    ##-- ddc: diacollo>=v0.06: ddc request parsing: allow shorthands (',' --> 'WITH'), ('INDEX=VAL' --> '$INDEX=VAL'), and ($INDEX --> $INDEX=@{})
     my $compiler = $coldb->qcompiler();
     my ($err);
     while (!defined($q)) {
@@ -1574,7 +1575,7 @@ sub profile {
   $opts{query}     = (grep {defined($_)} @opts{qw(query q lemma lem l)})[0] // '';
   $opts{date}    //= '';
   $opts{slide}   //= 1;
-  $opts{groupby} ||= [$coldb->attrs];
+  $opts{groupby} ||= join(',', map {quotemeta($_)} @{$coldb->attrs});
   $opts{score}   //= 'f';
   $opts{eps}     //= 0;
   $opts{kbest}   //= -1;
