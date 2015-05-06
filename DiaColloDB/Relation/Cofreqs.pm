@@ -1,9 +1,9 @@
 ## -*- Mode: CPerl -*-
-## File: DiaColloDB::Cofreqs.pm
+## File: DiaColloDB::Relation::Cofreqs.pm
 ## Author: Bryan Jurish <moocow@cpan.org>
-## Description: collocation db, co-frequency database (using pair of DiaColloDB::PackedFile)
+## Description: collocation db, profiling relation: co-frequency database (using pair of DiaColloDB::PackedFile)
 
-package DiaColloDB::Cofreqs;
+package DiaColloDB::Relation::Cofreqs;
 use DiaColloDB::Relation;
 use DiaColloDB::PackedFile;
 use DiaColloDB::Utils qw(:fcntl :env :run :json :pack);
@@ -569,6 +569,12 @@ sub subprofile {
 				f12=>$pf12,
 			       );
 }
+
+##==============================================================================
+## Pacakge Alias(es)
+package DiaColloDB::Cofreqs;
+use strict;
+our @ISA = qw(DiaColloDB::Relation::Cofreqs);
 
 
 ##==============================================================================

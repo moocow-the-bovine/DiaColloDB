@@ -1,9 +1,9 @@
 ## -*- Mode: CPerl -*-
-## File: DiaColloDB::Unigrams.pm
+## File: DiaColloDB::Relation::Unigrams.pm
 ## Author: Bryan Jurish <moocow@cpan.org>
-## Description: collocation db, unigram database (using DiaColloDB::PackedFile)
+## Description: collocation db, profiling relation: unigram database (using DiaColloDB::PackedFile)
 
-package DiaColloDB::Unigrams;
+package DiaColloDB::Relation::Unigrams;
 use DiaColloDB::Relation;
 use DiaColloDB::PackedFile;
 use DiaColloDB::Utils qw(:sort :env :run :pack :file);
@@ -209,11 +209,13 @@ sub subprofile {
 }
 
 ##==============================================================================
+## Pacakge Alias(es)
+package DiaColloDB::Unigrams;
+use strict;
+our @ISA = qw(DiaColloDB::Relation::Unigrams);
+
+##==============================================================================
 ## Footer
 1;
 
 __END__
-
-
-
-

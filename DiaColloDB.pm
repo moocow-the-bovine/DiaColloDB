@@ -14,8 +14,9 @@ use DiaColloDB::EnumFile::Tied;
 use DiaColloDB::MultiMapFile;
 use DiaColloDB::PackedFile;
 use DiaColloDB::Relation;
-use DiaColloDB::Unigrams;
-use DiaColloDB::Cofreqs;
+use DiaColloDB::Relation::Unigrams;
+use DiaColloDB::Relation::Cofreqs;
+use DiaColloDB::Relation::DDC;
 use DiaColloDB::Profile;
 use DiaColloDB::Profile::Multi;
 use DiaColloDB::Profile::MultiDiff;
@@ -99,6 +100,10 @@ our $MMCLASS = 'DiaColloDB::MultiMapFile';
 ##    cfmin => $cfmin,    ##-- minimum co-occurrence frequency for Cofreqs (default=2)
 ##    keeptmp => $bool,   ##-- keep temporary files? (default=0)
 ##    ##
+##    ##-- runtime ddc relation options
+##    ddcServer => "$host:$port", ##-- server for ddc relation
+##    ddcTimeout => $seconds,     ##-- timeout for ddc relation
+##    ##
 ##    ##-- source filtering (for create())
 ##    pgood  => $regex,   ##-- positive filter regex for part-of-speech tags
 ##    pbad   => $regex,   ##-- negative filter regex for part-of-speech tags
@@ -138,6 +143,7 @@ our $MMCLASS = 'DiaColloDB::MultiMapFile';
 ##    ##-- relation data
 ##    xf    => $xf,       ##-- ug: $xi => $f($xi) : N=>N
 ##    cof   => $cof,      ##-- cf: [$xi1,$xi2] => $f12
+##    ddc   => $ddc,      ##-- ddc client relation
 ##   )
 sub new {
   my $that = shift;
@@ -190,8 +196,9 @@ sub new {
 		      #pack_x => 'Nn',
 
 		      ##-- relations
-		      #xf    => undef, #DiaColloDB::Unigrams->new(packas=>$coldb->{pack_f}),
-		      #cof   => undef, #DiaColloDB::Cofreqs->new(pack_f=>$pack_f, pack_i=>$pack_i, dmax=>$dmax, fmin=>$cfmin),
+		      #xf    => undef, #DiaColloDB::Relation::Unigrams->new(packas=>$coldb->{pack_f}),
+		      #cof   => undef, #DiaColloDB::Relation::Cofreqs->new(pack_f=>$pack_f, pack_i=>$pack_i, dmax=>$dmax, fmin=>$cfmin),
+		      #ddc   => undef, #DiaColloDB::Relation::DDC->new(),
 
 		      @_,	##-- user arguments
 		     },
@@ -292,16 +299,19 @@ sub open {
   }
 
   ##-- open: xf
-  $coldb->{xf} = DiaColloDB::Unigrams->new(file=>"$dbdir/xf.dba", flags=>$flags, packas=>$coldb->{pack_f})
+  $coldb->{xf} = DiaColloDB::Relation::Unigrams->new(file=>"$dbdir/xf.dba", flags=>$flags, packas=>$coldb->{pack_f})
     or $coldb->logconfess("open(): failed to open tuple-unigrams $dbdir/xf.dba: $!");
   $coldb->{xf}{N} = $coldb->{xN} if ($coldb->{xN} && !$coldb->{xf}{N}); ##-- compat
 
   ##-- open: cof
-  $coldb->{cof} = DiaColloDB::Cofreqs->new(base=>"$dbdir/cof", flags=>$flags,
-					 pack_i=>$coldb->{pack_id}, pack_f=>$coldb->{pack_f},
-					 dmax=>$coldb->{dmax}, fmin=>$coldb->{cfmin},
-					)
+  $coldb->{cof} = DiaColloDB::Relation::Cofreqs->new(base=>"$dbdir/cof", flags=>$flags,
+						     pack_i=>$coldb->{pack_id}, pack_f=>$coldb->{pack_f},
+						     dmax=>$coldb->{dmax}, fmin=>$coldb->{cfmin},
+						    )
     or $coldb->logconfess("open(): failed to open co-frequency file $dbdir/cof.*: $!");
+
+  ##-- open: ddc (undef if ddcServer isn't set in ddc.hdr or $coldb)
+  $coldb->{ddc} = DiaColloDB::Relation::DDC->new(-r "$dbdir/ddc.hdr" ? (base=>"$dbdir/ddc") : qw())->fromDB($coldb);
 
   ##-- all done
   return $coldb;
@@ -618,7 +628,7 @@ sub create {
 
   ##-- compute unigrams
   $coldb->info("creating tuple unigram index $dbdir/xf.dba");
-  my $xfdb = $coldb->{xf} = DiaColloDB::Unigrams->new(file=>"$dbdir/xf.dba", flags=>$flags, packas=>$pack_f)
+  my $xfdb = $coldb->{xf} = DiaColloDB::Relation::Unigrams->new(file=>"$dbdir/xf.dba", flags=>$flags, packas=>$pack_f)
     or $coldb->logconfess("create(): could not create $dbdir/xf.dba: $!");
   $xfdb->setsize($xenum->{size})
     or $coldb->logconfess("create(): could not set unigram index size = $xenum->{size}: $!");
@@ -627,14 +637,22 @@ sub create {
 
   ##-- compute collocation frequencies
   $coldb->info("creating co-frequency index $dbdir/cof.* [dmax=$coldb->{dmax}, fmin=$coldb->{cfmin}]");
-  my $cof = $coldb->{cof} = DiaColloDB::Cofreqs->new(base=>"$dbdir/cof", flags=>$flags,
-						     pack_i=>$pack_id, pack_f=>$pack_f,
-						     dmax=>$coldb->{dmax}, fmin=>$coldb->{cfmin},
-						     keeptmp=>$coldb->{keeptmp},
-						    )
+  my $cof = $coldb->{cof} = DiaColloDB::Relation::Cofreqs->new(base=>"$dbdir/cof", flags=>$flags,
+							       pack_i=>$pack_id, pack_f=>$pack_f,
+							       dmax=>$coldb->{dmax}, fmin=>$coldb->{cfmin},
+							       keeptmp=>$coldb->{keeptmp},
+							      )
     or $coldb->logconfess("create(): failed to create co-frequency index $dbdir/cof.*: $!");
   $cof->create($coldb, $tokfile)
     or $coldb->logconfess("create(): failed to create co-frequency index: $!");
+
+  ##-- create ddc client relation (no-op if ddcServer option is not set)
+  if ($coldb->{ddcServer}) {
+    $coldb->info("creating ddc client configuration $dbdir/ddc.hdr [ddcServer=$coldb->{ddcServer}]");
+    $coldb->{ddc} = DiaColloDB::Relation::DDC->create($coldb);
+  } else {
+    $coldb->info("ddcServer option unset, NOT creating ddc client configuration");
+  }
 
   ##-- save header
   $coldb->saveHeader()
@@ -782,18 +800,18 @@ sub union {
 
   ##-- unigrams: populate
   $coldb->vlog($coldb->{logCreate}, "union(): creating tuple unigram index $dbdir/xf.*");
-  $coldb->{xf} = DiaColloDB::Unigrams->new(file=>"$dbdir/xf.dba", flags=>$flags, packas=>$pack_f)
+  $coldb->{xf} = DiaColloDB::Relation::Unigrams->new(file=>"$dbdir/xf.dba", flags=>$flags, packas=>$pack_f)
     or $coldb->logconfess("union(): could not create $dbdir/xf.*: $!");
   $coldb->{xf}->union($coldb, [map {[@$_{qw(xf _union_xi2u)}]} @dbargs])
     or $coldb->logconfess("union(): could not populate unigram index $dbdir/xf.*: $!");
 
   ##-- co-frequencies: populate
   $coldb->vlog($coldb->{logCreate}, "union(): creating co-frequency index $dbdir/cof.* [fmin=$coldb->{cfmin}]");
-  $coldb->{cof} = DiaColloDB::Cofreqs->new(base=>"$dbdir/cof", flags=>$flags,
-					   pack_i=>$pack_id, pack_f=>$pack_f,
-					   dmax=>$coldb->{dmax}, fmin=>$coldb->{cfmin},
-					   keeptmp=>$coldb->{keeptmp},
-					  )
+  $coldb->{cof} = DiaColloDB::Relation::Cofreqs->new(base=>"$dbdir/cof", flags=>$flags,
+						     pack_i=>$pack_id, pack_f=>$pack_f,
+						     dmax=>$coldb->{dmax}, fmin=>$coldb->{cfmin},
+						     keeptmp=>$coldb->{keeptmp},
+						    )
     or $coldb->logconfess("create(): failed to open co-frequency index $dbdir/cof.*: $!");
   $coldb->{cof}->union($coldb, [map {[@$_{qw(cof _union_xi2u)}]} @dbargs])
     or $coldb->logconfess("union(): could not populate co-frequency index $dbdir/cof.*: $!");
@@ -1178,13 +1196,17 @@ sub parseDateRequest {
   }
 
   ##-- force-fill?
-  if ($fill && $slice) {
-    $dlo //= -'inf';
-    $dhi //=  'inf';
-    $dlo   = $coldb->{xdmin} if ($dlo < $coldb->{xdmin});
-    $dhi   = $coldb->{xdmax} if ($dhi > $coldb->{xdmax});
-    $dlo = int($dlo/$slice)*$slice;
-    $dhi = int($dhi/$slice)*$slice;
+  if ($fill) {
+    if ($slice) {
+      $dlo //= -'inf';
+      $dhi //=  'inf';
+      $dlo   = $coldb->{xdmin} if ($dlo < $coldb->{xdmin});
+      $dhi   = $coldb->{xdmax} if ($dhi > $coldb->{xdmax});
+      $dlo = int($dlo/$slice)*$slice;
+      $dhi = int($dhi/$slice)*$slice;
+    } else {
+      $dlo = $dhi = 0;
+    }
   }
 
   return wantarray ? ($dfilter,$dlo,$dhi) : $dfilter;
@@ -1244,6 +1266,8 @@ sub qcompiler {
 ##     warn  => $level,       ##-- log-level for unknown attributes (default: 'warn')
 ##     logas => $reqtype,     ##-- request type for warnings
 ##     default => $attr,      ##-- default attribute (for query requests)
+##     mapand => $bool,       ##-- map CQAnd to CQWith? (default=true unless '&&' occurs in query string)
+##     ddcmode => $bool,      ##-- force ddc query mode? (default=false)
 sub parseQuery {
   my ($coldb,$req,%opts) = @_;
   my $req0   = $req;
@@ -1259,11 +1283,13 @@ sub parseQuery {
   my $sepre  = qr{[\s\,]};
   my $wordre = qr{(?:\\.|[^\s,:=\$\"\{\}\@\#\[\]])};
   my $reqre  = qr{(?:${wordre}+[:=])?${wordre}+};
-  if (!$areqs && $req =~ m/^${sepre}*			##-- initial separators (optional)
-			   (?:${reqre}${sepre}+)*	##-- separated components
-			   (?:${reqre})			##-- final component
-			   ${sepre}*			##-- final separators (optional)
-			   $/x) {
+  if (!$areqs
+      && !$opts{ddcmode}
+      && $req =~ m/^${sepre}*			##-- initial separators (optional)
+		   (?:${reqre}${sepre}+)*	##-- separated components
+		   (?:${reqre})			##-- final component
+		   ${sepre}*			##-- final separators (optional)
+		   $/x) {
     $areqs = [grep {defined($_)} ($req =~ m/${sepre}*(${reqre})/g)];
   }
 
@@ -1300,11 +1326,15 @@ sub parseQuery {
 	##-- compat: value: array --> CQTokSet @{VAL1,...,VALN}
 	$aq = DDC::XS::CQTokSet->new($a, '', $areq);
       }
-      elsif (UNIVERSAL::isa($areq,'RegExp') || ($areq && $areq =~ m{^/})) {
+      elsif (UNIVERSAL::isa($areq,'RegExp') || (!$opts{ddcmode} && $areq && $areq =~ m{^/})) {
 	##-- compat: value: regex --> CQTokRegex /REGEX/
 	my $re = regex($areq)."";
 	$re    =~ s{^\(\?\^\:(.*)\)$}{$1};
 	$aq = DDC::XS::CQTokRegex->new($a, $re);
+      }
+      elsif ($opts{ddcmode} && ($areq//'') ne '') {
+	##-- compat: ddcmode: parse requests as ddc queries
+	$aq = $coldb->qcompiler->ParseQuery($areq);
       }
       else {
 	##-- compat: value: space- or |-separated literals --> CQTokExact $a=@VAL or CQTokSet $a=@{VAL1,...VALN} or CQTokAny $a=*
@@ -1351,29 +1381,11 @@ sub parseQuery {
     }
   }
 
-  ##-- tweak query: map CQAnd to CQWith (traverses tree)
-  my @stack = ({node=>\$q,parent=>undef,slot=>undef});
-  my ($item,$nodr);
-  while (defined($item=pop(@stack))) {
-    my $nodr = $item->{node};
-    if (UNIVERSAL::isa($$nodr,'DDC::XS::CQAnd')) {
-      my $newnode = DDC::XS::CQWith->new($$nodr->getDtr1,$$nodr->getDtr2);
-      $nodr = \$newnode;
-      if ($item->{parent}) {
-	${$item->{parent}}->can("set".$item->{slot})->(${$item->{parent}}, $$nodr);
-      }
-      else {
-	$q = $newnode;
-      }
-    }
-    ##-- recurse
-    if (UNIVERSAL::isa($$nodr, 'DDC::XS::CQuery')) {
-      foreach my $slot ($$nodr->members) {
-	my $subnode = $$nodr->can('get'.$slot)->($$nodr);
-	push(@stack, {node=>\$subnode, parent=>$nodr, slot=>$slot}) if (UNIVERSAL::isa($subnode,'DDC::XS::CQuery'));
-      }
-    }
-  }
+  ##-- tweak query: map CQAnd to CQWith
+  $q = $q->mapTraverse(sub {
+			 return UNIVERSAL::isa($_[0],'DDC::XS::CQAnd') ? DDC::XS::CQWith->new($_[0]->getDtr1,$_[0]->getDtr2) : $_[0];
+		       })
+    if ($opts{mapand} || (!defined($opts{mapand}) && $req0 !~ /\&\&/));
 
   return $q;
 }
@@ -1480,7 +1492,7 @@ sub parseRequest {
 ##  + returns a HASH-ref:
 ##    (
 ##     req => $request,    ##-- save request
-##     x2g => \&x2g,       ##-- group-id extraction code suitable for e.g. DiaColloDB::Cofreqs::profile(groupby=>\&x2g)
+##     x2g => \&x2g,       ##-- group-id extraction code suitable for e.g. DiaColloDB::Relation::Cofreqs::profile(groupby=>\&x2g)
 ##     g2s => \&g2s,       ##-- stringification object suitable for DiaColloDB::Profile::stringify() [CODE,enum, or undef]
 ##     areqs => \@areqs,   ##-- parsed attribute requests ([$attr,$ahaving],...)
 ##     attrs => \@attrs,   ##-- like $coldb->attrs($groupby_request), modulo "having" parts

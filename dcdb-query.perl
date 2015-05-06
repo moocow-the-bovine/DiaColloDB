@@ -69,8 +69,9 @@ GetOptions(##-- general
 	   ##-- query options
 	   'difference|diff|D|compare|comp|cmp!' => \$diff,
 	   'profile|prof|prf|P' => sub { $diff=0 },
-	   'collocations|collocs|cofreqs|cof|co|f12|f2|12|2' => sub { $rel='cof' },
+	   'collocations|collocs|collo|col|cofreqs|cof|co|f12|f2|12|2' => sub { $rel='cof' },
 	   'unigrams|ug|u|f1|1' => sub { $rel='xf' },
+	   'ddc' => sub { $rel='ddc' },
 	   ##
 	   (map {("${_}date|${_}d=s"=>\$query{"${_}date"})} ('',qw(a b))), 				  ##-- date,adate,bdate
 	   (map {("${_}date-slice|${_}ds|${_}slice|${_}sl|${_}s=s"=>\$query{"${_}slice"})} ('',qw(a b))), ##-- slice,aslice,bslice
@@ -212,7 +213,7 @@ dcdb-query.perl - query a DiaColloDB
 
  Query Options:
    -profile , -diff      # select profile operation (default=-profile)
-   -collocs , -unigrams  # select profile type (collocations or unigrams; default=-collocs)
+   -col , -ug , -ddc     # select profile type (collocations, unigrams, or ddc client; default=-col)
    -(a|b)?date DATES     # set target DATE or /REGEX/ or MIN-MAX
    -(a|b)?slice SLICE    # set target date slice (default=1)
    -groupby GROUPBY      # set result aggregation (default=l)

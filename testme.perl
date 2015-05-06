@@ -1177,7 +1177,7 @@ sub test_ddcparse {
   my $defaultIndex = undef; #''; ##-- default index name; set to undef for groupby parsing
 
   my $coldb = DiaColloDB->new(dbdir=>$dbdir) or die("$0: failed to open $dbdir/: $!");
-  my $q     = $coldb->parseQuery($req);
+  my $q     = $coldb->parseQuery($req, default=>$defaultIndex);
 
   ##-- dump query
   #print Data::Dumper->Dump([$q->toHash],[qw(qhash)]);
@@ -1190,12 +1190,11 @@ sub test_ddcparse {
 
 
 ##--------------------------------------------------------------
-use DiaColloDB::DDC;
-sub test_ddcrel {
+sub test_ddcrelq {
   my $dbdir = shift || 'kern.d';
   my %opts  = map {split(/=/,$_,2)} @_;
 
-  $opts{query}   ||= 'Haus, $p=NN #has[author,/kant/]';
+  $opts{query}   ||= 'Haus'; #'Haus, $p=NN #has[author,/kant/]';
   $opts{groupby} ||= '$l,$p=ADJA';
   $opts{slice}   ||= 0;
   $opts{date}    ||= '1900:1999';
@@ -1203,16 +1202,36 @@ sub test_ddcrel {
   my $coldb = DiaColloDB->new(dbdir=>$dbdir) or die("$0: failed to open $dbdir/: $!");
   my $rel   = DiaColloDB::DDC->fromDB($coldb, ddcServer=>'localhost:52000');
 
-  my ($qcount,$limit) = $rel->countQuery($coldb, %opts);
+  my $qcount = $rel->countQuery($coldb, \%opts);
 
   ##-- dump query
   #print Data::Dumper->Dump([$q->toHash],[qw(qhash)]);
-  print "limit=$limit\n";
+  print "limit=", ($opts{limit}//'(undef)'), "\n";
   print "qstr=", $qcount->toString, "\n";
 
   exit 0;
 }
-test_ddcrel(@ARGV);
+#test_ddcrelq(@ARGV);
+
+##--------------------------------------------------------------
+sub test_ddcprf {
+  my $dbdir = shift || 'kern.d';
+  my %opts  = map {split(/=/,$_,2)} @_;
+
+  $opts{query}   ||= 'Haus'; #'Haus, $p=NN #has[author,/kant/]';
+  $opts{groupby} ||= '$l,$p=ADJA';
+  $opts{slice}   ||= 0;
+  $opts{date}    ||= '1900:1999';
+  $opts{score}   ||= 'f';
+  $opts{kbest}   ||= 10;
+
+  my $coldb = DiaColloDB->new(dbdir=>$dbdir) or die("$0: failed to open $dbdir/: $!");
+  my $mp    = $coldb->profile('ddc',%opts) or die("$0: failed to acquire profile: $!");
+  $mp->saveTextFile('-');
+
+  exit 0;
+}
+test_ddcprf(@ARGV);
 
 
 

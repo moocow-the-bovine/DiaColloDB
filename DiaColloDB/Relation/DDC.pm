@@ -1,9 +1,9 @@
 ## -*- Mode: CPerl -*-
-## File: DiaColloDB::Unigrams.pm
+## File: DiaColloDB::Relation::DDC.pm
 ## Author: Bryan Jurish <moocow@cpan.org>
-## Description: collocation db, unigram database (using DiaColloDB::PackedFile)
+## Description: collocation db, profiling relation: ddc client (using DDC::Client::Distributed)
 
-package DiaColloDB::DDC;
+package DiaColloDB::Relation::DDC;
 use DiaColloDB::Relation;
 use DiaColloDB::Utils qw(:sort :env :run :pack :file);
 use DDC::Client::Distributed;
@@ -27,8 +27,8 @@ our @ISA = qw(DiaColloDB::Relation);
 ##    ##-- ddc client options
 ##    ddcServer => "$server:$port",    ##-- ddc server; default=undef (required)
 ##    ddcTimeout => $timeout,          ##-- ddc timeout; default=60
-##    ddcLimit   => $limit,            ##-- default limit for ddc queries (default=1000)
-##    ddcSample  => $sanple,           ##-- default sample size for ddc queries (default=-1:all)
+##    ddcLimit   => $limit,            ##-- default limit for ddc queries (default=-1)
+##    ddcSample  => $sample,           ##-- default sample size for ddc queries (default=-1:all)
 ##    dmax    => $maxDistance,         ##-- default distance for near() queries (default=5)
 ##    ##
 ##    ##-- low-level data
@@ -38,13 +38,15 @@ sub new {
   my $that = shift;
   my $rel  = $that->SUPER::new(
 			       #base       => undef,
-			       #ddcServer  => 'localhost:50000',
+			       ddcServer  => undef,
 			       ddcTimeout => 60,
-			       ddcLimit   => 1000,
+			       ddcLimit   => -1,
 			       ddcSample  => -1,
 			       dmax       => 5,
 			       @_
 			      );
+  $rel->{class} = ref($rel);
+  return $rel->open() if (defined($rel->{base}));
   return $rel;
 }
 
@@ -95,47 +97,60 @@ sub union {
 ## Relation API: profile
 
 ## $mprf = $rel->profile($coldb, %opts)
-##  + get a relation profile for selected items as a DiaColloDB::Profile::Multi object
+## + get a relation profile for selected items as a DiaColloDB::Profile::Multi object
+## + %opts: as for DiaColloDB::Relation::profile(), also:
+##   (
+##    ##-- sampling options
+##    limit => $limit,       ##-- maximum number of items to return from ddc; sets $qconfig{limit} (overridden by query "#limit[N]"
+##    sample => $sample,     ##-- ddc sample size; sets $qconfig{qcount} Sample property (overriden by query "#sample[N]"
+##   )
 sub profile {
   my ($rel,$coldb,%opts) = @_;
 
   ##-- get query
-  my ($qcount,$limit) = $rel->countQuery($coldb,%opts);
-  my $qstr = $qcount->toString;
+  my $qcount = $rel->countQuery($coldb,\%opts);
+  my $qstr   = $qcount->toString;
   $rel->vlog($coldb->{logProfile}, "DDC query: $qstr");
 
   ##-- query ddc server & check for errors
-  my $client = $rel->ddcClient(limit=>$limit);
+  my $client = $rel->ddcClient(limit=>$opts{limit});
   my $result = $client->queryJson($qstr);
   $rel->logconfess($coldb->{error}="profile(): DDC query failed: ".($result->{error_}//'(undefined error)'))
     if ($result->{error_} || $result->{istatus_} || $result->{nstatus_} || !$result->{counts_});
 
   ##-- parse counts into slice-wise profiles
   my %y2prf = qw();
-  my ($prf,$key,$N);
+  my ($y,$prf,$key,$N);
   foreach (@{$result->{counts_}}) {
+    $y   = $_->[1]//'0';
     $key = join("\t", @$_[2..$#$_]);
-    $prf = ($y2prf{$_->[1]//'0'} //= DiaColloDB::Profile->new(eps=>$opts{eps}));
-    $prf->{f12}{$key} = $_->[0];
-    $N += $_->[0];
+    $prf = ($y2prf{$y} //= DiaColloDB::Profile->new(label=>$y));
+    $prf->{f12}{$key}   += $_->[0];
+    $N  += $_->[0];
   }
 
-  ##-- hack f2,f1,N; set titles
+  ##-- finalize sub-profiles: label, titles, N, f1, f2(hacked), compile & trim
   my @titles = map {$coldb->attrTitle($_->getIndexName)} grep {UNIVERSAL::isa($_,'DDC::XS::CQCountKeyExprToken')} @{$qcount->getKeys->getExprs};
+  my ($f1);
   foreach $prf (values %y2prf) {
-    $prf->{N}  = $N;
-    $prf->{f1} = $N;
-    $prf->{f2} = { %{$prf->{f12}} };
     $prf->{titles} = \@titles;
+    $prf->{N}      = $N;
+    $prf->{f2}     = $prf->{f12}; ##-- hack
+
+    $f1  = 0;
+    $f1 += $_ foreach (values %{$prf->{f12}});
+    $prf->{f1} = $f1;
+
+    $prf->compile($opts{score}, eps=>$opts{eps});
+    $prf->trim(kbest=>$opts{kbest}, cutoff=>$opts{cutoff});
   }
 
-  ##-- TODO: compile & trim profiles
 
   ##-- honor "fill" option
   if ($opts{fill}) {
-    for (my $y=$dlo; $y <= $dhi; $y += $opts{slice}) {
+    for ($y=$opts{dlo}; $y <= $opts{dhi}; $y += ($opts{slice}||1)) {
       next if (exists($y2prf{$y}));
-      $prf = $y2prf{$y} = DiaColloDB::Profile->new(N=>$N,f1=>0,titles=>\@titles);
+      $prf = $y2prf{$y} = DiaColloDB::Profile->new(N=>$N,f1=>0,label=>$y,titles=>\@titles);
     }
   }
 
@@ -180,29 +195,29 @@ sub ddcClient {
 }
 
 ##--------------------------------------------------------------
-## $qcount          = $rel->countQuery($coldb,%opts)
-## ($qcount,$limit) = $rel->countQuery($coldb,%opts)
+## $qcount = $rel->countQuery($coldb,\%opts)
 ## + creates a DDC::XS::CQCount object for profile() options %opts
-## + %opts: as for DiaColloDB::Relation::profile(), also:
+## + %opts: as for DiaColloDB::Relation::DDC::profile()
+## + sets following keys in %opts:
 ##   (
-##    ##-- sampling options
-##    limit => $limit,       ##-- maximum number of items to return from ddc; sets $qconfig{limit} (overridden by query "#limit[N]"
-##    sample => $sample,     ##-- ddc sample size; sets $qconfig{qcount} Sample property (overriden by query "#sample[N]"
+##    limit  => $limit,		##-- hit return limit for ddc query
+##    dlo    => $dlo,           ##-- minimum date-slice, from @opts{qw(date slice fill)}
+##    dhi    => $dhi,           ##-- maximum date-slice, from @opts{qw(date slice fill)}
 ##   )
 sub countQuery {
-  my ($rel,$coldb,%opts) = @_;
+  my ($rel,$coldb,$opts) = @_;
 
   ##-- groupby clause: date
-  my $gbdate = ($opts{slice}<=0
-		? DDC::XS::CQCountKeyExprConstant->new($opts{slice}||'0')
-		: DDC::XS::CQCountKeyExprDateSlice->new('date',$opts{slice}));
+  my $gbdate = ($opts->{slice}<=0
+		? DDC::XS::CQCountKeyExprConstant->new($opts->{slice}||'0')
+		: DDC::XS::CQCountKeyExprDateSlice->new('date',$opts->{slice}));
 
   ##-- groupby clause: user request
-  my $gbreq  = $coldb->parseRequest($opts{groupby}, logas=>'groupby', default=>undef);
+  my $gbreq  = $coldb->parseRequest($opts->{groupby}, logas=>'groupby', default=>undef);
   my $gbkeys = [$gbdate];
   my $qrestr = undef; ##-- groupby restriction clause (WITH)
   foreach (@$gbreq) {
-    push(@$gbkeys, DDC::XS::CQCountKeyExprToken->new($_->[0], 1, 0));
+    push(@$gbkeys, DDC::XS::CQCountKeyExprToken->new($_->[0], 2, 0));
     if (defined($_->[1]) && !UNIVERSAL::isa($_->[1], 'DDC::XS::CQTokAny')) {
       $qrestr = (defined($qrestr) ? DDC::XS::CQWith->new($qrestr,$_->[1]) : $_->[1]);
     }
@@ -211,69 +226,70 @@ sub countQuery {
   $qkeys->setExprs($gbkeys);
 
   ##-- query hacks: limit/sample
-  my $limit  = ($opts{query} =~ s/\s*\#limit?\s*[\s\[]\s*([\+\-]?\d+)\s*\]?// ? $1 : ($opts{limit}//$rel->{ddcLimit}));
-  my $sample = ($opts{query} =~ s/\s*\#sample?\s*[\s\[]\s*([\+\-]?\d+)\s*\]?// ? $1 : ($opts{sample}//$rel->{ddcSample}));
+  my $limit  = ($opts->{query} =~ s/\s*\#limit?\s*[\s\[]\s*([\+\-]?\d+)\s*\]?// ? $1 : ($opts->{limit}//$rel->{ddcLimit}));
+  my $sample = ($opts->{query} =~ s/\s*\#sample?\s*[\s\[]\s*([\+\-]?\d+)\s*\]?// ? $1 : ($opts->{sample}//$rel->{ddcSample}));
 
   ##-- check for match-id and maybe implicitly construct near() query
-  my $qdtr = $coldb->parseQuery($opts{query}, logas=>'query', default=>'');
-  my @qtargets = $qdtr->HasMatchId ? (grep {UNIVERSAL::can($_,'getMatchId') && $_->getMatchId == 1} @{$qdtr->Descendants}) : qw();
+  my $qdtr  = $coldb->parseQuery($opts->{query}, logas=>'query', default=>'', ddcmode=>1);
+  my $qopts = $qdtr->getOptions || DDC::XS::CQueryOptions->new;
+  $qdtr->setOptions(undef);
+  my @qtargets = $qdtr->HasMatchId ? (grep {UNIVERSAL::can($_,'getMatchId') && $_->getMatchId == 2} @{$qdtr->Descendants}) : qw();
   if (!@qtargets) {
     my $qany = DDC::XS::CQTokAny->new();
-    $qany->SetMatchId(1);
+    $qany->SetMatchId(2);
     $qany = DDC::XS::CQWith->new($qany,$qrestr) if (defined($qrestr));
-    my $qnear = DDC::XS::CQNear->new(($rel->{dmax}||1),$qany,$qdtr);
-    $qnear->setOptions($qdtr->getOptions);
-    $qdtr->setOptions(undef);
+    my $qnear = DDC::XS::CQNear->new(($rel->{dmax}||1),$qdtr,$qany);
     @qtargets = ($qany);
     $qdtr = $qnear;
   }
   elsif ($qrestr) {
     ##-- append groupby restriction to all targets
-    my $qhash = $qdtr->toHash;
-    my $rhash = $qrestr->toHash;
-    my @stack = (\$qhash);
-    my ($nodr);
-    while (defined($nodr=pop(@stack))) {
-      if (UNIVERSAL::isa($$nodr,'HASH')) {
-	if (UNIVERSAL::isa($$nodr->{class}, 'DDC::XS::CQToken') && ($$nodr->{MatchId}//0) == 1) {
-	  my $newnode = {class=>'DDC::XS::CQWith',Dtr1=>$$nodr,Dtr2=>$rhash,Options=>$$nodr->{Options}};
-	  delete $$nodr->{Options};
-	  $$nodr = \$newnode;
-	}
-	push(@stack, map {\$$nodr->{$_}} keys %$$nodr);
-      }
-      elsif (UNIVERSAL::isa($$nodr,'ARRAY')) {
-	push(@stack, map {\$$nodr->[$_]} @$$nodr);
-      }
-    }
-    $qdtr = $qdtr->newFromHash($qhash);
+    my ($nod,$newnod);
+    $qdtr = $qdtr->mapTraverse(sub {
+				 $nod = shift;
+				 if (UNIVERSAL::isa($nod, 'DDC::XS::CQToken') && $nod->getMatchId == 2) {
+				   $newnod = DDC::XS::CQWith->new($nod,$qrestr);
+				   $newnod->setOptions($nod->getOptions);
+				   $nod->setOptions(undef);
+				   return $newnod;
+				 }
+				 return $nod;
+			       });
   }
 
+  ##-- qdtr options
+  $qopts->setSeparateHits(1) if ($opts->{query} !~ /\#(?:sep(?:arate)?|nojoin)(?:_hits)?\b/i);
+  $qdtr->setOptions($qopts);
+
   ##-- date clause
-  my ($dfilter,$dlo,$dhi) = $coldb->parseDateRequest(@opts{qw(date slice fill)});
-  my $filters = $qdtr->getOptions->getFilters;
+  my ($dfilter,$dlo,$dhi) = $coldb->parseDateRequest(@$opts{qw(date slice fill)});
+  my $filters = $qopts->getFilters;
   if ($dfilter && !grep {UNIVERSAL::isa($_,'DDC::XS::CQFDateSort')} @$filters) {
-    push(@$filters, DDC::XS::CQFDateSort->new(DDC::XS::LessByDate(),
-					      ($dlo ? "${dlo}-00-00" : ''),
-					      ($dhi ? "${dhi}-99-99" : '')
-					     ));
-    $qdtr->getOptions->setFilters($filters);
+    unshift(@$filters, DDC::XS::CQFDateSort->new(DDC::XS::LessByDate(),
+						 ($dlo ? "${dlo}-00-00" : ''),
+						 ($dhi ? "${dhi}-12-31" : '')
+						));
+    $qopts->setFilters($filters);
   }
 
   ##-- cleanup coldb parser (so we're using "real" refcounts)
   $coldb->qcompiler->CleanParser();
 
-  ##-- finalize: construct count query
+  ##-- finalize: construct count query & set options
   my $qcount = DDC::XS::CQCount->new($qdtr, $qkeys, $sample, DDC::XS::GreaterByCountValue());
-  return wantarray ? ($qcount,$limit) : $qcount;
+  @$opts{qw(limit dlo dhi)} = ($limit,$dlo,$dhi);
+  return $qcount;
 }
+
+##==============================================================================
+## Pacakge Alias(es)
+package DiaColloDB::DDC;
+use strict;
+our @ISA = qw(DiaColloDB::Relation::DDC);
+
 
 ##==============================================================================
 ## Footer
 1;
 
 __END__
-
-
-
-
