@@ -96,8 +96,8 @@ our $MMCLASS = 'DiaColloDB::MultiMapFile';
 ##    pack_date => $fmt,  ##-- pack-format for dates (default='n')
 ##    pack_off => $fmt,   ##-- pack-format for file offsets (default='N')
 ##    pack_len => $len,   ##-- pack-format for string lengths (default='n')
-##    dmax  => $dmax,     ##-- maximum distance for collocation-frequencies (default=5)
-##    cfmin => $cfmin,    ##-- minimum co-occurrence frequency for Cofreqs (default=2)
+##    dmax  => $dmax,     ##-- maximum distance for collocation-frequencies and implicit ddc near() queries (default=5)
+##    cfmin => $cfmin,    ##-- minimum co-occurrence frequency for Cofreqs and ddc queries (default=2)
 ##    keeptmp => $bool,   ##-- keep temporary files? (default=0)
 ##    ##
 ##    ##-- runtime ddc relation options

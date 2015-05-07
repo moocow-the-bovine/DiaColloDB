@@ -29,7 +29,8 @@ our @ISA = qw(DiaColloDB::Relation);
 ##    ddcTimeout => $timeout,          ##-- ddc timeout; default=60
 ##    ddcLimit   => $limit,            ##-- default limit for ddc queries (default=-1)
 ##    ddcSample  => $sample,           ##-- default sample size for ddc queries (default=-1:all)
-##    dmax    => $maxDistance,         ##-- default distance for near() queries (default=5)
+##    dmax    => $maxDistance,         ##-- default distance for near() queries (default=5; 1=immediate adjacency; ~ ddc CQNear.Dist+1)
+##    cfmin   => $minFreq,             ##-- default minimum frequency for count() queries (default=2)
 ##    ##
 ##    ##-- low-level data
 ##    dclient   => $ddcClient,         ##-- a DDC::Client::Distributed object
@@ -43,6 +44,7 @@ sub new {
 			       ddcLimit   => -1,
 			       ddcSample  => -1,
 			       dmax       => 5,
+			       cfmin      => 2,
 			       @_
 			      );
   $rel->{class} = ref($rel);
@@ -101,8 +103,10 @@ sub union {
 ## + %opts: as for DiaColloDB::Relation::profile(), also:
 ##   (
 ##    ##-- sampling options
-##    limit => $limit,       ##-- maximum number of items to return from ddc; sets $qconfig{limit} (overridden by query "#limit[N]"
-##    sample => $sample,     ##-- ddc sample size; sets $qconfig{qcount} Sample property (overriden by query "#sample[N]"
+##    limit => $limit,       ##-- maximum number of items to return from ddc; sets $qconfig{limit} (default: query "#limit[N]" or $rel->{ddcLimit})
+##    sample => $sample,     ##-- ddc sample size; sets $qconfig{qcount} Sample property (default: query "#sample[N]" or $rel->{ddcSample})
+##    cfmin => $cfmin,       ##-- minimum subcorpus frequency for returned items (default: query "#fmin[N]" or $rel->{cfmin})
+##    dmax  => $dmax,        ##-- maxmimum distance for implicit near() queries (default: query "#dmax[N]" or $rel->{dmax})
 ##   )
 sub profile {
   my ($rel,$coldb,%opts) = @_;
@@ -110,37 +114,87 @@ sub profile {
   ##-- get query
   my $qcount = $rel->countQuery($coldb,\%opts);
   my $qstr   = $qcount->toString;
-  $rel->vlog($coldb->{logProfile}, "DDC query: $qstr");
+  $rel->vlog($coldb->{logProfile}, "query: $qstr");
 
   ##-- query ddc server & check for errors
   my $client = $rel->ddcClient(limit=>$opts{limit});
   my $result = $client->queryJson($qstr);
   $rel->logconfess($coldb->{error}="profile(): DDC query failed: ".($result->{error_}//'(undefined error)'))
     if ($result->{error_} || $result->{istatus_} || $result->{nstatus_} || !$result->{counts_});
+  $rel->vlog($coldb->{logProfile}, "fetched ", ($result->{end_}//'?'), " of ~", ($result->{nhits_}//'?'), " count-query result row(s)");
+
+  ##-- get count-by expressions, titles
+  my $cbexprs = $qcount->getKeys->getExprs;
+  my @titles  = map {
+    $coldb->attrTitle($_->can('getIndexName')
+		      ? $_->getIndexName
+		      : do { (my $label=$_->toString) =~ s{\'((?:\\.|[^\'])*)\'}{$1}; $label })
+  } @$cbexprs[1..$#$cbexprs];
 
   ##-- parse counts into slice-wise profiles
   my %y2prf = qw();
-  my ($y,$prf,$key,$N);
+  my ($y,$prf,$key,$N1);
   foreach (@{$result->{counts_}}) {
     $y   = $_->[1]//'0';
     $key = join("\t", @$_[2..$#$_]);
     $prf = ($y2prf{$y} //= DiaColloDB::Profile->new(label=>$y));
     $prf->{f12}{$key}   += $_->[0];
-    $N  += $_->[0];
+    $N1 += $_->[0];
+  }
+
+  ##-- query and set f2
+  my $q2  = undef;
+  my $q2f = $qcount->getDtr->getOptions->getFilters;
+  foreach my $xi (1..$#$cbexprs) {
+    if (UNIVERSAL::isa($cbexprs->[$xi],'DDC::XS::CQCountKeyExprToken')) {
+      my @vals = map {$_->[$xi+1]} @{$result->{counts_}};
+      my $xq   = DDC::XS::CQTokSet->new($cbexprs->[$xi]->getIndexName, '', \@vals);
+      $q2      = defined($q2) ? DDC::XS::CQWith->new($q2,$xq) : $xq;
+    }
+  }
+  $q2->SetMatchId(2);
+  $q2->setOptions(DDC::XS::CQueryOptions->new) if (!$q2->getOptions);
+  $q2->getOptions->setFilters($q2f);
+  my $qcount2 = DDC::XS::CQCount->new($q2, $qcount->getKeys, $qcount->getSample, $qcount->getSort, $qcount->getLo, $qcount->getHi);
+  my $qstr2   = $qcount2->toString;
+  $rel->vlog($coldb->{logProfile}, "f2-query [length=".length($qstr2)."]: ", length($qstr2) >= 64 ? (substr($qstr2,0,32)." ... ".substr($qstr2,length($qstr2)-32)) : $qstr2);
+  ##
+  ##-- ERROR: connection reset by peer (query is probably too long at ~11KB, but BranchServer.m_maxReceiveBytes = DDC_STATIC_BUFLEN = 4096)
+  ##  + seems to work tolerably fast if we raise DDC_STATIC_BUFLEN and index is in fs-cache
+  ##  + high memory load on ddc server, but that I don't think that can really be helped with this strategy
+  ##  + some variant of the query-ddc-for-f2 strategy is probably the Right Way To Do It, since:
+  ##    - teasing out attributes and xf lookup by date is painful and slow
+  ##    - using ddc queries should enable us to handle all ddc-acceptable query and groupby variants
+  ##  + problem: how to work around the static-bufsize limit?
+  ##    - maybe we can define a ddc query type "keycounts(...)" that does this for a given query?
+  ##      ~ we should look into exploiting the ddc query-cache here!
+  ##    - maybe we need to define a local expander and pass it to ddc?
+  my $result2 = $client->queryJson($qstr2);
+  $rel->logconfess($coldb->{error}="profile(): DDC query failed: ".($result->{error_}//'(undefined error)'))
+    if ($result->{error_} || $result->{istatus_} || $result->{nstatus_} || !$result->{counts_});
+  $rel->vlog($coldb->{logProfile}, "fetched ", ($result->{end_}//'?'), " of ~", ($result->{nhits_}//'?'), " f2-query result row(s)");
+  my $f2map = {};
+  foreach (@{$result2->{counts_}}) {
+    next if (!defined($prf=$y2prf{$y=$_->[1]}));
+    $key = join("\t", @$_[2..$#$_]);
+    $prf->{f2}{$key} += $_->[0] if (exists $prf->{f12}{$key});
   }
 
   ##-- finalize sub-profiles: label, titles, N, f1, f2(hacked), compile & trim
-  my @titles = map {$coldb->attrTitle($_->getIndexName)} grep {UNIVERSAL::isa($_,'DDC::XS::CQCountKeyExprToken')} @{$qcount->getKeys->getExprs};
-  my ($f1);
+  my $N = $coldb->{xf}{N} * $opts{fcoef};
+  $N    = $N1 if ($N1 > $N);
+  my ($f1,$f2);
   foreach $prf (values %y2prf) {
     $prf->{titles} = \@titles;
-    $prf->{N}      = $N;
-    $prf->{f2}     = $prf->{f12}; ##-- hack
 
     $f1  = 0;
     $f1 += $_ foreach (values %{$prf->{f12}});
     $prf->{f1} = $f1;
 
+    ##-- setup f2
+    #$prf->{f2} = $prf->{f12}; ##-- HACK
+
+    $prf->{N} = $N;
     $prf->compile($opts{score}, eps=>$opts{eps});
     $prf->trim(kbest=>$opts{kbest}, cutoff=>$opts{cutoff});
   }
@@ -203,6 +257,7 @@ sub ddcClient {
 ##    limit  => $limit,		##-- hit return limit for ddc query
 ##    dlo    => $dlo,           ##-- minimum date-slice, from @opts{qw(date slice fill)}
 ##    dhi    => $dhi,           ##-- maximum date-slice, from @opts{qw(date slice fill)}
+##    fcoef  => $fcoef,		##-- frequency coefficient, parsed from "#coef[N]", auto-generated for near() queries
 ##   )
 sub countQuery {
   my ($rel,$coldb,$opts) = @_;
@@ -225,9 +280,12 @@ sub countQuery {
   my $qkeys  = DDC::XS::CQCountKeyExprList->new;
   $qkeys->setExprs($gbkeys);
 
-  ##-- query hacks: limit/sample
-  my $limit  = ($opts->{query} =~ s/\s*\#limit?\s*[\s\[]\s*([\+\-]?\d+)\s*\]?// ? $1 : ($opts->{limit}//$rel->{ddcLimit}));
-  my $sample = ($opts->{query} =~ s/\s*\#sample?\s*[\s\[]\s*([\+\-]?\d+)\s*\]?// ? $1 : ($opts->{sample}//$rel->{ddcSample}));
+  ##-- query hacks: override options
+  my $limit  = ($opts->{query} =~ s/\s*\#limit\s*[\s\[]\s*([\+\-]?\d+)\s*\]?//i ? $1 : ($opts->{limit}//$rel->{ddcLimit})) || -1;
+  my $sample = ($opts->{query} =~ s/\s*\#samp(?:le)?\s*[\s\[]\s*([\+\-]?\d+)\s*\]?//i ? $1 : ($opts->{sample}//$rel->{ddcSample})) || -1;
+  my $dmax   = ($opts->{query} =~ s/\s*\#d(?:ist)?max\s*[\s\[]\s*([\+\-]?\d+)\s*\]?//i ? $1 : ($opts->{dmax}//$rel->{dmax})) || 1;
+  my $cfmin  = ($opts->{query} =~ s/\s*\#c?fmin\s*[\s\[]\s*([\+\-]?\d+)\s*\]?//i ? $1 : ($opts->{cfmin}//$rel->{cfmin})) // '';
+  my $fcoef  = ($opts->{query} =~ s/\s*\#f?coef\s*[\s\[]s*([\+\-]?\d*\.?\d+(?:[eE][\+-]?\d+)?)\s*\]?//i ? $1 : $opts->{fcoef});
 
   ##-- check for match-id and maybe implicitly construct near() query
   my $qdtr  = $coldb->parseQuery($opts->{query}, logas=>'query', default=>'', ddcmode=>1);
@@ -238,9 +296,11 @@ sub countQuery {
     my $qany = DDC::XS::CQTokAny->new();
     $qany->SetMatchId(2);
     $qany = DDC::XS::CQWith->new($qany,$qrestr) if (defined($qrestr));
-    my $qnear = DDC::XS::CQNear->new(($rel->{dmax}||1),$qdtr,$qany);
+    $dmax = 1 if ($dmax < 1);
+    my $qnear = DDC::XS::CQNear->new($dmax-1,$qdtr,$qany);
     @qtargets = ($qany);
-    $qdtr = $qnear;
+    $qdtr  = $qnear;
+    $fcoef = 2 * $dmax;
   }
   elsif ($qrestr) {
     ##-- append groupby restriction to all targets
@@ -255,6 +315,16 @@ sub countQuery {
 				 }
 				 return $nod;
 			       });
+  }
+
+  ##-- guess fcoef
+  if (!defined($fcoef)) {
+    if (UNIVERSAL::isa($qdtr,'DDC::XS::CQNear')) {
+      $fcoef = 2 * ($qdtr->getDist + 1);
+    }
+    else {
+      $fcoef = 1;
+    }
   }
 
   ##-- qdtr options
@@ -272,14 +342,35 @@ sub countQuery {
     $qopts->setFilters($filters);
   }
 
+  ##-- set random seed if we're using a limited sample
+  if ($sample > 0) {
+    my $gotseed = 0;
+    foreach (@$filters) {
+      if (UNIVERSAL::isa($_,'DDC::XS::CQFRandomSort')) {
+	$_->setArg1(int(rand(100))) if (!$_->getArg1); ##-- use 100 random seeds
+	$gotseed = 1;
+	last;
+      }
+    }
+    if (!$gotseed) {
+      push(@$filters, DDC::XS::CQFRandomSort->new(int(rand(100))));
+      $qopts->setFilters($filters);
+    }
+  }
+
   ##-- cleanup coldb parser (so we're using "real" refcounts)
   $coldb->qcompiler->CleanParser();
 
   ##-- finalize: construct count query & set options
-  my $qcount = DDC::XS::CQCount->new($qdtr, $qkeys, $sample, DDC::XS::GreaterByCountValue());
-  @$opts{qw(limit dlo dhi)} = ($limit,$dlo,$dhi);
+  $cfmin = '' if (($cfmin//1) <= 1);
+  my $qcount = DDC::XS::CQCount->new($qdtr, $qkeys, $sample, DDC::XS::GreaterByCountValue(), $cfmin);
+  @$opts{qw(limit sample dlo dhi fcoef cfmin)} = ($limit,$sample,$dlo,$dhi,$fcoef,$cfmin);
   return $qcount;
 }
+
+##--------------------------------------------------------------
+## $f2 = $rel->estimateFrequency()
+##  + TODO
 
 ##==============================================================================
 ## Pacakge Alias(es)

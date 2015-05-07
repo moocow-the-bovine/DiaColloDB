@@ -1221,7 +1221,7 @@ sub test_ddcprf {
   $opts{query}   ||= 'Haus'; #'Haus, $p=NN #has[author,/kant/]';
   $opts{groupby} ||= '$l,$p=ADJA';
   $opts{slice}   ||= 0;
-  $opts{date}    ||= '1900:1999';
+  #$opts{date}    ||= '1900:1999';
   $opts{score}   ||= 'f';
   $opts{kbest}   ||= 10;
 
