@@ -1218,7 +1218,7 @@ sub test_ddcprf {
   my $dbdir = shift || 'kern.d';
   my %opts  = map {split(/=/,$_,2)} @_;
 
-  $opts{query}   ||= 'Haus'; #'Haus, $p=NN #has[author,/kant/]';
+  $opts{query}   ||= 'Haus #sample[100]'; #'Haus, $p=NN #has[author,/kant/]';
   $opts{groupby} ||= '$l,$p=ADJA';
   $opts{slice}   ||= 0;
   #$opts{date}    ||= '1900:1999';
@@ -1226,7 +1226,7 @@ sub test_ddcprf {
   $opts{kbest}   ||= 10;
 
   my $coldb = DiaColloDB->new(dbdir=>$dbdir) or die("$0: failed to open $dbdir/: $!");
-  my $mp    = $coldb->profile('ddc',%opts) or die("$0: failed to acquire profile: $!");
+  $mp    = $coldb->profile('ddc',%opts) or die("$0: failed to acquire profile: $!");
   $mp->saveTextFile('-');
 
   exit 0;

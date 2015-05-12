@@ -131,9 +131,11 @@ sub profile {
 		      : do { (my $label=$_->toString) =~ s{\'((?:\\.|[^\'])*)\'}{$1}; $label })
   } @$cbexprs[1..$#$cbexprs];
 
+
   ##-- parse counts into slice-wise profiles
   my %y2prf = qw();
-  my ($y,$prf,$key,$N1);
+  my $N1 = 0;
+  my ($y,$prf,$key);
   foreach (@{$result->{counts_}}) {
     $y   = $_->[1]//'0';
     $key = join("\t", @$_[2..$#$_]);
@@ -141,44 +143,28 @@ sub profile {
     $prf->{f12}{$key}   += $_->[0];
     $N1 += $_->[0];
   }
+  undef $result; ##-- save some memory
 
-  ##-- query and set f2
-  my $q2  = undef;
-  my $q2f = $qcount->getDtr->getOptions->getFilters;
-  foreach my $xi (1..$#$cbexprs) {
-    if (UNIVERSAL::isa($cbexprs->[$xi],'DDC::XS::CQCountKeyExprToken')) {
-      my @vals = map {$_->[$xi+1]} @{$result->{counts_}};
-      my $xq   = DDC::XS::CQTokSet->new($cbexprs->[$xi]->getIndexName, '', \@vals);
-      $q2      = defined($q2) ? DDC::XS::CQWith->new($q2,$xq) : $xq;
-    }
-  }
-  $q2->SetMatchId(2);
-  $q2->setOptions(DDC::XS::CQueryOptions->new) if (!$q2->getOptions);
-  $q2->getOptions->setFilters($q2f);
-  my $qcount2 = DDC::XS::CQCount->new($q2, $qcount->getKeys, $qcount->getSample, $qcount->getSort, $qcount->getLo, $qcount->getHi);
-  my $qstr2   = $qcount2->toString;
-  $rel->vlog($coldb->{logProfile}, "f2-query [length=".length($qstr2)."]: ", length($qstr2) >= 64 ? (substr($qstr2,0,32)." ... ".substr($qstr2,length($qstr2)-32)) : $qstr2);
-  ##
-  ##-- ERROR: connection reset by peer (query is probably too long at ~11KB, but BranchServer.m_maxReceiveBytes = DDC_STATIC_BUFLEN = 4096)
-  ##  + seems to work tolerably fast if we raise DDC_STATIC_BUFLEN and index is in fs-cache
-  ##  + high memory load on ddc server, but that I don't think that can really be helped with this strategy
-  ##  + some variant of the query-ddc-for-f2 strategy is probably the Right Way To Do It, since:
-  ##    - teasing out attributes and xf lookup by date is painful and slow
-  ##    - using ddc queries should enable us to handle all ddc-acceptable query and groupby variants
-  ##  + problem: how to work around the static-bufsize limit?
-  ##    - maybe we can define a ddc query type "keycounts(...)" that does this for a given query?
-  ##      ~ we should look into exploiting the ddc query-cache here!
-  ##    - maybe we need to define a local expander and pass it to ddc?
+  ##-- query independent f2 and update slice-wise profiles
+  my $qkeys2  = DDC::XS::CQKeys->new($qcount);
+  $qkeys2->setOptions(DDC::XS::CQueryOptions->new()) if (!$qkeys2->getOptions);
+  $qkeys2->getOptions->setSeparateHits(1);
+  $qkeys2->SetMatchId(2);
+  my $qcount2 = DDC::XS::CQCount->new($qkeys2, $qcount->getKeys, -1, $qcount->getSort, $qcount->getLo, $qcount->getHi);
+  my $qstr2  = $qcount2->toString;
+  $rel->vlog($coldb->{logProfile}, "f2-query: $qstr2");
+  $client->{limit} = -1;
   my $result2 = $client->queryJson($qstr2);
   $rel->logconfess($coldb->{error}="profile(): DDC query failed: ".($result->{error_}//'(undefined error)'))
-    if ($result->{error_} || $result->{istatus_} || $result->{nstatus_} || !$result->{counts_});
-  $rel->vlog($coldb->{logProfile}, "fetched ", ($result->{end_}//'?'), " of ~", ($result->{nhits_}//'?'), " f2-query result row(s)");
-  my $f2map = {};
+    if ($result2->{error_} || $result2->{istatus_} || $result2->{nstatus_} || !$result2->{counts_});
+  $rel->vlog($coldb->{logProfile}, "fetched ", ($result2->{end_}//'?'), " of ~", ($result2->{nhits_}//'?'), " f2-query result row(s)");
+  my $fcoef = $opts{fcoef};
   foreach (@{$result2->{counts_}}) {
     next if (!defined($prf=$y2prf{$y=$_->[1]}));
     $key = join("\t", @$_[2..$#$_]);
-    $prf->{f2}{$key} += $_->[0] if (exists $prf->{f12}{$key});
+    $prf->{f2}{$key} += $_->[0]*$fcoef if (exists $prf->{f12}{$key});
   }
+  undef $result2; ##-- save some memory
 
   ##-- finalize sub-profiles: label, titles, N, f1, f2(hacked), compile & trim
   my $N = $coldb->{xf}{N} * $opts{fcoef};
@@ -190,9 +176,6 @@ sub profile {
     $f1  = 0;
     $f1 += $_ foreach (values %{$prf->{f12}});
     $prf->{f1} = $f1;
-
-    ##-- setup f2
-    #$prf->{f2} = $prf->{f12}; ##-- HACK
 
     $prf->{N} = $N;
     $prf->compile($opts{score}, eps=>$opts{eps});
