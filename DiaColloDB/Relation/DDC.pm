@@ -114,7 +114,7 @@ sub profile {
   ##-- get query
   my $qcount = $rel->countQuery($coldb,\%opts);
   my $qstr   = $qcount->toString;
-  $rel->vlog($coldb->{logProfile}, "query: $qstr");
+  $rel->vlog($coldb->{logProfile}, "f12-query: $qstr");
 
   ##-- query ddc server & check for errors
   my $client = $rel->ddcClient(limit=>$opts{limit});
@@ -132,20 +132,20 @@ sub profile {
   } @$cbexprs[1..$#$cbexprs];
 
 
-  ##-- parse counts into slice-wise profiles
+  ##-- parse raw counts into slice-wise profiles
   my %y2prf = qw();
-  my $N1 = 0;
   my ($y,$prf,$key);
   foreach (@{$result->{counts_}}) {
     $y   = $_->[1]//'0';
     $key = join("\t", @$_[2..$#$_]);
     $prf = ($y2prf{$y} //= DiaColloDB::Profile->new(label=>$y));
     $prf->{f12}{$key}   += $_->[0];
-    $N1 += $_->[0];
   }
   undef $result; ##-- save some memory
 
   ##-- query independent f2 and update slice-wise profiles
+  my $fcoef = $opts{fcoef};
+  $client->{limit} = -1;
   my $qkeys2  = DDC::XS::CQKeys->new($qcount);
   $qkeys2->setOptions(DDC::XS::CQueryOptions->new()) if (!$qkeys2->getOptions);
   $qkeys2->getOptions->setSeparateHits(1);
@@ -153,12 +153,10 @@ sub profile {
   my $qcount2 = DDC::XS::CQCount->new($qkeys2, $qcount->getKeys, -1, $qcount->getSort, $qcount->getLo, $qcount->getHi);
   my $qstr2  = $qcount2->toString;
   $rel->vlog($coldb->{logProfile}, "f2-query: $qstr2");
-  $client->{limit} = -1;
   my $result2 = $client->queryJson($qstr2);
-  $rel->logconfess($coldb->{error}="profile(): DDC query failed: ".($result->{error_}//'(undefined error)'))
+  $rel->logconfess($coldb->{error}="profile(): DDC f2-query failed: ".($result2->{error_}//'(undefined error)'))
     if ($result2->{error_} || $result2->{istatus_} || $result2->{nstatus_} || !$result2->{counts_});
   $rel->vlog($coldb->{logProfile}, "fetched ", ($result2->{end_}//'?'), " of ~", ($result2->{nhits_}//'?'), " f2-query result row(s)");
-  my $fcoef = $opts{fcoef};
   foreach (@{$result2->{counts_}}) {
     next if (!defined($prf=$y2prf{$y=$_->[1]}));
     $key = join("\t", @$_[2..$#$_]);
@@ -166,16 +164,30 @@ sub profile {
   }
   undef $result2; ##-- save some memory
 
-  ##-- finalize sub-profiles: label, titles, N, f1, f2(hacked), compile & trim
-  my $N = $coldb->{xf}{N} * $opts{fcoef};
-  $N    = $N1 if ($N1 > $N);
-  my ($f1,$f2);
+  ##-- query independent f1 and update slice-wise profiles
+  my $qcount1 = $qcount2->clone();
+  $_->setMatchId(1) foreach (grep {UNIVERSAL::isa($_,'DDC::XS::CQCountKeyExprToken') && $_->getMatchId==2}
+			     @{$qcount1->getDtr->getQCount->getKeys->getExprs},
+			     @{$qcount1->getKeys->getExprs},
+			    );
+  $qcount1->getDtr->setMatchId(1);
+  my $qstr1  = $qcount1->toString;
+  $rel->vlog($coldb->{logProfile}, "f1-query: $qstr1");
+  my $result1 = $client->queryJson($qstr1);
+  $rel->logconfess($coldb->{error}="profile(): DDC f1-query failed: ".($result1->{error_}//'(undefined error)'))
+    if ($result1->{error_} || $result1->{istatus_} || $result1->{nstatus_} || !$result1->{counts_});
+  $rel->vlog($coldb->{logProfile}, "fetched ", ($result1->{end_}//'?'), " of ~", ($result1->{nhits_}//'?'), " f1-query result row(s)");
+  foreach (@{$result1->{counts_}}) {
+    next if (!defined($prf=$y2prf{$y=$_->[1]}));
+    $prf->{f1} += $_->[0]*$fcoef;
+  }
+
+  ##-- finalize sub-profiles: label, titles, N, compile & trim
+  my $N1 = 0; $N1 += $_->{f1} foreach (values %y2prf);
+  my $N  = $coldb->{xf}{N} * $fcoef;
+  $N     = $N1 if ($N1 > $N);
   foreach $prf (values %y2prf) {
     $prf->{titles} = \@titles;
-
-    $f1  = 0;
-    $f1 += $_ foreach (values %{$prf->{f12}});
-    $prf->{f1} = $f1;
 
     $prf->{N} = $N;
     $prf->compile($opts{score}, eps=>$opts{eps});
@@ -270,23 +282,34 @@ sub countQuery {
   my $cfmin  = ($opts->{query} =~ s/\s*\#c?fmin\s*[\s\[]\s*([\+\-]?\d+)\s*\]?//i ? $1 : ($opts->{cfmin}//$rel->{cfmin})) // '';
   my $fcoef  = ($opts->{query} =~ s/\s*\#f?coef\s*[\s\[]s*([\+\-]?\d*\.?\d+(?:[eE][\+-]?\d+)?)\s*\]?//i ? $1 : $opts->{fcoef});
 
-  ##-- check for match-id and maybe implicitly construct near() query
+  ##-- parse daughter query & setup match-ids
   my $qdtr  = $coldb->parseQuery($opts->{query}, logas=>'query', default=>'', ddcmode=>1);
   my $qopts = $qdtr->getOptions || DDC::XS::CQueryOptions->new;
   $qdtr->setOptions(undef);
-  my @qtargets = $qdtr->HasMatchId ? (grep {UNIVERSAL::can($_,'getMatchId') && $_->getMatchId == 2} @{$qdtr->Descendants}) : qw();
-  if (!@qtargets) {
+
+  ##-- get target query nodes (item1 ~ matchid =1, item2 ~ matchid =2)
+  my (@qnodes1,@qnodes2);
+  foreach (grep {UNIVERSAL::can($_,'getMatchId')} @{$qdtr->Descendants}) {
+    push(@qnodes1,$_) if ($_->getMatchId<=1);
+    push(@qnodes2,$_) if ($_->getMatchId==2);
+  }
+  $rel->logconfess("no primary target-nodes found in daughter query '", $qdtr->toString, "': use match-id =1 to specify primary target(s)")
+    if (!@qnodes1);
+  $_->setMatchId(1) foreach (@qnodes1);
+
+  ##-- check for target match-id =2 and maybe implicitly construct near() query
+  if (!@qnodes2) {
     my $qany = DDC::XS::CQTokAny->new();
     $qany->SetMatchId(2);
     $qany = DDC::XS::CQWith->new($qany,$qrestr) if (defined($qrestr));
     $dmax = 1 if ($dmax < 1);
     my $qnear = DDC::XS::CQNear->new($dmax-1,$qdtr,$qany);
-    @qtargets = ($qany);
-    $qdtr  = $qnear;
-    $fcoef = 2 * $dmax;
+    @qnodes2  = ($qany);
+    $qdtr     = $qnear;
+    $fcoef    = 2 * $dmax;
   }
   elsif ($qrestr) {
-    ##-- append groupby restriction to all targets
+    ##-- append groupby restriction to all targets (=2)
     my ($nod,$newnod);
     $qdtr = $qdtr->mapTraverse(sub {
 				 $nod = shift;
