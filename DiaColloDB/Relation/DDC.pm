@@ -111,17 +111,8 @@ sub union {
 sub profile {
   my ($rel,$coldb,%opts) = @_;
 
-  ##-- get query
+  ##-- get count-query, count-by expressions, titles
   my $qcount = $rel->countQuery($coldb,\%opts);
-  my $qstr   = $qcount->toString;
-  $rel->vlog($coldb->{logProfile}, "f12-query: $qstr");
-
-  ##-- query ddc server & check for errors
-  my $client = $rel->ddcClient(limit=>$opts{limit});
-  my $result = $client->queryJson($qstr);
-  $rel->logconfess($coldb->{error}="profile(): DDC query failed: ".($result->{error_}//'(undefined error)'))
-    if ($result->{error_} || $result->{istatus_} || $result->{nstatus_} || !$result->{counts_});
-  $rel->vlog($coldb->{logProfile}, "fetched ", ($result->{end_}//'?'), " of ~", ($result->{nhits_}//'?'), " count-query result row(s)");
 
   ##-- get count-by expressions, titles
   my $cbexprs = $qcount->getKeys->getExprs;
@@ -131,32 +122,25 @@ sub profile {
 		      : do { (my $label=$_->toString) =~ s{\'((?:\\.|[^\'])*)\'}{$1}; $label })
   } @$cbexprs[1..$#$cbexprs];
 
-
-  ##-- parse raw counts into slice-wise profiles
-  my %y2prf = qw();
-  my ($y,$prf,$key);
-  foreach (@{$result->{counts_}}) {
+  ##-- get raw f12 results and parse into slice-wise profiles
+  my $result12 = $rel->ddcQuery($coldb, $qcount, limit=>$opts{limit}, logas=>'f12');
+  my (%y2prf,$y,$prf,$key);
+  foreach (@{$result12->{counts_}}) {
     $y   = $_->[1]//'0';
     $key = join("\t", @$_[2..$#$_]);
     $prf = ($y2prf{$y} //= DiaColloDB::Profile->new(label=>$y));
     $prf->{f12}{$key}   += $_->[0];
   }
-  undef $result; ##-- save some memory
+  undef $result12; ##-- save some memory
 
-  ##-- query independent f2 and update slice-wise profiles
-  my $fcoef = $opts{fcoef};
-  $client->{limit} = -1;
-  my $qkeys2  = DDC::XS::CQKeys->new($qcount);
+  ##-- get raw g2 results and update slice-wise profiles
+  my $fcoef  = $opts{fcoef};
+  my $qkeys2 = DDC::XS::CQKeys->new($qcount);
   $qkeys2->setOptions(DDC::XS::CQueryOptions->new()) if (!$qkeys2->getOptions);
   $qkeys2->getOptions->setSeparateHits(1);
   $qkeys2->SetMatchId(2);
   my $qcount2 = DDC::XS::CQCount->new($qkeys2, $qcount->getKeys, -1, $qcount->getSort, $qcount->getLo, $qcount->getHi);
-  my $qstr2  = $qcount2->toString;
-  $rel->vlog($coldb->{logProfile}, "f2-query: $qstr2");
-  my $result2 = $client->queryJson($qstr2);
-  $rel->logconfess($coldb->{error}="profile(): DDC f2-query failed: ".($result2->{error_}//'(undefined error)'))
-    if ($result2->{error_} || $result2->{istatus_} || $result2->{nstatus_} || !$result2->{counts_});
-  $rel->vlog($coldb->{logProfile}, "fetched ", ($result2->{end_}//'?'), " of ~", ($result2->{nhits_}//'?'), " f2-query result row(s)");
+  my $result2 = $rel->ddcQuery($coldb, $qcount2, limit=>-1, logas=>'f2');
   foreach (@{$result2->{counts_}}) {
     next if (!defined($prf=$y2prf{$y=$_->[1]}));
     $key = join("\t", @$_[2..$#$_]);
@@ -171,12 +155,7 @@ sub profile {
 			     @{$qcount1->getKeys->getExprs},
 			    );
   $qcount1->getDtr->setMatchId(1);
-  my $qstr1  = $qcount1->toString;
-  $rel->vlog($coldb->{logProfile}, "f1-query: $qstr1");
-  my $result1 = $client->queryJson($qstr1);
-  $rel->logconfess($coldb->{error}="profile(): DDC f1-query failed: ".($result1->{error_}//'(undefined error)'))
-    if ($result1->{error_} || $result1->{istatus_} || $result1->{nstatus_} || !$result1->{counts_});
-  $rel->vlog($coldb->{logProfile}, "fetched ", ($result1->{end_}//'?'), " of ~", ($result1->{nhits_}//'?'), " f1-query result row(s)");
+  my $result1 = $rel->ddcQuery($coldb, $qcount1, limit=>-1, logas=>'f1');
   foreach (@{$result1->{counts_}}) {
     next if (!defined($prf=$y2prf{$y=$_->[1]}));
     $prf->{f1} += $_->[0]*$fcoef;
@@ -186,8 +165,15 @@ sub profile {
   my $N1 = 0; $N1 += $_->{f1} foreach (values %y2prf);
   my $N  = $coldb->{xf}{N} * $fcoef;
   $N     = $N1 if ($N1 > $N);
+  my ($f1);
   foreach $prf (values %y2prf) {
     $prf->{titles} = \@titles;
+
+    if (!$prf->{f1}) {
+      $f1  = 0;
+      $f1 += $_ foreach (values %{$prf->{f12}});
+      $prf->{f1} = $f1;
+    }
 
     $prf->{N} = $N;
     $prf->compile($opts{score}, eps=>$opts{eps});
@@ -241,6 +227,31 @@ sub ddcClient {
 							 mode=>'json',
 							 %opts
 							);
+}
+
+##--------------------------------------------------------------
+## $results = $rel->ddcQuery($coldb, $query_or_str, %opts)
+##  + %opts:
+##     logas => $prefix,   ##-- log prefix (default: 'ddcQuery()')
+##     loglevel => $level, ##-- log level (default=$coldb->{logProfile})
+##     limit => $limit,    ##-- set result client limit (default: current client limit, or -1 for limit=>undef)
+sub ddcQuery {
+  my ($rel,$coldb,$query,%opts) = @_;
+  my $logas = $opts{logas} // 'ddcQuery()';
+  my $level = exists($opts{loglevel}) ? $opts{loglevel} : $coldb->{logProfile};
+
+  my $qstr = ref($query) ? $query->toString : $query;
+  my $cli  = $rel->ddcClient();
+  $cli->{limit} = $opts{limit}//-1 if (exists($opts{limit}));
+
+  $rel->vlog($level, "$logas query: $qstr");
+  my $result = $cli->queryJson($qstr);
+
+  $rel->logconfess($coldb->{error}="$logas ERROR: DDC query failed: ".($result->{error_}//'(undefined error)'))
+    if ($result->{error_} || $result->{istatus_} || $result->{nstatus_} || !$result->{counts_});
+  $rel->vlog($level, "$logas: fetched ", ($result->{end_}//'?'), " of ~", ($result->{nhits_}//'?'), " result row(s)");
+
+  return $result;
 }
 
 ##--------------------------------------------------------------
