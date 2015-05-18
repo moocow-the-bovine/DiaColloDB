@@ -159,7 +159,7 @@ sub profile {
 ##--------------------------------------------------------------
 ## Relation API: comparison (diff)
 
-## $mprf = $coldb->compare($relation, %opts)
+## $mpdiff = $rel->compare($coldb, %opts)
 ##  + get a relation comparison profile for selected items as a DiaColloDB::Profile::MultiDiff object
 ##  + %opts:
 ##    (
@@ -179,18 +179,22 @@ sub profile {
 ##     ##
 ##     ##-- profiling and debugging parameters
 ##     strings => $bool,          ##-- do/don't stringify (default=do)
+##     ##
+##     ##-- sublcass abstraction parameters
+##     _gbparse => $bool,         ##-- if true (default), 'groupby' clause will be parsed only once, using $coldb->groupby() method
+##     _abkeys  => \@abkeys,      ##-- additional key-suffixes KEY s.t. (KEY=>VAL) gets passed to profile() calls if e.g. (aKEY=>VAL) is in %opts
 ##    )
 ##  + default implementation wraps profile() method
 ##  + default values for %opts should be set by higher-level call, e.g. DiaColloDB::compare()
-BEGIN { *diff = \&compare; }
 sub compare {
   my ($reldb,$coldb,%opts) = @_;
 
   ##-- common variables
   my $logProfile = $coldb->{logProfile};
-  my $groupby    = $coldb->groupby($opts{groupby} || [@{$coldb->attrs}]);
-  my %aopts      = map {($_=>$opts{"a$_"})} (qw(query date slice));
-  my %bopts      = map {($_=>$opts{"b$_"})} (qw(query date slice));
+  my $groupby    = $opts{groupby} || [@{$coldb->attrs}];
+  $groupby       = $coldb->groupby($groupby) if ($opts{_gbparse}//1);
+  my %aopts      = map {exists($opts{"a$_"}) ? ($_=>$opts{"a$_"}) : qw()} (qw(query date slice), @{$opts{_abkeys}//[]});
+  my %bopts      = map {exists($opts{"b$_"}) ? ($_=>$opts{"b$_"}) : qw()} (qw(query date slice), @{$opts{_abkeys}//[]});
   my %popts      = (kbest=>-1,cutoff=>'',strings=>0,fill=>1, groupby=>$groupby);
 
   ##-- get profiles to compare
@@ -211,13 +215,19 @@ sub compare {
 
   ##-- diff and stringification
   $reldb->vlog($logProfile, "compare(): diff and stringification");
-  my $diff = DiaColloDB::Profile::MultiDiff->new($mpa,$mpb,titles=>$groupby->{titles});
+  my $diff = DiaColloDB::Profile::MultiDiff->new($mpa,$mpb,titles=>$mpa->{titles});
   $diff->trim(kbesta=>$opts{kbest});
   $diff->stringify($groupby->{g2s}) if ($opts{strings}//1);
 
   return $diff;
 }
 
+## $mpdiff = $rel->diff($coldb, %opts)
+##  + alias for compare()
+sub diff {
+  my $rel = shift;
+  return $rel->compare(@_);
+}
 
 
 ##==============================================================================

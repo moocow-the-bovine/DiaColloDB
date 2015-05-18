@@ -30,7 +30,7 @@ our %EXPORT_TAGS =
      run   => [qw(crun opencmd)],
      env   => [qw(env_set env_push env_pop)],
      pack  => [qw(packsize packFilterFetch packFilterStore)],
-     math  => [qw($LOG2 log2)],
+     math  => [qw($LOG2 log2 min2 max2)],
      regex => [qw(regex)],
      html  => [qw(htmlesc)],
      time  => [qw(s2hms s2timestr timestamp)],
@@ -341,6 +341,16 @@ BEGIN {
 ## $log2 = log2($x)
 sub log2 {
   return $_[0]==0 ? -inf : log($_[0])/$LOG2;
+}
+
+## $max2 = max2($x,$y)
+sub max2 {
+  return $_[0] > $_[1] ? $_[0] : $_[1];
+}
+
+## $min2 = min2($x,$y)
+sub min2 {
+  return $_[0] < $_[1] ? $_[0] : $_[1];
 }
 
 

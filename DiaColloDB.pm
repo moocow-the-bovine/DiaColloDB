@@ -1413,7 +1413,7 @@ sub queryAttributes {
 
   my $areqs = [];
   my ($q,$a,$aq);
-  foreach $q (@{$cquery->Descendants}) {
+ foreach $q (@{$cquery->Descendants}) {
     if    ($q->isa('DDC::XS::CQWith')) {
       ##-- CQWith: ignore (just recurse)
       next;
@@ -1477,7 +1477,7 @@ sub queryAttributes {
 
 ##~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 ## \@aqs = $coldb->parseRequest($request, %opts)
-##  + guts for parsing user target and groupby requests into
+##  + guts for parsing user target and groupby requests into attribute-wise ARRAY-ref [[$attr1,$val1], ...]
 ##  + see parseQuery() method for supported $request formats and %opts
 ##  + wraps $coldb->queryAttributes($coldb->parseQuery($request,%opts))
 sub parseRequest {

@@ -5,7 +5,7 @@
 
 package DiaColloDB::Relation::DDC;
 use DiaColloDB::Relation;
-use DiaColloDB::Utils qw(:sort :env :run :pack :file);
+use DiaColloDB::Utils qw(:math);
 use DDC::Client::Distributed;
 use Fcntl qw(:seek);
 use strict;
@@ -160,10 +160,14 @@ sub profile {
     next if (!defined($prf=$y2prf{$y=$_->[1]}));
     $prf->{f1} += $_->[0]*$fcoef;
   }
+  undef $result1; ##-- save some memory (but not much)
+
+  ##-- query independent N
+  my $resultN = $rel->ddcQuery($coldb, "count(* #sep)", limit=>1, logas=>'fN');
+  my $N       = $resultN->{counts_}[0][0] * $fcoef;
 
   ##-- finalize sub-profiles: label, titles, N, compile & trim
   my $N1 = 0; $N1 += $_->{f1} foreach (values %y2prf);
-  my $N  = $coldb->{xf}{N} * $fcoef;
   $N     = $N1 if ($N1 > $N);
   my ($f1);
   foreach $prf (values %y2prf) {
@@ -194,6 +198,24 @@ sub profile {
 					 profiles => [@y2prf{sort {$a<=>$b} keys %y2prf}],
 					 titles   => \@titles,
 					);
+}
+
+##--------------------------------------------------------------
+## Relation API: compare
+
+## $mprf = $rel->compare($coldb, %opts)
+## + get a comparison profile for selected items as a DiaColloDB::Profile::MultiDiff object
+## + %opts: as for DiaColloDB::Relation::compare(), also:
+##   (
+##    ##-- sampling options
+##    (a|b)?limit => $limit,       ##-- maximum number of items to return from ddc; sets $qconfig{limit} (default: query "#limit[N]" or $rel->{ddcLimit})
+##    (a|b)?sample => $sample,     ##-- ddc sample size; sets $qconfig{qcount} Sample property (default: query "#sample[N]" or $rel->{ddcSample})
+##    (a|b)?cfmin => $cfmin,       ##-- minimum subcorpus frequency for returned items (default: query "#fmin[N]" or $rel->{cfmin})
+##    (a|b)?dmax  => $dmax,        ##-- maxmimum distance for implicit near() queries (default: query "#dmax[N]" or $rel->{dmax})
+##   )
+sub compare {
+  my $reldb = shift;
+  return $reldb->SUPER::compare(@_, _gbparse=>0, _abkeys=>[qw(limit sample cfmin dmax)], strings=>0);
 }
 
 ##==============================================================================
@@ -249,9 +271,40 @@ sub ddcQuery {
 
   $rel->logconfess($coldb->{error}="$logas ERROR: DDC query failed: ".($result->{error_}//'(undefined error)'))
     if ($result->{error_} || $result->{istatus_} || $result->{nstatus_} || !$result->{counts_});
-  $rel->vlog($level, "$logas: fetched ", ($result->{end_}//'?'), " of ~", ($result->{nhits_}//'?'), " result row(s)");
+  my $approx = ($result->{end_}//0) < ($result->{nhits_}//2**32) ? "~" : '';
+  $rel->vlog($level, "$logas: fetched ", ($result->{end_}//'?'), " of $approx", ($result->{nhits_}//'?'), " result row(s)");
 
   return $result;
+}
+
+##--------------------------------------------------------------
+## $fcoef = $rel->fcoef($cquery)
+sub fcoef {
+  my ($rel,$qnod) = @_;
+  if (UNIVERSAL::isa($qnod,'DDC::XS::CQNear')) {
+    return 2 * ($qnod->getDist + 1) * $rel->fcoef($qnod->getDtr1) * $rel->fcoef($qnod->getDtr2);
+  }
+  elsif (UNIVERSAL::isa($qnod,'DDC::XS::CQAnd') || UNIVERSAL::isa($qnod,'DDC::XS::CQOr')) {
+    return max2($rel->fcoef($qnod->getDtr1),$rel->fcoef($qnod->getDtr2));
+  }
+  elsif (UNIVERSAL::isa($qnod,'DDC::XS::CQSeq')) {
+    my $fcoef = 1;
+    my $items = $qnod->getItems;
+    my $dists = $qnod->getDists;
+    my $dops  = $qnod->getDistOps;
+    foreach (0..$#$dists) {
+      $fcoef *= $rel->fcoef($items->[$_]);
+      $dops->[$_] //= '<';
+      if ($dops->[$_] eq '<') {
+	$fcoef *= ($dists->[$_]+1);
+      }
+      elsif ($dops->[$_] eq '>') {
+	$fcoef *= 32-($dists->[$_]+1); ##-- ddc global MaxDistanceForNear=32
+      }
+    }
+    return $fcoef * $rel->fcoef($items->[$#$items]);
+  }
+  return 1;
 }
 
 ##--------------------------------------------------------------
@@ -317,7 +370,6 @@ sub countQuery {
     my $qnear = DDC::XS::CQNear->new($dmax-1,$qdtr,$qany);
     @qnodes2  = ($qany);
     $qdtr     = $qnear;
-    $fcoef    = 2 * $dmax;
   }
   elsif ($qrestr) {
     ##-- append groupby restriction to all targets (=2)
@@ -334,15 +386,9 @@ sub countQuery {
 			       });
   }
 
-  ##-- guess fcoef
-  if (!defined($fcoef)) {
-    if (UNIVERSAL::isa($qdtr,'DDC::XS::CQNear')) {
-      $fcoef = 2 * ($qdtr->getDist + 1);
-    }
-    else {
-      $fcoef = 1;
-    }
-  }
+  ##-- maybe guess fcoef
+  $fcoef //= $rel->fcoef($qdtr);
+  $rel->vlog($coldb->{logProfile}, "guessed fcoef=$fcoef");
 
   ##-- qdtr options
   $qopts->setSeparateHits(1) if ($opts->{query} !~ /\#(?:sep(?:arate)?|nojoin)(?:_hits)?\b/i);

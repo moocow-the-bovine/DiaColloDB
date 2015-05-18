@@ -7,7 +7,6 @@ DiaColloDB/Client.pm
 DiaColloDB/Client/file.pm
 DiaColloDB/Client/http.pm
 DiaColloDB/Client/list.pm
-DiaColloDB/Cofreqs.pm
 DiaColloDB/Corpus.pm
 DiaColloDB/Document.pm
 DiaColloDB/Document/DDCTabs.pm
@@ -24,8 +23,11 @@ DiaColloDB/Profile.pm
 DiaColloDB/Profile/Diff.pm
 DiaColloDB/Profile/Multi.pm
 DiaColloDB/Profile/MultiDiff.pm
+DiaColloDB/Relation.pm
+DiaColloDB/Relation/Cofreqs.pm
+DiaColloDB/Relation/DDC.pm
+DiaColloDB/Relation/Unigrams.pm
 DiaColloDB/Timer.pm
-DiaColloDB/Unigrams.pm
 DiaColloDB/Utils.pm
 dcdb-create.perl
 dcdb-export.perl
