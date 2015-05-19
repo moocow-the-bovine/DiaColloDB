@@ -323,33 +323,8 @@ sub fcoef {
 sub countQuery {
   my ($rel,$coldb,$opts) = @_;
 
-  ##-- groupby clause: date
-  my $gbdate = ($opts->{slice}<=0
-		? DDC::XS::CQCountKeyExprConstant->new($opts->{slice}||'0')
-		: DDC::XS::CQCountKeyExprDateSlice->new('date',$opts->{slice}));
-
   ##-- groupby clause: user request
-  my $gbexprs = [$gbdate];
-  my ($gbrestr); ##-- item2 restrictions from native group-by clause (appened via WITH)
-  if ($opts->{groupby} =~ m{^\s*(?:\#by)?\[([^\]]*)\]}) {
-    ##-- ddc-style request; no restrictions allows
-    my ($gbq);
-    eval { $gbq = $coldb->qcompiler->ParseQuery("count(*) #by[$1]"); };
-    $rel->logconfess($coldb->{error}="failed to parse DDC groupby request: $@") if ($@ || !$gbq);
-    push(@$gbexprs, @{$gbq->getKeys->getExprs});
-    $_->setMatchId(2) foreach (grep {UNIVERSAL::isa($_,'DDC::XS::CQCountKeyExprToken') && !$_->HasMatchId} @$gbexprs);
-  } else {
-    ##-- native-style request with optional restrictions
-    my $gbreq  = $coldb->parseRequest($opts->{groupby}, logas=>'groupby', default=>undef, relax=>1);
-    foreach (@$gbreq) {
-      push(@$gbexprs, DDC::XS::CQCountKeyExprToken->new($_->[0], 2, 0));
-      if (defined($_->[1]) && !UNIVERSAL::isa($_->[1], 'DDC::XS::CQTokAny')) {
-	$gbrestr = (defined($gbrestr) ? DDC::XS::CQWith->new($gbrestr,$_->[1]) : $_->[1]);
-      }
-    }
-  }
-  my $qexprs = DDC::XS::CQCountKeyExprList->new;
-  $qexprs->setExprs($gbexprs);
+  my ($gbexprs,$gbrestr,$gbfilters) = $coldb->parseGroupBy($opts->{groupby}, %$opts);
 
   ##-- query hacks: override options
   my $limit  = ($opts->{query} =~ s/\s*\#limit\s*[\s\[]\s*([\+\-]?\d+)\s*\]?//i ? $1 : ($opts->{limit}//$rel->{ddcLimit})) || -1;
@@ -408,14 +383,14 @@ sub countQuery {
 
   ##-- date clause
   my ($dfilter,$dlo,$dhi,$dloreq,$dhireq) = $coldb->parseDateRequest(@$opts{qw(date slice fill)},1);
-  my $filters = $qopts->getFilters;
+  my $filters = [@$gbfilters, $qopts->getFilters];
   if ($dfilter && !grep {UNIVERSAL::isa($_,'DDC::XS::CQFDateSort')} @$filters) {
     unshift(@$filters, DDC::XS::CQFDateSort->new(DDC::XS::LessByDate(),
 						 ($dloreq ? "${dloreq}-00-00" : ''),
 						 ($dhireq ? "${dhireq}-12-31" : '')
 						));
-    $qopts->setFilters($filters);
   }
+  $qopts->setFilters($filters);
 
   ##-- set random seed if we're using a limited sample
   if ($sample > 0) {
@@ -438,7 +413,7 @@ sub countQuery {
 
   ##-- finalize: construct count query & set options
   $cfmin = '' if (($cfmin//1) <= 1);
-  my $qcount = DDC::XS::CQCount->new($qdtr, $qexprs, $sample, DDC::XS::GreaterByCountValue(), $cfmin);
+  my $qcount = DDC::XS::CQCount->new($qdtr, $gbexprs, $sample, DDC::XS::GreaterByCountValue(), $cfmin);
   @$opts{qw(limit sample dlo dhi dloreq dhireq fcoef cfmin)} = ($limit,$sample,$dlo,$dhi,$dloreq,$dhireq,$fcoef,$cfmin);
   return $qcount;
 }

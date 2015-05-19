@@ -1219,7 +1219,7 @@ sub test_ddcprf {
   my %opts  = map {split(/=/,$_,2)} @_;
 
   $opts{query}   ||= 'Haus #sample[100]'; #'Haus, $p=NN #has[author,/kant/]';
-  $opts{groupby} ||= '[$l,$p=ADJA,textClass]';
+  $opts{groupby} ||= 'l,p=ADJA,textClass';
   $opts{slice}   ||= 0;
   #$opts{date}    ||= '1900:1999';
   $opts{score}   ||= 'f';

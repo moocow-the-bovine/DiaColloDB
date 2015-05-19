@@ -400,8 +400,11 @@ sub attrs {
 ## $aname = $CLASS_OR_OBJECT->attrName($attr)
 ##  + returns canonical (short) attribute name for $attr
 ##  + supports aliases in %ATTR_ALIAS = ($alias=>$name, ...)
-##  + see also %ATTR_RALIAS = ($name=>\@aliases, ...), %ATTR_TITLE = ($name_or_alias=>$title, ...)
-our (%ATTR_ALIAS,%ATTR_RALIAS,%ATTR_TITLE);
+##  + see also:
+##     %ATTR_RALIAS = ($name=>\@aliases, ...)
+##     %ATTR_CBEXPR = ($name=>$ddcCountByExpr, ...)
+##     %ATTR_TITLE = ($name_or_alias=>$title, ...)
+our (%ATTR_ALIAS,%ATTR_RALIAS,%ATTR_TITLE,%ATTR_CBEXPR);
 BEGIN {
   %ATTR_RALIAS = (
 		  'l' => [map {(uc($_),ucfirst($_),$_)} qw(lemma lem l)],
@@ -423,20 +426,40 @@ BEGIN {
 		 'w'=>'word',
 		 'p'=>'pos',
 		);
+  %ATTR_CBEXPR = (
+		  'doc.textClass' => DDC::XS::CQCountKeyExprRegex->new(DDC::XS::CQCountKeyExprBibl->new('textClass'),':.*$',''),
+		 );
 }
 sub attrName {
   shift if (UNIVERSAL::isa($_[0],__PACKAGE__));
-  return $ATTR_ALIAS{$_[0]} // $_[0];
+  return $ATTR_ALIAS{($_[0]//'')} // $_[0];
 }
 
 ## $atitle = $CLASS_OR_OBJECT->attrTitle($attr_or_alias)
 ##  + returns an attribute title for $attr_or_alias
 sub attrTitle {
   my ($that,$a) = @_;
-  $a = $that->attrName($a);
+  $a = $that->attrName($a//'');
   return $ATTR_TITLE{$a} if (exists($ATTR_TITLE{$a}));
   $a =~ s/^(?:doc|meta)\.//;
   return $a;
+}
+
+## $acbexpr = $CLASS_OR_OBJECT->attrCountBy($attr_or_alias,$matchid=0)
+sub attrCountBy {
+  my ($that,$a,$matchid) = @_;
+  $a = $that->attrName($a//'');
+  if (exists($ATTR_CBEXPR{$a})) {
+    ##-- aliased attribute
+    return $ATTR_CBEXPR{$a};
+  }
+  if ($a =~ /^doc\.(.*)$/) {
+    ##-- document attribute ("doc.ATTR" convention)
+    return DDC::XS::CQCountKeyExprBibl->new($1);
+  } else {
+    ##-- token attribute
+    return DDC::XS::CQCountKeyExprToken->new($a, ($matchid||0), 0);
+  }
 }
 
 ## \@attrdata = $coldb->attrData()
@@ -1404,6 +1427,7 @@ sub parseQuery {
 ##     warn  => $level,       ##-- log-level for unknown attributes (default: 'warn')
 ##     logas => $reqtype,     ##-- request type for warnings
 ##     default => $attr,      ##-- default attribute (for query requests)
+##     allowUnknown => $bool, ##-- allow unknown attributes? (default: 0)
 sub queryAttributes {
   my ($coldb,$cquery,%opts) = @_;
   my $wlevel = $opts{warn} // 'warn';
@@ -1417,8 +1441,12 @@ sub queryAttributes {
 
   my $areqs = [];
   my ($q,$a,$aq);
- foreach $q (@{$cquery->Descendants}) {
-    if    ($q->isa('DDC::XS::CQWith')) {
+  foreach $q (@{$cquery->Descendants}) {
+    if (!defined($q)) {
+      ##-- NULL: ignore
+      next;
+    }
+    elsif ($q->isa('DDC::XS::CQWith')) {
       ##-- CQWith: ignore (just recurse)
       next;
     }
@@ -1465,13 +1493,14 @@ sub queryAttributes {
     }
   }
 
-  ##-- check for unsupported attributes
+  ##-- check for unsupported attributes & normalize attribute names
   @$areqs = grep {
-    $_->[0] = $coldb->attrName($_->[0]);
-    if (!$coldb->hasAttr($_->[0])) {
-      $warnsub->("unsupported attribute '$_->[0]' in native $logas request");
+    $a = $coldb->attrName($_->[0]);
+    if (!$opts{allowUnknown} && !$coldb->hasAttr($a)) {
+      $warnsub->("unsupported attribute '".($_->[0]//'(undef)')."' in native $logas request");
       0
     } else {
+      $_->[0] = $a;
       1
     }
   } @$areqs;
@@ -1569,6 +1598,85 @@ sub groupby {
   }
 
   return $gb;
+}
+
+##~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+## ($CQCountKeyExprs,\$CQRestrict,\@CQFilters) = $coldb->parseGroupBy($groupby_string_or_request,%opts)
+##  + for ddc-mode parsing
+##  + %opts:
+##     date => $date,
+##     slice => $slice,
+##     matchid => $matchid,    ##-- default match-id
+sub parseGroupBy {
+  my ($coldb,$req,%opts) = @_;
+  $req //= $coldb->attrs;
+
+  ##-- groupby clause: date
+  my $gbdate = ($opts{slice}<=0
+		? DDC::XS::CQCountKeyExprConstant->new($opts{slice}||'0')
+		: DDC::XS::CQCountKeyExprDateSlice->new('date',$opts{slice}));
+
+  ##-- groupby clause: user request
+  my $gbexprs   = [$gbdate];
+  my $gbfilters = [];
+  my ($gbrestr);
+  if (!ref($req) && $req =~ m{^\s*(?:\#by)?\[([^\]]*)\]}) {
+    ##-- ddc-style request; no restriction-clauses are allowed
+    my $cbstr = $1;
+    my ($gbq);
+    eval { $gbq = $coldb->qcompiler->ParseQuery("count(*) #by[$cbstr]"); };
+    $coldb->logconfess($coldb->{error}="failed to parse DDC groupby request \`$req': $@") if ($@ || !$gbq);
+    push(@$gbexprs, @{$gbq->getKeys->getExprs});
+    $_->setMatchId($opts{matchid}//0)
+      foreach (grep {UNIVERSAL::isa($_,'DDC::XS::CQCountKeyExprToken') && !$_->HasMatchId} @$gbexprs);
+  }
+  else {
+    ##-- native-style request with optional restrictions
+    my $gbreq  = $coldb->parseRequest($req, logas=>'groupby', default=>undef, relax=>1, allowUnknown=>1);
+    foreach (@$gbreq) {
+      push(@$gbexprs, $coldb->attrCountBy($_->[0], 2));
+      if ($_->[0] =~ /^doc\.(.*)$/) {
+	##-- document attribute ("doc.ATTR" convention)
+	my $field = $1;
+	if (!defined($_->[1]) || UNIVERSAL::isa($_->[1], 'DDC::XS::CQTokAny')) {
+	  ;
+	}
+	elsif (UNIVERSAL::isa($_->[1], 'DDC::XS::CQTokExact') || UNIVERSAL::isa($_->[1], 'DDC::XS::CQTokInfl')) {
+	  push(@$gbfilters, DDC::XS::CQFHasField->new($field, $_->[1]->getValue, $_->[1]->getNegated));
+	}
+	elsif (UNIVERSAL::isa($_->[1], 'DDC::XS::CQTokSet') || UNIVERSAL::isa($_->[1], 'DDC::XS::CQTokSetInfl')) {
+	  push(@$gbfilters, DDC::XS::CQFHasFieldSet->new($field, $_->[1]->getValues, $_->[1]->getNegated));
+	}
+	elsif (UNIVERSAL::isa($_->[1], 'DDC::XS::CQTokRegex')) {
+	  push(@$gbfilters, DDC::XS::CQFHasFieldRegex->new($field, $_->[1]->getValue, $_->[1]->getNegated));
+	}
+	elsif (UNIVERSAL::isa($_->[1], 'DDC::XS::CQTokPrefix')) {
+	  push(@$gbfilters, DDC::XS::CQFHasFieldPrefix->new($field, $_->[1]->getValue, $_->[1]->getNegated));
+	}
+	elsif (UNIVERSAL::isa($_->[1], 'DDC::XS::CQTokSuffix')) {
+	  push(@$gbfilters, DDC::XS::CQFHasFieldSuffix->new($field, $_->[1]->getValue, $_->[1]->getNegated));
+	}
+	elsif (UNIVERSAL::isa($_->[1], 'DDC::XS::CQTokInfix')) {
+	  push(@$gbfilters, DDC::XS::CQFHasFieldInfix->new($field, $_->[1]->getValue, $_->[1]->getNegated));
+	}
+	else {
+	  $coldb->logconfess("can't handle metadata restriction of type ", ref($_->[1]), " in groupby request: \`", $_->[1]->toString, "'");
+	}
+      }
+      else {
+	##-- token attribute
+	if (defined($_->[1]) && !UNIVERSAL::isa($_->[1], 'DDC::XS::CQTokAny')) {
+	  $gbrestr = (defined($gbrestr) ? DDC::XS::CQWith->new($gbrestr,$_->[1]) : $_->[1]);
+	}
+      }
+    }
+  }
+
+  ##-- finalize: expression list
+  my $xlist = DDC::XS::CQCountKeyExprList->new;
+  $xlist->setExprs($gbexprs);
+
+  return ($xlist,$gbrestr,$gbfilters);
 }
 
 ##--------------------------------------------------------------
