@@ -1172,12 +1172,13 @@ sub enumIds {
 }
 
 ##~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-## ($dfilter,$dlo,$dhi) = $coldb->parseDateRequest($dateRequest, $sliceRequest, $fill)
+## ($dfilter,$dlo,$dhi,$dloReq,$dhiRreq) = $coldb->parseDateRequest($dateRequest='', $sliceRequest=0, $fill=0, $ddcMode=0)
 sub parseDateRequest {
-  my ($coldb,$date,$slice,$fill) = @_;
-  my ($dfilter,$dlo,$dhi);
+  my ($coldb,$date,$slice,$fill,$ddcmode) = @_;
+  my ($dfilter,$dlo,$dhi,$loreq,$hireq);
   if ($date && (UNIVERSAL::isa($date,'Regexp') || $date =~ /^\//)) {
     ##-- date request: regex string
+    $coldb->logconfess("parseDateRequest(): can't handle date regex '$date' in ddc mode") if ($ddcmode);
     my $dre  = regex($date);
     $dfilter = sub { $_[0] =~ $dre };
   }
@@ -1193,10 +1194,12 @@ sub parseDateRequest {
   }
   elsif ($date) {
     ##-- date request: single value
+    $dlo = $dhi = $date;
     $dfilter = sub { $_[0] == $date };
   }
 
   ##-- force-fill?
+  ($loreq,$hireq)=($dlo,$dhi);
   if ($fill) {
     if ($slice) {
       $dlo //= -'inf';
@@ -1210,7 +1213,7 @@ sub parseDateRequest {
     }
   }
 
-  return wantarray ? ($dfilter,$dlo,$dhi) : $dfilter;
+  return wantarray ? ($dfilter,$dlo,$dhi,$loreq,$hireq) : $dfilter;
 }
 
 ##~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -1426,8 +1429,8 @@ sub queryAttributes {
     }
     elsif ($q->isa('DDC::XS::CQToken')) {
       ##-- CQToken: create attribute clause
-      $warnsub->("negated query clause in $logas request (".$q->toString.")") if ($q->getNegated);
-      $warnsub->("explicit term-expansion chain in $logas request (".$q->toString.")") if ($q->can('getExpanders') && @{$q->getExpanders});
+      $warnsub->("negated query clause in native $logas request (".$q->toString.")") if ($q->getNegated);
+      $warnsub->("explicit term-expansion chain in native $logas request (".$q->toString.")") if ($q->can('getExpanders') && @{$q->getExpanders});
 
       my $a = $q->getIndexName || $default;
       if (ref($q) =~ /^DDC::XS::CQTok(?:Exact|Set|Regex|Any)$/) {
@@ -1443,7 +1446,7 @@ sub queryAttributes {
       } elsif (ref($q) eq 'DDC::XS::CQTokInfix') {
 	$aq = DDC::XS::CQTokRegex->new($q->getIndexName, quotemeta($q->getValue));
       } else {
-	$warnsub->("token query clause of type ".ref($q)." in $logas request (".$q->toString.")");
+	$warnsub->("token query clause of type ".ref($q)." in native $logas request (".$q->toString.")");
       }
       $aq=undef if ($aq && $aq->isa('DDC::XS::CQTokAny')); ##-- empty value, e.g. for groupby
       push(@$areqs, [$a,$aq]);
@@ -1453,12 +1456,12 @@ sub queryAttributes {
       if ($q->isa('DDC::XS::CQFRandomSort') || $q->isa('DDC::XS::CQFRankSort')) {
 	next;
       } elsif ($q->isa('DDC::XS::CQFSort') && ($q->getArg1 ne '' || $q->getArg2 ne '')) {
-	$warnsub->("filter of type ".ref($q)." with nontrivial bounds in $logas request (".$q->toString.")");
+	$warnsub->("filter of type ".ref($q)." with nontrivial bounds in native $logas request (".$q->toString.")");
       }
     }
     else {
       ##-- something else
-      $warnsub->("query clause of type ".ref($q)." in $logas request (".$q->toString.")");
+      $warnsub->("query clause of type ".ref($q)." in native $logas request (".$q->toString.")");
     }
   }
 
@@ -1466,7 +1469,7 @@ sub queryAttributes {
   @$areqs = grep {
     $_->[0] = $coldb->attrName($_->[0]);
     if (!$coldb->hasAttr($_->[0])) {
-      $warnsub->("unsupported attribute '$_->[0]' in $logas request");
+      $warnsub->("unsupported attribute '$_->[0]' in native $logas request");
       0
     } else {
       1

@@ -1219,7 +1219,7 @@ sub test_ddcprf {
   my %opts  = map {split(/=/,$_,2)} @_;
 
   $opts{query}   ||= 'Haus #sample[100]'; #'Haus, $p=NN #has[author,/kant/]';
-  $opts{groupby} ||= '$l,$p=ADJA';
+  $opts{groupby} ||= '[$l,$p=ADJA,textClass]';
   $opts{slice}   ||= 0;
   #$opts{date}    ||= '1900:1999';
   $opts{score}   ||= 'f';
@@ -1229,12 +1229,36 @@ sub test_ddcprf {
   #$coldb->{ddcServer} = 'localhost:52000'; ##-- local:kern.plato
   $coldb->{ddcServer} = 'kaskade.dwds.de:50250'; ##-- dta.beta
   $mp       = $coldb->profile('ddc',%opts) or die("$0: failed to acquire profile: $!");
-  #$mp      = $coldb->compare('ddc',%opts) or die("$0: failed to acquire profile: $!");
   $mp->saveTextFile('-');
 
   exit 0;
 }
 test_ddcprf(@ARGV);
+
+##--------------------------------------------------------------
+sub test_ddcdiff {
+  my $dbdir = shift || 'dta.d';
+  my %opts  = map {split(/=/,$_,2)} @_;
+
+  $opts{aquery}   ||= 'Frau';
+  $opts{bquery}   ||= $opts{aquery};
+  $opts{groupby} ||= '$l,$p=ADJA';
+  $opts{aslice}   ||= 0;
+  $opts{bslice}   ||= 0;
+  $opts{adate}   ||= '1600:1799';
+  $opts{bdate}   ||= '1800:1899';
+  $opts{score}   ||= 'ld';
+  $opts{kbest}   ||= 10;
+
+  my $coldb = DiaColloDB->new(dbdir=>$dbdir) or die("$0: failed to open $dbdir/: $!");
+  #$coldb->{ddcServer} = 'localhost:52000'; ##-- local:kern.plato
+  $coldb->{ddcServer} = 'kaskade.dwds.de:50250'; ##-- dta.beta
+  $mp       = $coldb->compare('ddc',%opts) or die("$0: failed to acquire profile: $!");
+  $mp->saveTextFile('-');
+
+  exit 0;
+}
+#test_ddcdiff(@ARGV);
 
 
 

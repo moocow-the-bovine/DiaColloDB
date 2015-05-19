@@ -137,8 +137,7 @@ sub profile {
   ##-- get raw g2 results and update slice-wise profiles
   my $fcoef  = $opts{fcoef};
   my $qkeys2 = DDC::XS::CQKeys->new($qcount);
-  $qkeys2->setOptions(DDC::XS::CQueryOptions->new()) if (!$qkeys2->getOptions);
-  $qkeys2->getOptions->setSeparateHits(1);
+  $qkeys2->setOptions($qcount->getDtr->getOptions);
   $qkeys2->SetMatchId(2);
   my $qcount2 = DDC::XS::CQCount->new($qkeys2, $qcount->getKeys, -1, $qcount->getSort, $qcount->getLo, $qcount->getHi);
   my $result2 = $rel->ddcQuery($coldb, $qcount2, limit=>-1, logas=>'f2');
@@ -317,6 +316,8 @@ sub fcoef {
 ##    limit  => $limit,		##-- hit return limit for ddc query
 ##    dlo    => $dlo,           ##-- minimum date-slice, from @opts{qw(date slice fill)}
 ##    dhi    => $dhi,           ##-- maximum date-slice, from @opts{qw(date slice fill)}
+##    loreq  => $dloreq,        ##-- minimum date request (ddc)
+##    hireq  => $dhireq,        ##-- maximum date request (ddc)
 ##    fcoef  => $fcoef,		##-- frequency coefficient, parsed from "#coef[N]", auto-generated for near() queries
 ##   )
 sub countQuery {
@@ -328,17 +329,27 @@ sub countQuery {
 		: DDC::XS::CQCountKeyExprDateSlice->new('date',$opts->{slice}));
 
   ##-- groupby clause: user request
-  my $gbreq  = $coldb->parseRequest($opts->{groupby}, logas=>'groupby', default=>undef);
-  my $gbkeys = [$gbdate];
-  my $qrestr = undef; ##-- groupby restriction clause (WITH)
-  foreach (@$gbreq) {
-    push(@$gbkeys, DDC::XS::CQCountKeyExprToken->new($_->[0], 2, 0));
-    if (defined($_->[1]) && !UNIVERSAL::isa($_->[1], 'DDC::XS::CQTokAny')) {
-      $qrestr = (defined($qrestr) ? DDC::XS::CQWith->new($qrestr,$_->[1]) : $_->[1]);
+  my $gbexprs = [$gbdate];
+  my ($gbrestr); ##-- item2 restrictions from native group-by clause (appened via WITH)
+  if ($opts->{groupby} =~ m{^\s*(?:\#by)?\[([^\]]*)\]}) {
+    ##-- ddc-style request; no restrictions allows
+    my ($gbq);
+    eval { $gbq = $coldb->qcompiler->ParseQuery("count(*) #by[$1]"); };
+    $rel->logconfess($coldb->{error}="failed to parse DDC groupby request: $@") if ($@ || !$gbq);
+    push(@$gbexprs, @{$gbq->getKeys->getExprs});
+    $_->setMatchId(2) foreach (grep {UNIVERSAL::isa($_,'DDC::XS::CQCountKeyExprToken') && !$_->HasMatchId} @$gbexprs);
+  } else {
+    ##-- native-style request with optional restrictions
+    my $gbreq  = $coldb->parseRequest($opts->{groupby}, logas=>'groupby', default=>undef, relax=>1);
+    foreach (@$gbreq) {
+      push(@$gbexprs, DDC::XS::CQCountKeyExprToken->new($_->[0], 2, 0));
+      if (defined($_->[1]) && !UNIVERSAL::isa($_->[1], 'DDC::XS::CQTokAny')) {
+	$gbrestr = (defined($gbrestr) ? DDC::XS::CQWith->new($gbrestr,$_->[1]) : $_->[1]);
+      }
     }
   }
-  my $qkeys  = DDC::XS::CQCountKeyExprList->new;
-  $qkeys->setExprs($gbkeys);
+  my $qexprs = DDC::XS::CQCountKeyExprList->new;
+  $qexprs->setExprs($gbexprs);
 
   ##-- query hacks: override options
   my $limit  = ($opts->{query} =~ s/\s*\#limit\s*[\s\[]\s*([\+\-]?\d+)\s*\]?//i ? $1 : ($opts->{limit}//$rel->{ddcLimit})) || -1;
@@ -366,19 +377,19 @@ sub countQuery {
   if (!@qnodes2) {
     my $qany = DDC::XS::CQTokAny->new();
     $qany->SetMatchId(2);
-    $qany = DDC::XS::CQWith->new($qany,$qrestr) if (defined($qrestr));
+    $qany = DDC::XS::CQWith->new($qany,$gbrestr) if (defined($gbrestr));
     $dmax = 1 if ($dmax < 1);
     my $qnear = DDC::XS::CQNear->new($dmax-1,$qdtr,$qany);
     @qnodes2  = ($qany);
     $qdtr     = $qnear;
   }
-  elsif ($qrestr) {
+  elsif ($gbrestr) {
     ##-- append groupby restriction to all targets (=2)
     my ($nod,$newnod);
     $qdtr = $qdtr->mapTraverse(sub {
 				 $nod = shift;
 				 if (UNIVERSAL::isa($nod, 'DDC::XS::CQToken') && $nod->getMatchId == 2) {
-				   $newnod = DDC::XS::CQWith->new($nod,$qrestr);
+				   $newnod = DDC::XS::CQWith->new($nod,$gbrestr);
 				   $newnod->setOptions($nod->getOptions);
 				   $nod->setOptions(undef);
 				   return $newnod;
@@ -396,12 +407,12 @@ sub countQuery {
   $qdtr->setOptions($qopts);
 
   ##-- date clause
-  my ($dfilter,$dlo,$dhi) = $coldb->parseDateRequest(@$opts{qw(date slice fill)});
+  my ($dfilter,$dlo,$dhi,$dloreq,$dhireq) = $coldb->parseDateRequest(@$opts{qw(date slice fill)},1);
   my $filters = $qopts->getFilters;
   if ($dfilter && !grep {UNIVERSAL::isa($_,'DDC::XS::CQFDateSort')} @$filters) {
     unshift(@$filters, DDC::XS::CQFDateSort->new(DDC::XS::LessByDate(),
-						 ($dlo ? "${dlo}-00-00" : ''),
-						 ($dhi ? "${dhi}-12-31" : '')
+						 ($dloreq ? "${dloreq}-00-00" : ''),
+						 ($dhireq ? "${dhireq}-12-31" : '')
 						));
     $qopts->setFilters($filters);
   }
@@ -427,14 +438,10 @@ sub countQuery {
 
   ##-- finalize: construct count query & set options
   $cfmin = '' if (($cfmin//1) <= 1);
-  my $qcount = DDC::XS::CQCount->new($qdtr, $qkeys, $sample, DDC::XS::GreaterByCountValue(), $cfmin);
-  @$opts{qw(limit sample dlo dhi fcoef cfmin)} = ($limit,$sample,$dlo,$dhi,$fcoef,$cfmin);
+  my $qcount = DDC::XS::CQCount->new($qdtr, $qexprs, $sample, DDC::XS::GreaterByCountValue(), $cfmin);
+  @$opts{qw(limit sample dlo dhi dloreq dhireq fcoef cfmin)} = ($limit,$sample,$dlo,$dhi,$dloreq,$dhireq,$fcoef,$cfmin);
   return $qcount;
 }
-
-##--------------------------------------------------------------
-## $f2 = $rel->estimateFrequency()
-##  + TODO
 
 ##==============================================================================
 ## Pacakge Alias(es)
