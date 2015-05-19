@@ -64,6 +64,12 @@ sub loadJsonData {
 ##--------------------------------------------------------------
 ## I/O: Text
 
+## undef = $CLASS_OR_OBJECT->saveTextHeader($fh, hlabel=>$hlabel, titles=>\@titles)
+sub saveTextHeader {
+  my ($that,$fh,%opts) = @_;
+  DiaColloDB::Profile::Diff::saveTextHeader($that,$fh,hlabel=>'label',@_);
+}
+
 ## $bool = $obj->saveTextFile($filename_or_handle, %opts)
 ##  + wraps saveTextFh(); INHERITED from DiaCollocDB::Persistent
 

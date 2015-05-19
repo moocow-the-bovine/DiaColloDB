@@ -101,11 +101,25 @@ sub loadJsonData {
 ##--------------------------------------------------------------
 ## I/O: Text
 
+## undef = $CLASS_OR_OBJECT->saveTextHeader($fh, hlabel=>$hlabel, titles=>\@titles)
+sub saveTextHeader {
+  my ($that,$fh,%opts) = @_;
+  my @fields = (
+		(map {("${_}a","${_}b")} qw(N f1 f2 f12 score)),
+		qw(diff),
+		(defined($opts{hlabel}) ? $opts{hlabel} : qw()),
+		@{$opts{titles} // (ref($that) ? $that->{titles} : undef) // [qw(item2)]},
+	       );
+  $fh->print(join("\t", map {"#".($_+1).":$fields[$_]"} (0..$#fields)), "\n");
+}
+
 ## $bool = $prf->saveTextFh($fh, %opts)
 ##  + %opts:
 ##    (
 ##     label => $label,   ##-- override $prf->{label} (used by Profile::Multi), no tab-separators required
 ##     format => $fmt,      ##-- printf score formatting (default="%.4f")
+##     header => $bool,   ##-- include header-row? (default=1)
+##     hlabel => $hlabel, ##-- prefix header item-cells with $hlabel (used by Profile::Multi)
 ##    )
 ##  + format (flat, TAB-separated): Na Nb F1a F1b F2a F2b F12a F12b SCOREa SCOREb SCOREdiff LABEL ITEM2
 sub saveTextFh {
@@ -119,6 +133,8 @@ sub saveTextFh {
   my $scored = $dprf->{$fscore};
   my $label = exists($opts{label}) ? $opts{label} : $dprf->{label};
   my $fmt   = $opts{fmt} || '%f';
+  $dprf->saveTextHeader($fh,%opts) if ($opts{header}//1);
+
   foreach (sort {$scored->{$b} <=> $scored->{$a}} keys %$scored) {
     $fh->print(join("\t",
 		    $Na, $Nb,

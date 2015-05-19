@@ -68,16 +68,26 @@ sub loadJsonData {
 ##--------------------------------------------------------------
 ## I/O: Text
 
+## undef = $CLASS_OR_OBJECT->saveTextHeader($fh, hlabel=>$hlabel, titles=>\@titles)
+sub saveTextHeader {
+  my ($that,$fh,%opts) = @_;
+  DiaColloDB::Profile::saveTextHeader($that,$fh,hlabel=>'label',@_);
+}
+
 ## $bool = $obj->saveTextFile($filename_or_handle, %opts)
 ##  + wraps saveTextFh(); INHERITED from DiaCollocDB::Persistent
 
 ## $bool = $mp->saveTextFh($fh,%opts)
+##  + %opts:
+##     header => $bool,     ##-- include header-row? (default=1)
+##     ...                  ##-- other options passed to DiaColloDB::Profile::saveTextFh()
 ##  + save text representation to a filehandle (guts)
 sub saveTextFh {
   my ($mp,$fh,%opts) = @_;
   my $ps = $mp->{profiles};
+  $mp->saveTextHeader($fh,%opts) if ($opts{header}//1);
   foreach (@$ps) {
-    $_->saveTextFh($fh,%opts)
+    $_->saveTextFh($fh,%opts,header=>0)
       or $mp->logconfess("saveTextFile() saved for sub-profile with label '", $_->label, "': $!");
   }
   return $mp;
