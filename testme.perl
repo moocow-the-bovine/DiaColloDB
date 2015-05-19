@@ -1215,7 +1215,7 @@ sub test_ddcrelq {
 
 ##--------------------------------------------------------------
 sub test_ddcprf {
-  my $dbdir = shift || 'kern.d';
+  my $dbdir = shift || 'dta.d';
   my %opts  = map {split(/=/,$_,2)} @_;
 
   $opts{query}   ||= 'Haus #sample[100]'; #'Haus, $p=NN #has[author,/kant/]';
@@ -1226,7 +1226,10 @@ sub test_ddcprf {
   $opts{kbest}   ||= 10;
 
   my $coldb = DiaColloDB->new(dbdir=>$dbdir) or die("$0: failed to open $dbdir/: $!");
-  $mp    = $coldb->profile('ddc',%opts) or die("$0: failed to acquire profile: $!");
+  #$coldb->{ddcServer} = 'localhost:52000'; ##-- local:kern.plato
+  $coldb->{ddcServer} = 'kaskade.dwds.de:50250'; ##-- dta.beta
+  $mp       = $coldb->profile('ddc',%opts) or die("$0: failed to acquire profile: $!");
+  #$mp      = $coldb->compare('ddc',%opts) or die("$0: failed to acquire profile: $!");
   $mp->saveTextFile('-');
 
   exit 0;

@@ -311,7 +311,8 @@ sub open {
     or $coldb->logconfess("open(): failed to open co-frequency file $dbdir/cof.*: $!");
 
   ##-- open: ddc (undef if ddcServer isn't set in ddc.hdr or $coldb)
-  $coldb->{ddc} = DiaColloDB::Relation::DDC->new(-r "$dbdir/ddc.hdr" ? (base=>"$dbdir/ddc") : qw())->fromDB($coldb);
+  $coldb->{ddc} = DiaColloDB::Relation::DDC->new(-r "$dbdir/ddc.hdr" ? (base=>"$dbdir/ddc") : qw())->fromDB($coldb)
+    // 'DiaColloDB::Relation::DDC';
 
   ##-- all done
   return $coldb;

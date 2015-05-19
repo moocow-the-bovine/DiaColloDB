@@ -25,7 +25,7 @@ our @ISA = qw(DiaColloDB::Relation);
 ##    base => $basename,               ##-- configuration header basename (default=undef)
 ##    ##
 ##    ##-- ddc client options
-##    ddcServer => "$server:$port",    ##-- ddc server; default=undef (required)
+##    ddcServer => "$server:$port",    ##-- ddc server (required; default=$coldb->{ddcServer} via fromDB() method)
 ##    ddcTimeout => $timeout,          ##-- ddc timeout; default=60
 ##    ddcLimit   => $limit,            ##-- default limit for ddc queries (default=-1)
 ##    ddcSample  => $sample,           ##-- default sample size for ddc queries (default=-1:all)
@@ -110,6 +110,7 @@ sub union {
 ##   )
 sub profile {
   my ($rel,$coldb,%opts) = @_;
+  $rel = $rel->fromDB($coldb,%opts);
 
   ##-- get count-query, count-by expressions, titles
   my $qcount = $rel->countQuery($coldb,\%opts);
@@ -214,8 +215,8 @@ sub profile {
 ##    (a|b)?dmax  => $dmax,        ##-- maxmimum distance for implicit near() queries (default: query "#dmax[N]" or $rel->{dmax})
 ##   )
 sub compare {
-  my $reldb = shift;
-  return $reldb->SUPER::compare(@_, _gbparse=>0, _abkeys=>[qw(limit sample cfmin dmax)], strings=>0);
+  my $rel = shift;
+  return $rel->SUPER::compare(@_, _gbparse=>0, _abkeys=>[qw(limit sample cfmin dmax)], strings=>0);
 }
 
 ##==============================================================================
@@ -259,14 +260,14 @@ sub ddcClient {
 ##     limit => $limit,    ##-- set result client limit (default: current client limit, or -1 for limit=>undef)
 sub ddcQuery {
   my ($rel,$coldb,$query,%opts) = @_;
-  my $logas = $opts{logas} // 'ddcQuery()';
+  my $logas = $opts{logas} // 'ddcQuery';
   my $level = exists($opts{loglevel}) ? $opts{loglevel} : $coldb->{logProfile};
 
   my $qstr = ref($query) ? $query->toString : $query;
   my $cli  = $rel->ddcClient();
   $cli->{limit} = $opts{limit}//-1 if (exists($opts{limit}));
 
-  $rel->vlog($level, "$logas query: $qstr");
+  $rel->vlog($level, "$logas: query[server=$rel->{ddcServer},limit=$cli->{limit}]: $qstr");
   my $result = $cli->queryJson($qstr);
 
   $rel->logconfess($coldb->{error}="$logas ERROR: DDC query failed: ".($result->{error_}//'(undefined error)'))
