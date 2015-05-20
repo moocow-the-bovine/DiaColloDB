@@ -12,7 +12,7 @@ WriteMakefile
 
    PREREQ_PM    => {
 		    'DDC'           => 0.16,
-		    'DDC::XS'       => 0.03,
+		    'DDC::XS'       => 0.04,
 		    'File::Path'    => undef,  ##-- make_tree, remove_path; 2.08_01
 		    'File::Map'     => undef,  # 0.63
 		    'JSON'          => undef,  # 2.53

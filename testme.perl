@@ -1218,8 +1218,9 @@ sub test_ddcprf {
   my $dbdir = shift || 'dta.d';
   my %opts  = map {split(/=/,$_,2)} @_;
 
-  $opts{query}   ||= 'Mann #sample[100] #has[textClass,Wiss*]'; #'Haus, $p=NN #has[author,/kant/]';
-  $opts{groupby} ||= 'l,p=ADJA,textClass';
+  #$opts{query}   ||= 'Mann #sample[100] #has[textClass,Wiss*]'; #'Haus, $p=NN #has[author,/kant/]';
+  $opts{query}   ||= 'Mann'; #'Haus, $p=NN #has[author,/kant/]';
+  $opts{groupby} ||= 'l=jung|alt,p=ADJA,textClass';
   $opts{slice}   ||= 0;
   #$opts{date}    ||= '1900:1999';
   $opts{score}   ||= 'f';
