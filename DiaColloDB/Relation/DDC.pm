@@ -139,7 +139,7 @@ sub profile {
   my $qkeys2 = DDC::XS::CQKeys->new($qcount);
   $qkeys2->setOptions($qcount->getDtr->getOptions);
   $qkeys2->SetMatchId(2);
-  my $qcount2 = DDC::XS::CQCount->new($qkeys2, $qcount->getKeys, -1, $qcount->getSort, $qcount->getLo, $qcount->getHi);
+  my $qcount2 = DDC::XS::CQCount->new($qkeys2, $qcount->getKeys, $qcount->getSample, $qcount->getSort, $qcount->getLo, $qcount->getHi);
   my $result2 = $rel->ddcQuery($coldb, $qcount2, limit=>-1, logas=>'f2');
   foreach (@{$result2->{counts_}}) {
     next if (!defined($prf=$y2prf{$y=$_->[1]}));
@@ -187,9 +187,9 @@ sub profile {
 
   ##-- honor "fill" option
   if ($opts{fill}) {
-    for ($y=$opts{dlo}; $y <= $opts{dhi}; $y += ($opts{slice}||1)) {
+    for ($y=$opts{dslo}; $y <= $opts{dshi}; $y += ($opts{slice}||1)) {
       next if (exists($y2prf{$y}));
-      $prf = $y2prf{$y} = DiaColloDB::Profile->new(N=>$N,f1=>0,label=>$y,titles=>\@titles);
+      $prf = $y2prf{$y} = DiaColloDB::Profile->new(N=>$N,f1=>0,label=>$y,titles=>\@titles)->compile($opts{score},eps=>$opts{eps});
     }
   }
 
@@ -314,10 +314,10 @@ sub fcoef {
 ## + sets following keys in %opts:
 ##   (
 ##    limit  => $limit,		##-- hit return limit for ddc query
-##    dlo    => $dlo,           ##-- minimum date-slice, from @opts{qw(date slice fill)}
-##    dhi    => $dhi,           ##-- maximum date-slice, from @opts{qw(date slice fill)}
-##    loreq  => $dloreq,        ##-- minimum date request (ddc)
-##    hireq  => $dhireq,        ##-- maximum date request (ddc)
+##    dslo   => $dslo,          ##-- minimum date-slice, from @opts{qw(date slice fill)}
+##    dshi   => $dshi,          ##-- maximum date-slice, from @opts{qw(date slice fill)}
+##    dlo    => $dlo,           ##-- minimum date request (ddc)
+##    dhi    => $dhi,           ##-- maximum date request (ddc)
 ##    fcoef  => $fcoef,		##-- frequency coefficient, parsed from "#coef[N]", auto-generated for near() queries
 ##   )
 sub countQuery {
@@ -382,12 +382,12 @@ sub countQuery {
   $qdtr->setOptions($qopts);
 
   ##-- date clause
-  my ($dfilter,$dlo,$dhi,$dloreq,$dhireq) = $coldb->parseDateRequest(@$opts{qw(date slice fill)},1);
-  my $filters = [@$gbfilters, $qopts->getFilters];
+  my ($dfilter,$dslo,$dshi,$dlo,$dhi) = $coldb->parseDateRequest(@$opts{qw(date slice fill)},1);
+  my $filters = [@$gbfilters, @{$qopts->getFilters}];
   if ($dfilter && !grep {UNIVERSAL::isa($_,'DDC::XS::CQFDateSort')} @$filters) {
     unshift(@$filters, DDC::XS::CQFDateSort->new(DDC::XS::LessByDate(),
-						 ($dloreq ? "${dloreq}-00-00" : ''),
-						 ($dhireq ? "${dhireq}-12-31" : '')
+						 ($dlo ? "${dlo}-00-00" : ''),
+						 ($dhi ? "${dhi}-12-31" : '')
 						));
   }
   $qopts->setFilters($filters);
@@ -414,7 +414,7 @@ sub countQuery {
   ##-- finalize: construct count query & set options
   $cfmin = '' if (($cfmin//1) <= 1);
   my $qcount = DDC::XS::CQCount->new($qdtr, $gbexprs, $sample, DDC::XS::GreaterByCountValue(), $cfmin);
-  @$opts{qw(limit sample dlo dhi dloreq dhireq fcoef cfmin)} = ($limit,$sample,$dlo,$dhi,$dloreq,$dhireq,$fcoef,$cfmin);
+  @$opts{qw(limit sample dslo dshi dlo dhi fcoef cfmin)} = ($limit,$sample,$dslo,$dshi,$dlo,$dhi,$fcoef,$cfmin);
   return $qcount;
 }
 

@@ -33,7 +33,7 @@ use strict;
 ##==============================================================================
 ## Globals & Constants
 
-our $VERSION = "0.06.003";
+our $VERSION = "0.06.004";
 our @ISA = qw(DiaColloDB::Client);
 
 ## $PGOOD_DEFAULT
@@ -416,6 +416,7 @@ BEGIN {
 		  'doc.title'      => [qw(doc.title title)],
 		  'doc.author'     => [qw(doc.author author)],
 		  'doc.basename'   => [qw(doc.basename basename)],
+		  'doc.bibl'	   => [qw(doc.bibl bibl)],
 		  ##
 		  date  => [map {(uc($_),ucfirst($_),$_)} qw(date d)],
 		  slice => [map {(uc($_),ucfirst($_),$_)} qw(dslice slice sl ds s)],
@@ -1195,10 +1196,10 @@ sub enumIds {
 }
 
 ##~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-## ($dfilter,$dlo,$dhi,$dloReq,$dhiRreq) = $coldb->parseDateRequest($dateRequest='', $sliceRequest=0, $fill=0, $ddcMode=0)
+## ($dfilter,$sliceLo,$sliceHi,$dateLo,$dateHi) = $coldb->parseDateRequest($dateRequest='', $sliceRequest=0, $fill=0, $ddcMode=0)
 sub parseDateRequest {
   my ($coldb,$date,$slice,$fill,$ddcmode) = @_;
-  my ($dfilter,$dlo,$dhi,$loreq,$hireq);
+  my ($dfilter,$slo,$shi,$dlo,$dhi);
   if ($date && (UNIVERSAL::isa($date,'Regexp') || $date =~ /^\//)) {
     ##-- date request: regex string
     $coldb->logconfess("parseDateRequest(): can't handle date regex '$date' in ddc mode") if ($ddcmode);
@@ -1222,21 +1223,15 @@ sub parseDateRequest {
   }
 
   ##-- force-fill?
-  ($loreq,$hireq)=($dlo,$dhi);
   if ($fill) {
-    if ($slice) {
-      $dlo //= -'inf';
-      $dhi //=  'inf';
-      $dlo   = $coldb->{xdmin} if ($dlo < $coldb->{xdmin});
-      $dhi   = $coldb->{xdmax} if ($dhi > $coldb->{xdmax});
-      $dlo = int($dlo/$slice)*$slice;
-      $dhi = int($dhi/$slice)*$slice;
-    } else {
-      $dlo = $dhi = 0;
-    }
+    $dlo = $coldb->{xdmin} if (!$dlo || $dlo < $coldb->{xdmin});
+    $dhi = $coldb->{xdmax} if (!$dhi || $dhi > $coldb->{xdmax});
   }
 
-  return wantarray ? ($dfilter,$dlo,$dhi,$loreq,$hireq) : $dfilter;
+  ##-- slice-range
+  ($slo,$shi) = map {$slice ? ($slice*int(($_//0)/$slice)) : 0} ($dlo,$dhi);
+
+  return wantarray ? ($dfilter,$slo,$shi,$dlo,$dhi) : $dfilter;
 }
 
 ##~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -1246,7 +1241,7 @@ sub parseDateRequest {
 ##   + if $fill is true, returned HASH-ref has a key for each date-slice in range
 sub xidsByDate {
   my ($coldb,$xids,$date,$slice,$fill) = @_;
-  my ($dfilter,$dlo,$dhi) = $coldb->parseDateRequest($date,$slice,$fill);
+  my ($dfilter,$slo,$shi,$dlo,$dhi) = $coldb->parseDateRequest($date,$slice,$fill);
 
   ##-- filter xids
   my $xenum  = $coldb->{xenum};
@@ -1265,7 +1260,7 @@ sub xidsByDate {
 
   ##-- force-fill?
   if ($fill && $slice) {
-    for (my $d=$dlo; $d <= $dhi; $d += $slice) {
+    for ($d=$slo; $d <= $shi; $d += $slice) {
       $d2xis->{$d} //= [];
     }
   }
@@ -1279,6 +1274,21 @@ sub xidsByDate {
 sub qcompiler {
   return $_[0]{_qcompiler} ||= DDC::XS::CQueryCompiler->new();
 }
+
+##~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+## $cquery_or_undef = $coldb->qparse($ddc_query_string)
+##  + wraps parse in an eval {...} block and sets $coldb->{error} on failure
+sub qparse {
+  my ($coldb,$qstr) = @_;
+  my ($q);
+  eval { $q=$coldb->compiler->ParseQuery($qstr); };
+  if ($@ || !defined($q)) {
+    $coldb->{error}="$@";
+    return undef;
+  }
+  return $q;
+}
+
 
 ##~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 ## $cquery = $coldb->parseQuery([[$attr1,$val1],...], %opts) ##-- compat: ARRAY-of-ARRAYs
@@ -1308,8 +1318,12 @@ sub parseQuery {
 
   ##-- compat: parse into attribute-local requests $areqs=[[$attr1,$areq1],...]
   my $sepre  = qr{[\s\,]};
-  my $wordre = qr{(?:\\.|[^\s,:=\$\"\{\}\@\#\[\]])};
-  my $reqre  = qr{(?:${wordre}+[:=])?${wordre}+};
+  my $charre = qr{(?:\\[^ux0-9]|\w)};
+  my $attrre = qr{(?:\$?${charre}+)};
+  my $setre  = qr{(?:${charre}|\|)+};			##-- value: |-separated barewords
+  my $regre  = qr{(?:/(?:\\/|[^/]*)/(?:[gimsadlux]*))};	##-- value regexes
+  my $valre  = qr{(?:${setre}|${regre})};
+  my $reqre  = qr{(?:(?:${attrre}[:=])?${valre})};
   if (!$areqs
       && !$opts{ddcmode}
       && $req =~ m/^${sepre}*			##-- initial separators (optional)
@@ -1334,7 +1348,7 @@ sub parseQuery {
 	($a,$areq) = %$_;
       } else {
 	##-- compat: attribute request: STRING (native)
-	($a,$areq) = m{^((?:[^\s\,\:\=]|\\.)*)(?:[\:\=]((?:[^\s\,]|\\.)*))?$} ? ($1,$2) : ($_,undef);
+	($a,$areq) = m{^(${attrre})[:=](${valre})$} ? ($1,$2) : ($_,undef);
 	$a    =~ s/\\(.)/$1/g;
 	$areq =~ s/\\(.)/$1/g if (defined($areq));
       }
@@ -1353,7 +1367,7 @@ sub parseQuery {
 	##-- compat: value: array --> CQTokSet @{VAL1,...,VALN}
 	$aq = DDC::XS::CQTokSet->new($a, '', $areq);
       }
-      elsif (UNIVERSAL::isa($areq,'RegExp') || (!$opts{ddcmode} && $areq && $areq =~ m{^/})) {
+      elsif (UNIVERSAL::isa($areq,'RegExp') || (!$opts{ddcmode} && $areq && $areq =~ m{^${regre}$})) {
 	##-- compat: value: regex --> CQTokRegex /REGEX/
 	my $re = regex($areq)."";
 	$re    =~ s{^\(\?\^\:(.*)\)$}{$1};
@@ -1361,7 +1375,8 @@ sub parseQuery {
       }
       elsif ($opts{ddcmode} && ($areq//'') ne '') {
 	##-- compat: ddcmode: parse requests as ddc queries
-	$aq = $coldb->qcompiler->ParseQuery($areq);
+	$aq = $coldb->qparse($areq)
+	  or $coldb->logconfess($coldb->{error}="parseQuery(): failed to parse request \`$areq': $coldb->{error}");
       }
       else {
 	##-- compat: value: space- or |-separated literals --> CQTokExact $a=@VAL or CQTokSet $a=@{VAL1,...VALN} or CQTokAny $a=*
@@ -1623,9 +1638,8 @@ sub parseGroupBy {
   if (!ref($req) && $req =~ m{^\s*(?:\#by)?\[([^\]]*)\]}) {
     ##-- ddc-style request; no restriction-clauses are allowed
     my $cbstr = $1;
-    my ($gbq);
-    eval { $gbq = $coldb->qcompiler->ParseQuery("count(*) #by[$cbstr]"); };
-    $coldb->logconfess($coldb->{error}="failed to parse DDC groupby request \`$req': $@") if ($@ || !$gbq);
+    my $gbq = $coldb->qparse("count(*) #by[$cbstr]")
+      or $coldb->logconfess($coldb->{error}="failed to parse DDC groupby request \`$req': $coldb->{error}");
     push(@$gbexprs, @{$gbq->getKeys->getExprs});
     $_->setMatchId($opts{matchid}//0)
       foreach (grep {UNIVERSAL::isa($_,'DDC::XS::CQCountKeyExprToken') && !$_->HasMatchId} @$gbexprs);
