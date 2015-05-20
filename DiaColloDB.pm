@@ -417,6 +417,7 @@ BEGIN {
 		  'doc.author'     => [qw(doc.author author)],
 		  'doc.basename'   => [qw(doc.basename basename)],
 		  'doc.bibl'	   => [qw(doc.bibl bibl)],
+		  'doc.flags'      => [qw(doc.flags flags)],
 		  ##
 		  date  => [map {(uc($_),ucfirst($_),$_)} qw(date d)],
 		  slice => [map {(uc($_),ucfirst($_),$_)} qw(dslice slice sl ds s)],

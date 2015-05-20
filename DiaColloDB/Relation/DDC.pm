@@ -120,7 +120,7 @@ sub profile {
   my @titles  = map {
     $coldb->attrTitle($_->can('getIndexName')
 		      ? $_->getIndexName
-		      : do { (my $label=$_->toString) =~ s{\'((?:\\.|[^\'])*)\'}{$1}; $label })
+		      : do { (my $label=$_->toString) =~ s{\'((?:\\.|[^\'])*)\'}{$1}; $label =~ s{ ~ s/}{~s/}g; $label })
   } @$cbexprs[1..$#$cbexprs];
 
   ##-- get raw f12 results and parse into slice-wise profiles
