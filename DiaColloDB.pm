@@ -1282,7 +1282,7 @@ sub qcompiler {
 sub qparse {
   my ($coldb,$qstr) = @_;
   my ($q);
-  eval { $q=$coldb->compiler->ParseQuery($qstr); };
+  eval { $q=$coldb->qcompiler->ParseQuery($qstr); };
   if ($@ || !defined($q)) {
     $coldb->{error}="$@";
     return undef;
