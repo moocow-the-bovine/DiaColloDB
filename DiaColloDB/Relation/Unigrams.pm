@@ -209,6 +209,32 @@ sub subprofile {
 }
 
 ##==============================================================================
+## Relation API: default: query info
+
+## \%qinfo = $rel->qinfo($coldb, %opts)
+##  + get query-info hash for profile administrivia (ddc hit links)
+##  + %opts: as for profile(), additionally:
+##    (
+##     qreqs => \@qreqs,      ##-- as returned by $coldb->parseRequest($opts{query})
+##     gbreq => \%groupby,    ##-- as returned by $coldb->groupby($opts{groupby})
+##    )
+sub qinfo {
+  my ($rel,$coldb,%opts) = @_;
+  my ($q1strs,$q2strs,$fstrs) = $rel->qinfoData($coldb,%opts);
+
+  my @qstrs = (@$q1strs, @$q2strs);
+  @qstrs    = ('*') if (!@qstrs);
+  my $qstr = ('('.join(' WITH ', @qstrs).') =1'
+	      .' #sep'
+	      .(@$fstrs ? (' '.join(' ',@$fstrs)) : ''),
+	     );
+  return {
+	  fcoef => 1,
+	  qtemplate => $qstr,
+	 };
+}
+
+##==============================================================================
 ## Pacakge Alias(es)
 package DiaColloDB::Unigrams;
 use strict;

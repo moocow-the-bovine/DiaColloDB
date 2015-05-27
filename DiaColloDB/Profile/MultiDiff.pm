@@ -23,7 +23,9 @@ our @ISA = qw(DiaColloDB::Profile::Multi);
 ## $mpd = CLASS_OR_OBJECT->new($mp1,$mp2,%args)
 ## + %args, object structure:
 ##   (
-##    data => \%key2prf,   ##-- ($date => $profile, ...) : profiles by date
+##    profiles => \@profiles,   ##-- ($profile, ...) : sub-diffs, with {label} key
+##    titles   => \@titles,     ##-- item group titles (default:undef: unknown)
+##    qinfo    => \%qinfo,      ##-- query info (optional; keys prefixed with 'a' or 'b'): see DiaColloDB::Profile::Multi
 ##   )
 sub new {
   my $that = shift;
@@ -85,6 +87,7 @@ sub saveTextHeader {
 ##    (
 ##     table  => $bool,     ##-- include <table>..</table> ? (default=1)
 ##     body   => $bool,     ##-- include <html><body>..</html></body> ? (default=1)
+##     qinfo  => $varname,  ##-- include <script> for qinfo data? (default='qinfo')
 ##     header => $bool,     ##-- include header-row? (default=1)
 ##     format => $fmt,      ##-- printf score formatting (default="%.2f")
 ##    )
@@ -94,6 +97,8 @@ sub saveHtmlFile {
   $mp->logconfess("saveHtmlFile(): failed to open '$file': $!") if (!ref($fh));
   $fh->print("<html><body>\n") if ($opts{body}//1);
   $fh->print("<table><tbody>\n") if ($opts{table}//1);
+  $fh->print("<script type=\"text/javascript\">$opts{qinfo}=", DiaColloDB::Utils::saveJsonString($mp->{qinfo}, pretty=>0), ";</script>\n")
+    if ($mp->{qinfo} && ($opts{qinfo} //= 'qinfo'));
   $fh->print("<tr>",(
 		     map {"<th>".htmlesc($_)."</th>"}
 		     qw(ascore bscore diff label),
@@ -147,6 +152,12 @@ sub populate {
   @{$mpd->{profiles}} = map {
     DiaColloDB::Profile::Diff->new($_->[0],$_->[1])
   } @{$mpd->align($mpa,$mpb)};
+  if ($mpa->{qinfo} || $mpb->{qinfo}) {
+    $mpd->{qinfo} = {
+		     (map {("a$_"=>$mpa->{qinfo}{$_})} keys %{$mpa->{qinfo}//{}}),
+		     (map {("b$_"=>$mpb->{qinfo}{$_})} keys %{$mpb->{qinfo}//{}}),
+		    };
+  }
   return $mpd;
 }
 

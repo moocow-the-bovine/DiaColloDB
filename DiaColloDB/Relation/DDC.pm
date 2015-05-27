@@ -163,7 +163,8 @@ sub profile {
   undef $result1; ##-- save some memory (but not much)
 
   ##-- query independent N
-  my $resultN = $rel->ddcQuery($coldb, "count(* #sep)", limit=>1, logas=>'fN');
+  my $qstrN   = "count(* #sep)";
+  my $resultN = $rel->ddcQuery($coldb, $qstrN, limit=>1, logas=>'fN');
   my $N       = $resultN->{counts_}[0][0] * $fcoef;
 
   ##-- finalize sub-profiles: label, titles, N, compile & trim
@@ -193,10 +194,22 @@ sub profile {
     }
   }
 
+  ##-- setup meta-profile query info
+  my $qtemplate = $qcount->getDtr->clone();
+  my $qinfo = {
+	       q12=>$qcount->toStringFull,
+	       #q1=>$qcount1->toStringFull,
+	       #q2=>$qcount2->toStringFull,
+	       #qN=>$qstrN,
+	       fcoef=>$fcoef,
+	       qtemplate=>$opts{qtemplate},
+	      };
+
   ##-- finalize: return meta-profile
   return DiaColloDB::Profile::Multi->new(
 					 profiles => [@y2prf{sort {$a<=>$b} keys %y2prf}],
 					 titles   => \@titles,
+					 qinfo    => $qinfo,
 					);
 }
 
@@ -319,6 +332,7 @@ sub fcoef {
 ##    dlo    => $dlo,           ##-- minimum date request (ddc)
 ##    dhi    => $dhi,           ##-- maximum date request (ddc)
 ##    fcoef  => $fcoef,		##-- frequency coefficient, parsed from "#coef[N]", auto-generated for near() queries
+##    qtemplate => $qtemplate,  ##-- query template for ddc hit link-up
 ##   )
 sub countQuery {
   my ($rel,$coldb,$opts) = @_;
@@ -350,9 +364,9 @@ sub countQuery {
 
   ##-- check for target match-id =2 and maybe implicitly construct near() query
   if (!@qnodes2) {
-    my $qany = DDC::XS::CQTokAny->new();
-    $qany->SetMatchId(2);
-    $qany = DDC::XS::CQWith->new($qany,$gbrestr) if (defined($gbrestr));
+    $gbrestr //= DDC::XS::CQTokRegex->new('p',$coldb->{pgood},0) if ($coldb->{pgood}); ##-- simulate coldb 'pgood' restriction (content words only)
+    my $qany = $gbrestr // DDC::XS::CQTokAny->new();
+    $qany->setMatchId(2);
     $dmax = 1 if ($dmax < 1);
     my $qnear = DDC::XS::CQNear->new($dmax-1,$qdtr,$qany);
     @qnodes2  = ($qany);
@@ -366,6 +380,8 @@ sub countQuery {
 				 if (UNIVERSAL::isa($nod, 'DDC::XS::CQToken') && $nod->getMatchId == 2) {
 				   $newnod = DDC::XS::CQWith->new($nod,$gbrestr);
 				   $newnod->setOptions($nod->getOptions);
+				   $nod->setMatchId(0);
+				   $newnod->setMatchId(2);
 				   $nod->setOptions(undef);
 				   return $newnod;
 				 }
@@ -408,13 +424,52 @@ sub countQuery {
     }
   }
 
+  ##-- setup query tempalte
+  my ($qtconds,$qtcond,@qtfilters);
+  my $xi=0;
+  foreach (@{$gbexprs->getExprs}) {
+    if (!defined($_) || UNIVERSAL::isa($_,'DDC::XS::CQCountKeyExprConstant') || UNIVERSAL::isa($_,'DDC::XS::CQCountKeyExprDate')) {
+      ; ##-- skip these
+    } elsif (UNIVERSAL::isa($_,'DDC::XS::CQCountKeyExprToken')) {
+      ##-- token expression
+      $qtcond  = DDC::XS::CQTokExact->new($_->getIndexName, "__W2.${xi}__");
+      $qtconds = defined($qtconds) ? DDC::XS::CQWith->new($qtconds,$qtcond) : $qtcond;
+    } elsif (UNIVERSAL::isa($_, 'DDC::XS::CQCountKeyExprBibl')) {
+      ##-- bibl expression
+      my $label = $_->getLabel;
+      push(@qtfilters, DDC::XS::CQFHasField->new($label, "__W2.${xi}__"))
+	if (!grep {((ref($_)//'') eq 'DDC::XS::CQFHasField') && $_->getArg0 eq $label} @$filters);
+    }  elsif (UNIVERSAL::isa($_, 'DDC::XS::CQCountKeyExprRegex') && UNIVERSAL::isa($_->getSrc, 'DDC::XS::CQCountKeyExprBibl')) {
+      ##-- regex transformation: hack
+      if ($_->getReplacement eq '' && $_->getPattern =~ /^(.)\.\*\$/) {
+	##-- hack for simple prefix regex transformations (textclass)
+	push(@qtfilters, DDC::XS::CQFHasFieldPrefix->new($_->getSrc->getLabel, "__W2.${xi}__$1"));
+      } else {
+	##-- hack for generic regex transformations (any substring)
+	push(@qtfilters, DDC::XS::CQFHasFieldRegex->new($_->getSrc->getLabel, "\\Q__W2.${xi}__\\E"));
+      }
+    } else {
+      $coldb->logwarn("can't generate template for groupby expression of type ", ref($_)//'(undefined)', " \`", $_->toString, "'");
+    }
+    ++$xi;
+  }
+  $qtconds->setMatchId(2);
+  my $qtemplate = $qdtr->clone->mapTraverse(sub {
+					      my $nod = shift;
+					      if (UNIVERSAL::can($nod,'getMatchId') && $nod->getMatchId==2) {
+						return $qtconds;
+					      }
+					      return $nod;
+					    });
+  $qtemplate->getOptions->setFilters([@$filters,@qtfilters]);
+
   ##-- cleanup coldb parser (so we're using "real" refcounts)
   $coldb->qcompiler->CleanParser();
 
   ##-- finalize: construct count query & set options
   $cfmin = '' if (($cfmin//1) <= 1);
   my $qcount = DDC::XS::CQCount->new($qdtr, $gbexprs, $sample, DDC::XS::GreaterByCountValue(), $cfmin);
-  @$opts{qw(limit sample dslo dshi dlo dhi fcoef cfmin)} = ($limit,$sample,$dslo,$dshi,$dlo,$dhi,$fcoef,$cfmin);
+  @$opts{qw(limit sample dslo dshi dlo dhi fcoef cfmin qtemplate)} = ($limit,$sample,$dslo,$dshi,$dlo,$dhi,$fcoef,$cfmin,$qtemplate->toStringFull);
   return $qcount;
 }
 

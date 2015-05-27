@@ -571,6 +571,35 @@ sub subprofile {
 }
 
 ##==============================================================================
+## Relation API: default: query info
+
+## \%qinfo = $rel->qinfo($coldb, %opts)
+##  + get query-info hash for profile administrivia (ddc hit links)
+##  + %opts: as for profile(), additionally:
+##    (
+##     qreqs => \@qreqs,      ##-- as returned by $coldb->parseRequest($opts{query})
+##     gbreq => \%groupby,    ##-- as returned by $coldb->groupby($opts{groupby})
+##    )
+sub qinfo {
+  my ($rel,$coldb,%opts) = @_;
+  my ($q1strs,$q2strs,$fstrs) = $rel->qinfoData($coldb,%opts);
+
+  $q1strs = ['*'] if (!@$q1strs);
+  $q2strs = ['*'] if (!@$q2strs);
+  my $qstr = ('('.join(' WITH ', @$q1strs).') =1'
+	      .' && '
+	      .'('.join(' WITH ', @$q2strs).') =2'
+	      .' #sep' ##-- really pointless for &&-queries atm (ddc-2.0.38; cf mantis bug #654)
+	      .(@$fstrs ? (' '.join(' ',@$fstrs)) : ''),
+	     );
+  return {
+	  fcoef => 2*$rel->{dmax},
+	  qtemplate => $qstr,
+	 };
+}
+
+
+##==============================================================================
 ## Pacakge Alias(es)
 package DiaColloDB::Cofreqs;
 use strict;

@@ -153,7 +153,11 @@ sub profile {
     push(@dprfs, $prf);
   }
 
-  return DiaColloDB::Profile::Multi->new(profiles=>\@dprfs, titles=>$groupby->{titles});
+  ##-- finalize: multi-profile
+  return DiaColloDB::Profile::Multi->new(profiles=>\@dprfs,
+					 titles=>$groupby->{titles},
+					 qinfo =>$reldb->qinfo($coldb, %opts, qreqs=>$areqs, gbreq=>$groupby),
+					);
 }
 
 ##--------------------------------------------------------------
@@ -241,6 +245,55 @@ sub subprofile {
   my ($rel,$ids,%opts) = @_;
   $rel->logconfess("subprofile(): abstract method called");
 }
+
+##==============================================================================
+## Relation API: default: qinfo()
+
+## \%qinfo = $rel->qinfo($coldb, %opts)
+##  + get query-info hash for profile administrivia (ddc hit links)
+##  + %opts: as for profile(), additionally:
+##    (
+##     qreqs => \@areqs,      ##-- as returned by $coldb->parseRequest($opts{query})
+##     gbreq => \%groupby,    ##-- as returned by $coldb->groupby($opts{groupby})
+##    )
+sub qinfo {
+  my ($rel,$coldb,%opts) = @_;
+  $rel->logconfess("qinfo(): abstract method called");
+}
+
+## (\@q1strs,\@q2strs,\@fstrs) = $rel->qinfoData($coldb,%opts)
+##  + parses @opts{qw(qreqs gbreq)} into conditions on w1, w2 and metadata filters (for ddc linkup)
+##  + call this from subclass qinfo() methods
+sub qinfoData {
+  my ($rel,$coldb,%opts) = @_;
+  my (@q1strs,@q2strs,@fstrs,$q,$q2);
+
+  ##-- query clause
+  foreach (@{$opts{qreqs}}) {
+    $q = $coldb->attrQuery(@$_);
+    if (UNIVERSAL::isa($q,'DDC::XS::CQFilter')) {
+      push(@fstrs, $q->toString);
+    }
+    elsif (defined($q) && !UNIVERSAL::isa($q,'DDC::XS::CQTokAny')) {
+      push(@q1strs, $q->toString);
+    }
+  }
+
+  ##-- groupby clause
+  my $xi=1;
+  foreach (@{$opts{gbreq}{areqs}}) {
+    if ($_->[0] =~ /^doc\.(.*)/) {
+      push(@fstrs, DDC::XS::CQFHasField->new($1,"__W2.${xi}__")->toString);
+    }
+    else {
+      push(@q2strs, DDC::XS::CQTokExact->new($_->[0],"__W2.${xi}__")->toString);
+    }
+    ++$xi;
+  }
+
+  return (\@q1strs,\@q2strs,\@fstrs);
+}
+
 
 ##==============================================================================
 ## Footer

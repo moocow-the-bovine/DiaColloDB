@@ -24,12 +24,23 @@ our @ISA = qw(DiaColloDB::Persistent);
 ##   (
 ##    profiles => \@profiles,   ##-- ($profile, ...) : sub-profiles, with {label} key
 ##    titles   => \@titles,     ##-- item group titles (default:undef: unknown)
+##    qinfo    => \%qinfo,      ##-- query info (optional)
+##   )
+## + %qinfo structure:
+##   (
+##    q12 => $q12,              ##-- collocation-pair (w1,w2) count-query string (DDC)
+##    q1  => $q1,               ##-- collocation-item (w1) count-query string (DDC)
+##    q2  => $q2,               ##-- collocation-item (w2) count-query string (DDC)
+##    qN  => $qN,               ##-- total frequency count-query string (DDC)
+##    fcoef => $fcoef,          ##-- item count coefficient (DDC)
+##    qtemplate => $qtemplate,  ##-- template query string (replace '__W2.i__' with w2 item property #i (e.g. 0:date, 1:lemma, ...))
 ##   )
 sub new {
   my $that = shift;
   my $mp   = bless({
 		    profiles=>[],
 		    #titles=>undef,
+		    #qinfo=>{},
 		    @_
 		   }, (ref($that)||$that));
   return $mp;
@@ -45,6 +56,7 @@ sub clone {
   return bless({
 		profiles=>[map {$_->clone(@_)} @$profiles],
 		($mp->{titles} ? (titles=>[@{$mp->{titles}}]) : qw()),
+		($mp->{qinfo}  ? (qinfo=>{%{$mp->{qinfo}}})   : qw()),
 	       }, ref($mp)
 	      );
 }
@@ -101,6 +113,7 @@ sub saveTextFh {
 ##    (
 ##     table  => $bool,     ##-- include <table>..</table> ? (default=1)
 ##     body   => $bool,     ##-- include <html><body>..</html></body> ? (default=1)
+##     qinfo  => $varname,  ##-- include <script> for qinfo data? (default='qinfo')
 ##     header => $bool,     ##-- include header-row? (default=1)
 ##     format => $fmt,      ##-- printf score formatting (default="%.2f")
 ##    )
@@ -109,6 +122,8 @@ sub saveHtmlFile {
   my $fh = ref($file) ? $file : IO::File->new(">$file");
   $mp->logconfess("saveHtmlFile(): failed to open '$file': $!") if (!ref($fh));
   $fh->print("<html><body>\n") if ($opts{body}//1);
+  $fh->print("<script type=\"text/javascript\">$opts{qinfo}=", DiaColloDB::Utils::saveJsonString($mp->{qinfo}, pretty=>0), ";</script>\n")
+    if ($mp->{qinfo} && ($opts{qinfo} //= 'qinfo'));
   $fh->print("<table><tbody>\n") if ($opts{table}//1);
   $fh->print("<tr>",(
 		     map {"<th>".htmlesc($_)."</th>"}

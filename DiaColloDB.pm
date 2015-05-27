@@ -33,7 +33,7 @@ use strict;
 ##==============================================================================
 ## Globals & Constants
 
-our $VERSION = "0.06.004";
+our $VERSION = "0.06.005";
 our @ISA = qw(DiaColloDB::Client);
 
 ## $PGOOD_DEFAULT
@@ -462,6 +462,19 @@ sub attrCountBy {
     ##-- token attribute
     return DDC::XS::CQCountKeyExprToken->new($a, ($matchid||0), 0);
   }
+}
+
+## $aquery_or_filter_or_undef = $CLASS_OR_OBJECT->attrQuery($attr_or_alias,$cquery)
+##  + returns a CQuery or CQFilter object for condition $cquery on $attr_or_alias
+sub attrQuery {
+  my ($that,$a,$cquery) = @_;
+  $a = $that->attrName( $a // ($cquery ? $cquery->getIndexName : undef) // '' );
+  if ($a =~ /^doc\./) {
+    ##-- document attribute ("doc.ATTR" convention)
+    return $that->query2filter($a,$cquery);
+  }
+  ##-- token condition (use literal $cquery)
+  return $cquery;
 }
 
 ## \@attrdata = $coldb->attrData()
@@ -1617,6 +1630,38 @@ sub groupby {
 }
 
 ##~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+## $cqfilter = $coldb->query2filter($attr,$cquery,%opts)
+##  + converts a CQToken to a CQFilter, for ddc parsing
+##  + %opts:
+##     logas => $logas,   ##-- log-prefix for warnings
+sub query2filter {
+  my ($coldb,$a,$q,%opts) = @_;
+  return undef if (!defined($q));
+  my $logas = $opts{logas} || 'query2filter';
+
+  ##-- document attribute ("doc.ATTR" convention)
+  my $field = $coldb->attrName( $a // $q->getIndexName );
+  $field = $1 if ($field =~ /^doc\.(.*)$/);
+  if (UNIVERSAL::isa($q, 'DDC::XS::CQTokAny')) {
+    return undef;
+  } elsif (UNIVERSAL::isa($q, 'DDC::XS::CQTokExact') || UNIVERSAL::isa($q, 'DDC::XS::CQTokInfl')) {
+    return DDC::XS::CQFHasField->new($field, $q->getValue, $q->getNegated);
+  } elsif (UNIVERSAL::isa($q, 'DDC::XS::CQTokSet') || UNIVERSAL::isa($q, 'DDC::XS::CQTokSetInfl')) {
+    return DDC::XS::CQFHasFieldSet->new($field, $q->getValues, $q->getNegated);
+  } elsif (UNIVERSAL::isa($q, 'DDC::XS::CQTokRegex')) {
+    return DDC::XS::CQFHasFieldRegex->new($field, $q->getValue, $q->getNegated);
+  } elsif (UNIVERSAL::isa($q, 'DDC::XS::CQTokPrefix')) {
+    return DDC::XS::CQFHasFieldPrefix->new($field, $q->getValue, $q->getNegated);
+  } elsif (UNIVERSAL::isa($q, 'DDC::XS::CQTokSuffix')) {
+    return DDC::XS::CQFHasFieldSuffix->new($field, $q->getValue, $q->getNegated);
+  } elsif (UNIVERSAL::isa($q, 'DDC::XS::CQTokInfix')) {
+    return DDC::XS::CQFHasFieldInfix->new($field, $q->getValue, $q->getNegated);
+  } else {
+    $coldb->logconfess("can't handle metadata restriction of type ", ref($q), " in $logas request: \`", $q->toString, "'");
+  }
+}
+
+##~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 ## ($CQCountKeyExprs,\$CQRestrict,\@CQFilters) = $coldb->parseGroupBy($groupby_string_or_request,%opts)
 ##  + for ddc-mode parsing
 ##  + %opts:
@@ -1648,35 +1693,12 @@ sub parseGroupBy {
   else {
     ##-- native-style request with optional restrictions
     my $gbreq  = $coldb->parseRequest($req, logas=>'groupby', default=>undef, relax=>1, allowUnknown=>1);
+    my ($filter);
     foreach (@$gbreq) {
       push(@$gbexprs, $coldb->attrCountBy($_->[0], 2));
-      if ($_->[0] =~ /^doc\.(.*)$/) {
+      if ($_->[0] =~ /^doc\./) {
 	##-- document attribute ("doc.ATTR" convention)
-	my $field = $1;
-	if (!defined($_->[1]) || UNIVERSAL::isa($_->[1], 'DDC::XS::CQTokAny')) {
-	  ;
-	}
-	elsif (UNIVERSAL::isa($_->[1], 'DDC::XS::CQTokExact') || UNIVERSAL::isa($_->[1], 'DDC::XS::CQTokInfl')) {
-	  push(@$gbfilters, DDC::XS::CQFHasField->new($field, $_->[1]->getValue, $_->[1]->getNegated));
-	}
-	elsif (UNIVERSAL::isa($_->[1], 'DDC::XS::CQTokSet') || UNIVERSAL::isa($_->[1], 'DDC::XS::CQTokSetInfl')) {
-	  push(@$gbfilters, DDC::XS::CQFHasFieldSet->new($field, $_->[1]->getValues, $_->[1]->getNegated));
-	}
-	elsif (UNIVERSAL::isa($_->[1], 'DDC::XS::CQTokRegex')) {
-	  push(@$gbfilters, DDC::XS::CQFHasFieldRegex->new($field, $_->[1]->getValue, $_->[1]->getNegated));
-	}
-	elsif (UNIVERSAL::isa($_->[1], 'DDC::XS::CQTokPrefix')) {
-	  push(@$gbfilters, DDC::XS::CQFHasFieldPrefix->new($field, $_->[1]->getValue, $_->[1]->getNegated));
-	}
-	elsif (UNIVERSAL::isa($_->[1], 'DDC::XS::CQTokSuffix')) {
-	  push(@$gbfilters, DDC::XS::CQFHasFieldSuffix->new($field, $_->[1]->getValue, $_->[1]->getNegated));
-	}
-	elsif (UNIVERSAL::isa($_->[1], 'DDC::XS::CQTokInfix')) {
-	  push(@$gbfilters, DDC::XS::CQFHasFieldInfix->new($field, $_->[1]->getValue, $_->[1]->getNegated));
-	}
-	else {
-	  $coldb->logconfess("can't handle metadata restriction of type ", ref($_->[1]), " in groupby request: \`", $_->[1]->toString, "'");
-	}
+	push(@$gbfilters, $filter) if (defined($filter=$coldb->query2filter($_->[0], $_->[1])));
       }
       else {
 	##-- token attribute
