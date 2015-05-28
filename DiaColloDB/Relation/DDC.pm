@@ -204,6 +204,7 @@ sub profile {
 	       fcoef=>$fcoef,
 	       qtemplate=>$opts{qtemplate},
 	      };
+  foreach (values %$qinfo) { utf8::decode($_) if (!utf8::is_utf8($_)); }
 
   ##-- finalize: return meta-profile
   return DiaColloDB::Profile::Multi->new(

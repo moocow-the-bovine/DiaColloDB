@@ -225,7 +225,7 @@ sub qinfo {
   my @qstrs = (@$q1strs, @$q2strs, @$qxstrs);
   @qstrs    = ('*') if (!@qstrs);
   my $qstr = ('('.join(' WITH ', @qstrs).') =1'
-	      .' #sep'
+	      .' #SEPARATE'
 	      .(@$fstrs ? (' '.join(' ',@$fstrs)) : ''),
 	     );
   return {

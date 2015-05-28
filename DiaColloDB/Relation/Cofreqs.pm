@@ -588,8 +588,8 @@ sub qinfo {
   my $q2str = '('.(@$q2strs ? join(' WITH ', @$q2strs,@$qxstrs) : '*').') =2';
   my $qstr = (
 	      #"$q1str && $q2str" ##-- approximate with &&-query (especially buggy since #sep doesn't work right here; see mantis bug #654)
-	      "near( $q1str, $q2str, ".(2*($rel->{dmax}-1)).")"
-	      .' #sep' ##-- really pointless for &&-queries atm (ddc-2.0.38; cf mantis bug #654)
+	      "NEAR( $q1str, $q2str, ".(2*($rel->{dmax}-1)).")"
+	      .' #SEPARATE'
 	      .(@$fstrs ? (' '.join(' ',@$fstrs)) : ''),
 	     );
   return {
