@@ -295,6 +295,11 @@ sub qinfoData {
   push(@qxstrs, qq(\$p=/$coldb->{pgood}/)) if ($coldb->{pgood});
   push(@qxstrs, qq(\$=!/$coldb->{pbad}/))  if ($coldb->{pbad});
 
+  ##-- utf8
+  foreach (@q1strs,@q2strs,@qxstrs,@fstrs) {
+    utf8::decode($_) if (!utf8::is_utf8($_));
+  }
+
   return (\@q1strs,\@q2strs,\@qxstrs,\@fstrs);
 }
 
