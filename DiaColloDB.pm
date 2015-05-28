@@ -1736,6 +1736,7 @@ sub parseGroupBy {
 ##     score   => $func,          ##-- scoring function ("f"|"fm"|"mi"|"ld") : default="f"
 ##     kbest   => $k,             ##-- return only $k best collocates per date (slice) : default=-1:all
 ##     cutoff  => $cutoff,        ##-- minimum score
+##     global  => $bool,          ##-- determine k-best items globally? (default=0)
 ##     ##
 ##     ##-- profiling and debugging parameters
 ##     strings => $bool,          ##-- do/don't stringify (default=do)
@@ -1754,6 +1755,7 @@ sub profile {
   $opts{eps}     //= 0;
   $opts{kbest}   //= -1;
   $opts{cutoff}  //= '';
+  $opts{global}  //= 0;
   $opts{strings} //= 1;
   $opts{fill}    //= 0;
 
@@ -1765,7 +1767,7 @@ sub profile {
 		     ([rel=>$rel],
 		      [query=>$opts{query}],
 		      [groupby=>UNIVERSAL::isa($opts{groupby},'ARRAY') ? join(',', @{$opts{groupby}}) : $opts{groupby}],
-		      (map {[$_=>$opts{$_}]} qw(date slice score eps kbest cutoff)),
+		      (map {[$_=>$opts{$_}]} qw(date slice score eps kbest cutoff global)),
 		     ))
 	       .")");
 
