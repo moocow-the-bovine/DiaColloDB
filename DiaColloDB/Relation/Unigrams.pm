@@ -220,9 +220,9 @@ sub subprofile {
 ##    )
 sub qinfo {
   my ($rel,$coldb,%opts) = @_;
-  my ($q1strs,$q2strs,$fstrs) = $rel->qinfoData($coldb,%opts);
+  my ($q1strs,$q2strs,$qxstrs,$fstrs) = $rel->qinfoData($coldb,%opts);
 
-  my @qstrs = (@$q1strs, @$q2strs);
+  my @qstrs = (@$q1strs, @$q2strs, @$qxstrs);
   @qstrs    = ('*') if (!@qstrs);
   my $qstr = ('('.join(' WITH ', @qstrs).') =1'
 	      .' #sep'

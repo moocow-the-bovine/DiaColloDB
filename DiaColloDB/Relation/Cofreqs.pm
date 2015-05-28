@@ -582,13 +582,13 @@ sub subprofile {
 ##    )
 sub qinfo {
   my ($rel,$coldb,%opts) = @_;
-  my ($q1strs,$q2strs,$fstrs) = $rel->qinfoData($coldb,%opts);
+  my ($q1strs,$q2strs,$qxstrs,$fstrs) = $rel->qinfoData($coldb,%opts);
 
-  $q1strs = ['*'] if (!@$q1strs);
-  $q2strs = ['*'] if (!@$q2strs);
-  my $qstr = ('('.join(' WITH ', @$q1strs).') =1'
-	      .' && '
-	      .'('.join(' WITH ', @$q2strs).') =2'
+  my $q1str = '('.(@$q1strs ? join(' WITH ', @$q1strs,@$qxstrs) : '*').') =1';
+  my $q2str = '('.(@$q2strs ? join(' WITH ', @$q2strs,@$qxstrs) : '*').') =2';
+  my $qstr = (
+	      #"$q1str && $q2str" ##-- approximate with &&-query (especially buggy since #sep doesn't work right here; see mantis bug #654)
+	      "near( $q1str, $q2str, ".(2*($rel->{dmax}-1)).")"
 	      .' #sep' ##-- really pointless for &&-queries atm (ddc-2.0.38; cf mantis bug #654)
 	      .(@$fstrs ? (' '.join(' ',@$fstrs)) : ''),
 	     );

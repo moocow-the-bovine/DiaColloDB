@@ -261,12 +261,12 @@ sub qinfo {
   $rel->logconfess("qinfo(): abstract method called");
 }
 
-## (\@q1strs,\@q2strs,\@fstrs) = $rel->qinfoData($coldb,%opts)
+## (\@q1strs,\@q2strs,\@qxstrs,\@fstrs) = $rel->qinfoData($coldb,%opts)
 ##  + parses @opts{qw(qreqs gbreq)} into conditions on w1, w2 and metadata filters (for ddc linkup)
 ##  + call this from subclass qinfo() methods
 sub qinfoData {
   my ($rel,$coldb,%opts) = @_;
-  my (@q1strs,@q2strs,@fstrs,$q,$q2);
+  my (@q1strs,@q2strs,@qxstrs,@fstrs,$q,$q2);
 
   ##-- query clause
   foreach (@{$opts{qreqs}}) {
@@ -291,7 +291,11 @@ sub qinfoData {
     ++$xi;
   }
 
-  return (\@q1strs,\@q2strs,\@fstrs);
+  ##-- common restrictions
+  push(@qxstrs, qq(\$p=/$coldb->{pgood}/)) if ($coldb->{pgood});
+  push(@qxstrs, qq(\$=!/$coldb->{pbad}/))  if ($coldb->{pbad});
+
+  return (\@q1strs,\@q2strs,\@qxstrs,\@fstrs);
 }
 
 
