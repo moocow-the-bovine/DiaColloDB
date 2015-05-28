@@ -33,7 +33,7 @@ use strict;
 ##==============================================================================
 ## Globals & Constants
 
-our $VERSION = "0.06.006";
+our $VERSION = "0.07.001";
 our @ISA = qw(DiaColloDB::Client);
 
 ## $PGOOD_DEFAULT
@@ -1736,7 +1736,7 @@ sub parseGroupBy {
 ##     score   => $func,          ##-- scoring function ("f"|"fm"|"mi"|"ld") : default="f"
 ##     kbest   => $k,             ##-- return only $k best collocates per date (slice) : default=-1:all
 ##     cutoff  => $cutoff,        ##-- minimum score
-##     global  => $bool,          ##-- determine k-best items globally? (default=0)
+##     local   => $bool,          ##-- trim profiles locally for each date-slice? (default=1)
 ##     ##
 ##     ##-- profiling and debugging parameters
 ##     strings => $bool,          ##-- do/don't stringify (default=do)
@@ -1749,13 +1749,13 @@ sub profile {
   ##-- defaults
   $opts{query}     = (grep {defined($_)} @opts{qw(query q lemma lem l)})[0] // '';
   $opts{date}    //= '';
-  $opts{slide}   //= 1;
+  $opts{slice}   //= 1;
   $opts{groupby} ||= join(',', map {quotemeta($_)} @{$coldb->attrs});
   $opts{score}   //= 'f';
   $opts{eps}     //= 0;
   $opts{kbest}   //= -1;
   $opts{cutoff}  //= '';
-  $opts{global}  //= 0;
+  $opts{local}   //= 1;
   $opts{strings} //= 1;
   $opts{fill}    //= 0;
 
@@ -1767,7 +1767,7 @@ sub profile {
 		     ([rel=>$rel],
 		      [query=>$opts{query}],
 		      [groupby=>UNIVERSAL::isa($opts{groupby},'ARRAY') ? join(',', @{$opts{groupby}}) : $opts{groupby}],
-		      (map {[$_=>$opts{$_}]} qw(date slice score eps kbest cutoff global)),
+		      (map {[$_=>$opts{$_}]} qw(date slice score eps kbest cutoff local)),
 		     ))
 	       .")");
 
@@ -1828,6 +1828,15 @@ sub compare {
   }
   delete @opts{keys %ATTR_ALIAS};
 
+  ##-- common defaults
+  $opts{groupby} ||= join(',', map {quotemeta($_)} @{$coldb->attrs});
+  $opts{score}   //= 'f';
+  $opts{eps}     //= 0;
+  $opts{kbest}   //= -1;
+  $opts{cutoff}  //= '';
+  $opts{local}   //= 1;
+  $opts{strings} //= 1;
+
   ##-- debug
   $coldb->vlog($coldb->{logRequest},
 	       "compare("
@@ -1837,7 +1846,7 @@ sub compare {
 		      (map {["a$_"=>$opts{"a$_"}]} (qw(query date slice))),
 		      (map {["b$_"=>$opts{"b$_"}]} (qw(query date slice))),
 		      [groupby=>(UNIVERSAL::isa($opts{groupby},'ARRAY') ? join(',',@{$opts{groupby}}) : $opts{groupby})],
-		      (map {[$_=>$opts{$_}]} qw(score eps kbest cutoff)),
+		      (map {[$_=>$opts{$_}]} qw(score eps kbest cutoff local)),
 		     ))
 	       .")");
 

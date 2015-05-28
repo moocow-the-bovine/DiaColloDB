@@ -73,6 +73,7 @@ sub union {
 ##     score   => $func,          ##-- scoring function ("f"|"fm"|"mi"|"ld") : default="f"
 ##     kbest   => $k,             ##-- return only $k best collocates per date (slice) : default=-1:all
 ##     cutoff  => $cutoff,        ##-- minimum score
+##     local   => $bool,          ##-- trim profiles locally for each date-slice? (default=1)
 ##     ##
 ##     ##-- profiling and debugging parameters
 ##     strings => $bool,          ##-- do/don't stringify (default=do)
@@ -86,6 +87,7 @@ sub profile {
 
   ##-- common variables
   my $logProfile = $coldb->{logProfile};
+  my $trimlocal  = $opts{slice}==0 || $opts{local};
 
   ##-- variables: by attribute
   my $groupby= $coldb->groupby($opts{groupby});
@@ -146,11 +148,26 @@ sub profile {
   foreach $d (sort {$a<=>$b} keys %$d2xis) {
     $prf = $reldb->subprofile($d2xis->{$d}, groupby=>$groupby->{x2g});
     $prf->compile($opts{score}, eps=>$opts{eps});
-    $prf->trim(kbest=>$opts{kbest}, cutoff=>$opts{cutoff});
-    $prf = $prf->stringify($groupby->{g2s}) if ($opts{strings});
+    if ($trimlocal) {
+      $prf->trim(kbest=>$opts{kbest}, cutoff=>$opts{cutoff});
+      $prf = $prf->stringify($groupby->{g2s}) if ($opts{strings});
+    }
     $prf->{label}  = $d;
     $prf->{titles} = $groupby->{titles};
     push(@dprfs, $prf);
+  }
+
+  ##-- trim: global trimming & stringification
+  if (!$trimlocal) {
+    $reldb->vlog($logProfile, "profile(): global trimming");
+    my $pg = DiaColloDB::Profile->new();
+    $pg->_add($_, N=>0,f1=>1) foreach (@dprfs);
+    my %trim  = (kbest=>($opts{kbest}//-1), cutoff=>($opts{cutoff}//''));
+    my %pkeys = map {($_=>undef)} @{$pg->which(%trim)};
+    foreach (@dprfs) {
+      $_->trim(keep=>\%pkeys);
+      $_ = $_->stringify($groupby->{g2s}) if ($opts{strings});
+    }
   }
 
   ##-- finalize: multi-profile
@@ -172,14 +189,15 @@ sub profile {
 ##     (a|b)?date  => $date1,       ##-- string or array or range "MIN-MAX" (inclusive) : default=all
 ##     ##
 ##     ##-- aggregation parameters
-##     groupby     => $groupby,     ##-- string or array "ATTR1[:HAVING1] ...": default=$coldb->attrs; see groupby() method
-##     (a|b)?slice => $slice,       ##-- date slice (default=1, 0 for global profile)
+##     groupby      => $groupby,    ##-- string or array "ATTR1[:HAVING1] ...": default=$coldb->attrs; see groupby() method
+##     (a|b)?slice  => $slice,      ##-- date slice (default=1, 0 for global profile)
 ##     ##
 ##     ##-- scoring and trimming parameters
 ##     eps     => $eps,           ##-- smoothing constant (default=0)
 ##     score   => $func,          ##-- scoring function ("f"|"fm"|"mi"|"ld") : default="f"
 ##     kbest   => $k,             ##-- return only $k best collocates per date (slice) : default=-1:all
 ##     cutoff  => $cutoff,        ##-- minimum score
+##     local   => $bool,          ##-- trim profiles locally for each date-slice? (default=1)
 ##     ##
 ##     ##-- profiling and debugging parameters
 ##     strings => $bool,          ##-- do/don't stringify (default=do)
@@ -199,28 +217,54 @@ sub compare {
   $groupby       = $coldb->groupby($groupby) if ($opts{_gbparse}//1);
   my %aopts      = map {exists($opts{"a$_"}) ? ($_=>$opts{"a$_"}) : qw()} (qw(query date slice), @{$opts{_abkeys}//[]});
   my %bopts      = map {exists($opts{"b$_"}) ? ($_=>$opts{"b$_"}) : qw()} (qw(query date slice), @{$opts{_abkeys}//[]});
-  my %popts      = (kbest=>-1,cutoff=>'',strings=>0,fill=>1, groupby=>$groupby);
+  my %popts      = (kbest=>-1,cutoff=>'',local=>1,strings=>0,fill=>1, groupby=>$groupby);
 
   ##-- get profiles to compare
   my $mpa = $reldb->profile($coldb,%opts, %aopts,%popts) or return undef;
   my $mpb = $reldb->profile($coldb,%opts, %bopts,%popts) or return undef;
 
-  ##-- alignment and trimming
-  $reldb->vlog($logProfile, "compare(): align and trim");
+  ##-- alignment and trimming: common
   my $ppairs = DiaColloDB::Profile::MultiDiff->align($mpa,$mpb);
   my %trim   = (kbest=>($opts{kbest}//-1), cutoff=>($opts{cutoff}//''));
-  my ($pa,$pb,%pkeys);
-  foreach (@$ppairs) {
-    ($pa,$pb) = @$_;
-    %pkeys = map {($_=>undef)} (($pa ? @{$pa->which(%trim)} : qw()), ($pb ? @{$pb->which(%trim)} : qw()));
-    $pa->trim(keep=>\%pkeys);
-    $pb->trim(keep=>\%pkeys);
+  my ($pa,$pb,%pkeys,$diff);
+
+  if (@$ppairs==1 || $opts{local}) {
+    ##-- alignment and trimming: local
+    $reldb->vlog($logProfile, "compare(): align and trim (local)");
+    foreach (@$ppairs) {
+      ($pa,$pb) = @$_;
+      %pkeys = map {($_=>undef)} (($pa ? @{$pa->which(%trim)} : qw()), ($pb ? @{$pb->which(%trim)} : qw()));
+      $pa->trim(keep=>\%pkeys);
+      $pb->trim(keep=>\%pkeys);
+    }
+
+    ##-- diff: local
+    $diff = DiaColloDB::Profile::MultiDiff->new($mpa,$mpb,titles=>$mpa->{titles});
+    $diff->trim(kbesta=>$opts{kbest});
+  }
+  else {
+    ##-- alignment and trimming: global
+    $reldb->vlog($logProfile, "compare(): align and trim (global)");
+    my $gpa = DiaColloDB::Profile->new();
+    my $gpb = DiaColloDB::Profile->new();
+    $gpa->_add($_,N=>0,f1=>1) foreach (@{$mpa->{profiles}});
+    $gpb->_add($_,N=>0,f1=>1) foreach (@{$mpb->{profiles}});
+    $gpa->compile($opts{score}, eps=>$opts{eps});
+    $gpb->compile($opts{score}, eps=>$opts{eps});
+    %pkeys = map {($_=>undef)} (@{$gpa->which(%trim)}, @{$gpb->which(%trim)});
+    $gpa->trim(keep=>\%pkeys);
+    $gpb->trim(keep=>\%pkeys);
+
+    ##-- diff: global
+    my $gdiff = DiaColloDB::Profile::Diff->new($gpa,$gpb);
+    %pkeys = map {($_=>undef)} @{$gdiff->which(kbesta=>$opts{kbest})};
+    $mpa->trim(keep=>\%pkeys);
+    $mpb->trim(keep=>\%pkeys);
+    $diff = DiaColloDB::Profile::MultiDiff->new($mpa,$mpb,titles=>$mpa->{titles});
   }
 
-  ##-- diff and stringification
-  $reldb->vlog($logProfile, "compare(): diff and stringification");
-  my $diff = DiaColloDB::Profile::MultiDiff->new($mpa,$mpb,titles=>$mpa->{titles});
-  $diff->trim(kbesta=>$opts{kbest});
+  ##-- finalize: stringify
+  $reldb->vlog($logProfile, "compare(): stringify");
   $diff->stringify($groupby->{g2s}) if ($opts{strings}//1);
 
   return $diff;
