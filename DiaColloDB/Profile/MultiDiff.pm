@@ -96,9 +96,9 @@ sub saveHtmlFile {
   my $fh = ref($file) ? $file : IO::File->new(">$file");
   $mp->logconfess("saveHtmlFile(): failed to open '$file': $!") if (!ref($fh));
   $fh->print("<html><body>\n") if ($opts{body}//1);
-  $fh->print("<table><tbody>\n") if ($opts{table}//1);
   $fh->print("<script type=\"text/javascript\">$opts{qinfo}=", DiaColloDB::Utils::saveJsonString($mp->{qinfo}, pretty=>0), ";</script>\n")
     if ($mp->{qinfo} && ($opts{qinfo} //= 'qinfo'));
+  $fh->print("<table><tbody>\n") if ($opts{table}//1);
   $fh->print("<tr>",(
 		     map {"<th>".htmlesc($_)."</th>"}
 		     qw(ascore bscore diff label),
