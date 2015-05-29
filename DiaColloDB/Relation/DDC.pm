@@ -167,7 +167,7 @@ sub profile {
   my $resultN = $rel->ddcQuery($coldb, $qstrN, limit=>1, logas=>'fN');
   my $N       = $resultN->{counts_}[0][0] * $fcoef;
 
-  ##-- finalize sub-profiles: label, titles, N, compile & trim
+  ##-- finalize sub-profiles: label, titles, N, compile
   my $N1 = 0; $N1 += $_->{f1} foreach (values %y2prf);
   $N     = $N1 if ($N1 > $N);
   my ($f1);
@@ -182,9 +182,7 @@ sub profile {
 
     $prf->{N} = $N;
     $prf->compile($opts{score}, eps=>$opts{eps});
-    $prf->trim(kbest=>$opts{kbest}, cutoff=>$opts{cutoff});
   }
-
 
   ##-- honor "fill" option
   if ($opts{fill}) {
@@ -206,12 +204,17 @@ sub profile {
 	      };
   foreach (values %$qinfo) { utf8::decode($_) if (!utf8::is_utf8($_)); }
 
-  ##-- finalize: return meta-profile
-  return DiaColloDB::Profile::Multi->new(
-					 profiles => [@y2prf{sort {$a<=>$b} keys %y2prf}],
-					 titles   => \@titles,
-					 qinfo    => $qinfo,
-					);
+  ##-- finalize collect multi-profile & trim
+  $rel->vlog($coldb->{logProfile}, "profile(): collect and trim");
+  my $mp = DiaColloDB::Profile::Multi->new(
+					   profiles => [@y2prf{sort {$a<=>$b} keys %y2prf}],
+					   titles   => \@titles,
+					   qinfo    => $qinfo,
+					  );
+  $mp->trim(%opts);
+
+  ##-- return
+  return $mp;
 }
 
 ##--------------------------------------------------------------
