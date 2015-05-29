@@ -41,8 +41,8 @@ our @ISA = qw(DiaColloDB::Profile);
 ##   )
 sub new {
   my $that = shift;
-  my $prf1 = UNIVERSAL::isa(ref($_[0]),'DiaColloDB::Profile') ? shift : undef;
-  my $prf2 = UNIVERSAL::isa(ref($_[0]),'DiaColloDB::Profile') ? shift : undef;
+  my $prf1 = !defined($_[0]) || UNIVERSAL::isa(ref($_[0]),'DiaColloDB::Profile') ? shift : undef;
+  my $prf2 = !defined($_[0]) || UNIVERSAL::isa(ref($_[0]),'DiaColloDB::Profile') ? shift : undef;
   my %opts = @_;
   my $dprf = $that->SUPER::new(
 			       prf1=>$prf1,
@@ -213,8 +213,11 @@ sub saveHtmlFile {
 ##  + populates diff-profile by subtracting $prf2 scores from $prf1
 sub populate {
   my ($dprf,$pa,$pb) = @_;
-  $pa = $dprf->{prf1} = ($pa // $dprf->{prf1});
-  $pb = $dprf->{prf2} = ($pb // $dprf->{prf2});
+  $pa //= $dprf->{prf1};
+  $pb //= $dprf->{prf2};
+  $pa   = $pb->shadow(1) if (!$pa &&  $pb);
+  $pb   = $pa->shadow(1) if ( $pa && !$pb);
+  @$dprf{qw(prf1 prf2)} = ($pa,$pb);
   $dprf->{label} //= $pa->label() ."-" . $pb->label();
 
   my $scoref = $dprf->{score} = $dprf->{score} // $pa->{score} // $pb->{score} // 'f12';
@@ -289,8 +292,8 @@ sub trim {
   else {
     ##-- heuristic trimming
     my %abkeys = map {($_=>undef)} (($pa ? @{$pa->which(%opts)} : qw()), ($pb ? @{$pb->which(%opts)} : qw()));
-    $pa->trim(keep=>\%abkeys);
-    $pb->trim(keep=>\%abkeys);
+    $pa->trim(keep=>\%abkeys) if ($pa);
+    $pb->trim(keep=>\%abkeys) if ($pb);
     $dprf->populate();
     $dprf->SUPER::trim(%opts);
   }

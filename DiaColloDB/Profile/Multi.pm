@@ -200,7 +200,7 @@ sub trim {
 
   if ($opts{local}) {
     ##-- slice-local trimming (default)
-    $_->trim(%opts) or return undef foreach (@{$mp->{profiles}});
+    $_->trim(%opts) or return undef foreach (grep {defined($_)} @{$mp->{profiles}});
   } else {
     ##-- global trimming
     my $psum  = $mp->sumover();

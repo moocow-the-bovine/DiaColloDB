@@ -11,6 +11,7 @@ use Time::HiRes qw(gettimeofday tv_interval);
 use JSON;
 use Data::Dumper;
 use Benchmark qw(timethese cmpthese);
+use utf8;
 
 ##==============================================================================
 ## test: enum
@@ -1234,20 +1235,20 @@ sub test_ddcprf {
 
   exit 0;
 }
-test_ddcprf(@ARGV);
+#test_ddcprf(@ARGV);
 
 ##--------------------------------------------------------------
 sub test_ddcdiff {
   my $dbdir = shift || 'dta.d';
   my %opts  = map {split(/=/,$_,2)} @_;
 
-  $opts{aquery}   ||= 'Fau';
-  $opts{bquery}   ||= 'Frau';
-  $opts{groupby} ||= '$l,$p=ADJA';
+  $opts{aquery}   ||= "Sch\x{e4}del #has[author,/Blumenbach/]";
+  $opts{bquery}   ||= "Sch\x{e4}del #has[author,/Forster/]";
+  $opts{groupby} ||= 'l,p=ADJA';
   $opts{aslice}   ||= 0;
   $opts{bslice}   ||= 0;
-  $opts{adate}   ||= '1600:1799';
-  $opts{bdate}   ||= '1800:1899';
+  $opts{adate}   ||= ''; #'1600:1799';
+  $opts{bdate}   ||= ''; #'1800:1899';
   $opts{score}   ||= 'ld';
   $opts{kbest}   ||= 10;
 
@@ -1259,7 +1260,7 @@ sub test_ddcdiff {
 
   exit 0;
 }
-#test_ddcdiff(@ARGV);
+test_ddcdiff(@ARGV);
 
 
 

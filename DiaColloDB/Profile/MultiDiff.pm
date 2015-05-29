@@ -143,7 +143,7 @@ sub align {
     my @pairs = map {
       [
        (@$psa==1 && $_ != 0 ? $psa->[0]->clone(1) : $psa->[$_]),
-       (@$psb==1 && $_ != 0 ? $psb->[0]->clone(1) : $psb->[$_])
+       (@$psb==1 && $_ != 0 ? $psb->[0]->clone(1) : $psb->[$_]),
       ]
     } (0..($#$psa > $#$psb ? $#$psa : $#$psb));
     return wantarray ? @pairs : \@pairs;
@@ -207,8 +207,8 @@ sub trimPairs {
     foreach (@$ppairs) {
       ($pa,$pb) = @$_;
       %keep = map {($_=>undef)} (($pa ? @{$pa->which(%opts)} : qw()), ($pb ? @{$pb->which(%opts)} : qw()));
-      $pa->trim(keep=>\%keep);
-      $pb->trim(keep=>\%keep);
+      $pa->trim(keep=>\%keep) if ($pa);
+      $pb->trim(keep=>\%keep) if ($pb);
     }
   } else {
     ##-- trim globally
@@ -220,7 +220,7 @@ sub trimPairs {
 
     my $gdiff = DiaColloDB::Profile::Diff->new($gpa,$gpb);
     %keep = map {($_=>undef)} @{$gdiff->which(kbesta=>$opts{kbest})};
-    $_->trim(keep=>\%keep) foreach (map {@$_} @$ppairs);
+    $_->trim(keep=>\%keep) foreach (grep {$_} map {@$_} @$ppairs);
   }
 
   return $ppairs;

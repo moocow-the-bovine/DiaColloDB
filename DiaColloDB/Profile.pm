@@ -97,6 +97,20 @@ sub clone {
 	       }, ref($prf));
 }
 
+## $prf2 = $prf->shadow()
+## $prf2 = $prf->shadow($keep_compiled)
+##  + shadows %$mp
+##  + if $keep_score is true, compiled data is shadows too (all zeroes)
+sub shadow {
+  my $prf = $_[0]->clone($_[1]);
+  $prf->{f1} = $prf->{N} = 0;
+  foreach my $key (grep {defined($prf->{$_})} (qw(f2 f12),$prf->scoreKeys)) {
+    $_ = 0 foreach (%{$prf->{$key}});
+  }
+  return $prf;
+}
+
+
 
 ##==============================================================================
 ## Basic Access
