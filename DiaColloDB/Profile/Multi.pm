@@ -162,14 +162,51 @@ sub uncompile {
   return $_[0];
 }
 
+## $class = $CLASS_OR_OBJECT->pclass()
+##  + class for psum()
+sub pclass {
+  return 'DiaColloDB::Profile';
+}
+
+## $prf = $mp->sumover()
+## $prf = $CLASS_OR_OBJECT->sumover(\@profiles)
+##  + sum of sub-profiles, compiled as for $profiles[0]
+##  + used for global trimming
+sub sumover {
+  my $that = shift;
+  my $prfs = (@_ ? shift : (ref($that) ? $that->{profiles} : undef)) // [];
+  my $psum = $that->pclass->_sum($prfs,N=>0,f1=>1);
+  $psum->compile($prfs->[0]{score}) if ($prfs->[0] && $prfs->[0]{score});
+  return $psum;
+}
+
 ## $mp_or_undef = $mp->trim(%opts)
-##  + new %opts:
-##    empty => $bool,   ##-- remove empty profiles (default=true)
+##  + %opts: as for DiaColloDB::Profile::trim(), also:
+##    (
+##     empty => $bool,   ##-- remove empty sub-profiles? (default=true)
+##     local => $bool,   ##-- trim sub-profiles locally? (default=true)
+##    )
 ##  + calls $prf->trim(%opts) for each sub-profile $prf
 sub trim {
   my ($mp,%opts) = @_;
+
+  ##-- defaults
+  $opts{kbest}  //= -1;
+  $opts{cutoff} //= '';
+  $opts{local}  //= 1;
+
+  ##-- trim empty sub-profiles
   @{$mp->{profiles}} = grep {!$_->empty} @{$mp->{profiles}} if (!exists($opts{empty}) || $opts{empty});
-  $_->trim(%opts) or return undef foreach (@{$mp->{profiles}});
+
+  if ($opts{local}) {
+    ##-- slice-local trimming (default)
+    $_->trim(%opts) or return undef foreach (@{$mp->{profiles}});
+  } else {
+    ##-- global trimming
+    my $psum  = $mp->sumover();
+    my %pkeys = map {($_=>undef)} @{$psum->which(%opts)};
+    $_->trim(keep=>\%pkeys) or return undef foreach (@{$mp->{profiles}});
+  }
   return $mp;
 }
 

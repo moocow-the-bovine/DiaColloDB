@@ -559,6 +559,25 @@ sub add {
   return $_[0]->clone->_add(@_[1..$#_]);
 }
 
+## $psum = $CLASS_OR_OBJECT->_sum(\@profiles,%opts)
+##  + returns a profile representing sum of \@profiles, passing %opts to _add()
+##  + if called as a class method and \@profiles contains only 1 element, that element is returned
+##  + otherwise, \@profiles are added to the (new) object
+sub _sum {
+  my ($that,$profiles,%opts) = @_;
+  return $profiles->[0] if (!ref($that) && @$profiles==1);
+  my $psum = ref($that) ? $that : $that->new();
+  $psum->_add($_,%opts) foreach (@$profiles);
+  return $psum;
+}
+
+## $psum = $CLASS_OR_OBJECT->sum(\@profiles,%opts)
+##  + returns a new profile representing sum of \@profiles
+sub sum {
+  my $that = shift;
+  return (ref($that)||$that)->new->_sum(@_);
+}
+
 ## $diff = $prf1->diff($prf2,%opts)
 ##  + wraps DiaColloDB::Profile::Diff->new($prf1,$prf2,%opts)
 ##  + %opts:

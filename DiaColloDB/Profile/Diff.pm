@@ -278,11 +278,28 @@ sub uncompile {
 ##     drop => $drop,      ##-- drop keys @$drop (ARRAY) or keys(%$drop) (HASH)
 ##    )
 sub trim {
-  my $dprf = shift;
-  $dprf->SUPER::trim(@_) or return undef;
-  my $dscore = $dprf->{$dprf->{score}//'f12'};
-  $dprf->{prf1}->trim(keep=>$dscore) or return undef if ($dprf->{prf1});
-  $dprf->{prf2}->trim(keep=>$dscore) or return undef if ($dprf->{prf2});
+  my ($dprf,%opts) = @_;
+  my ($pa,$pb) = @$dprf{qw(prf1 prf2)};
+
+  if ($opts{keep} || $opts{drop}) {
+    ##-- explicit keep request
+    $dprf->populate() if (!$dprf->{score});
+    $dprf->SUPER::trim(%opts) or return undef;
+  }
+  else {
+    ##-- heuristic trimming
+    my %abkeys = map {($_=>undef)} (($pa ? @{$pa->which(%opts)} : qw()), ($pb ? @{$pb->which(%opts)} : qw()));
+    $pa->trim(keep=>\%abkeys);
+    $pb->trim(keep=>\%abkeys);
+    $dprf->populate();
+    $dprf->SUPER::trim(%opts);
+  }
+
+  ##-- trim operand profiles
+  my $keep = $dprf->{$dprf->{score}//'f12'};
+  $pa->trim(keep=>$keep) or return undef if ($pa);
+  $pb->trim(keep=>$keep) or return undef if ($pb);
+
   return $dprf;
 }
 

@@ -31,6 +31,7 @@ our %EXPORT_TAGS =
      env   => [qw(env_set env_push env_pop)],
      pack  => [qw(packsize packFilterFetch packFilterStore)],
      math  => [qw($LOG2 log2 min2 max2)],
+     list  => [qw(luniq)],
      regex => [qw(regex)],
      html  => [qw(htmlesc)],
      time  => [qw(s2hms s2timestr timestamp)],
@@ -353,6 +354,15 @@ sub min2 {
   return $_[0] < $_[1] ? $_[0] : $_[1];
 }
 
+##==============================================================================
+## Functions: lists
+
+## \@l_uniq = luniq(\@l)
+##  + returns unique defined elements of @l
+sub luniq {
+  my ($tmp);
+  return [map {defined($tmp) && $tmp eq $_ ? qw() : ($tmp=$_)} sort grep {defined($_)} @{$_[0]//[]}];
+}
 
 ##==============================================================================
 ## Functions: regexes
