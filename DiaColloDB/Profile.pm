@@ -167,11 +167,24 @@ sub TO_JSON__flat {
 ##--------------------------------------------------------------
 ## I/O: Text
 
+## undef = $CLASS_OR_OBJECT->saveTextHeader($fh, hlabel=>$hlabel, titles=>\@titles)
+sub saveTextHeader {
+  my ($that,$fh,%opts) = @_;
+  my @fields = (
+		qw(N f1 f2 f12 score),
+		(defined($opts{hlabel}) ? $opts{hlabel} : qw()),
+		@{$opts{titles} // (ref($that) ? $that->{titles} : undef) // [qw(item2)]},
+	       );
+  $fh->print(join("\t", map {"#".($_+1).":$fields[$_]"} (0..$#fields)), "\n");
+}
+
 ## $bool = $prf->saveTextFh($fh, %opts)
 ##  + %opts:
 ##    (
 ##     label => $label,   ##-- override $prf->{label} (used by Profile::Multi), no tab-separators required
 ##     format => $fmt,    ##-- printf format for scores (default="%f")
+##     header => $bool,   ##-- include header-row? (default=1)
+##     hlabel => $hlabel, ##-- prefix header item-cells with $hlabel (used by Profile::Multi)
 ##    )
 ##  + format (flat, TAB-separated): N F1 F2 F12 SCORE LABEL ITEM2
 sub saveTextFh {
@@ -181,6 +194,7 @@ sub saveTextFh {
   my $fscore = $prf->{$prf->{score}//'f12'};
   my $fmt    = $opts{format} || '%f';
   binmode($fh,':utf8');
+  $prf->saveTextHeader($fh,%opts) if ($opts{header}//1);
   foreach (sort {$fscore->{$b} <=> $fscore->{$a}} keys %$fscore) {
     $fh->print(join("\t",
 		    $N,
@@ -543,6 +557,25 @@ sub _add {
 ##  + see _add() method for %opts
 sub add {
   return $_[0]->clone->_add(@_[1..$#_]);
+}
+
+## $psum = $CLASS_OR_OBJECT->_sum(\@profiles,%opts)
+##  + returns a profile representing sum of \@profiles, passing %opts to _add()
+##  + if called as a class method and \@profiles contains only 1 element, that element is returned
+##  + otherwise, \@profiles are added to the (new) object
+sub _sum {
+  my ($that,$profiles,%opts) = @_;
+  return $profiles->[0] if (!ref($that) && @$profiles==1);
+  my $psum = ref($that) ? $that : $that->new();
+  $psum->_add($_,%opts) foreach (@$profiles);
+  return $psum;
+}
+
+## $psum = $CLASS_OR_OBJECT->sum(\@profiles,%opts)
+##  + returns a new profile representing sum of \@profiles
+sub sum {
+  my $that = shift;
+  return (ref($that)||$that)->new->_sum(@_);
 }
 
 ## $diff = $prf1->diff($prf2,%opts)

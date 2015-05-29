@@ -1,12 +1,11 @@
 ## -*- Mode: CPerl -*-
-## File: DiaColloDB::Cofreqs.pm
+## File: DiaColloDB::Relation::Cofreqs.pm
 ## Author: Bryan Jurish <moocow@cpan.org>
-## Description: collocation db, co-frequency database (using pair of DiaColloDB::PackedFile)
+## Description: collocation db, profiling relation: co-frequency database (using pair of DiaColloDB::PackedFile)
 
-package DiaColloDB::Cofreqs;
-use DiaColloDB::Profile;
+package DiaColloDB::Relation::Cofreqs;
+use DiaColloDB::Relation;
 use DiaColloDB::PackedFile;
-use DiaColloDB::Persistent;
 use DiaColloDB::Utils qw(:fcntl :env :run :json :pack);
 use Fcntl qw(:DEFAULT :seek);
 use strict;
@@ -14,7 +13,7 @@ use strict;
 ##==============================================================================
 ## Globals & Constants
 
-our @ISA = qw(DiaColloDB::Persistent);
+our @ISA = qw(DiaColloDB::Relation);
 
 ##==============================================================================
 ## Constructors etc.
@@ -22,25 +21,25 @@ our @ISA = qw(DiaColloDB::Persistent);
 ## $cof = CLASS_OR_OBJECT->new(%args)
 ## + %args, object structure:
 ##   (
-##   ##-- user options
-##   class    => $class,      ##-- optional, useful for debugging from header file
-##   base     => $basename,   ##-- file basename (default=undef:none); use files "${base}.dba1", "${base}.dba2", "${base}.hdr"
-##   flags    => $flags,      ##-- fcntl flags or open-mode (default='r')
-##   perms    => $perms,      ##-- creation permissions (default=(0666 &~umask))
-##   dmax     => $dmax,       ##-- maximum distance for co-occurrences (default=5)
-##   fmin     => $fmin,       ##-- minimum pair frequency (default=0)
-##   pack_i   => $pack_i,     ##-- pack-template for IDs (default='N')
-##   pack_f   => $pack_f,     ##-- pack-template for IDs (default='N')
-##   keeptmp  => $bool,       ##-- keep temporary files? (default=false)
-##   ##
-##   ##-- size info (after open() or load())
-##   size1    => $size1,      ##-- == $r1->size()
-##   size2    => $size2,      ##-- == $r2->size()
-##   ##
-##   ##-- low-level data
-##   r1 => $r1,               ##-- pf: [$end2,$f1] @ $i1
-##   r2 => $r2,               ##-- pf: [$i2,$f12]  @ end2($i1-1)..(end2($i1)-1)
-##   N  => $N,                ##-- sum($f12)
+##    ##-- user options
+##    class    => $class,      ##-- optional, useful for debugging from header file
+##    base     => $basename,   ##-- file basename (default=undef:none); use files "${base}.dba1", "${base}.dba2", "${base}.hdr"
+##    flags    => $flags,      ##-- fcntl flags or open-mode (default='r')
+##    perms    => $perms,      ##-- creation permissions (default=(0666 &~umask))
+##    dmax     => $dmax,       ##-- maximum distance for co-occurrences (default=5)
+##    fmin     => $fmin,       ##-- minimum pair frequency (default=0)
+##    pack_i   => $pack_i,     ##-- pack-template for IDs (default='N')
+##    pack_f   => $pack_f,     ##-- pack-template for IDs (default='N')
+##    keeptmp  => $bool,       ##-- keep temporary files? (default=false)
+##    ##
+##    ##-- size info (after open() or load())
+##    size1    => $size1,      ##-- == $r1->size()
+##    size2    => $size2,      ##-- == $r2->size()
+##    ##
+##    ##-- low-level data
+##    r1 => $r1,               ##-- pf: [$end2,$f1] @ $i1
+##    r2 => $r2,               ##-- pf: [$i2,$f12]  @ end2($i1-1)..(end2($i1)-1)
+##    N  => $N,                ##-- sum($f12)
 ##   )
 sub new {
   my $that = shift;
@@ -359,7 +358,7 @@ sub saveTextFh {
 ##==============================================================================
 ## Relation API: create
 
-## $bool = CLASS_OR_OBJECT->create($tokdat_file,%opts)
+## $rel = $CLASS_OR_OBJECT->create($coldb,$tokdat_file,%opts)
 ##  + populates current database from $tokdat_file,
 ##    a tt-style text file containing 1 token-id perl line with optional blank lines
 ##  + %opts: clobber %$ug, also:
@@ -367,7 +366,7 @@ sub saveTextFh {
 ##     size=>$size,  ##-- set initial size (number of types)
 ##    )
 sub create {
-  my ($cof,$tokfile,%opts) = @_;
+  my ($cof,$coldb,$tokfile,%opts) = @_;
 
   ##-- create/clobber
   $cof = $cof->new() if (!ref($cof));
@@ -437,7 +436,7 @@ sub create {
 ## Relation API: union
 
 
-## $cof = CLASS_OR_OBJECT->union(\@pairs, %opts)
+## $cof = CLASS_OR_OBJECT->union($coldb, \@pairs, %opts)
 ##  + merge multiple unigram unigram indices from \@pairs into new object
 ##  + @pairs : array of pairs ([$cof,\@xi2u],...)
 ##    of unigram-objects $cof and tuple-id maps \@xi2u for $cof
@@ -445,7 +444,7 @@ sub create {
 ##  + %opts: clobber %$cof
 ##  + implicitly flushes the new index
 sub union {
-  my ($cof,$pairs,%opts) = @_;
+  my ($cof,$coldb,$pairs,%opts) = @_;
 
   ##-- create/clobber
   $cof = $cof->new() if (!ref($cof));
@@ -496,7 +495,7 @@ sub union {
 }
 
 ##==============================================================================
-## Relation API: lookup
+## Utilities: lookup
 
 ## $f = $cof->f1( @ids)
 ## $f = $cof->f1(\@ids)
@@ -524,13 +523,13 @@ sub f12 {
 }
 
 ##==============================================================================
-## Relation API: profilung
+## Relation API: default: profiling
 
-## $prf = $cof->profile(\@xids, %opts)
+## $prf = $cof->subprofile(\@xids, %opts)
 ##  + get co-frequency profile for @xids (db must be opened)
 ##  + %opts:
 ##     groupby => \&gbsub,  ##-- key-extractor $key2_or_undef = $gbsub->($i2)
-sub profile {
+sub subprofile {
   my ($cof,$ids,%opts) = @_;
   $ids   = [$ids] if (!UNIVERSAL::isa($ids,'ARRAY'));
   my $r1 = $cof->{r1};
@@ -570,6 +569,41 @@ sub profile {
 				f12=>$pf12,
 			       );
 }
+
+##==============================================================================
+## Relation API: default: query info
+
+## \%qinfo = $rel->qinfo($coldb, %opts)
+##  + get query-info hash for profile administrivia (ddc hit links)
+##  + %opts: as for profile(), additionally:
+##    (
+##     qreqs => \@qreqs,      ##-- as returned by $coldb->parseRequest($opts{query})
+##     gbreq => \%groupby,    ##-- as returned by $coldb->groupby($opts{groupby})
+##    )
+sub qinfo {
+  my ($rel,$coldb,%opts) = @_;
+  my ($q1strs,$q2strs,$qxstrs,$fstrs) = $rel->qinfoData($coldb,%opts);
+
+  my $q1str = '('.(@$q1strs ? join(' WITH ', @$q1strs,@$qxstrs) : '*').') =1';
+  my $q2str = '('.(@$q2strs ? join(' WITH ', @$q2strs,@$qxstrs) : '*').') =2';
+  my $qstr = (
+	      #"$q1str && $q2str" ##-- approximate with &&-query (especially buggy since #sep doesn't work right here; see mantis bug #654)
+	      "NEAR( $q1str, $q2str, ".(2*($rel->{dmax}-1)).")"
+	      .' #SEPARATE'
+	      .(@$fstrs ? (' '.join(' ',@$fstrs)) : ''),
+	     );
+  return {
+	  fcoef => 2*$rel->{dmax},
+	  qtemplate => $qstr,
+	 };
+}
+
+
+##==============================================================================
+## Pacakge Alias(es)
+package DiaColloDB::Cofreqs;
+use strict;
+our @ISA = qw(DiaColloDB::Relation::Cofreqs);
 
 
 ##==============================================================================

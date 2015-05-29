@@ -46,6 +46,7 @@ our %query = (
 	      score =>'ld',	##-- score func
 	      kbest =>10,	##-- k-best items per date
 	      cutoff =>undef,	##-- minimum score cutoff
+	      local =>1,        ##-- trim slice-locally?
 	      strings => 1,	##-- debug: want strings?
 	     );
 our %save = (format=>undef);
@@ -69,8 +70,9 @@ GetOptions(##-- general
 	   ##-- query options
 	   'difference|diff|D|compare|comp|cmp!' => \$diff,
 	   'profile|prof|prf|P' => sub { $diff=0 },
-	   'collocations|collocs|cofreqs|cof|co|f12|f2|12|2' => sub { $rel='cof' },
+	   'collocations|collocs|collo|col|cofreqs|cof|co|f12|f2|12|2' => sub { $rel='cof' },
 	   'unigrams|ug|u|f1|1' => sub { $rel='xf' },
+	   'ddc' => sub { $rel='ddc' },
 	   ##
 	   (map {("${_}date|${_}d=s"=>\$query{"${_}date"})} ('',qw(a b))), 				  ##-- date,adate,bdate
 	   (map {("${_}date-slice|${_}ds|${_}slice|${_}sl|${_}s=s"=>\$query{"${_}slice"})} ('',qw(a b))), ##-- slice,aslice,bslice
@@ -86,6 +88,8 @@ GetOptions(##-- general
 	   'no-k-best|nokbest|nok' => sub {$query{kbest}=undef},
 	   'cutoff|C=f' => \$query{cutoff},
 	   'no-cutoff|nocutoff|noc' => sub {$query{cutoff}=undef},
+	   'local|L!' => \$query{local},
+	   'global|G!' => sub { $query{local}=!$_[1]; },
 	   'strings|S!' => \$query{strings},
 
 	   ##-- I/O
@@ -212,7 +216,7 @@ dcdb-query.perl - query a DiaColloDB
 
  Query Options:
    -profile , -diff      # select profile operation (default=-profile)
-   -collocs , -unigrams  # select profile type (collocations or unigrams; default=-collocs)
+   -col , -ug , -ddc     # select profile type (collocations, unigrams, or ddc client; default=-col)
    -(a|b)?date DATES     # set target DATE or /REGEX/ or MIN-MAX
    -(a|b)?slice SLICE    # set target date slice (default=1)
    -groupby GROUPBY      # set result aggregation (default=l)
@@ -221,6 +225,7 @@ dcdb-query.perl - query a DiaColloDB
    -nokbest              # disable k-best pruning
    -cutoff CUTOFF        # set minimum score for returned items (default=none)
    -nocutoff             # disable cutoff pruning
+   -[no]local            # do/don't profiles locally by date-slice (default=do)
    -[no]strings          # debug: do/don't stringify returned profile (default=do)
 
  I/O Options:

@@ -8,7 +8,7 @@
 package DiaColloDB::Profile::MultiDiff;
 use DiaColloDB::Profile::Multi;
 use DiaColloDB::Profile::Diff;
-use DiaColloDB::Utils qw(:html);
+use DiaColloDB::Utils qw(:html :list);
 use strict;
 
 ##==============================================================================
@@ -23,14 +23,23 @@ our @ISA = qw(DiaColloDB::Profile::Multi);
 ## $mpd = CLASS_OR_OBJECT->new($mp1,$mp2,%args)
 ## + %args, object structure:
 ##   (
-##    data => \%key2prf,   ##-- ($date => $profile, ...) : profiles by date
+##    profiles => \@profiles,   ##-- ($profile, ...) : sub-diffs, with {label} key
+##    titles   => \@titles,     ##-- item group titles (default:undef: unknown)
+##    qinfo    => \%qinfo,      ##-- query info (optional; keys prefixed with 'a' or 'b'): see DiaColloDB::Profile::Multi
+##   )
+## + additional %args:
+##   (
+##    populate => $bool,        ##-- auto-populate() if $mp1 and $mp2 are specified? (default=1)
 ##   )
 sub new {
   my $that = shift;
   my $mp1  = UNIVERSAL::isa(ref($_[0]),'DiaColloDB::Profile::Multi') ? shift : undef;
   my $mp2  = UNIVERSAL::isa(ref($_[0]),'DiaColloDB::Profile::Multi') ? shift : undef;
-  my $mpd  = $that->SUPER::new(@_);
-  return $mpd->populate($mp1,$mp2) if ($mp1 && $mp2);
+  my %opts = @_;
+  my $populate = $opts{populate}//1;
+  delete($opts{populate});
+  my $mpd  = $that->SUPER::new(%opts);
+  return $mpd->populate($mp1,$mp2) if ($populate && $mp1 && $mp2);
   return $mpd;
 }
 
@@ -64,6 +73,12 @@ sub loadJsonData {
 ##--------------------------------------------------------------
 ## I/O: Text
 
+## undef = $CLASS_OR_OBJECT->saveTextHeader($fh, hlabel=>$hlabel, titles=>\@titles)
+sub saveTextHeader {
+  my ($that,$fh,%opts) = @_;
+  DiaColloDB::Profile::Diff::saveTextHeader($that,$fh,hlabel=>'label',@_);
+}
+
 ## $bool = $obj->saveTextFile($filename_or_handle, %opts)
 ##  + wraps saveTextFh(); INHERITED from DiaCollocDB::Persistent
 
@@ -79,6 +94,7 @@ sub loadJsonData {
 ##    (
 ##     table  => $bool,     ##-- include <table>..</table> ? (default=1)
 ##     body   => $bool,     ##-- include <html><body>..</html></body> ? (default=1)
+##     qinfo  => $varname,  ##-- include <script> for qinfo data? (default='qinfo')
 ##     header => $bool,     ##-- include header-row? (default=1)
 ##     format => $fmt,      ##-- printf score formatting (default="%.2f")
 ##    )
@@ -87,6 +103,8 @@ sub saveHtmlFile {
   my $fh = ref($file) ? $file : IO::File->new(">$file");
   $mp->logconfess("saveHtmlFile(): failed to open '$file': $!") if (!ref($fh));
   $fh->print("<html><body>\n") if ($opts{body}//1);
+  $fh->print("<script type=\"text/javascript\">$opts{qinfo}=", DiaColloDB::Utils::saveJsonString($mp->{qinfo}, pretty=>0), ";</script>\n")
+    if ($mp->{qinfo} && ($opts{qinfo} //= 'qinfo'));
   $fh->print("<table><tbody>\n") if ($opts{table}//1);
   $fh->print("<tr>",(
 		     map {"<th>".htmlesc($_)."</th>"}
@@ -134,13 +152,19 @@ sub align {
 }
 
 ## $mpd = $mpd->populate($mp1,$mp2)
-##  + populates multi-diff by subtracting $mp1 sub-profile scores from $mp1
+##  + populates multi-diff by subtracting $mp2 sub-profile scores from $mp1
 ##  + uses $mpd->align() to align sub-profiles
 sub populate {
   my ($mpd,$mpa,$mpb) = @_;
   @{$mpd->{profiles}} = map {
     DiaColloDB::Profile::Diff->new($_->[0],$_->[1])
   } @{$mpd->align($mpa,$mpb)};
+  if ($mpa->{qinfo} || $mpb->{qinfo}) {
+    $mpd->{qinfo} = {
+		     (map {("a$_"=>$mpa->{qinfo}{$_})} keys %{$mpa->{qinfo}//{}}),
+		     (map {("b$_"=>$mpb->{qinfo}{$_})} keys %{$mpb->{qinfo}//{}}),
+		    };
+  }
   return $mpd;
 }
 
@@ -152,9 +176,55 @@ sub populate {
 ##  + un-compiles all scores for $mp
 ##  + INHERITED from DiaColloDB::Profile::Multi
 
+## $class = $CLASS_OR_OBJECT->pclass()
+##  + class for psum()
+sub pclass {
+  return 'DiaColloDB::Profile::Diff';
+}
+
+## $prf = $mp->psum()
+## $prf = $CLASS_OR_OBJECT->psum(\@profiles)
+##  + sum of sub-profiles, compiled as for $profiles[0]
+##  + used for global trimming
+
 ## $mp_or_undef = $mp->trim(%opts)
 ##  + calls $prf->trim(%opts) for each sub-profile $prf
 ##  + INHERITED from DiaColloDB::Profile::Multi
+
+## $mp_or_undef = $CLASS_OR_OBJECT->trimPairs(\@pairs, %opts)
+##  + %opts: as for DiaColloDB::Profile::Multi::trim(), including 'local' option
+sub trimPairs {
+  my ($that,$ppairs,%opts) = @_;
+
+  ##-- defaults
+  $opts{kbest}  //= -1;
+  $opts{cutoff} //= '';
+  $opts{local}  //= 1;
+
+  if ($opts{local}//1) {
+    ##-- trim locally
+    my ($pa,$pb,%keep);
+    foreach (@$ppairs) {
+      ($pa,$pb) = @$_;
+      %keep = map {($_=>undef)} (($pa ? @{$pa->which(%opts)} : qw()), ($pb ? @{$pb->which(%opts)} : qw()));
+      $pa->trim(keep=>\%keep);
+      $pb->trim(keep=>\%keep);
+    }
+  } else {
+    ##-- trim globally
+    my $gpa = DiaColloDB::Profile::Multi->sumover(luniq([map {$_->[0]} @$ppairs]));
+    my $gpb = DiaColloDB::Profile::Multi->sumover(luniq([map {$_->[1]} @$ppairs]));
+    my %keep = map {($_=>undef)} (@{$gpa->which(%opts)}, @{$gpb->which(%opts)});
+    $gpa->trim(keep=>\%keep);
+    $gpb->trim(keep=>\%keep);
+
+    my $gdiff = DiaColloDB::Profile::Diff->new($gpa,$gpb);
+    %keep = map {($_=>undef)} @{$gdiff->which(kbesta=>$opts{kbest})};
+    $_->trim(keep=>\%keep) foreach (map {@$_} @$ppairs);
+  }
+
+  return $ppairs;
+}
 
 ## $mp = $mp->stringify( $obj)
 ## $mp = $mp->stringify(\@key2str)

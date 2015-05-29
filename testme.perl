@@ -2,7 +2,7 @@
 
 use lib qw(.);
 use DiaColloDB;
-use DiaColloDB::Utils qw(:sort);
+use DiaColloDB::Utils qw(:sort :regex);
 use PDL;
 use File::Path qw(make_path remove_tree);
 use File::Find;
@@ -1165,7 +1165,102 @@ sub test_tied_enum {
 
   exit 0;
 }
-test_tied_enum(@ARGV);
+#test_tied_enum(@ARGV);
+
+##==============================================================================
+## test: parseRequest via ddc
+
+##--------------------------------------------------------------
+sub test_ddcparse {
+  my $dbdir = shift || 'kern.d';
+  my $req   = shift || '$l, $p';
+  my $defaultIndex = undef; #''; ##-- default index name; set to undef for groupby parsing
+
+  my $coldb = DiaColloDB->new(dbdir=>$dbdir) or die("$0: failed to open $dbdir/: $!");
+  my $q     = $coldb->parseQuery($req, default=>$defaultIndex);
+
+  ##-- dump query
+  #print Data::Dumper->Dump([$q->toHash],[qw(qhash)]);
+  print "qreq=$req\n";
+  print "qstr=", $q->toString, "\n";
+
+  exit 0;
+}
+#test_ddcparse(@ARGV);
+
+
+##--------------------------------------------------------------
+sub test_ddcrelq {
+  my $dbdir = shift || 'kern.d';
+  my %opts  = map {split(/=/,$_,2)} @_;
+
+  $opts{query}   ||= 'Haus'; #'Haus, $p=NN #has[author,/kant/]';
+  $opts{groupby} ||= '$l,$p=ADJA';
+  $opts{slice}   ||= 0;
+  $opts{date}    ||= '1900:1999';
+
+  my $coldb = DiaColloDB->new(dbdir=>$dbdir) or die("$0: failed to open $dbdir/: $!");
+  my $rel   = DiaColloDB::DDC->fromDB($coldb, ddcServer=>'localhost:52000');
+
+  my $qcount = $rel->countQuery($coldb, \%opts);
+
+  ##-- dump query
+  #print Data::Dumper->Dump([$q->toHash],[qw(qhash)]);
+  print "limit=", ($opts{limit}//'(undef)'), "\n";
+  print "qstr=", $qcount->toString, "\n";
+
+  exit 0;
+}
+#test_ddcrelq(@ARGV);
+
+##--------------------------------------------------------------
+sub test_ddcprf {
+  my $dbdir = shift || 'dta.d';
+  my %opts  = map {split(/=/,$_,2)} @_;
+
+  #$opts{query}   ||= 'Mann #sample[100] #has[textClass,Wiss*]'; #'Haus, $p=NN #has[author,/kant/]';
+  $opts{query}   ||= 'Mann'; #'Haus, $p=NN #has[author,/kant/]';
+  $opts{groupby} ||= 'l=jung|alt,p=ADJA,textClass';
+  $opts{slice}   ||= 0;
+  #$opts{date}    ||= '1900:1999';
+  $opts{score}   ||= 'f';
+  $opts{kbest}   ||= 10;
+
+  my $coldb = DiaColloDB->new(dbdir=>$dbdir) or die("$0: failed to open $dbdir/: $!");
+  #$coldb->{ddcServer} = 'localhost:52000'; ##-- local:kern.plato
+  $coldb->{ddcServer} = 'kaskade.dwds.de:50250'; ##-- dta.beta
+  $mp       = $coldb->profile('ddc',%opts) or die("$0: failed to acquire profile: $!");
+  $mp->saveTextFile('-');
+
+  exit 0;
+}
+test_ddcprf(@ARGV);
+
+##--------------------------------------------------------------
+sub test_ddcdiff {
+  my $dbdir = shift || 'dta.d';
+  my %opts  = map {split(/=/,$_,2)} @_;
+
+  $opts{aquery}   ||= 'Fau';
+  $opts{bquery}   ||= 'Frau';
+  $opts{groupby} ||= '$l,$p=ADJA';
+  $opts{aslice}   ||= 0;
+  $opts{bslice}   ||= 0;
+  $opts{adate}   ||= '1600:1799';
+  $opts{bdate}   ||= '1800:1899';
+  $opts{score}   ||= 'ld';
+  $opts{kbest}   ||= 10;
+
+  my $coldb = DiaColloDB->new(dbdir=>$dbdir) or die("$0: failed to open $dbdir/: $!");
+  #$coldb->{ddcServer} = 'localhost:52000'; ##-- local:kern.plato
+  $coldb->{ddcServer}  = 'kaskade.dwds.de:50250'; ##-- dta.beta
+  $mp                  = $coldb->compare('ddc',%opts) or die("$0: failed to acquire profile: $!");
+  $mp->saveTextFile('-');
+
+  exit 0;
+}
+#test_ddcdiff(@ARGV);
+
 
 
 ##==============================================================================

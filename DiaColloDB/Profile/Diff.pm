@@ -101,11 +101,25 @@ sub loadJsonData {
 ##--------------------------------------------------------------
 ## I/O: Text
 
+## undef = $CLASS_OR_OBJECT->saveTextHeader($fh, hlabel=>$hlabel, titles=>\@titles)
+sub saveTextHeader {
+  my ($that,$fh,%opts) = @_;
+  my @fields = (
+		(map {("${_}a","${_}b")} qw(N f1 f2 f12 score)),
+		qw(diff),
+		(defined($opts{hlabel}) ? $opts{hlabel} : qw()),
+		@{$opts{titles} // (ref($that) ? $that->{titles} : undef) // [qw(item2)]},
+	       );
+  $fh->print(join("\t", map {"#".($_+1).":$fields[$_]"} (0..$#fields)), "\n");
+}
+
 ## $bool = $prf->saveTextFh($fh, %opts)
 ##  + %opts:
 ##    (
 ##     label => $label,   ##-- override $prf->{label} (used by Profile::Multi), no tab-separators required
 ##     format => $fmt,      ##-- printf score formatting (default="%.4f")
+##     header => $bool,   ##-- include header-row? (default=1)
+##     hlabel => $hlabel, ##-- prefix header item-cells with $hlabel (used by Profile::Multi)
 ##    )
 ##  + format (flat, TAB-separated): Na Nb F1a F1b F2a F2b F12a F12b SCOREa SCOREb SCOREdiff LABEL ITEM2
 sub saveTextFh {
@@ -119,6 +133,8 @@ sub saveTextFh {
   my $scored = $dprf->{$fscore};
   my $label = exists($opts{label}) ? $opts{label} : $dprf->{label};
   my $fmt   = $opts{fmt} || '%f';
+  $dprf->saveTextHeader($fh,%opts) if ($opts{header}//1);
+
   foreach (sort {$scored->{$b} <=> $scored->{$a}} keys %$scored) {
     $fh->print(join("\t",
 		    $Na, $Nb,
@@ -262,11 +278,28 @@ sub uncompile {
 ##     drop => $drop,      ##-- drop keys @$drop (ARRAY) or keys(%$drop) (HASH)
 ##    )
 sub trim {
-  my $dprf = shift;
-  $dprf->SUPER::trim(@_) or return undef;
-  my $dscore = $dprf->{$dprf->{score}//'f12'};
-  $dprf->{prf1}->trim(keep=>$dscore) or return undef if ($dprf->{prf1});
-  $dprf->{prf2}->trim(keep=>$dscore) or return undef if ($dprf->{prf2});
+  my ($dprf,%opts) = @_;
+  my ($pa,$pb) = @$dprf{qw(prf1 prf2)};
+
+  if ($opts{keep} || $opts{drop}) {
+    ##-- explicit keep request
+    $dprf->populate() if (!$dprf->{score});
+    $dprf->SUPER::trim(%opts) or return undef;
+  }
+  else {
+    ##-- heuristic trimming
+    my %abkeys = map {($_=>undef)} (($pa ? @{$pa->which(%opts)} : qw()), ($pb ? @{$pb->which(%opts)} : qw()));
+    $pa->trim(keep=>\%abkeys);
+    $pb->trim(keep=>\%abkeys);
+    $dprf->populate();
+    $dprf->SUPER::trim(%opts);
+  }
+
+  ##-- trim operand profiles
+  my $keep = $dprf->{$dprf->{score}//'f12'};
+  $pa->trim(keep=>$keep) or return undef if ($pa);
+  $pb->trim(keep=>$keep) or return undef if ($pb);
+
   return $dprf;
 }
 

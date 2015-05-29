@@ -1,9 +1,10 @@
 ## -*- Mode: CPerl -*-
-## File: DiaColloDB::Unigrams.pm
+## File: DiaColloDB::Relation::Unigrams.pm
 ## Author: Bryan Jurish <moocow@cpan.org>
-## Description: collocation db, unigram database (using DiaColloDB::PackedFile)
+## Description: collocation db, profiling relation: unigram database (using DiaColloDB::PackedFile)
 
-package DiaColloDB::Unigrams;
+package DiaColloDB::Relation::Unigrams;
+use DiaColloDB::Relation;
 use DiaColloDB::PackedFile;
 use DiaColloDB::Utils qw(:sort :env :run :pack :file);
 use Fcntl qw(:seek);
@@ -12,7 +13,7 @@ use strict;
 ##==============================================================================
 ## Globals & Constants
 
-our @ISA = qw(DiaColloDB::PackedFile);
+our @ISA = qw(DiaColloDB::PackedFile DiaColloDB::Relation);
 
 ##==============================================================================
 ## Constructors etc.
@@ -39,11 +40,11 @@ our @ISA = qw(DiaColloDB::PackedFile);
 ##   )
 sub new {
   my $that = shift;
-  my $ug   = $that->SUPER::new(
-			       N=>0,
-			       packas=>'N',
-			       @_
-			      );
+  my $ug   = $that->DiaColloDB::PackedFile::new(
+						N=>0,
+						packas=>'N',
+						@_
+					       );
   return $ug;
 }
 
@@ -77,7 +78,7 @@ sub diskFiles {
 ##==============================================================================
 ## Relation API: create
 
-## $bool = CLASS_OR_OBJECT->create($tokdat_file,%opts)
+## $ug = $CLASS_OR_OBJECT->create($coldb,$tokdat_file,%opts)
 ##  + populates current database from $tokdat_file,
 ##    a tt-style text file containing 1 token-id perl line with optional blank lines
 ##  + %opts: clobber %$ug, also:
@@ -85,7 +86,7 @@ sub diskFiles {
 ##     size=>$size,  ##-- set initial size
 ##    )
 sub create {
-  my ($ug,$datfile,%opts) = @_;
+  my ($ug,$coldb,$datfile,%opts) = @_;
 
   ##-- create/clobber
   $ug = $ug->new() if (!ref($ug));
@@ -132,14 +133,14 @@ sub create {
 ##==============================================================================
 ## Relation API: union
 
-## $ug = CLASS_OR_OBJECT->union(\@pairs, %opts)
+## $ug = CLASS_OR_OBJECT->union($coldb, \@pairs, %opts)
 ##  + merge multiple co-frequency indices into new object
 ##  + @pairs : array of pairs ([$ug,\@xi2u],...)
 ##    of unigram-objects $ug and tuple-id maps \@xi2u for $ug
 ##  + %opts: clobber %$ug
 ##  + implicitly flushes the new index
 sub union {
-  my ($ug,$pairs,%opts) = @_;
+  my ($ug,$coldb,$pairs,%opts) = @_;
 
   ##-- create/clobber
   $ug = $ug->new() if (!ref($ug));
@@ -171,13 +172,13 @@ sub union {
 }
 
 ##==============================================================================
-## Relation API: profile
+## Relation API: default: profiling
 
-## $prf = $ug->profile(\@xids, %opts)
+## $prf = $ug->subprofile(\@xids, %opts)
 ##  + get frequency profile for @xids (db must be opened)
 ##  + %opts:
 ##     groupby => \&gbsub,  ##-- key-extractor $key2_or_undef = $gbsub->($i2)
-sub profile {
+sub subprofile {
   my ($ug,$ids,%opts) = @_;
   $ids   = [$ids] if (!UNIVERSAL::isa($ids,'ARRAY'));
 
@@ -200,19 +201,47 @@ sub profile {
   }
 
   return DiaColloDB::Profile->new(
-				N=>$ug->{N},
-				f1=>$pf1,
-				f2=>$pf2,
-				f12=>{ %$pf2 },
-			       );
+				  N=>$ug->{N},
+				  f1=>$pf1,
+				  f2=>$pf2,
+				  f12=>{ %$pf2 },
+				 );
 }
+
+##==============================================================================
+## Relation API: default: query info
+
+## \%qinfo = $rel->qinfo($coldb, %opts)
+##  + get query-info hash for profile administrivia (ddc hit links)
+##  + %opts: as for profile(), additionally:
+##    (
+##     qreqs => \@qreqs,      ##-- as returned by $coldb->parseRequest($opts{query})
+##     gbreq => \%groupby,    ##-- as returned by $coldb->groupby($opts{groupby})
+##    )
+sub qinfo {
+  my ($rel,$coldb,%opts) = @_;
+  my ($q1strs,$q2strs,$qxstrs,$fstrs) = $rel->qinfoData($coldb,%opts);
+
+  my @qstrs = (@$q1strs, @$q2strs, @$qxstrs);
+  @qstrs    = ('*') if (!@qstrs);
+  my $qstr = ('('.join(' WITH ', @qstrs).') =1'
+	      .' #SEPARATE'
+	      .(@$fstrs ? (' '.join(' ',@$fstrs)) : ''),
+	     );
+  return {
+	  fcoef => 1,
+	  qtemplate => $qstr,
+	 };
+}
+
+##==============================================================================
+## Pacakge Alias(es)
+package DiaColloDB::Unigrams;
+use strict;
+our @ISA = qw(DiaColloDB::Relation::Unigrams);
 
 ##==============================================================================
 ## Footer
 1;
 
 __END__
-
-
-
-

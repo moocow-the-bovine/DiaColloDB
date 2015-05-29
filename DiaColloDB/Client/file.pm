@@ -21,7 +21,7 @@ our @ISA = qw(DiaColloDB::Client);
 ## + %args, object structure:
 ##   (
 ##    ##-- DiaColloDB::Client: options
-##    url  => $url,       ##-- local url; query form is used as db parameters
+##    url  => $url,       ##-- local url; query form is used as db parameters ##-- CONTINUE HERE: adjust dstar web params to auto-set ddcServer!
 ##    ##
 ##    ##-- DiaColloDB::Client::file
 ##    db   => $db,        ##-- underlying DiaColloDB object

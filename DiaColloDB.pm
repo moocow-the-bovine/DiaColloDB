@@ -13,8 +13,10 @@ use DiaColloDB::EnumFile::FixedMap;
 use DiaColloDB::EnumFile::Tied;
 use DiaColloDB::MultiMapFile;
 use DiaColloDB::PackedFile;
-use DiaColloDB::Unigrams;
-use DiaColloDB::Cofreqs;
+use DiaColloDB::Relation;
+use DiaColloDB::Relation::Unigrams;
+use DiaColloDB::Relation::Cofreqs;
+use DiaColloDB::Relation::DDC;
 use DiaColloDB::Profile;
 use DiaColloDB::Profile::Multi;
 use DiaColloDB::Profile::MultiDiff;
@@ -22,6 +24,7 @@ use DiaColloDB::Corpus;
 use DiaColloDB::Persistent;
 use DiaColloDB::Utils qw(:fcntl :json :sort :pack :regex :file :si);
 use DiaColloDB::Timer;
+use DDC::XS; ##-- for query parsing
 use Fcntl;
 use File::Path qw(make_path remove_tree);
 use strict;
@@ -30,7 +33,7 @@ use strict;
 ##==============================================================================
 ## Globals & Constants
 
-our $VERSION = "0.05.001";
+our $VERSION = "0.07.001";
 our @ISA = qw(DiaColloDB::Client);
 
 ## $PGOOD_DEFAULT
@@ -93,9 +96,13 @@ our $MMCLASS = 'DiaColloDB::MultiMapFile';
 ##    pack_date => $fmt,  ##-- pack-format for dates (default='n')
 ##    pack_off => $fmt,   ##-- pack-format for file offsets (default='N')
 ##    pack_len => $len,   ##-- pack-format for string lengths (default='n')
-##    dmax  => $dmax,     ##-- maximum distance for collocation-frequencies (default=5)
-##    cfmin => $cfmin,    ##-- minimum co-occurrence frequency for Cofreqs (default=2)
+##    dmax  => $dmax,     ##-- maximum distance for collocation-frequencies and implicit ddc near() queries (default=5)
+##    cfmin => $cfmin,    ##-- minimum co-occurrence frequency for Cofreqs and ddc queries (default=2)
 ##    keeptmp => $bool,   ##-- keep temporary files? (default=0)
+##    ##
+##    ##-- runtime ddc relation options
+##    ddcServer => "$host:$port", ##-- server for ddc relation
+##    ddcTimeout => $seconds,     ##-- timeout for ddc relation
 ##    ##
 ##    ##-- source filtering (for create())
 ##    pgood  => $regex,   ##-- positive filter regex for part-of-speech tags
@@ -136,6 +143,7 @@ our $MMCLASS = 'DiaColloDB::MultiMapFile';
 ##    ##-- relation data
 ##    xf    => $xf,       ##-- ug: $xi => $f($xi) : N=>N
 ##    cof   => $cof,      ##-- cf: [$xi1,$xi2] => $f12
+##    ddc   => $ddc,      ##-- ddc client relation
 ##   )
 sub new {
   my $that = shift;
@@ -188,8 +196,9 @@ sub new {
 		      #pack_x => 'Nn',
 
 		      ##-- relations
-		      #xf    => undef, #DiaColloDB::Unigrams->new(packas=>$coldb->{pack_f}),
-		      #cof   => undef, #DiaColloDB::Cofreqs->new(pack_f=>$pack_f, pack_i=>$pack_i, dmax=>$dmax, fmin=>$cfmin),
+		      #xf    => undef, #DiaColloDB::Relation::Unigrams->new(packas=>$coldb->{pack_f}),
+		      #cof   => undef, #DiaColloDB::Relation::Cofreqs->new(pack_f=>$pack_f, pack_i=>$pack_i, dmax=>$dmax, fmin=>$cfmin),
+		      #ddc   => undef, #DiaColloDB::Relation::DDC->new(),
 
 		      @_,	##-- user arguments
 		     },
@@ -290,16 +299,20 @@ sub open {
   }
 
   ##-- open: xf
-  $coldb->{xf} = DiaColloDB::Unigrams->new(file=>"$dbdir/xf.dba", flags=>$flags, packas=>$coldb->{pack_f})
+  $coldb->{xf} = DiaColloDB::Relation::Unigrams->new(file=>"$dbdir/xf.dba", flags=>$flags, packas=>$coldb->{pack_f})
     or $coldb->logconfess("open(): failed to open tuple-unigrams $dbdir/xf.dba: $!");
   $coldb->{xf}{N} = $coldb->{xN} if ($coldb->{xN} && !$coldb->{xf}{N}); ##-- compat
 
   ##-- open: cof
-  $coldb->{cof} = DiaColloDB::Cofreqs->new(base=>"$dbdir/cof", flags=>$flags,
-					 pack_i=>$coldb->{pack_id}, pack_f=>$coldb->{pack_f},
-					 dmax=>$coldb->{dmax}, fmin=>$coldb->{cfmin},
-					)
+  $coldb->{cof} = DiaColloDB::Relation::Cofreqs->new(base=>"$dbdir/cof", flags=>$flags,
+						     pack_i=>$coldb->{pack_id}, pack_f=>$coldb->{pack_f},
+						     dmax=>$coldb->{dmax}, fmin=>$coldb->{cfmin},
+						    )
     or $coldb->logconfess("open(): failed to open co-frequency file $dbdir/cof.*: $!");
+
+  ##-- open: ddc (undef if ddcServer isn't set in ddc.hdr or $coldb)
+  $coldb->{ddc} = DiaColloDB::Relation::DDC->new(-r "$dbdir/ddc.hdr" ? (base=>"$dbdir/ddc") : qw())->fromDB($coldb)
+    // 'DiaColloDB::Relation::DDC';
 
   ##-- all done
   return $coldb;
@@ -387,8 +400,11 @@ sub attrs {
 ## $aname = $CLASS_OR_OBJECT->attrName($attr)
 ##  + returns canonical (short) attribute name for $attr
 ##  + supports aliases in %ATTR_ALIAS = ($alias=>$name, ...)
-##  + see also %ATTR_RALIAS = ($name=>\@aliases, ...), %ATTR_TITLE = ($name_or_alias=>$title, ...)
-our (%ATTR_ALIAS,%ATTR_RALIAS,%ATTR_TITLE);
+##  + see also:
+##     %ATTR_RALIAS = ($name=>\@aliases, ...)
+##     %ATTR_CBEXPR = ($name=>$ddcCountByExpr, ...)
+##     %ATTR_TITLE = ($name_or_alias=>$title, ...)
+our (%ATTR_ALIAS,%ATTR_RALIAS,%ATTR_TITLE,%ATTR_CBEXPR);
 BEGIN {
   %ATTR_RALIAS = (
 		  'l' => [map {(uc($_),ucfirst($_),$_)} qw(lemma lem l)],
@@ -400,6 +416,8 @@ BEGIN {
 		  'doc.title'      => [qw(doc.title title)],
 		  'doc.author'     => [qw(doc.author author)],
 		  'doc.basename'   => [qw(doc.basename basename)],
+		  'doc.bibl'	   => [qw(doc.bibl bibl)],
+		  'doc.flags'      => [qw(doc.flags flags)],
 		  ##
 		  date  => [map {(uc($_),ucfirst($_),$_)} qw(date d)],
 		  slice => [map {(uc($_),ucfirst($_),$_)} qw(dslice slice sl ds s)],
@@ -410,20 +428,53 @@ BEGIN {
 		 'w'=>'word',
 		 'p'=>'pos',
 		);
+  %ATTR_CBEXPR = (
+		  'doc.textClass' => DDC::XS::CQCountKeyExprRegex->new(DDC::XS::CQCountKeyExprBibl->new('textClass'),':.*$',''),
+		 );
 }
 sub attrName {
   shift if (UNIVERSAL::isa($_[0],__PACKAGE__));
-  return $ATTR_ALIAS{$_[0]} // $_[0];
+  return $ATTR_ALIAS{($_[0]//'')} // $_[0];
 }
 
 ## $atitle = $CLASS_OR_OBJECT->attrTitle($attr_or_alias)
 ##  + returns an attribute title for $attr_or_alias
 sub attrTitle {
   my ($that,$a) = @_;
-  $a = $that->attrName($a);
+  $a = $that->attrName($a//'');
   return $ATTR_TITLE{$a} if (exists($ATTR_TITLE{$a}));
   $a =~ s/^(?:doc|meta)\.//;
   return $a;
+}
+
+## $acbexpr = $CLASS_OR_OBJECT->attrCountBy($attr_or_alias,$matchid=0)
+sub attrCountBy {
+  my ($that,$a,$matchid) = @_;
+  $a = $that->attrName($a//'');
+  if (exists($ATTR_CBEXPR{$a})) {
+    ##-- aliased attribute
+    return $ATTR_CBEXPR{$a};
+  }
+  if ($a =~ /^doc\.(.*)$/) {
+    ##-- document attribute ("doc.ATTR" convention)
+    return DDC::XS::CQCountKeyExprBibl->new($1);
+  } else {
+    ##-- token attribute
+    return DDC::XS::CQCountKeyExprToken->new($a, ($matchid||0), 0);
+  }
+}
+
+## $aquery_or_filter_or_undef = $CLASS_OR_OBJECT->attrQuery($attr_or_alias,$cquery)
+##  + returns a CQuery or CQFilter object for condition $cquery on $attr_or_alias
+sub attrQuery {
+  my ($that,$a,$cquery) = @_;
+  $a = $that->attrName( $a // ($cquery ? $cquery->getIndexName : undef) // '' );
+  if ($a =~ /^doc\./) {
+    ##-- document attribute ("doc.ATTR" convention)
+    return $that->query2filter($a,$cquery);
+  }
+  ##-- token condition (use literal $cquery)
+  return $cquery;
 }
 
 ## \@attrdata = $coldb->attrData()
@@ -616,23 +667,31 @@ sub create {
 
   ##-- compute unigrams
   $coldb->info("creating tuple unigram index $dbdir/xf.dba");
-  my $xfdb = $coldb->{xf} = DiaColloDB::Unigrams->new(file=>"$dbdir/xf.dba", flags=>$flags, packas=>$pack_f)
+  my $xfdb = $coldb->{xf} = DiaColloDB::Relation::Unigrams->new(file=>"$dbdir/xf.dba", flags=>$flags, packas=>$pack_f)
     or $coldb->logconfess("create(): could not create $dbdir/xf.dba: $!");
   $xfdb->setsize($xenum->{size})
     or $coldb->logconfess("create(): could not set unigram index size = $xenum->{size}: $!");
-  $xfdb->create($tokfile)
+  $xfdb->create($coldb, $tokfile)
     or $coldb->logconfess("create(): failed to create unigram index: $!");
 
   ##-- compute collocation frequencies
   $coldb->info("creating co-frequency index $dbdir/cof.* [dmax=$coldb->{dmax}, fmin=$coldb->{cfmin}]");
-  my $cof = $coldb->{cof} = DiaColloDB::Cofreqs->new(base=>"$dbdir/cof", flags=>$flags,
-						     pack_i=>$pack_id, pack_f=>$pack_f,
-						     dmax=>$coldb->{dmax}, fmin=>$coldb->{cfmin},
-						     keeptmp=>$coldb->{keeptmp},
-						    )
+  my $cof = $coldb->{cof} = DiaColloDB::Relation::Cofreqs->new(base=>"$dbdir/cof", flags=>$flags,
+							       pack_i=>$pack_id, pack_f=>$pack_f,
+							       dmax=>$coldb->{dmax}, fmin=>$coldb->{cfmin},
+							       keeptmp=>$coldb->{keeptmp},
+							      )
     or $coldb->logconfess("create(): failed to create co-frequency index $dbdir/cof.*: $!");
-  $cof->create($tokfile)
+  $cof->create($coldb, $tokfile)
     or $coldb->logconfess("create(): failed to create co-frequency index: $!");
+
+  ##-- create ddc client relation (no-op if ddcServer option is not set)
+  if ($coldb->{ddcServer}) {
+    $coldb->info("creating ddc client configuration $dbdir/ddc.hdr [ddcServer=$coldb->{ddcServer}]");
+    $coldb->{ddc} = DiaColloDB::Relation::DDC->create($coldb);
+  } else {
+    $coldb->info("ddcServer option unset, NOT creating ddc client configuration");
+  }
 
   ##-- save header
   $coldb->saveHeader()
@@ -780,20 +839,20 @@ sub union {
 
   ##-- unigrams: populate
   $coldb->vlog($coldb->{logCreate}, "union(): creating tuple unigram index $dbdir/xf.*");
-  $coldb->{xf} = DiaColloDB::Unigrams->new(file=>"$dbdir/xf.dba", flags=>$flags, packas=>$pack_f)
+  $coldb->{xf} = DiaColloDB::Relation::Unigrams->new(file=>"$dbdir/xf.dba", flags=>$flags, packas=>$pack_f)
     or $coldb->logconfess("union(): could not create $dbdir/xf.*: $!");
-  $coldb->{xf}->union([map {[@$_{qw(xf _union_xi2u)}]} @dbargs])
+  $coldb->{xf}->union($coldb, [map {[@$_{qw(xf _union_xi2u)}]} @dbargs])
     or $coldb->logconfess("union(): could not populate unigram index $dbdir/xf.*: $!");
 
   ##-- co-frequencies: populate
   $coldb->vlog($coldb->{logCreate}, "union(): creating co-frequency index $dbdir/cof.* [fmin=$coldb->{cfmin}]");
-  $coldb->{cof} = DiaColloDB::Cofreqs->new(base=>"$dbdir/cof", flags=>$flags,
-					   pack_i=>$pack_id, pack_f=>$pack_f,
-					   dmax=>$coldb->{dmax}, fmin=>$coldb->{cfmin},
-					   keeptmp=>$coldb->{keeptmp},
-					  )
+  $coldb->{cof} = DiaColloDB::Relation::Cofreqs->new(base=>"$dbdir/cof", flags=>$flags,
+						     pack_i=>$pack_id, pack_f=>$pack_f,
+						     dmax=>$coldb->{dmax}, fmin=>$coldb->{cfmin},
+						     keeptmp=>$coldb->{keeptmp},
+						    )
     or $coldb->logconfess("create(): failed to open co-frequency index $dbdir/cof.*: $!");
-  $coldb->{cof}->union([map {[@$_{qw(cof _union_xi2u)}]} @dbargs])
+  $coldb->{cof}->union($coldb, [map {[@$_{qw(cof _union_xi2u)}]} @dbargs])
     or $coldb->logconfess("union(): could not populate co-frequency index $dbdir/cof.*: $!");
 
   ##-- cleanup
@@ -1019,7 +1078,7 @@ sub dbinfo {
 	       } @$adata],
 
 	       ##-- relations
-	       relations => [grep {UNIVERSAL::can(ref($coldb->{$_}),'profile')} keys %$coldb],
+	       relations => [grep {UNIVERSAL::isa(ref($coldb->{$_}),'DiaColloDB::Relation')} keys %$coldb],
 
 	       ##-- overrides
 	       %{$coldb->{info}//{}},
@@ -1068,6 +1127,7 @@ sub dbinfo {
 ##--------------------------------------------------------------
 ## Profiling: Utils
 
+##~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 ## $relname = $coldb->relname($rel)
 ##  + returns an appropriate relation name for profile() and friends
 ##  + returns $rel if $coldb->{$rel} supports a profile() method
@@ -1086,6 +1146,7 @@ sub relname {
   return $rel;
 }
 
+##~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 ## $obj_or_undef = $coldb->relation($rel)
 ##  + returns an appropriate relation-like object for profile() and friends
 ##  + wraps $coldb->{$coldb->relname($rel)}
@@ -1093,8 +1154,10 @@ sub relation {
   return $_[0]->{$_[0]->relname($_[1])};
 }
 
+##~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 ## \@ids = $coldb->enumIds($enum,$req,%opts)
 ##  + parses enum IDs for $req, which is one of:
+##    - a DDC::XS::CQTokExact, ::CQTokInfl, ::CQTokSet, ::CQTokSetInfl, or ::CQTokRegex : interpreted
 ##    - an ARRAY-ref     : list of literal symbol-values
 ##    - a Regexp ref     : regexp for target strings, passed to $enum->re2i()
 ##    - a string /REGEX/ : regexp for target strings, passed to $enum->re2i()
@@ -1105,34 +1168,55 @@ sub relation {
 sub enumIds {
   my ($coldb,$enum,$req,%opts) = @_;
   $opts{logPrefix} //= "enumIds(): fetch ids";
-  if (UNIVERSAL::isa($req,'ARRAY')) {
-    ##-- values: array
+  if (UNIVERSAL::isa($req,'DDC::XS::CQTokInfl') || UNIVERSAL::isa($req,'DDC::XS::CQTokExact')) {
+    ##-- CQuery: CQTokExact
+    $coldb->vlog($opts{logLevel}, $opts{logPrefix}, " (", ref($req), ")");
+    return [$enum->s2i($req->getValue)];
+  }
+  elsif (UNIVERSAL::isa($req,'DDC::XS::CQTokSet') || UNIVERSAL::isa($req,'DDC::XS::CQTokSetInfl')) {
+    ##-- CQuery: CQTokSet
+    $coldb->vlog($opts{logLevel}, $opts{logPrefix}, " (", ref($req), ")");
+    return [map {$enum->s2i($_)} @{$req->getValues}];
+  }
+  elsif (UNIVERSAL::isa($req,'DDC::XS::CQTokRegex')) {
+    ##-- CQuery: CQTokRegex
+    $coldb->vlog($opts{logLevel}, $opts{logPrefix}, " (", ref($req), ")");
+    return $enum->re2i($req->getValue);
+  }
+  elsif (UNIVERSAL::isa($req,'DDC::XS::CQTokAny')) {
+    $coldb->vlog($opts{logLevel}, $opts{logPrefix}, " (", ref($req), ")");
+    return undef;
+  }
+  elsif (UNIVERSAL::isa($req,'ARRAY')) {
+    ##-- compat: array
     $coldb->vlog($opts{logLevel}, $opts{logPrefix}, " (ARRAY)");
     return [map {$enum->s2i($_)} @$req];
   }
   elsif (UNIVERSAL::isa($req,'Regexp') || $req =~ m{^/}) {
-    ##-- values: regex
+    ##-- compat: regex
     $coldb->vlog($opts{logLevel}, $opts{logPrefix}, " (REGEX)");
     return $enum->re2i($req);
   }
-  else {
-    ##-- values: space-separated literals
+  elsif (!ref($req)) {
+    ##-- compat: space-, comma-, or |-separated literals
     $coldb->vlog($opts{logLevel}, $opts{logPrefix}, " (STRINGS)");
     return [grep {defined($_)} map {$enum->s2i($_)} grep {($_//'') ne ''} map {s{\\(.)}{$1}g; $_} split(/(?:(?<!\\)[\,\s\|])+/,$req)];
+  }
+  else {
+    ##-- reference: unhandled
+    $coldb->logconfess($coldb->{error}="$opts{logPrefix}: can't handle request of type ".ref($req));
   }
   return [];
 }
 
-## \%slice2xids = $coldb->xidsByDate(\@xids, $dateRequest, $sliceRequest, $fill)
-##   + parse and filter \@xids by $dateRequest, $sliceRequest
-##   + returns a HASH-ref from slice-ids to \@xids in that date-slice
-##   + if $fill is true, returned HASH-ref has a key for each date-slice in range
-sub xidsByDate {
-  my ($coldb,$xids,$date,$slice,$fill) = @_;
-  my $dfilter = undef;
-  my ($dlo,$dhi);
+##~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+## ($dfilter,$sliceLo,$sliceHi,$dateLo,$dateHi) = $coldb->parseDateRequest($dateRequest='', $sliceRequest=0, $fill=0, $ddcMode=0)
+sub parseDateRequest {
+  my ($coldb,$date,$slice,$fill,$ddcmode) = @_;
+  my ($dfilter,$slo,$shi,$dlo,$dhi);
   if ($date && (UNIVERSAL::isa($date,'Regexp') || $date =~ /^\//)) {
     ##-- date request: regex string
+    $coldb->logconfess("parseDateRequest(): can't handle date regex '$date' in ddc mode") if ($ddcmode);
     my $dre  = regex($date);
     $dfilter = sub { $_[0] =~ $dre };
   }
@@ -1148,9 +1232,32 @@ sub xidsByDate {
   }
   elsif ($date) {
     ##-- date request: single value
+    $dlo = $dhi = $date;
     $dfilter = sub { $_[0] == $date };
   }
 
+  ##-- force-fill?
+  if ($fill) {
+    $dlo = $coldb->{xdmin} if (!$dlo || $dlo < $coldb->{xdmin});
+    $dhi = $coldb->{xdmax} if (!$dhi || $dhi > $coldb->{xdmax});
+  }
+
+  ##-- slice-range
+  ($slo,$shi) = map {$slice ? ($slice*int(($_//0)/$slice)) : 0} ($dlo,$dhi);
+
+  return wantarray ? ($dfilter,$slo,$shi,$dlo,$dhi) : $dfilter;
+}
+
+##~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+## \%slice2xids = $coldb->xidsByDate(\@xids, $dateRequest, $sliceRequest, $fill)
+##   + parse and filter \@xids by $dateRequest, $sliceRequest
+##   + returns a HASH-ref from slice-ids to \@xids in that date-slice
+##   + if $fill is true, returned HASH-ref has a key for each date-slice in range
+sub xidsByDate {
+  my ($coldb,$xids,$date,$slice,$fill) = @_;
+  my ($dfilter,$slo,$shi,$dlo,$dhi) = $coldb->parseDateRequest($date,$slice,$fill);
+
+  ##-- filter xids
   my $xenum  = $coldb->{xenum};
   my $pack_x = $coldb->{pack_x};
   my $pack_i = $coldb->{pack_id};
@@ -1167,13 +1274,7 @@ sub xidsByDate {
 
   ##-- force-fill?
   if ($fill && $slice) {
-    $dlo //= -'inf';
-    $dhi //=  'inf';
-    $dlo   = $coldb->{xdmin} if ($dlo < $coldb->{xdmin});
-    $dhi   = $coldb->{xdmax} if ($dhi > $coldb->{xdmax});
-    $dlo = int($dlo/$slice)*$slice;
-    $dhi = int($dhi/$slice)*$slice;
-    for (my $d=$dlo; $d <= $dhi; $d += $slice) {
+    for ($d=$slo; $d <= $shi; $d += $slice) {
       $d2xis->{$d} //= [];
     }
   }
@@ -1181,53 +1282,254 @@ sub xidsByDate {
   return $d2xis;
 }
 
-## \@areqs = $coldb->parseRequest([[$attr1,$val1],...], %opts)
-## \@areqs = $coldb->parseRequest(["$attr1:$val1",...], %opts)
-## \@areqs = $coldb->parseRequest({$attr1=>$val1, ...}, %opts)
-## \@areqs = $coldb->parseRequest("$attr1:$val1, ...", %opts)
-##   + guts for parsing user target and groupby requests
+##~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+## $compiler = $coldb->qcompiler();
+##  + get DDC::XS::CQueryCompiler for this object (cached in $coldb->{_qcompiler})
+sub qcompiler {
+  return $_[0]{_qcompiler} ||= DDC::XS::CQueryCompiler->new();
+}
+
+##~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+## $cquery_or_undef = $coldb->qparse($ddc_query_string)
+##  + wraps parse in an eval {...} block and sets $coldb->{error} on failure
+sub qparse {
+  my ($coldb,$qstr) = @_;
+  my ($q);
+  eval { $q=$coldb->qcompiler->ParseQuery($qstr); };
+  if ($@ || !defined($q)) {
+    $coldb->{error}="$@";
+    return undef;
+  }
+  return $q;
+}
+
+
+##~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+## $cquery = $coldb->parseQuery([[$attr1,$val1],...], %opts) ##-- compat: ARRAY-of-ARRAYs
+## $cquery = $coldb->parseQuery(["$attr1:$val1",...], %opts) ##-- compat: ARRAY-of-requests
+## $cquery = $coldb->parseQuery({$attr1=>$val1, ...}, %opts) ##-- compat: HASH
+## $cquery = $coldb->parseQuery("$attr1=$val1, ...", %opts)  ##-- compat: string
+## $cquery = $coldb->parseQuery($ddcQueryString, %opts)      ##-- ddc string (with shorthand ","->WITH, "&&"->WITH)
+##  + guts for parsing user target and groupby requests
+##  + returns a DDC::XS::CQuery object representing the request
+##  + index-only items "$l" are mapped to $l=@{}
+##  + %opts:
+##     warn  => $level,       ##-- log-level for unknown attributes (default: 'warn')
+##     logas => $reqtype,     ##-- request type for warnings
+##     default => $attr,      ##-- default attribute (for query requests)
+##     mapand => $bool,       ##-- map CQAnd to CQWith? (default=true unless '&&' occurs in query string)
+##     ddcmode => $bool,      ##-- force ddc query mode? (default=false)
+sub parseQuery {
+  my ($coldb,$req,%opts) = @_;
+  my $req0   = $req;
+  my $wlevel = $opts{warn} // 'warn';
+  my $defaultIndex = $opts{default};
+
+  ##-- compat: accept ARRAY or HASH requests
+  my $areqs = (UNIVERSAL::isa($req,'ARRAY') ? [@$req]
+	       : (UNIVERSAL::isa($req,'HASH') ? [%$req]
+		  : undef));
+
+  ##-- compat: parse into attribute-local requests $areqs=[[$attr1,$areq1],...]
+  my $sepre  = qr{[\s\,]};
+  my $charre = qr{(?:\\[^ux0-9]|\w)};
+  my $attrre = qr{(?:\$?${charre}+)};
+  my $setre  = qr{(?:${charre}|\|)+};			##-- value: |-separated barewords
+  my $regre  = qr{(?:/(?:\\/|[^/]*)/(?:[gimsadlux]*))};	##-- value regexes
+  my $valre  = qr{(?:${setre}|${regre})};
+  my $reqre  = qr{(?:(?:${attrre}[:=])?${valre})};
+  if (!$areqs
+      && !$opts{ddcmode}
+      && $req =~ m/^${sepre}*			##-- initial separators (optional)
+		   (?:${reqre}${sepre}+)*	##-- separated components
+		   (?:${reqre})			##-- final component
+		   ${sepre}*			##-- final separators (optional)
+		   $/x) {
+    $areqs = [grep {defined($_)} ($req =~ m/${sepre}*(${reqre})/g)];
+  }
+
+  ##-- construct DDC query $q
+  my ($q);
+  if ($areqs) {
+    ##-- compat: diacollo<=v0.06-style attribute-wise request in @$areqs; construct DDC query by hand
+    my ($a,$areq,$aq);
+    foreach (@$areqs) {
+      if (UNIVERSAL::isa($_,'ARRAY')) {
+	##-- compat: attribute request: ARRAY
+	($a,$areq) = @$_;
+      } elsif (UNIVERSAL::isa($_,'HASH')) {
+	##-- compat: attribute request: HASH
+	($a,$areq) = %$_;
+      } else {
+	##-- compat: attribute request: STRING (native)
+	($a,$areq) = m{^(${attrre})[:=](${valre})$} ? ($1,$2) : ($_,undef);
+	$a    =~ s/\\(.)/$1/g;
+	$areq =~ s/\\(.)/$1/g if (defined($areq));
+      }
+
+      ##-- compat: parse defaults
+      ($a,$areq) = ('',$a)   if (defined($defaultIndex) && !defined($areq));
+      $a = $defaultIndex//'' if (($a//'') eq '');
+      $a =~ s/^\$//;
+
+      if (UNIVERSAL::isa($areq,'DDC::XS::CQuery')) {
+	##-- compat: value: ddc query object
+	$aq = $areq;
+	$aq->setIndexName($a) if ($aq->can('setIndexName') && $a ne '');
+      }
+      elsif (UNIVERSAL::isa($areq,'ARRAY')) {
+	##-- compat: value: array --> CQTokSet @{VAL1,...,VALN}
+	$aq = DDC::XS::CQTokSet->new($a, '', $areq);
+      }
+      elsif (UNIVERSAL::isa($areq,'RegExp') || (!$opts{ddcmode} && $areq && $areq =~ m{^${regre}$})) {
+	##-- compat: value: regex --> CQTokRegex /REGEX/
+	my $re = regex($areq)."";
+	$re    =~ s{^\(\?\^\:(.*)\)$}{$1};
+	$aq = DDC::XS::CQTokRegex->new($a, $re);
+      }
+      elsif ($opts{ddcmode} && ($areq//'') ne '') {
+	##-- compat: ddcmode: parse requests as ddc queries
+	$aq = $coldb->qparse($areq)
+	  or $coldb->logconfess($coldb->{error}="parseQuery(): failed to parse request \`$areq': $coldb->{error}");
+      }
+      else {
+	##-- compat: value: space- or |-separated literals --> CQTokExact $a=@VAL or CQTokSet $a=@{VAL1,...VALN} or CQTokAny $a=*
+	##   + also applies to empty $areq, e.g. in groupby clauses
+	my $vals = [grep {($_//'') ne ''} map {s{\\(.)}{$1}g; $_} split(/(?:(?<!\\)[\,\s\|])+/,($areq//''))];
+	$aq = (@$vals<=1
+	       ? (($vals->[0]//'*') eq '*'
+		  ? DDC::XS::CQTokAny->new($a,'*')
+		  : DDC::XS::CQTokExact->new($a,$vals->[0]))
+	       : DDC::XS::CQTokSet->new($a,($areq//''),$vals));
+      }
+      ##-- push request to query
+      $q = $q ? DDC::XS::CQWith->new($q,$aq) : $aq;
+    }
+  }
+  else {
+    ##-- ddc: diacollo>=v0.06: ddc request parsing: allow shorthands (',' --> 'WITH'), ('INDEX=VAL' --> '$INDEX=VAL'), and ($INDEX --> $INDEX=@{})
+    my $compiler = $coldb->qcompiler();
+    my ($err);
+    while (!defined($q)) {
+      #$coldb->trace("req=$req\n");
+      undef $@;
+      eval { $q=$compiler->ParseQuery($req); };
+      last if (!($err=$@) && defined($q));
+      if ($err =~ /syntax error/) {
+	if ($err =~ /unexpected ','/) {
+	  ##-- (X Y) --> (X WITH Y)
+	  $req =~ s/(?!<\\)\s*,\s*/ WITH /;
+	  next;
+	}
+	elsif ($err =~ /expecting '='/) {
+	  ##-- ($INDEX) --> ($INDEX=*) (for group-by)
+	  $req =~ s/(\$\w+)(?!\s*\=)/$1=*/;
+	  next;
+	}
+	elsif ($err =~ /unexpected SYMBOL, expecting INTEGER at line \d+, near token \`([^\']*)\'/) {
+	  ##-- (INDEX=) --> ($INDEX=)
+	  my $tok = $1;
+	  $req =~ s/(?!<\$)(\S+)\s*=\s*\Q$tok\E/\$$1=$tok/;
+	  next;
+	}
+      }
+      $coldb->logconfess("parseQuery(): could not parse request '$req0': ", ($err//''));
+    }
+  }
+
+  ##-- tweak query: map CQAnd to CQWith
+  $q = $q->mapTraverse(sub {
+			 return UNIVERSAL::isa($_[0],'DDC::XS::CQAnd') ? DDC::XS::CQWith->new($_[0]->getDtr1,$_[0]->getDtr2) : $_[0];
+		       })
+    if ($opts{mapand} || (!defined($opts{mapand}) && $req0 !~ /\&\&/));
+
+  return $q;
+}
+
+##~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+## \@aqs = $coldb->queryAttributes($cquery,%opts)
+##  + utility for decomposing DDC queries into attribute-wise requests
 ##   + returns an ARRAY-ref [[$attr1,$val1], ...]
-##   + each value $vali is empty or undef (all values), a |-separated LIST, or a /REGEX/
-##   + backslash-escapes in $attr, $val are allowed (but may have to be doubled)
+##   + each value $vali is empty or undef (all values), a CQTokSet, a CQTokExact, CQTokRegex, or CQTokAny
+##   + chokes on unsupported query types or filters
 ##   + %opts:
 ##     warn  => $level,       ##-- log-level for unknown attributes (default: 'warn')
 ##     logas => $reqtype,     ##-- request type for warnings
 ##     default => $attr,      ##-- default attribute (for query requests)
-sub parseRequest {
-  my ($coldb,$req,%opts) = @_;
+##     allowUnknown => $bool, ##-- allow unknown attributes? (default: 0)
+sub queryAttributes {
+  my ($coldb,$cquery,%opts) = @_;
   my $wlevel = $opts{warn} // 'warn';
   my $default = $opts{default};
+  my $logas  = $opts{logas}//'';
 
-  ##-- parse into attribute-local requests
-  my $areqs = (UNIVERSAL::isa($req,'ARRAY') ? [@$req]
-	       : (UNIVERSAL::isa($req,'HASH') ? [%$req]
-		  : [grep {defined($_)} ($req =~ m{[\s\,]*((?:[^\s\,]|\\.)+)?}g)]));
+  my $warnsub = sub {
+    $coldb->logconfess($coldb->{error}="queryAttributes(): can't handle ".join('',@_)) if (!$opts{relax});
+    $coldb->vlog($wlevel, "queryAttributes(): ignoring ", @_);
+  };
 
-  ##-- parse each attribute-local request into [ATTR,VAL] pairs
-  my ($a,$areq);
-  foreach (@$areqs) {
-    if (UNIVERSAL::isa($_,'ARRAY')) {
-      next;
-    } elsif (UNIVERSAL::isa($_,'HASH')) {
-      $_ = [%$_];
+  my $areqs = [];
+  my ($q,$a,$aq);
+  foreach $q (@{$cquery->Descendants}) {
+    if (!defined($q)) {
+      ##-- NULL: ignore
       next;
     }
-    ($a,$areq) = m{^((?:[^\s\,\:\=]|\\.)*)(?:[\:\=]((?:[^\s\,]|\\.)*))?$} ? ($1,$2) : ($_,undef);
-    $a    =~ s/\\(.)/$1/g;
-    $areq =~ s/\\(.)/$1/g if (defined($areq));
-    ($a,$areq) = ($default,$a) if ($default && !defined($areq));
-    $a    = $default if ($a eq '');
-    $_ = [$a,$areq];
+    elsif ($q->isa('DDC::XS::CQWith')) {
+      ##-- CQWith: ignore (just recurse)
+      next;
+    }
+    elsif ($q->isa('DDC::XS::CQueryOptions')) {
+      ##-- CQueryOptions: check for nontrivial user requests
+      $warnsub->("#WITHIN clause") if (@{$q->getWithin});
+      $warnsub->("#CNTXT clause") if ($q->getContextSentencesCount);
+    }
+    elsif ($q->isa('DDC::XS::CQToken')) {
+      ##-- CQToken: create attribute clause
+      $warnsub->("negated query clause in native $logas request (".$q->toString.")") if ($q->getNegated);
+      $warnsub->("explicit term-expansion chain in native $logas request (".$q->toString.")") if ($q->can('getExpanders') && @{$q->getExpanders});
+
+      my $a = $q->getIndexName || $default;
+      if (ref($q) =~ /^DDC::XS::CQTok(?:Exact|Set|Regex|Any)$/) {
+	$aq = $q;
+      } elsif (ref($q) eq 'DDC::XS::CQTokInfl') {
+	$aq = DDC::XS::CQTokExact->new($q->getIndexName, $q->getValue);
+      } elsif (ref($q) eq 'DDC::XS::CQTokSetInfl') {
+	$aq = DDC::XS::CQTokSet->new($q->getIndexName, $q->getValue, $q->getValues);
+      } elsif (ref($q) eq 'DDC::XS::CQTokPrefix') {
+	$aq = DDC::XS::CQTokRegex->new($q->getIndexName, '^'.quotemeta($q->getValue));
+      } elsif (ref($q) eq 'DDC::XS::CQTokSuffix') {
+	$aq = DDC::XS::CQTokRegex->new($q->getIndexName, quotemeta($q->getValue).'$');
+      } elsif (ref($q) eq 'DDC::XS::CQTokInfix') {
+	$aq = DDC::XS::CQTokRegex->new($q->getIndexName, quotemeta($q->getValue));
+      } else {
+	$warnsub->("token query clause of type ".ref($q)." in native $logas request (".$q->toString.")");
+      }
+      $aq=undef if ($aq && $aq->isa('DDC::XS::CQTokAny')); ##-- empty value, e.g. for groupby
+      push(@$areqs, [$a,$aq]);
+    }
+    elsif ($q->isa('DDC::XS::CQFilter')) {
+      ##-- CQFilter
+      if ($q->isa('DDC::XS::CQFRandomSort') || $q->isa('DDC::XS::CQFRankSort')) {
+	next;
+      } elsif ($q->isa('DDC::XS::CQFSort') && ($q->getArg1 ne '' || $q->getArg2 ne '')) {
+	$warnsub->("filter of type ".ref($q)." with nontrivial bounds in native $logas request (".$q->toString.")");
+      }
+    }
+    else {
+      ##-- something else
+      $warnsub->("query clause of type ".ref($q)." in native $logas request (".$q->toString.")");
+    }
   }
 
-  ##-- check for unsupported attributes
+  ##-- check for unsupported attributes & normalize attribute names
   @$areqs = grep {
-    $_->[0] = $coldb->attrName($_->[0]);
-    if (!$coldb->hasAttr($_->[0])) {
-      $coldb->logconfess($coldb->{error}="parseRequest(): unsupported attribute '$_->[0]' in ".($opts{logas}//'')." request") if (!$opts{relax});
-      $coldb->vlog($wlevel, "parseRequest(): skipping unsupported attribute '$_->[0]' in ".($opts{logas}//'')." request");
+    $a = $coldb->attrName($_->[0]);
+    if (!$opts{allowUnknown} && !$coldb->hasAttr($a)) {
+      $warnsub->("unsupported attribute '".($_->[0]//'(undef)')."' in native $logas request");
       0
     } else {
+      $_->[0] = $a;
       1
     }
   } @$areqs;
@@ -1235,13 +1537,24 @@ sub parseRequest {
   return $areqs;
 }
 
+##~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+## \@aqs = $coldb->parseRequest($request, %opts)
+##  + guts for parsing user target and groupby requests into attribute-wise ARRAY-ref [[$attr1,$val1], ...]
+##  + see parseQuery() method for supported $request formats and %opts
+##  + wraps $coldb->queryAttributes($coldb->parseQuery($request,%opts))
+sub parseRequest {
+  my ($coldb,$req,%opts) = @_;
+  return $coldb->queryAttributes($coldb->parseQuery($req,%opts),%opts);
+}
+
+##~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 ## \%groupby = $coldb->groupby($groupby_request, %opts)
 ## \%groupby = $coldb->groupby(\%groupby,        %opts)
 ##  + $grouby_request : see parseRequest()
 ##  + returns a HASH-ref:
 ##    (
 ##     req => $request,    ##-- save request
-##     x2g => \&x2g,       ##-- group-id extraction code suitable for e.g. DiaColloDB::Cofreqs::profile(groupby=>\&x2g)
+##     x2g => \&x2g,       ##-- group-id extraction code suitable for e.g. DiaColloDB::Relation::Cofreqs::profile(groupby=>\&x2g)
 ##     g2s => \&g2s,       ##-- stringification object suitable for DiaColloDB::Profile::stringify() [CODE,enum, or undef]
 ##     areqs => \@areqs,   ##-- parsed attribute requests ([$attr,$ahaving],...)
 ##     attrs => \@attrs,   ##-- like $coldb->attrs($groupby_request), modulo "having" parts
@@ -1273,7 +1586,7 @@ sub groupby {
   my ($ids);
   my @gbids  = (
 		map {
-		  (($_->[1]//'*') ne '*'
+		  ($_->[1] && !UNIVERSAL::isa($_->[1],'DDC::XS::CQTokAny')
 		   ? {
 		      map {($_=>undef)}
 		      @{$coldb->enumIds($coldb->{"$_->[0]enum"}, $_->[1], logLevel=>$coldb->{logProfile}, logPrefix=>"groupby(): fetch filter ids: $_->[0]")}
@@ -1316,6 +1629,93 @@ sub groupby {
   return $gb;
 }
 
+##~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+## $cqfilter = $coldb->query2filter($attr,$cquery,%opts)
+##  + converts a CQToken to a CQFilter, for ddc parsing
+##  + %opts:
+##     logas => $logas,   ##-- log-prefix for warnings
+sub query2filter {
+  my ($coldb,$a,$q,%opts) = @_;
+  return undef if (!defined($q));
+  my $logas = $opts{logas} || 'query2filter';
+
+  ##-- document attribute ("doc.ATTR" convention)
+  my $field = $coldb->attrName( $a // $q->getIndexName );
+  $field = $1 if ($field =~ /^doc\.(.*)$/);
+  if (UNIVERSAL::isa($q, 'DDC::XS::CQTokAny')) {
+    return undef;
+  } elsif (UNIVERSAL::isa($q, 'DDC::XS::CQTokExact') || UNIVERSAL::isa($q, 'DDC::XS::CQTokInfl')) {
+    return DDC::XS::CQFHasField->new($field, $q->getValue, $q->getNegated);
+  } elsif (UNIVERSAL::isa($q, 'DDC::XS::CQTokSet') || UNIVERSAL::isa($q, 'DDC::XS::CQTokSetInfl')) {
+    return DDC::XS::CQFHasFieldSet->new($field, $q->getValues, $q->getNegated);
+  } elsif (UNIVERSAL::isa($q, 'DDC::XS::CQTokRegex')) {
+    return DDC::XS::CQFHasFieldRegex->new($field, $q->getValue, $q->getNegated);
+  } elsif (UNIVERSAL::isa($q, 'DDC::XS::CQTokPrefix')) {
+    return DDC::XS::CQFHasFieldPrefix->new($field, $q->getValue, $q->getNegated);
+  } elsif (UNIVERSAL::isa($q, 'DDC::XS::CQTokSuffix')) {
+    return DDC::XS::CQFHasFieldSuffix->new($field, $q->getValue, $q->getNegated);
+  } elsif (UNIVERSAL::isa($q, 'DDC::XS::CQTokInfix')) {
+    return DDC::XS::CQFHasFieldInfix->new($field, $q->getValue, $q->getNegated);
+  } else {
+    $coldb->logconfess("can't handle metadata restriction of type ", ref($q), " in $logas request: \`", $q->toString, "'");
+  }
+}
+
+##~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+## ($CQCountKeyExprs,\$CQRestrict,\@CQFilters) = $coldb->parseGroupBy($groupby_string_or_request,%opts)
+##  + for ddc-mode parsing
+##  + %opts:
+##     date => $date,
+##     slice => $slice,
+##     matchid => $matchid,    ##-- default match-id
+sub parseGroupBy {
+  my ($coldb,$req,%opts) = @_;
+  $req //= $coldb->attrs;
+
+  ##-- groupby clause: date
+  my $gbdate = ($opts{slice}<=0
+		? DDC::XS::CQCountKeyExprConstant->new($opts{slice}||'0')
+		: DDC::XS::CQCountKeyExprDateSlice->new('date',$opts{slice}));
+
+  ##-- groupby clause: user request
+  my $gbexprs   = [$gbdate];
+  my $gbfilters = [];
+  my ($gbrestr);
+  if (!ref($req) && $req =~ m{^\s*(?:\#by)?\[([^\]]*)\]}) {
+    ##-- ddc-style request; no restriction-clauses are allowed
+    my $cbstr = $1;
+    my $gbq = $coldb->qparse("count(*) #by[$cbstr]")
+      or $coldb->logconfess($coldb->{error}="failed to parse DDC groupby request \`$req': $coldb->{error}");
+    push(@$gbexprs, @{$gbq->getKeys->getExprs});
+    $_->setMatchId($opts{matchid}//0)
+      foreach (grep {UNIVERSAL::isa($_,'DDC::XS::CQCountKeyExprToken') && !$_->HasMatchId} @$gbexprs);
+  }
+  else {
+    ##-- native-style request with optional restrictions
+    my $gbreq  = $coldb->parseRequest($req, logas=>'groupby', default=>undef, relax=>1, allowUnknown=>1);
+    my ($filter);
+    foreach (@$gbreq) {
+      push(@$gbexprs, $coldb->attrCountBy($_->[0], 2));
+      if ($_->[0] =~ /^doc\./) {
+	##-- document attribute ("doc.ATTR" convention)
+	push(@$gbfilters, $filter) if (defined($filter=$coldb->query2filter($_->[0], $_->[1])));
+      }
+      else {
+	##-- token attribute
+	if (defined($_->[1]) && !UNIVERSAL::isa($_->[1], 'DDC::XS::CQTokAny')) {
+	  $gbrestr = (defined($gbrestr) ? DDC::XS::CQWith->new($gbrestr,$_->[1]) : $_->[1]);
+	}
+      }
+    }
+  }
+
+  ##-- finalize: expression list
+  my $xlist = DDC::XS::CQCountKeyExprList->new;
+  $xlist->setExprs($gbexprs);
+
+  return ($xlist,$gbrestr,$gbfilters);
+}
+
 ##--------------------------------------------------------------
 ## Profiling: Generic
 
@@ -1336,35 +1736,28 @@ sub groupby {
 ##     score   => $func,          ##-- scoring function ("f"|"fm"|"mi"|"ld") : default="f"
 ##     kbest   => $k,             ##-- return only $k best collocates per date (slice) : default=-1:all
 ##     cutoff  => $cutoff,        ##-- minimum score
+##     local   => $bool,          ##-- trim profiles locally for each date-slice? (default=1)
 ##     ##
 ##     ##-- profiling and debugging parameters
 ##     strings => $bool,          ##-- do/don't stringify (default=do)
 ##     fill    => $bool,          ##-- if true, returned multi-profile will have null profiles inserted for missing slices
+##    )
+##  + sets default %opts and wraps $coldb->relation($rel)->profile($coldb, %opts)
 sub profile {
   my ($coldb,$rel,%opts) = @_;
 
-  ##-- common variables
-  my ($logProfile,$xenum) = @$coldb{qw(logProfile xenum)};
-  my $query   = (grep {defined($_)} @opts{qw(query q lemma lem l)})[0] // '';
-  my $date    = $opts{date}  // '';
-  my $slice   = $opts{slice} // 1;
-  my $groupby = $opts{groupby} || [@{$coldb->attrs}];
-  my $score   = $opts{score} // 'f';
-  my $eps     = $opts{eps} // 0;
-  my $kbest   = $opts{kbest} // -1;
-  my $cutoff  = $opts{cutoff} // '';
-  my $strings = $opts{strings} // 1;
-  my $fill    = $opts{fill} // 0;
-
-  ##-- variables: by attribute: set $ac->{req} = $USER_REQUEST
-  $groupby   = $coldb->groupby($groupby);
-  my $attrs  = $coldb->attrs();
-  my $adata  = $coldb->attrData($attrs);
-  my $a2data = {map {($_->{a}=>$_)} @$adata};
-  my $areqs  = $coldb->parseRequest($query, logas=>'query', default=>$attrs->[0]);
-  foreach (@$areqs) {
-    $a2data->{$_->[0]}{req} = $_->[1];
-  }
+  ##-- defaults
+  $opts{query}     = (grep {defined($_)} @opts{qw(query q lemma lem l)})[0] // '';
+  $opts{date}    //= '';
+  $opts{slice}   //= 1;
+  $opts{groupby} ||= join(',', map {quotemeta($_)} @{$coldb->attrs});
+  $opts{score}   //= 'f';
+  $opts{eps}     //= 0;
+  $opts{kbest}   //= -1;
+  $opts{cutoff}  //= '';
+  $opts{local}   //= 1;
+  $opts{strings} //= 1;
+  $opts{fill}    //= 0;
 
   ##-- debug
   $coldb->vlog($coldb->{logRequest},
@@ -1372,74 +1765,21 @@ sub profile {
 	       .join(', ',
 		     map {"$_->[0]='".($_->[1]//'')."'"}
 		     ([rel=>$rel],
-		      [query=>$query],
-		      [groupby=>$groupby->{req}],
-		      (map {[$_=>$opts{$_}]} qw(date slice score eps kbest cutoff)),
+		      [query=>$opts{query}],
+		      [groupby=>UNIVERSAL::isa($opts{groupby},'ARRAY') ? join(',', @{$opts{groupby}}) : $opts{groupby}],
+		      (map {[$_=>$opts{$_}]} qw(date slice score eps kbest cutoff local)),
 		     ))
 	       .")");
 
-  ##-- sanity check(s)
+  ##-- relation
   my ($reldb);
   if (!defined($reldb=$coldb->relation($rel||'cof'))) {
     $coldb->logwarn($coldb->{error}="profile(): unknown relation '".($rel//'-undef-')."'");
     return undef;
   }
-  if (!@$areqs) {
-    $coldb->logwarn($coldb->{error}="profile(): no target attributes specified (supported attributes: ".join(' ',@{$coldb->attrs}).")");
-    return undef;
-  }
-  if (!@{$groupby->{attrs}}) {
-    $coldb->logconfess($coldb->{error}="profile(): cannot profile with empty groupby clause");
-    return undef;
-  }
 
-  ##-- prepare: get target IDs (by attribute)
-  my ($ac);
-  foreach $ac (grep {($_->{req}//'') ne ''} @$adata) {
-    $ac->{reqids} = $coldb->enumIds($ac->{enum},$ac->{req},logLevel=>$logProfile,logPrefix=>"profile(): get target $ac->{a}-values");
-    if (!@{$ac->{reqids}}) {
-      $coldb->logwarn($coldb->{error}="profile(): no $ac->{a}-attribute values match user query '$ac->{req}'");
-      return undef;
-    }
-  }
-
-  ##-- prepare: get tuple-ids (by attribute)
-  $coldb->vlog($logProfile, "profile(): get target tuple IDs");
-  my $xiset = undef;
-  foreach $ac (grep {$_->{reqids}} @$adata) {
-    my $axiset = {};
-    @$axiset{map {@{$ac->{a2x}->fetch($_)}} @{$ac->{reqids}}} = qw();
-    if (!$xiset) {
-      $xiset = $axiset;
-    } else {
-      delete @$xiset{grep {!exists $axiset->{$_}} keys %$xiset};
-    }
-  }
-  my $xis = [sort {$a<=>$b} keys %$xiset];
-  if ($coldb->{maxExpand}>0 && @$xis > $coldb->{maxExpand}) {
-    $coldb->logwarn("profile(): Warning: target set exceeds max expansion size (",scalar(@$xis)." > $coldb->{maxExpand}): truncating");
-    $#$xis = $coldb->{maxExpand}-1;
-  }
-
-  ##-- prepare: parse and filter tuples
-  $coldb->vlog($logProfile, "profile(): parse and filter target tuples (date=$date, slice=$slice, fill=$fill)");
-  my $d2xis = $coldb->xidsByDate($xis, $date, $slice, $fill);
-
-  ##-- profile: get relation profiles (by date-slice)
-  $coldb->vlog($logProfile, "profile(): get frequency profile(s)");
-  my @dprfs  = qw();
-  my ($d,$prf);
-  foreach $d (sort {$a<=>$b} keys %$d2xis) {
-    $prf = $reldb->profile($d2xis->{$d}, groupby=>$groupby->{x2g});
-    $prf->compile($score, eps=>$eps);
-    $prf->trim(kbest=>$kbest, cutoff=>$cutoff);
-    $prf = $prf->stringify($groupby->{g2s}) if ($strings);
-    $prf->{label}  = $d;
-    $prf->{titles} = $groupby->{titles};
-    push(@dprfs, $prf);
-  }
-
-  return DiaColloDB::Profile::Multi->new(profiles=>\@dprfs, titles=>$groupby->{titles});
+  ##-- delegate
+  return $reldb->profile($coldb,%opts);
 }
 
 ##--------------------------------------------------------------
@@ -1465,14 +1805,14 @@ sub profile {
 ##     ##
 ##     ##-- profiling and debugging parameters
 ##     strings => $bool,          ##-- do/don't stringify (default=do)
+##    )
+##  + sets default %opts and wraps $coldb->relation($rel)->compare($coldb, %opts)
 BEGIN { *diff = \&compare; }
 sub compare {
   my ($coldb,$rel,%opts) = @_;
   $rel //= 'cof';
 
-  ##-- common variables
-  my $logProfile = $coldb->{logProfile};
-  my $groupby    = $coldb->groupby($opts{groupby} || [@{$coldb->attrs}]);
+  ##-- defaults and '[ab]OPTION' parsing
   foreach my $ab (qw(a b)) {
     $opts{"${ab}query"} = ((grep {defined($_)} @opts{map {"${ab}$_"} qw(query q lemma lem l)}),
 			   (grep {defined($_)} @opts{qw(query q lemma lem l)})
@@ -1487,9 +1827,15 @@ sub compare {
 		   )[0]//'';
   }
   delete @opts{keys %ATTR_ALIAS};
-  my %aopts = map {($_=>$opts{"a$_"})} (qw(query date slice));
-  my %bopts = map {($_=>$opts{"b$_"})} (qw(query date slice));
-  my %popts = (kbest=>-1,cutoff=>'',strings=>0,fill=>1, groupby=>$groupby);
+
+  ##-- common defaults
+  $opts{groupby} ||= join(',', map {quotemeta($_)} @{$coldb->attrs});
+  $opts{score}   //= 'f';
+  $opts{eps}     //= 0;
+  $opts{kbest}   //= -1;
+  $opts{cutoff}  //= '';
+  $opts{local}   //= 1;
+  $opts{strings} //= 1;
 
   ##-- debug
   $coldb->vlog($coldb->{logRequest},
@@ -1499,34 +1845,20 @@ sub compare {
 		     ([rel=>$rel],
 		      (map {["a$_"=>$opts{"a$_"}]} (qw(query date slice))),
 		      (map {["b$_"=>$opts{"b$_"}]} (qw(query date slice))),
-		      [groupby=>$groupby->{req}],
-		      (map {[$_=>$opts{$_}]} qw(score eps kbest cutoff)),
+		      [groupby=>(UNIVERSAL::isa($opts{groupby},'ARRAY') ? join(',',@{$opts{groupby}}) : $opts{groupby})],
+		      (map {[$_=>$opts{$_}]} qw(score eps kbest cutoff local)),
 		     ))
 	       .")");
 
-  ##-- get profiles to compare
-  my $mpa = $coldb->profile($rel,%opts, %aopts,%popts) or return undef;
-  my $mpb = $coldb->profile($rel,%opts, %bopts,%popts) or return undef;
-
-  ##-- alignment and trimming
-  $coldb->vlog($logProfile, "compare(): align and trim");
-  my $ppairs = DiaColloDB::Profile::MultiDiff->align($mpa,$mpb);
-  my %trim   = (kbest=>($opts{kbest}//-1), cutoff=>($opts{cutoff}//''));
-  my ($pa,$pb,%pkeys);
-  foreach (@$ppairs) {
-    ($pa,$pb) = @$_;
-    %pkeys = map {($_=>undef)} (($pa ? @{$pa->which(%trim)} : qw()), ($pb ? @{$pb->which(%trim)} : qw()));
-    $pa->trim(keep=>\%pkeys);
-    $pb->trim(keep=>\%pkeys);
+  ##-- relation
+  my ($reldb);
+  if (!defined($reldb=$coldb->relation($rel||'cof'))) {
+    $coldb->logwarn($coldb->{error}="profile(): unknown relation '".($rel//'-undef-')."'");
+    return undef;
   }
 
-  ##-- diff and stringification
-  $coldb->vlog($logProfile, "compare(): diff and stringification");
-  my $diff = DiaColloDB::Profile::MultiDiff->new($mpa,$mpb,titles=>$groupby->{titles});
-  $diff->trim(kbesta=>$opts{kbest});
-  $diff->stringify($groupby->{g2s}) if ($opts{strings}//1);
-
-  return $diff;
+  ##-- delegate
+  return $reldb->compare($coldb,%opts);
 }
 
 ##==============================================================================

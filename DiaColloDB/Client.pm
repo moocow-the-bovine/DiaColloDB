@@ -162,7 +162,7 @@ sub dbinfo {
 ##  + calls $coldb->profile() or $coldb->compare() as appropriate
 sub query {
   my ($cli,$rel) = (shift,shift);
-  if ($rel =~ s{^(?:d(?:iff)?|co?mp(?:are)?)[\-\/\.\:]?}{}) {
+  if ($rel =~ s{^(?:d(?!dc)(?:iff)?|co?mp(?:are)?)[\-\/\.\:]?}{}) {
     return $cli->compare($rel,@_);
   }
   return $cli->profile($rel,@_);
