@@ -184,7 +184,7 @@ sub sumover {
 ##  + %opts: as for DiaColloDB::Profile::trim(), also:
 ##    (
 ##     empty => $bool,   ##-- remove empty sub-profiles? (default=true)
-##     local => $bool,   ##-- trim sub-profiles locally? (default=true)
+##     global => $bool,  ##-- trim sub-profiles globally (default=false)
 ##    )
 ##  + calls $prf->trim(%opts) for each sub-profile $prf
 sub trim {
@@ -193,12 +193,12 @@ sub trim {
   ##-- defaults
   $opts{kbest}  //= -1;
   $opts{cutoff} //= '';
-  $opts{local}  //= 1;
+  $opts{global} //= 0;
 
   ##-- trim empty sub-profiles
   @{$mp->{profiles}} = grep {!$_->empty} @{$mp->{profiles}} if (!exists($opts{empty}) || $opts{empty});
 
-  if ($opts{local}) {
+  if (!$opts{global}) {
     ##-- slice-local trimming (default)
     $_->trim(%opts) or return undef foreach (grep {defined($_)} @{$mp->{profiles}});
   } else {

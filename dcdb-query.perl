@@ -46,7 +46,7 @@ our %query = (
 	      score =>'ld',	##-- score func
 	      kbest =>10,	##-- k-best items per date
 	      cutoff =>undef,	##-- minimum score cutoff
-	      local =>1,        ##-- trim slice-locally?
+	      global =>0,       ##-- trim globally (vs. slice-locally)?
 	      strings => 1,	##-- debug: want strings?
 	     );
 our %save = (format=>undef);
@@ -88,8 +88,8 @@ GetOptions(##-- general
 	   'no-k-best|nokbest|nok' => sub {$query{kbest}=undef},
 	   'cutoff|C=f' => \$query{cutoff},
 	   'no-cutoff|nocutoff|noc' => sub {$query{cutoff}=undef},
-	   'local|L!' => \$query{local},
-	   'global|G!' => sub { $query{local}=!$_[1]; },
+	   'global|G!' => \$query{global},
+	   'local|L!' => sub { $query{global}=!$_[1]; },
 	   'strings|S!' => \$query{strings},
 
 	   ##-- I/O
@@ -225,7 +225,7 @@ dcdb-query.perl - query a DiaColloDB
    -nokbest              # disable k-best pruning
    -cutoff CUTOFF        # set minimum score for returned items (default=none)
    -nocutoff             # disable cutoff pruning
-   -[no]local            # do/don't profiles locally by date-slice (default=do)
+   -[no]global           # do/don't trim profiles globally (vs. locally by date-slice; default=don't)
    -[no]strings          # debug: do/don't stringify returned profile (default=do)
 
  I/O Options:

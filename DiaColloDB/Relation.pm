@@ -73,7 +73,7 @@ sub union {
 ##     score   => $func,          ##-- scoring function ("f"|"fm"|"mi"|"ld") : default="f"
 ##     kbest   => $k,             ##-- return only $k best collocates per date (slice) : default=-1:all
 ##     cutoff  => $cutoff,        ##-- minimum score
-##     local   => $bool,          ##-- trim profiles locally for each date-slice? (default=1)
+##     global  => $bool,          ##-- trim profiles globally (vs. locally for each date-slice?) (default=0)
 ##     ##
 ##     ##-- profiling and debugging parameters
 ##     strings => $bool,          ##-- do/don't stringify (default=do)
@@ -167,8 +167,8 @@ sub profile {
   return DiaColloDB::Profile::Multi->new(profiles=>\@dprfs,
 					 titles=>$groupby->{titles},
 					 qinfo =>$reldb->qinfo($coldb, %opts, qreqs=>$areqs, gbreq=>$groupby),
-					);
-}
+					);}
+
 
 ##--------------------------------------------------------------
 ## Relation API: comparison (diff)
@@ -190,7 +190,7 @@ sub profile {
 ##     score   => $func,          ##-- scoring function ("f"|"fm"|"mi"|"ld") : default="f"
 ##     kbest   => $k,             ##-- return only $k best collocates per date (slice) : default=-1:all
 ##     cutoff  => $cutoff,        ##-- minimum score
-##     local   => $bool,          ##-- trim profiles locally for each date-slice? (default=1)
+##     global  => $bool,          ##-- trim profiles globally (vs. locally for each date-slice?) (default=0)
 ##     ##
 ##     ##-- profiling and debugging parameters
 ##     strings => $bool,          ##-- do/don't stringify (default=do)
@@ -210,18 +210,18 @@ sub compare {
   $groupby       = $coldb->groupby($groupby) if ($opts{_gbparse}//1);
   my %aopts      = map {exists($opts{"a$_"}) ? ($_=>$opts{"a$_"}) : qw()} (qw(query date slice), @{$opts{_abkeys}//[]});
   my %bopts      = map {exists($opts{"b$_"}) ? ($_=>$opts{"b$_"}) : qw()} (qw(query date slice), @{$opts{_abkeys}//[]});
-  my %popts      = (kbest=>-1,cutoff=>'',local=>1,strings=>0,fill=>1, groupby=>$groupby);
+  my %popts      = (kbest=>-1,cutoff=>'',global=>0,strings=>0,fill=>1, groupby=>$groupby);
 
   ##-- get profiles to compare
   my $mpa = $reldb->profile($coldb,%opts, %aopts,%popts) or return undef;
   my $mpb = $reldb->profile($coldb,%opts, %bopts,%popts) or return undef;
 
   ##-- alignment and trimming
-  $reldb->vlog($logProfile, "compare(): align and trim (".($opts{local} ? 'local' : 'global').")");
+  $reldb->vlog($logProfile, "compare(): align and trim (".($opts{global} ? 'global' : 'local').")");
   my $ppairs = DiaColloDB::Profile::MultiDiff->align($mpa,$mpb);
   DiaColloDB::Profile::MultiDiff->trimPairs($ppairs, %opts);
   my $diff = DiaColloDB::Profile::MultiDiff->new($mpa,$mpb,titles=>$mpa->{titles});
-  $diff->trim(kbesta=>$opts{kbest}) if ($opts{local});
+  $diff->trim(kbesta=>$opts{kbest}) if (!$opts{global});
 
   ##-- finalize: stringify
   $reldb->vlog($logProfile, "compare(): stringify");

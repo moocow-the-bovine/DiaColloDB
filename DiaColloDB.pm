@@ -33,7 +33,7 @@ use strict;
 ##==============================================================================
 ## Globals & Constants
 
-our $VERSION = "0.07.002";
+our $VERSION = "0.07.003";
 our @ISA = qw(DiaColloDB::Client);
 
 ## $PGOOD_DEFAULT
@@ -1736,7 +1736,7 @@ sub parseGroupBy {
 ##     score   => $func,          ##-- scoring function ("f"|"fm"|"mi"|"ld") : default="f"
 ##     kbest   => $k,             ##-- return only $k best collocates per date (slice) : default=-1:all
 ##     cutoff  => $cutoff,        ##-- minimum score
-##     local   => $bool,          ##-- trim profiles locally for each date-slice? (default=1)
+##     global  => $bool,          ##-- trim profiles globally (vs. locally for each date-slice?) (default=0)
 ##     ##
 ##     ##-- profiling and debugging parameters
 ##     strings => $bool,          ##-- do/don't stringify (default=do)
@@ -1755,7 +1755,7 @@ sub profile {
   $opts{eps}     //= 0;
   $opts{kbest}   //= -1;
   $opts{cutoff}  //= '';
-  $opts{local}   //= 1;
+  $opts{global}  //= 0;
   $opts{strings} //= 1;
   $opts{fill}    //= 0;
 
@@ -1763,11 +1763,11 @@ sub profile {
   $coldb->vlog($coldb->{logRequest},
 	       "profile("
 	       .join(', ',
-		     map {"$_->[0]='".($_->[1]//'')."'"}
+		     map {"$_->[0]='".quotemeta($_->[1]//'')}
 		     ([rel=>$rel],
 		      [query=>$opts{query}],
 		      [groupby=>UNIVERSAL::isa($opts{groupby},'ARRAY') ? join(',', @{$opts{groupby}}) : $opts{groupby}],
-		      (map {[$_=>$opts{$_}]} qw(date slice score eps kbest cutoff local)),
+		      (map {[$_=>$opts{$_}]} qw(date slice score eps kbest cutoff global)),
 		     ))
 	       .")");
 
@@ -1801,7 +1801,8 @@ sub profile {
 ##     eps     => $eps,           ##-- smoothing constant (default=0)
 ##     score   => $func,          ##-- scoring function ("f"|"fm"|"mi"|"ld") : default="f"
 ##     kbest   => $k,             ##-- return only $k best collocates per date (slice) : default=-1:all
-##     cutoff  => $cutoff,        ##-- minimum score
+##     cutoff  => $cutoff,        ##-- minimum score (UNUSED for comparison profiles)
+##     global  => $bool,          ##-- trim profiles globally (vs. locally for each date-slice?) (default=0)
 ##     ##
 ##     ##-- profiling and debugging parameters
 ##     strings => $bool,          ##-- do/don't stringify (default=do)
@@ -1834,19 +1835,19 @@ sub compare {
   $opts{eps}     //= 0;
   $opts{kbest}   //= -1;
   $opts{cutoff}  //= '';
-  $opts{local}   //= 1;
+  $opts{global}  //= 0;
   $opts{strings} //= 1;
 
   ##-- debug
   $coldb->vlog($coldb->{logRequest},
 	       "compare("
 	       .join(', ',
-		     map {"$_->[0]='".($_->[1]//'')."'"}
+		     map {"$_->[0]=".quotemeta($_->[1]//'')}
 		     ([rel=>$rel],
 		      (map {["a$_"=>$opts{"a$_"}]} (qw(query date slice))),
 		      (map {["b$_"=>$opts{"b$_"}]} (qw(query date slice))),
 		      [groupby=>(UNIVERSAL::isa($opts{groupby},'ARRAY') ? join(',',@{$opts{groupby}}) : $opts{groupby})],
-		      (map {[$_=>$opts{$_}]} qw(score eps kbest cutoff local)),
+		      (map {[$_=>$opts{$_}]} qw(score eps kbest cutoff global)),
 		     ))
 	       .")");
 

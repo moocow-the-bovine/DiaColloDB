@@ -192,16 +192,16 @@ sub pclass {
 ##  + INHERITED from DiaColloDB::Profile::Multi
 
 ## $mp_or_undef = $CLASS_OR_OBJECT->trimPairs(\@pairs, %opts)
-##  + %opts: as for DiaColloDB::Profile::Multi::trim(), including 'local' option
+##  + %opts: as for DiaColloDB::Profile::Multi::trim(), including 'global' option
 sub trimPairs {
   my ($that,$ppairs,%opts) = @_;
 
   ##-- defaults
   $opts{kbest}  //= -1;
   $opts{cutoff} //= '';
-  $opts{local}  //= 1;
+  $opts{global} //= 0;
 
-  if ($opts{local}//1) {
+  if (!$opts{global}) {
     ##-- trim locally
     my ($pa,$pb,%keep);
     foreach (@$ppairs) {
