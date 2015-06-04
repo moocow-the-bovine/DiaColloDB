@@ -1260,7 +1260,28 @@ sub test_ddcdiff {
 
   exit 0;
 }
-test_ddcdiff(@ARGV);
+#test_ddcdiff(@ARGV);
+
+##--------------------------------------------------------------
+sub test_pnndiff {
+  my $dbdir = shift || 'pnn.d';
+  my %opts  = map {split(/=/,$_,2)} @_;
+  %opts = (
+	   aquery => "Bürokrat",
+	   bquery => "Funktionär",
+	   aslice => 1,
+	   bslice => 1,
+	   %opts,
+	  );
+
+  my $coldb = DiaColloDB->new(dbdir=>$dbdir) or die("$0: failed to open $dbdir/: $!");
+  $mp = $coldb->compare('cof',%opts) or die("$0: failed to acquire profile: $!");
+  $mp->saveTextFile('-');
+
+  exit 0;
+}
+test_pnndiff(@ARGV);
+
 
 
 

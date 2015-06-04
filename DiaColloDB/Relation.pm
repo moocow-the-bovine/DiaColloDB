@@ -160,7 +160,7 @@ sub profile {
 
   ##-- trim and stringify
   $reldb->vlog($logProfile, "profile(): trim and stringify");
-  $mp->trim(%opts);
+  $mp->trim(%opts, empty=>!$opts{fill});
   $mp->stringify($groupby->{g2s}) if ($opts{strings});
 
   ##-- finalize: multi-profile
