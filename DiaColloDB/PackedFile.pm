@@ -1,7 +1,7 @@
 ## -*- Mode: CPerl -*-
 ## File: DiaColloDB::PackedFile.pm
 ## Author: Bryan Jurish <moocow@cpan.org>
-## Descript: collocation db: flat fixed-length record-oriented files
+## Description: collocation db: flat fixed-length record-oriented files
 
 package DiaColloDB::PackedFile;
 use DiaColloDB::Logger;
@@ -22,7 +22,7 @@ our @ISA = qw(DiaColloDB::Persistent Tie::Array);
 ## Constructors etc.
 
 ## $pf = CLASS_OR_OBJECT->new(%opts)
-## + %opts, %$doc:
+## + %opts, %$pf:
 ##   ##-- user options
 ##   file     => $filename,   ##-- default: undef (none)
 ##   flags    => $flags,      ##-- fcntl flags or open-mode (default='r')

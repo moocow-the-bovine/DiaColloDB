@@ -373,8 +373,8 @@ sub loadHeaderData {
 ##  + wraps loadTextFh()
 ##  + INHERITED from DiaColloDB::Persistent
 
-## $enum = $CLASS_OR_OBJECT->loadTextFh($filename_or_fh)
-## $enum = $CLASS_OR_OBJECT->loadTextFh($filename_or_fh, %opts)
+## $enum = $CLASS_OR_OBJECT->loadTextFh($fh)
+## $enum = $CLASS_OR_OBJECT->loadTextFh($fh, %opts)
 ##  + loads from text file with lines of the form "ID SYMBOL..."
 ##  + clobbers enum contents
 ##  + %opts locally clobber %$enum, especially:
@@ -398,11 +398,11 @@ sub loadTextFh {
   return $enum->fromArray(\@i2s);
 }
 
-## $bool = $obj->saveTextFile($filename_or_handle, %opts)
+## $bool = $obj->saveTextFile($filename_or_fh, %opts)
 ##  + wraps saveTextFh()
 ##  + INHERITED from DiaColloDB::Persistent
 
-## $bool = $enum->saveTextFile($filename_or_fh,%opts)
+## $bool = $enum->saveTextFh($fh,%opts)
 ##  + save from text file with lines of the form "ID SYMBOL..."
 ##  + %opts locally clobber %$enum, especially:
 ##     pack_s => $pack_s
@@ -435,7 +435,7 @@ sub setsize { return $_[0]{size}=$_[1]; }
 
 ## $newsize = $enum->addSymbols(@symbols)
 ## $newsize = $enum->addSymbols(\@symbols)
-##  + adds all symbols in @symbols which don't already exists
+##  + adds all symbols in @symbols which don't already exist
 ##  + enum must be loaded to memory
 sub addSymbols {
   my $enum    = shift;

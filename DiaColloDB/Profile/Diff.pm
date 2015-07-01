@@ -326,7 +326,7 @@ sub stringify {
 ## Binary operations
 
 ## $dprf = $dprf->_add($dprf2,%opts)
-##  + adds $prf2 operatnd frequency data to $prf operands (destructive)
+##  + adds $dprf2 operand frequency data to $dprf operands (destructive)
 ##  + implicitly un-compiles $dprf
 ##  + %opts:
 ##     N  => $bool, ##-- whether to add N values (default:true)

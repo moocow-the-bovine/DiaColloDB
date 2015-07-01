@@ -245,7 +245,7 @@ sub _add {
 }
 
 ## $mp3 = $mp1->add($mp2,%opts)
-##  + returns sum of $mp1 and $mp2 frequency data (destructive)
+##  + returns sum of $mp1 and $mp2 frequency data (constructive)
 ##  + %opts: passed to Profile::_add()
 sub add {
   return $_[0]->clone->_add(@_[1..$#_]);

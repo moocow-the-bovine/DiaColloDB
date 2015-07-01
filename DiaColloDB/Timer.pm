@@ -1,7 +1,7 @@
 ## -*- Mode: CPerl -*-
 ## File: DiaColloDB::Client.pm
 ## Author: Bryan Jurish <moocow@cpan.org>
-## Description: collocation db, client
+## Description: collocation db, timer
 
 package DiaColloDB::Timer;
 use Time::HiRes qw(gettimeofday tv_interval);
@@ -20,7 +20,6 @@ our @ISA = qw();
 ## $timer = CLASS_OR_OBJECT->new(%args)
 ## + %args, object structure:
 ##   (
-##    ##-- DiaColloDB::Client: options
 ##    started => $t0,      ##-- time last operation started
 ##    elapsed => $elapsed, ##-- elapsed time (after stop())
 ##   )

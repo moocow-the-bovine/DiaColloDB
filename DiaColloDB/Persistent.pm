@@ -125,8 +125,8 @@ sub loadHeaderData {
   return $that;
 }
 
-## $obj = $CLASS_OR_OBJECT->loadJsonString( $string,%opts)
-## $obj = $CLASS_OR_OBJECT->loadJsonString(\$string,%opts)
+## $obj = $CLASS_OR_OBJECT->loadHeaderString( $string,%opts)
+## $obj = $CLASS_OR_OBJECT->loadHeaderString(\$string,%opts)
 ##  + loads header data from JSON string $string
 ##  + wraps $CLASS_OR_OBJECT->loadHeaderData()
 sub loadHeaderString {

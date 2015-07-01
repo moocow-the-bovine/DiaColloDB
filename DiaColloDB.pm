@@ -73,8 +73,8 @@ our $XECLASS = 'DiaColloDB::EnumFile::FixedLen::MMap';
 
 ## $MMCLASS
 ##  + multimap class
-our $MMCLASS = 'DiaColloDB::MultiMapFile';
-#our $MMCLASS = 'DiaColloDB::MultiMapFile::MMap';
+#our $MMCLASS = 'DiaColloDB::MultiMapFile';
+our $MMCLASS = 'DiaColloDB::MultiMapFile::MMap';
 
 ##==============================================================================
 ## Constructors etc.
@@ -349,7 +349,7 @@ sub opened {
 }
 
 ## @files = $obj->diskFiles()
-##  + get db size (must be opened)
+##  + returns list of dist files for this db
 sub diskFiles {
   my $coldb = shift;
   return ("$coldb->{dbdir}/header.json", map {$_->diskFiles} grep {UNIVERSAL::can(ref($_),'diskFiles')} values %$coldb);
@@ -1867,7 +1867,3 @@ sub compare {
 1;
 
 __END__
-
-
-
-

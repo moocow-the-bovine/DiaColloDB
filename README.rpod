@@ -1,0 +1,71 @@
+=pod
+
+README for DiaColloDB
+
+=head1 ABSTRACT
+
+DiaColloDB - diachronic collocation database
+
+=head1 REQUIREMENTS
+
+=over 4
+
+=item ddc-perl
+
+Perl module for DDC client connections.
+Available from https://sourceforge.net/projects/ddc-concordance/files/ddc-perl/
+
+=item ddc-perl-xs
+
+XS wrappers for DDC query parsing.
+Available from https://sourceforge.net/projects/ddc-concordance/files/ddc-perl-xs/
+
+=item File::Path
+
+=item File::Map
+
+=item JSON
+
+=item IPC::Run
+
+=item (a corpus to index or an existing index to query)
+
+=back
+
+
+=head1 DESCRIPTION
+
+The DiaColloDB package provides a set of object-oriented Perl modules
+for constructing and querying native diachronic collocation indices
+with optional inclusion of a DDC server back-end for fine-grained queries.
+
+
+=head1 SEE ALSO
+
+=over 4
+
+=item *
+
+http://kaskade.dwds.de/~moocow/dta/diacollo/ contains a live web demo of
+a DiaCollo index on the I<Deutsches Textarchiv> corpus, including a
+user-oriented help page.
+
+=for html See <a href="http://kaskade.dwds.de/~moocow/dta/diacollo/">here</a>.
+
+=back
+
+=head1 INSTALLATION
+
+Issue the following commands to the shell:
+
+ bash$ cd DiaColloDB-0.01 # (or wherever you unpacked this distribution)
+ bash$ perl Makefile.PL   # check requirements, etc.
+ bash$ make               # build the module
+ bash$ make test          # (optional): test module before installing
+ bash$ make install       # install the module on your system
+
+=head1 AUTHOR
+
+Bryan Jurish E<lt>moocow@cpan.orgE<gt>
+
+=cut

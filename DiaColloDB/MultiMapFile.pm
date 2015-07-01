@@ -274,8 +274,8 @@ sub loadHeaderData {
 ##  + wraps loadTextFh()
 ##  + INHERITED from DiaColloDB::Persistent
 
-## $mmf = $CLASS_OR_OBJECT->loadTextFh($filename_or_fh)
-##  + loads from text file with lines of the form "ID SYMBOL..."
+## $mmf = $CLASS_OR_OBJECT->loadTextFh($fh)
+##  + loads from text file with lines of the form "A B1 B2..."
 ##  + clobbers multimap contents
 sub loadTextFh {
   my ($mmf,$fh,%opts) = @_;
@@ -302,8 +302,8 @@ sub loadTextFh {
 ## $bool = $mmf->saveTextFh($filename_or_fh,%opts)
 ##  + save from text file with lines of the form "A B1 B2..."
 ##  + %opts:
+##     a2s=>\&a2s  ##-- stringification code for A items, called as $s=$a2s->($bi)
 ##     b2s=>\&b2s  ##-- stringification code for B items, called as $s=$b2s->($bi)
-##     a2s=>\&a2s  ##-- stringification code for B items, called as $s=$a2s->($bi)
 sub saveTextFh {
   my ($mmf,$fh,%opts) = @_;
 
@@ -347,7 +347,7 @@ sub addPairs {
 ##==============================================================================
 ## Methods: lookup
 
-## \@bs_or_undef = $mmf->fetchraw($a)
+## \@bs_or_undef = $mmf->fetch($a)
 ##  + returns array \@bs of targets for $a, or undef if not found
 ##  + multimap must be opened
 sub fetch {

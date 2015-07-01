@@ -88,7 +88,7 @@ sub fccreat {
   return ($flags&O_CREAT)==O_CREAT;
 }
 
-## $str = fcmode($flags)
+## $str = fcperl($flags)
 ##  + return perl mode-string for $flags
 sub fcperl {
   my $flags = fcflags(shift);
@@ -162,8 +162,8 @@ sub loadJsonFile {
 ##--------------------------------------------------------------
 ## JSON: save
 
-## $str = PACKAGE::saveJsonStringString($data)
-## $str = PACKAGE::saveJsonStringString($data,%opts)
+## $str = PACKAGE::saveJsonString($data)
+## $str = PACKAGE::saveJsonString($data,%opts)
 ##  + %opts passed to JSON::to_json(), e.g. (pretty=>0, canonical=>0)'
 sub saveJsonString {
   my $that = UNIVERSAL::isa($_[0],__PACKAGE__) ? shift : __PACKAGE__;

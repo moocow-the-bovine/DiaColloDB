@@ -256,6 +256,11 @@ sub trimPairs {
 package DiaColloDB::Profile::Multi::Diff;
 our @ISA = qw(DiaColloDB::Profile::MultiDiff);
 
+##==============================================================================
+## Package DiaColloDB::Profile::Diff::Multi : alias
+package DiaColloDB::Profile::Diff::Multi;
+our @ISA = qw(DiaColloDB::Profile::MultiDiff);
+
 
 ##==============================================================================
 ## Footer

@@ -241,7 +241,7 @@ sub diff {
 ##==============================================================================
 ## Relation API: default: subprofile()
 
-## $prf = $rel->profile(\@xids, %opts)
+## $prf = $rel->subprofile(\@xids, %opts)
 ##  + get frequency profile for @xids (db must be opened)
 ##  + %opts:
 ##     groupby => \&gbsub,  ##-- key-extractor $key2_or_undef = $gbsub->($i2)

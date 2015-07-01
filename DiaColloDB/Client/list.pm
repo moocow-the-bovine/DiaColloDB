@@ -1,7 +1,7 @@
 ## -*- Mode: CPerl -*-
-## File: DiaColloDB::Client::Distributed.pm
+## File: DiaColloDB::Client::list.pm
 ## Author: Bryan Jurish <moocow@cpan.org>
-## Description: collocation db, client
+## Description: collocation db, client: list
 
 package DiaColloDB::Client::list;
 use DiaColloDB::Client;

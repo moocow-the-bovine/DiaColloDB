@@ -18,7 +18,7 @@ our @ISA = qw(DiaColloDB::EnumFile);
 ##==============================================================================
 ## Constructors etc.
 
-## $cldb = CLASS_OR_OBJECT->new(%args)
+## $enum = CLASS_OR_OBJECT->new(%args)
 ## + %args, object structure:
 ##   (
 ##    ##-- EnumFile: basic options

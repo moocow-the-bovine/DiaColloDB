@@ -240,7 +240,7 @@ sub compare {
 
 ##--------------------------------------------------------------
 ## $dclient = $rel->ddcClient(%opts)
-##  + returns cacned $rel->{dclient} if defined, otherwise creates and caches a new client
+##  + returns cached $rel->{dclient} if defined, otherwise creates and caches a new client
 ##  + chokes if ddcServer is not defined
 ##  + %opts clobber %{$rel->{dclient}}
 sub ddcClient {

@@ -1,7 +1,7 @@
 ## -*- Mode: CPerl -*-
 ## File: DiaColloDB::EnumFile::Tied.pm
 ## Author: Bryan Jurish <moocow@cpan.org>
-## Descript: collocation db: flat fixed-length record-oriented files: tied interface
+## Description: collocation db: flat fixed-length record-oriented files: tied interface
 
 package DiaColloDB::EnumFile::Tied;
 1;
@@ -141,8 +141,8 @@ our @ISA = qw(Tie::Hash);
 
 ## $tied = tie(%hash, $tieClass, $enum)
 ## $tied = tie(%hash, $tieClass, %opts)
-## $tied = TIEARRAY($class, $tieClass, %opts, class=>$enumFileClass)
-## $tied = TIEARRAY($class, $tieClass, $enum)
+## $tied = TIEHASH($class, $tieClass, %opts, class=>$enumFileClass)
+## $tied = TIEHASH($class, $tieClass, $enum)
 ##  + %opts as for DiaColloDB::EnumFile::tienew()
 ##  + returned $tied = \$enum
 sub TIEHASH {
