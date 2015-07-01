@@ -36,9 +36,19 @@ Available from https://sourceforge.net/projects/ddc-concordance/files/ddc-perl-x
 =head1 DESCRIPTION
 
 The DiaColloDB package provides a set of object-oriented Perl modules
-for constructing and querying native diachronic collocation indices
+and a command-line utility suite for constructing and querying native
+diachronic collocation indices
 with optional inclusion of a DDC server back-end for fine-grained queries.
 
+=head1 INSTALLATION
+
+Issue the following commands to the shell:
+
+ bash$ cd DiaColloDB-0.01 # (or wherever you unpacked this distribution)
+ bash$ perl Makefile.PL   # check requirements, etc.
+ bash$ make               # build the module
+ bash$ make test          # (optional): test module before installing
+ bash$ make install       # install the module on your system
 
 =head1 SEE ALSO
 
@@ -53,16 +63,6 @@ user-oriented help page.
 =for html See <a href="http://kaskade.dwds.de/~moocow/dta/diacollo/">here</a>.
 
 =back
-
-=head1 INSTALLATION
-
-Issue the following commands to the shell:
-
- bash$ cd DiaColloDB-0.01 # (or wherever you unpacked this distribution)
- bash$ perl Makefile.PL   # check requirements, etc.
- bash$ make               # build the module
- bash$ make test          # (optional): test module before installing
- bash$ make install       # install the module on your system
 
 =head1 AUTHOR
 

@@ -20,13 +20,9 @@ REQUIREMENTS
 
 DESCRIPTION
     The DiaColloDB package provides a set of object-oriented Perl modules
-    for constructing and querying native diachronic collocation indices with
-    optional inclusion of a DDC server back-end for fine-grained queries.
-
-SEE ALSO
-    *   http://kaskade.dwds.de/~moocow/dta/diacollo/ contains a live web
-        demo of a DiaCollo index on the *Deutsches Textarchiv* corpus,
-        including a user-oriented help page.
+    and a command-line utility suite for constructing and querying native
+    diachronic collocation indices with optional inclusion of a DDC server
+    back-end for fine-grained queries.
 
 INSTALLATION
     Issue the following commands to the shell:
@@ -36,6 +32,11 @@ INSTALLATION
      bash$ make               # build the module
      bash$ make test          # (optional): test module before installing
      bash$ make install       # install the module on your system
+
+SEE ALSO
+    *   http://kaskade.dwds.de/~moocow/dta/diacollo/ contains a live web
+        demo of a DiaCollo index on the *Deutsches Textarchiv* corpus,
+        including a user-oriented help page.
 
 AUTHOR
     Bryan Jurish <moocow@cpan.org>
