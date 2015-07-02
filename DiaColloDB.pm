@@ -73,8 +73,8 @@ our $XECLASS = 'DiaColloDB::EnumFile::FixedLen::MMap';
 
 ## $MMCLASS
 ##  + multimap class
-#our $MMCLASS = 'DiaColloDB::MultiMapFile';
-our $MMCLASS = 'DiaColloDB::MultiMapFile::MMap';
+our $MMCLASS = 'DiaColloDB::MultiMapFile';
+#our $MMCLASS = 'DiaColloDB::MultiMapFile::MMap'; ##-- TODO
 
 ##==============================================================================
 ## Constructors etc.
