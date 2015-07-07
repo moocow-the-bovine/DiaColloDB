@@ -457,7 +457,8 @@ sub countQuery {
     }
     ++$xi;
   }
-  $qtconds->setMatchId(2);
+  $qtconds //= DDC::XS::CQTokAny->new();
+  $qtconds->setMatchId(2) if ($qtconds);
   my $qtemplate = $qdtr->clone->mapTraverse(sub {
 					      my $nod = shift;
 					      if (UNIVERSAL::can($nod,'getMatchId') && $nod->getMatchId==2) {

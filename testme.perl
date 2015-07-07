@@ -1220,8 +1220,10 @@ sub test_ddcprf {
   my %opts  = map {split(/=/,$_,2)} @_;
 
   #$opts{query}   ||= 'Mann #sample[100] #has[textClass,Wiss*]'; #'Haus, $p=NN #has[author,/kant/]';
-  $opts{query}   ||= 'Mann'; #'Haus, $p=NN #has[author,/kant/]';
-  $opts{groupby} ||= 'l=jung|alt,p=ADJA,textClass';
+  #$opts{query}   ||= 'Mann'; #'Haus, $p=NN #has[author,/kant/]';
+  $opts{query}   ||= '"$p=ADJA=2 Mann"'; #'Haus, $p=NN #has[author,/kant/]';
+  #$opts{groupby} ||= 'l=jung|alt,p=ADJA,textClass';
+  $opts{groupby} ||= '[textClass]';
   $opts{slice}   ||= 0;
   #$opts{date}    ||= '1900:1999';
   $opts{score}   ||= 'f';
@@ -1235,7 +1237,7 @@ sub test_ddcprf {
 
   exit 0;
 }
-#test_ddcprf(@ARGV);
+test_ddcprf(@ARGV);
 
 ##--------------------------------------------------------------
 sub test_ddcdiff {
@@ -1280,7 +1282,7 @@ sub test_pnndiff {
 
   exit 0;
 }
-test_pnndiff(@ARGV);
+#test_pnndiff(@ARGV);
 
 
 
