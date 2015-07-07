@@ -134,12 +134,23 @@ sub profile {
   }
   undef $result12; ##-- save some memory
 
+  ##-- check whether count-query uses any token-attributes
+  my $needKeys = grep {UNIVERSAL::can($_,'getMatchId') && $_->getMatchId==2} @{$qcount->getKeys->getExprs};
+
   ##-- get raw g2 results and update slice-wise profiles
   my $fcoef  = $opts{fcoef};
-  my $qkeys2 = DDC::XS::CQKeys->new($qcount);
-  $qkeys2->setOptions($qcount->getDtr->getOptions);
-  $qkeys2->SetMatchId(2);
-  my $qcount2 = DDC::XS::CQCount->new($qkeys2, $qcount->getKeys, $qcount->getSample, $qcount->getSort, $qcount->getLo, $qcount->getHi);
+  my ($qcount2);
+  if ($needKeys) {
+    my $qkeys2 = DDC::XS::CQKeys->new($qcount);
+    $qkeys2->setOptions($qcount->getDtr->getOptions);
+    $qkeys2->SetMatchId(2);
+    $qcount2 = DDC::XS::CQCount->new($qkeys2, $qcount->getKeys, $qcount->getSample, $qcount->getSort, $qcount->getLo, $qcount->getHi);
+  }
+  else {
+    my $qdtr2 = DDC::XS::CQTokAny->new;
+    $qdtr2->setOptions($qcount->getDtr->getOptions);
+    ($qcount2 = $qcount->clone())->setDtr($qdtr2);
+  }
   my $result2 = $rel->ddcQuery($coldb, $qcount2, limit=>-1, logas=>'f2');
   foreach (@{$result2->{counts_}}) {
     next if (!defined($prf=$y2prf{$y=$_->[1]}));
@@ -149,18 +160,26 @@ sub profile {
   undef $result2; ##-- save some memory
 
   ##-- query independent f1 and update slice-wise profiles
-  my $qcount1 = $qcount2->clone();
-  $_->setMatchId(1) foreach (grep {UNIVERSAL::isa($_,'DDC::XS::CQCountKeyExprToken') && $_->getMatchId==2}
-			     @{$qcount1->getDtr->getQCount->getKeys->getExprs},
-			     @{$qcount1->getKeys->getExprs},
-			    );
-  $qcount1->getDtr->setMatchId(1);
-  my $result1 = $rel->ddcQuery($coldb, $qcount1, limit=>-1, logas=>'f1');
-  foreach (@{$result1->{counts_}}) {
-    next if (!defined($prf=$y2prf{$y=$_->[1]}));
-    $prf->{f1} += $_->[0]*$fcoef;
+  if ($needKeys) {
+    my $qcount1 = $qcount2->clone();
+    $_->setMatchId(1) foreach (grep {UNIVERSAL::isa($_,'DDC::XS::CQCountKeyExprToken') && $_->getMatchId==2}
+			       @{$qcount1->getDtr->getQCount->getKeys->getExprs},
+			       @{$qcount1->getKeys->getExprs},
+			      );
+    $qcount1->getDtr->setMatchId(1);
+    my $result1 = $rel->ddcQuery($coldb, $qcount1, limit=>-1, logas=>'f1');
+    foreach (@{$result1->{counts_}}) {
+      next if (!defined($prf=$y2prf{$y=$_->[1]}));
+      $prf->{f1} += $_->[0]*$fcoef;
+    }
+    undef $result1; ##-- save some memory (but not much)
+  } else {
+    foreach $prf (values %y2prf) {
+      my $f1=0;
+      $f1 += $_ foreach (values %{$prf->{f12}});
+      $prf->{f1} = $f1*$fcoef;
+    }
   }
-  undef $result1; ##-- save some memory (but not much)
 
   ##-- query independent N
   my $qstrN   = "count(* #sep)";
@@ -457,7 +476,7 @@ sub countQuery {
     }
     ++$xi;
   }
-  $qtconds //= DDC::XS::CQTokAny->new();
+  #$qtconds //= DDC::XS::CQTokAny->new();
   $qtconds->setMatchId(2) if ($qtconds);
   my $qtemplate = $qdtr->clone->mapTraverse(sub {
 					      my $nod = shift;
