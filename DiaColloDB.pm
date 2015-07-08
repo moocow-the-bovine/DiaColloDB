@@ -1681,7 +1681,7 @@ sub parseGroupBy {
   my $gbexprs   = [$gbdate];
   my $gbfilters = [];
   my ($gbrestr);
-  if (!ref($req) && $req =~ m{^\s*(?:\#by)?\[([^\]]*)\]}) {
+  if (!ref($req) && $req =~ m{^\s*(?:\#by)?\s*\[(.*)\]\s*$}) {
     ##-- ddc-style request; no restriction-clauses are allowed
     my $cbstr = $1;
     my $gbq = $coldb->qparse("count(*) #by[$cbstr]")

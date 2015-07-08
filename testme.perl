@@ -1223,7 +1223,8 @@ sub test_ddcprf {
   #$opts{query}   ||= 'Mann'; #'Haus, $p=NN #has[author,/kant/]';
   $opts{query}   ||= '"$p=ADJA=2 Mann"'; #'Haus, $p=NN #has[author,/kant/]';
   #$opts{groupby} ||= 'l=jung|alt,p=ADJA,textClass';
-  $opts{groupby} ||= '[textClass]';
+  #$opts{groupby} ||= '[textClass]';
+  $opts{groupby} ||= '[textClass~s/:+[^:]*$//]';
   $opts{slice}   ||= 0;
   #$opts{date}    ||= '1900:1999';
   $opts{score}   ||= 'f';
