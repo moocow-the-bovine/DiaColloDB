@@ -55,10 +55,12 @@ our @ISA = qw(DiaColloDB::Persistent);
 ##    titles => \@titles, ##-- item group titles (default:undef: unknown)
 ##    #
 ##    eps => $eps,       ##-- smoothing constant (default=0.5)
-##    score => $func,    ##-- selected scoring function ('f12', 'mi', or 'ld')
+##    score => $func,    ##-- selected scoring function qw(f fm lf lfm mi ld)
 ##    mi => \%mi12,      ##-- score: mutual information * logFreq a la Wortprofil; requires compile_mi()
 ##    ld => \%ld12,      ##-- score: log-dice a la Wortprofil; requires compile_ld()
 ##    fm => \%fm12,      ##-- frequency per million score; requires compile_fm()
+##    lf => \%lf12,      ##-- log-frequency ; requires compile_lf()
+##    lfm => \%lfm12,    ##-- log-frequency per million; requires compile_lfm()
 ##   )
 sub new {
   my $that = shift;
@@ -130,7 +132,7 @@ sub titles {
 ## @keys = $prf->scoreKeys()
 ##  + returns known score function keys
 sub scoreKeys {
-  return qw(mi ld fm);
+  return qw(mi ld fm lf lfm);
 }
 
 ## $bool = $prf->empty()
@@ -285,10 +287,12 @@ sub saveHtmlFile {
 sub compile {
   my $prf = shift;
   my $func = shift;
-  return $prf->compile_f(@_)  if (!$func || $func =~ m{^(?:f(?:req(?:uency)?)?(?:12)?)$}i);
-  return $prf->compile_fm(@_) if ($func =~ m{^(?:f(?:req(?:uency)?)?(?:-?p(?:er)?)?(?:-?m(?:(?:ill)?ion)?)(?:12)?)$}i);
-  return $prf->compile_ld(@_) if ($func =~ m{^(?:ld|log-?dice)}i);
-  return $prf->compile_mi(@_) if ($func =~ m{^(?:l?f?mi|mutual-?information)$}i);
+  return $prf->compile_f(@_)   if (!$func || $func =~ m{^(?:f(?:req(?:uency)?)?(?:12)?)$}i);
+  return $prf->compile_fm(@_)  if ($func =~ m{^(?:f(?:req(?:uency)?)?(?:-?p(?:er)?)?(?:-?m(?:(?:ill)?ion)?)(?:12)?)$}i);
+  return $prf->compile_lf(@_)  if ($func =~ m{^(?:l(?:og)?-?f(?:req(?:uency)?)?(?:12)?)$}i);
+  return $prf->compile_lfm(@_) if ($func =~ m{^(?:l(?:og)?-?f(?:req(?:uency)?)?(?:-?p(?:er)?)?(?:-?m(?:(?:ill)?ion)?)(?:12)?)$}i);
+  return $prf->compile_ld(@_)  if ($func =~ m{^(?:ld|log-?dice)}i);
+  return $prf->compile_mi(@_)  if ($func =~ m{^(?:l?f?mi|mutual-?information)$}i);
   $prf->logwarn("compile(): unknown score function '$func'");
   return $prf->compile_f(@_);
 }
@@ -312,13 +316,51 @@ sub compile_f {
 ##  + sets $prf->{score}='fm'
 sub compile_fm {
   my $prf = shift;
-  my ($N,$pf12) = @$prf{qw(N f12)};
-  my $fm = $prf->{fm} = {};
+  my $pf12 = $prf->{f12};
+  my $M    = $prf->{N} / 1000000;
+  my $fm   = $prf->{fm} = {};
   my ($i2,$f12);
   while (($i2,$f12)=each(%$pf12)) {
-    $fm->{$i2} = (1000000 * $f12) / $N;
+    $fm->{$i2} = $f12 / $M;
   }
   $prf->{score} = 'fm';
+  return $prf;
+}
+
+## $prf = $prf->compile_lf(%opts)
+##  + computes log-frequency profile in $prf->{lf}
+##  + sets $prf->{score}='lf'
+##  + %opts:
+##     eps => $eps  #-- clobber $prf->{eps}
+sub compile_lf {
+  my ($prf,%opts) = @_;
+  my $pf12 = $prf->{f12};
+  my $lf   = $prf->{lf} = {};
+  my $eps  = $opts{eps} // $prf->{eps} // 0; #0.5;
+  my ($i2,$f12);
+  while (($i2,$f12)=each(%$pf12)) {
+    $lf->{$i2} = log2($f12+$eps);
+  }
+  $prf->{score} = 'lf';
+  return $prf;
+}
+
+## $prf = $prf->compile_lfm(%opts)
+##  + computes log-öfrequency-per-million in $prf->{lfm}
+##  + sets $prf->{score}='lfm'
+##  + %opts:
+##     eps => $eps  #-- clobber $prf->{eps}
+sub compile_lfm {
+  my ($prf,%opts) = @_;
+  my $pf12 = $prf->{f12};
+  my $eps = $opts{eps} // $prf->{eps} // 0; #0.5;
+  my $logM = log2($prf->{N}+$eps) - log2(1000000+$eps);
+  my $lfm  = $prf->{lfm} = {};
+  my ($i2,$f12);
+  while (($i2,$f12)=each(%$pf12)) {
+    $lfm->{$i2} = log2($f12+$eps) - $logM;
+  }
+  $prf->{score} = 'lfm';
   return $prf;
 }
 

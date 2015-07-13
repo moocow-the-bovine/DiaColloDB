@@ -84,7 +84,9 @@ GetOptions(##-- general
 	   'mutual-information|mi'    => sub {$query{score}='mi'},
 	   'log-dice|logdice|ld|dice' => sub {$query{score}='ld'},
 	   'frequency|freq|f'         => sub {$query{score}='f'},
-	   'normalized-frequency|nf|frequency-per-million|fpm|fm'  => sub {$query{score}='fm'},
+	   'frequency-per-million|fpm|fm'  => sub {$query{score}='fm'},
+	   'log-frequency|logf|lf' => sub { $query{score}='lf' },
+	   'log-frequency-per-million|logfm|lfm' => sub { $query{score}='lfm' },
 	   'k-best|kbest|k=i' => \$query{kbest},
 	   'no-k-best|nokbest|nok' => sub {$query{kbest}=undef},
 	   'cutoff|C=f' => \$query{cutoff},
@@ -220,7 +222,7 @@ dcdb-query.perl - query a DiaColloDB
    -(a|b)?date DATES     # set target DATE or /REGEX/ or MIN-MAX
    -(a|b)?slice SLICE    # set target date slice (default=1)
    -groupby GROUPBY      # set result aggregation (default=l)
-   -f , -fm , -mi , -ld  # set scoring function (default=-ld)
+   -(l)f(m) , -mi , -ld  # set scoring function (default=-ld)
    -kbest KBEST          # return only KBEST items per date-slice (default=10)
    -nokbest              # disable k-best pruning
    -cutoff CUTOFF        # set minimum score for returned items (default=none)
