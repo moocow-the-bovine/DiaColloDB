@@ -299,8 +299,8 @@ sub diffop_gavg  { return diffop_avg(diffop_gavg0(@_),diffop_avg(@_)); }
 
 
 sub diffop_lavg {
-  my ($x,$y) = @_;
-  my $delta  = ($x<=1 ? (1-$x) : 0);
+  my ($x,$y) = $_[0]<$_[1] ? @_[0,1] : @_[1,0];
+  my $delta  = $x<=1 ? (1-$x) : 0;
   return exp( log(($x+$delta)*($y+$delta))/2.0 ) - $delta;
 }
 
