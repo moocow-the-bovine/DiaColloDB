@@ -60,6 +60,20 @@ DiaColloDB::Profile::Diff - diachronic collocation db, diff profiles
  $dprf = $dprf->compile($func,%opts);
  $dprf = $dprf->uncompile();
  
+ $opname = $CLASS_OR_OBJECT->diffop($opNameOrAlias);
+ $opsub  = $CLASS_OR_OBJECT->diffsub($opNameOrAlias);
+ $bool   = $CLASS_OR_OBJECT->diffpretrim($opNameOrAlias);
+ $key    = $CLASS_OR_OBJECT->diffkbest($opNameOrAlias);
+ 
+ $diff   = diffop_diff($ascore,$bscore);
+ $diff   = diffop_sum($ascore,$bscore);
+ $diff   = diffop_min($ascore,$bscore);
+ $diff   = diffop_max($ascore,$bscore);
+ $diff   = diffop_avg($ascore,$bscore);
+ $diff   = diffop_havg($ascore,$bscore);
+ $diff   = diffop_gavg($ascore,$bscore);
+ $diff   = diffop_lavg($ascore,$bscore);
+ 
  ##========================================================================
  ## Trimming
  
@@ -323,6 +337,54 @@ compile for score-function $func, one of qw(f fm mi ld); default='f'.
  $dprf = $dprf->uncompile();
 
 un-compiles all scores for $dprf
+
+=item diffop
+
+ $opname = $dprf->diffop();
+ $opname = $CLASS_OR_OBJECT->diffop($opNameOrAlias);
+
+Returns canonical diff operation-name for $opNameOrAlias.
+
+=item diffsub
+
+ \&FUNC = $dprf->diffsub();
+ \&FUNC = $CLASS_OR_OBJECT->diffsub($opNameOrAlias);
+
+Returns low-level binary diff operation for diff-operation $opNameOrAlias (default=$dprf-E<gt>{diff}).
+
+=item diffpretrim
+
+ $bool = $dprf->diffpretrim()
+ $bool = $CLASS_OR_OBJECT->diffpretrim($opNameOrAlias)
+
+Returns true iff diff should pre-trim operand profiles (currently just for C<adiff> and C<min>).
+
+=item diffkbest
+
+ $selector = $dprf->diffkbest();
+ $selector = $CLASS_OR_OBJECT->diffkbest($opNameOrAlias);
+
+Returns 'kbest' selector appropriate for which() or trim() methods.
+
+=item diffop_diff
+
+=item diffop_sum
+
+=item diffop_min
+
+=item diffop_max
+
+=item diffop_avg
+
+=item diffop_havg
+
+=item diffop_gavg
+
+=item diffop_lavg
+
+  $diff = diffop_diff($ascore,$bscore)
+
+Low-level diff-operation subs.
 
 =back
 
