@@ -103,10 +103,14 @@ L<DiaColloDB::Profile|DiaColloDB::Profile> objects.
 
 =over 4
 
-=item Variable: @ISA
+=item @ISA
 
 DiaColloDB::Profile::Diff inherits from
 L<DiaColloDB::Profile|DiaColloDB::Profile>.
+
+=item %DIFFOPS
+
+Canonical diff-operation names keyed by alias.
 
 =back
 
@@ -130,6 +134,7 @@ L<DiaColloDB::Profile|DiaColloDB::Profile>.
  ##-- DiaColloDB::Profile::Diff
  prf1 => $prf1,     ##-- 1st operand
  prf2 => $prf2,     ##-- 2nd operand
+ diff => $diff,     ##-- low-level score-diff binary operation (default='adiff')
  ##-- DiaColloDB::Profile keys
  label => $label,   ##-- string label (used by Multi; undef for none(default))
  #N   => $N,         ##-- OVERRIDE:unused: total marginal relation frequency
@@ -142,6 +147,37 @@ L<DiaColloDB::Profile|DiaColloDB::Profile>.
  mi => \%mi12,      ##-- DIFFERENCE: score: mutual information * logFreq a la Wortprofil; requires compile_mi()
  ld => \%ld12,      ##-- DIFFERENCE: score: log-dice a la Wortprofil; requires compile_ld()
  fm => \%fm12,      ##-- DIFFERENCE: score: frequency per million; requires compile_fm()
+
+The C<diff> option selects the function to be used to to compute final scores from operand profiles.
+The default value is 'adiff'. Currently known values are:
+
+ adiff     # $score=$a-$b      # aliases=qw(absolute-difference abs-difference abs-diff adiff adifference a-) ; select=kbesta
+ diff      # $score=$a-$b      # aliases=qw(difference diff d minus -)
+ sum       # $score=$a+$b      # aliases=qw(sum add plus +)
+ min       # $score=min($a,$b) # aliases=qw(minimum min <)
+ max       # $score=max($a,$b) # aliases=qw(maximum max >)
+ avg       # $score=avg($a,$b) # aliases=qw(average avg mean)
+ havg      # $score~=harmonic_avg($a,$b)  # aliases=qw(harmonic-average harmonic-mean havg hmean ha h)
+ gavg      # $score~=geometric_avg($a,$b) # aliases=qw(geometric-average geometric-mean gavg gmean ga g)
+ lavg      # $score~=log_avg($a,$b)       # aliases=qw(logarithmic-average logarithmic-mean log-average log-mean lavg lmean la l)
+
+To avoid singularities resulting from sparse data,
+the C<havg> and C<gavg> operations actually compute the arithmetic average
+of the harmonic (rsp. geometric) mean of and the raw arithmetic mean; e.g.
+
+ score_havg($a,$b) = (($a<0 || $b<0 ? 0 : (2*$a*$b)/($a+$b) ##-- harmonic mean
+                      + ($a+$b)/2                           ##-- arithmetic mean
+                     )/2                                    ##-- average of harmonic- and arithmetic-means
+
+The default C<diff> operation is C<adiff>, which selects those items with the greatest absolute differences
+among the (pre-trimmed) k-best items in its operand profiles.
+The C<sum> and C<avg> operations return equivalent rankings,
+but may assign undesirably high score values for non-uniform operand values
+(e.g. C<avg(0,8)=avg(4,4)=4>, but only the latter configuration indicates similar collocation behavior
+in the operand profiles).
+The C<havg>, C<gavg>, and C<lavg> operations attempt to address this shortcoming
+by penalizing non-uniform score-pairs, and tend to return similar rankings in the
+range [$a:$b].
 
 =item clone
 

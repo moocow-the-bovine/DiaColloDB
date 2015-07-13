@@ -29,11 +29,13 @@ our @ISA = qw(DiaColloDB::Profile);
 ##    diff => $diff,     ##-- low-level score-diff binary operation (default='abs-diff'); known values:
 ##                       ##    abs-diff  # $score=$a-$b ; aliases=qw(absolute-difference abs-difference abs-diff adiff adifference a-) ; select=kbesta ; default
 ##                       ##    diff      # $score=$a-$b ; aliases=qw(difference diff d minus -)
-##                       ##    sum       # $score=$a+$b ; aliases=qw(sum add)
+##                       ##    sum       # $score=$a+$b ; aliases=qw(sum add plus +)
 ##                       ##    min       # $score=min($a,$b)
 ##                       ##    max       # $score=max($a,$b)
 ##                       ##    avg       # $score=avg($a,$b) ; aliases=qw(average avg mean)
-##                       ##    harmonic  # $score=harmonic_avg($a,$b) ; aliases=qw(harmonic-average harmonic-mean havg hmean ha h)
+##                       ##    havg      # $score=harmonic_avg($a,$b)  ; aliases=qw(harmonic-average harmonic-mean havg hmean ha h)
+##                       ##    gavg      # $score=geometric_avg($a,$b) ; aliases=qw(geometric-average geometric-mean gavg gmean ga g)
+##                       ##    lavg      # $score=log_avg($a,$b) ; aliases=qw(logarithmic-average logarithmic-mean log-average log-mean lavg lmean la l)
 ##    ##-- DiaColloDB::Profile keys
 ##    label => $label,   ##-- string label (used by Multi; undef for none(default))
 ##    #N   => $N,         ##-- OVERRIDE:unused: total marginal relation frequency
@@ -231,6 +233,8 @@ our %DIFFOPS =
    (map {($_=>'max')} qw(maximum max)),
    (map {($_=>'avg')} qw(average avg mean)),
    (map {($_=>'havg')} qw(harmonic-average harmonic-avg harmonic harm haverage havg ha h)),
+   (map {($_=>'gavg')} qw(geometric-average geometric-mean geometric geom geo gavg gmean ga g)),
+   (map {($_=>'lavg')} qw(logarithmic-average logarithmic-mean logarithmic log-average log-mean log lavg lmean la l)),
   );
 
 ## $opname = $dprf->diffop()
@@ -247,20 +251,30 @@ sub diffop {
 ##  + gets low-level binary diff operation for diff-operation $opNameOrAlias (default=$dprf->{diff})
 sub diffsub {
   my ($that,$opname) = @_;
+  return $opname if (UNIVERSAL::isa($opname,'CODE')); ##-- code-ref
   my $op  = $that->diffop($opname);
   my $sub = $that->can("diffop_$op");
   return $sub if (defined($sub));
-  $that->logwarn("unknown low-level diff operation '$opname' defaults to '$DIFFOPS{DEFAULT}'");
+  $that->logwarn("unknown low-level diff operation '$op' defaults to '$DIFFOPS{DEFAULT}'");
   return \&diffop_diff;
 }
 
+## $bool = $dprf->diffpretrim()
+## $bool = $CLASS_OR_OBJECT->diffpretrim($opNameOrAlias)
+##  + returns true iff diff should pre-trim operand profiles
+sub diffpretrim {
+  my ($that,$op) = @_;
+  return $that->diffop($op) eq 'adiff';
+}
+
 ## $selector = $dprf->diffkbest()
-## $selector = $dprf->diffkbest($opNameOrAlias)
+## $selector = $CLASS_OR_OBJECT->diffkbest($opNameOrAlias)
 ##  + returns 'kbest' selector appropriate for which() or trim() methods
 sub diffkbest {
   my ($that,$op) = @_;
   return $that->diffop($op) eq 'adiff' ? 'kbesta' : 'kbest';
 }
+
 
 BEGIN { *diffop_adiff = \&diffop_diff; }
 sub diffop_diff  { return $_[0]-$_[1]; }
@@ -268,10 +282,28 @@ sub diffop_sum   { return $_[0]+$_[1]; }
 sub diffop_min   { return $_[0]<$_[1] ? $_[0] : $_[1]; }
 sub diffop_max   { return $_[0]>$_[1] ? $_[0] : $_[1]; }
 sub diffop_avg   { return ($_[0]+$_[1])/2.0; }
-#sub diffop_havg  { return $_[0]==0 || $_[1]==0 ? 0 : 2.0/(1.0/$_[0] + 1.0/$_[1]); }
 
-our $havg_eps = 0.1;
-sub diffop_havg  { return 2.0/(1.0/($_[0]+$havg_eps) + 1.0/($_[1]+$havg_eps)); }
+#sub diffop_havg  { return $_[0]<=0 || $_[1]<=0 ? 0 : 2.0/(1.0/$_[0] + 1.0/$_[1]); }
+##--
+#our $havg_eps = 0.1;
+#sub diffop_havg  { return 2.0/(1.0/($_[0]+$havg_eps) + 1.0/($_[1]+$havg_eps)) - $havg_eps; }
+##--
+sub diffop_havg0  { return $_[0]<=0 || $_[1]<=0 ? 0 : (2*$_[0]*$_[1])/($_[0]+$_[1]); }
+sub diffop_havg   { return diffop_avg(diffop_havg0(@_),diffop_avg(@_)); }
+
+sub nthRoot { return ($_[0]<0 ? -1 : 1) * abs($_[0])**(1/$_[1]); }
+#sub diffop_gavg   { return nthRoot($_[0]*$_[1], 2); }
+##--
+sub diffop_gavg0 { return nthRoot($_[0]*$_[1], 2); }
+sub diffop_gavg  { return diffop_avg(diffop_gavg0(@_),diffop_avg(@_)); }
+
+
+sub diffop_lavg {
+  my ($x,$y) = @_;
+  my $delta  = ($x<=1 ? (1-$x) : 0);
+  return exp( log(($x+$delta)*($y+$delta))/2.0 ) - $delta;
+}
+
 
 ##----------------------------------------------------------------------
 ## Compilation: guts
@@ -360,9 +392,12 @@ sub trim {
   }
   else {
     ##-- heuristic trimming
-    my %abkeys = map {($_=>undef)} (($pa ? @{$pa->which(%opts)} : qw()), ($pb ? @{$pb->which(%opts)} : qw()));
-    $pa->trim(keep=>\%abkeys) if ($pa);
-    $pb->trim(keep=>\%abkeys) if ($pb);
+    if ($dprf->diffpretrim()) {
+      ##-- pre-trim operand profiles
+      my %abkeys = map {($_=>undef)} (($pa ? @{$pa->which(%opts)} : qw()), ($pb ? @{$pb->which(%opts)} : qw()));
+      $pa->trim(keep=>\%abkeys) if ($pa);
+      $pb->trim(keep=>\%abkeys) if ($pb);
+    }
     $dprf->populate();
     $dprf->SUPER::trim(%opts);
   }

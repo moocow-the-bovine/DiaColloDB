@@ -1292,12 +1292,13 @@ sub test_diffop {
   %opts = (
 	   aquery => "Mann",
 	   bquery => "Frau",
-	   aslice => 0,
-	   bslice => 0,
+	   slice => 0,
+	   date => '1700:1899',
 	   score => 'ld',
-	   kbest => 10,
-	   diff   => 'max',
-	   #global => 1,
+	   kbest => 1,
+	   diff   => 'lavg',
+	   global => 1,
+	   eps => 0.5,
 	   %opts,
 	  );
 

@@ -169,14 +169,15 @@ sub pclass {
 }
 
 ## $prf = $mp->sumover()
-## $prf = $CLASS_OR_OBJECT->sumover(\@profiles)
+## $prf = $CLASS_OR_OBJECT->sumover(\@profiles,%opts)
 ##  + sum of sub-profiles, compiled as for $profiles[0]
 ##  + used for global trimming
+##  + %opts are passed to sum-profile compile() method if called
 sub sumover {
   my $that = shift;
-  my $prfs = (@_ ? shift : (ref($that) ? $that->{profiles} : undef)) // [];
-  my $psum = $that->pclass->_sum($prfs,N=>0,f1=>1);
-  $psum->compile($prfs->[0]{score}) if ($prfs->[0] && $prfs->[0]{score});
+  my $prfs = (@_ ? shift : undef) // (ref($that) ? $that->{profiles} : undef) // [];
+  my $psum = $that->pclass->new(N=>$prfs->[0]{N})->_sum($prfs,N=>0,f1=>1);
+  $psum->compile($prfs->[0]{score}, @_) if ($prfs->[0] && $prfs->[0]{score});
   return $psum;
 }
 

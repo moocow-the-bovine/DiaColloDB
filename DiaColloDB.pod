@@ -769,6 +769,7 @@ Get a relation comparison profile for selected items as a DiaColloDB::Profile::M
  kbest   => $k,               ##-- return only $k best collocates per date (slice) : default=-1:all
  cutoff  => $cutoff,          ##-- minimum score (UNUSED for comparison profiles)
  global  => $bool,            ##-- trim profiles globally (vs. locally for each date-slice?) (default=0)
+ diff    => $diff,            ##-- low-level score-diff operation (diff|adiff|sum|min|max|avg|havg|gavg|lavg); default='adiff'
  ##
  ##-- profiling and debugging parameters
  strings => $bool,            ##-- do/don't stringify (default=do)

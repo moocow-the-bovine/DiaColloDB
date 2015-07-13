@@ -205,8 +205,24 @@ sub trimPairs {
   $opts{global} //= 0;
   $opts{diff}   //= 'adiff';
 
-  if (!$opts{global}) {
-    ##-- trim locally
+  if ($opts{global}) {
+    ##-- trim globally
+    my $gpa = DiaColloDB::Profile::Multi->sumover(luniq([map {$_->[0]} @$ppairs]), eps=>$opts{eps});
+    my $gpb = DiaColloDB::Profile::Multi->sumover(luniq([map {$_->[1]} @$ppairs]), eps=>$opts{eps});
+    my (%keep);
+    if (DiaColloDB::Profile::Diff->diffpretrim($opts{diff})) {
+      ##-- pre-trim
+      %keep = map {($_=>undef)} (@{$gpa->which(%opts)}, @{$gpb->which(%opts)});
+      $gpa->trim(keep=>\%keep);
+      $gpb->trim(keep=>\%keep);
+    }
+
+    my $gdiff = DiaColloDB::Profile::Diff->new($gpa,$gpb, diff=>$opts{diff});
+    %keep     = map {($_=>undef)} @{$gdiff->which( DiaColloDB::Profile::Diff->diffkbest($opts{diff})=>$opts{kbest} )};
+    $_->trim(keep=>\%keep) foreach (grep {$_} map {@$_} @$ppairs);
+  }
+  elsif (DiaColloDB::Profile::Diff->diffpretrim($opts{diff})) {
+    ##-- (pre-)trim locally
     my ($pa,$pb,%keep);
     foreach (@$ppairs) {
       ($pa,$pb) = @$_;
@@ -214,18 +230,7 @@ sub trimPairs {
       $pa->trim(keep=>\%keep) if ($pa);
       $pb->trim(keep=>\%keep) if ($pb);
     }
-  } else {
-    ##-- trim globally
-    my $gpa = DiaColloDB::Profile::Multi->sumover(luniq([map {$_->[0]} @$ppairs]));
-    my $gpb = DiaColloDB::Profile::Multi->sumover(luniq([map {$_->[1]} @$ppairs]));
-    my %keep = map {($_=>undef)} (@{$gpa->which(%opts)}, @{$gpb->which(%opts)});
-    $gpa->trim(keep=>\%keep);
-    $gpb->trim(keep=>\%keep);
-
-    my $gdiff = DiaColloDB::Profile::Diff->new($gpa,$gpb, diff=>$opts{diff});
-    %keep     = map {($_=>undef)} @{$gdiff->which( DiaColloDB::Profile::Diff->diffkbest($opts{diff})=>$opts{kbest} )};
-    $_->trim(keep=>\%keep) foreach (grep {$_} map {@$_} @$ppairs);
-  }
+ }
 
   return $ppairs;
 }
