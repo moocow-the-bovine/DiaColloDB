@@ -30,6 +30,7 @@ our @ISA = qw(DiaColloDB::Profile::Multi);
 ## + additional %args:
 ##   (
 ##    populate => $bool,        ##-- auto-populate() if $mp1 and $mp2 are specified? (default=1)
+##    diff     => $diffop,      ##-- low-level diff operation (see DiaColloDB::Profile::Diff)
 ##   )
 sub new {
   my $that = shift;
@@ -151,13 +152,15 @@ sub align {
   $that->logconfess("align(): cannot align non-trivial multi-profiles of unequal size (".scalar(@$psa)." != ".scalar(@$psb).")");
 }
 
-## $mpd = $mpd->populate($mp1,$mp2)
+## $mpd = $mpd->populate($mp1,$mp2,%opts)
 ##  + populates multi-diff by subtracting $mp2 sub-profile scores from $mp1
 ##  + uses $mpd->align() to align sub-profiles
+##  + %opts: clobbers %$mpd
 sub populate {
-  my ($mpd,$mpa,$mpb) = @_;
+  my ($mpd,$mpa,$mpb,%opts) = @_;
+  @$mpd{keys %opts} = values %opts;
   @{$mpd->{profiles}} = map {
-    DiaColloDB::Profile::Diff->new($_->[0],$_->[1])
+    DiaColloDB::Profile::Diff->new($_->[0],$_->[1], diff=>$mpd->{diff})
   } @{$mpd->align($mpa,$mpb)};
   if ($mpa->{qinfo} || $mpb->{qinfo}) {
     $mpd->{qinfo} = {
@@ -192,7 +195,7 @@ sub pclass {
 ##  + INHERITED from DiaColloDB::Profile::Multi
 
 ## $mp_or_undef = $CLASS_OR_OBJECT->trimPairs(\@pairs, %opts)
-##  + %opts: as for DiaColloDB::Profile::Multi::trim(), including 'global' option
+##  + %opts: as for DiaColloDB::Profile::Multi::trim(), including 'global' and 'diff' options
 sub trimPairs {
   my ($that,$ppairs,%opts) = @_;
 
@@ -200,6 +203,7 @@ sub trimPairs {
   $opts{kbest}  //= -1;
   $opts{cutoff} //= '';
   $opts{global} //= 0;
+  $opts{diff}   //= 'adiff';
 
   if (!$opts{global}) {
     ##-- trim locally
@@ -218,8 +222,8 @@ sub trimPairs {
     $gpa->trim(keep=>\%keep);
     $gpb->trim(keep=>\%keep);
 
-    my $gdiff = DiaColloDB::Profile::Diff->new($gpa,$gpb);
-    %keep = map {($_=>undef)} @{$gdiff->which(kbesta=>$opts{kbest})};
+    my $gdiff = DiaColloDB::Profile::Diff->new($gpa,$gpb, diff=>$opts{diff});
+    %keep     = map {($_=>undef)} @{$gdiff->which( DiaColloDB::Profile::Diff->diffkbest($opts{diff})=>$opts{kbest} )};
     $_->trim(keep=>\%keep) foreach (grep {$_} map {@$_} @$ppairs);
   }
 

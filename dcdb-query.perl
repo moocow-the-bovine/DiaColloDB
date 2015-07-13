@@ -25,7 +25,6 @@ our $dburl      = undef;
 our %cli        = (opts=>{});
 our $http_user  = undef;
 
-our $diff = undef;
 our $rel  = 'cof';
 our %query = (
 	      query =>'',	##-- target query, common
@@ -44,6 +43,7 @@ our %query = (
 	      ##
 	      eps => 0,		##-- smoothing constant
 	      score =>'ld',	##-- score func
+	      diff=>'abs-diff', ##-- diff-op
 	      kbest =>10,	##-- k-best items per date
 	      cutoff =>undef,	##-- minimum score cutoff
 	      global =>0,       ##-- trim globally (vs. slice-locally)?
@@ -68,8 +68,8 @@ GetOptions(##-- general
 	   'client-option|db-option|do|O=s%' => \$cli{opts},
 
 	   ##-- query options
-	   'difference|diff|D|compare|comp|cmp!' => \$diff,
-	   'profile|prof|prf|P' => sub { $diff=0 },
+	   #'difference|diff|D|compare|comp|cmp!' => \$diff,
+	   #'profile|prof|prf|P' => sub { $diff=0 },
 	   'collocations|collocs|collo|col|cofreqs|cof|co|f12|f2|12|2' => sub { $rel='cof' },
 	   'unigrams|ug|u|f1|1' => sub { $rel='xf' },
 	   'ddc' => sub { $rel='ddc' },
@@ -79,6 +79,7 @@ GetOptions(##-- general
 	   ##
 	   'group-by|groupby|group|gb|g=s' => \$query{groupby},
 	   ##
+	   'difference|diff|D|compare|comp|cmp=s' => \$query{diff},
 	   'epsilon|eps|e=f'  => \$query{eps},
 	   'mutual-information|mi'    => sub {$query{score}='mi'},
 	   'log-dice|logdice|ld|dice' => sub {$query{score}='ld'},
@@ -148,10 +149,10 @@ die("$prog: failed to create new DiaColloDB::Client object for $dburl: $!") if (
 
 ##-- client query
 do { utf8::decode($_) if (!utf8::is_utf8($_)) } foreach (@ARGV);
-$diff //= @ARGV > 1;
+our $isDiff = (@ARGV > 1);
 $query{query}  = shift;
 $query{bquery} = @ARGV ? shift : $query{query};
-$rel  = "d$rel" if ($diff);
+$rel  = "d$rel" if ($isDiff);
 
 if ($niters != 1) {
   $cli->info("performing $niters query iterations");
@@ -159,7 +160,7 @@ if ($niters != 1) {
 my $timer = DiaColloDB::Timer->start();
 foreach my $iter (1..$niters) {
   my $mp = $cli->query($rel, %query)
-    or die("$prog: query() failed for relation '$rel', query '$query{query}'".($diff ? " - '$query{bquery}'" : '').": $cli->{error}");
+    or die("$prog: query() failed for relation '$rel', query '$query{query}'".($isDiff ? " - '$query{bquery}'" : '').": $cli->{error}");
 
   ##-- dump stringified query
   my $outfile = ($iter==1 ? '-' : '/dev/null');
@@ -202,7 +203,7 @@ dcdb-query.perl - query a DiaColloDB
 
 =head1 SYNOPSIS
 
- dcdb-query.perl [OPTIONS] DBURL LEMMA1 [LEMMA2]
+ dcdb-query.perl [OPTIONS] DBURL QUERY1 [QUERY2]
 
  General Options:
    -help
@@ -215,7 +216,6 @@ dcdb-query.perl - query a DiaColloDB
    -O KEY=VALUE          # set DiaColloDB::Client option
 
  Query Options:
-   -profile , -diff      # select profile operation (default=-profile)
    -col , -ug , -ddc     # select profile type (collocations, unigrams, or ddc client; default=-col)
    -(a|b)?date DATES     # set target DATE or /REGEX/ or MIN-MAX
    -(a|b)?slice SLICE    # set target date slice (default=1)
@@ -237,8 +237,8 @@ dcdb-query.perl - query a DiaColloDB
 
  Arguments:
    DBURL                # DB URL (file://, http://, or list:// ; query part sets local options)
-   LEMMA1               # space-separated target1 string(s) LIST or /REGEX/
-   LEMMA2               # space-separated target2 string(s) LIST or /REGEX/
+   QUERY1               # space-separated target1 string(s) LIST or /REGEX/ or DDC-query
+   QUERY2               # space-separated target2 string(s) LIST or /REGEX/ or DDC-query (for diff profiles)
 
  Grouping and Filtering:
    GROUPBY is a space- or comma-separated list of the form ATTR1[:FILTER1] ..., where:

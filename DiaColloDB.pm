@@ -33,7 +33,7 @@ use strict;
 ##==============================================================================
 ## Globals & Constants
 
-our $VERSION = "0.07.005";
+our $VERSION = "0.07.006";
 our @ISA = qw(DiaColloDB::Client);
 
 ## $PGOOD_DEFAULT
@@ -1803,6 +1803,7 @@ sub profile {
 ##     kbest   => $k,             ##-- return only $k best collocates per date (slice) : default=-1:all
 ##     cutoff  => $cutoff,        ##-- minimum score (UNUSED for comparison profiles)
 ##     global  => $bool,          ##-- trim profiles globally (vs. locally for each date-slice?) (default=0)
+##     diff    => $diff,          ##-- low-level score-diff operation (diff|adiff|sum|min|max|avg|havg); default='adiff'
 ##     ##
 ##     ##-- profiling and debugging parameters
 ##     strings => $bool,          ##-- do/don't stringify (default=do)
@@ -1836,6 +1837,7 @@ sub compare {
   $opts{kbest}   //= -1;
   $opts{cutoff}  //= '';
   $opts{global}  //= 0;
+  $opts{diff}    //= 'adiff';
   $opts{strings} //= 1;
 
   ##-- debug
@@ -1847,7 +1849,7 @@ sub compare {
 		      (map {["a$_"=>$opts{"a$_"}]} (qw(query date slice))),
 		      (map {["b$_"=>$opts{"b$_"}]} (qw(query date slice))),
 		      [groupby=>(UNIVERSAL::isa($opts{groupby},'ARRAY') ? join(',',@{$opts{groupby}}) : $opts{groupby})],
-		      (map {[$_=>$opts{$_}]} qw(score eps kbest cutoff global)),
+		      (map {[$_=>$opts{$_}]} qw(score eps kbest cutoff global diff)),
 		     ))
 	       .")");
 

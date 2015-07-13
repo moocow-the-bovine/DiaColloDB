@@ -19,13 +19,21 @@ our @ISA = qw(DiaColloDB::Profile);
 ##==============================================================================
 ## Constructors etc.
 
-## $prf = CLASS_OR_OBJECT->new(%args)
-## $prf = CLASS_OR_OBJECT->new($prf1,$prf2,%args)
+## $dprf = CLASS_OR_OBJECT->new(%args)
+## $dprf = CLASS_OR_OBJECT->new($prf1,$prf2,%args)
 ## + %args, object structure:
 ##   (
 ##    ##-- DiaColloDB::Profile::Diff
 ##    prf1 => $prf1,     ##-- 1st operand
 ##    prf2 => $prf2,     ##-- 2nd operand
+##    diff => $diff,     ##-- low-level score-diff binary operation (default='abs-diff'); known values:
+##                       ##    abs-diff  # $score=$a-$b ; aliases=qw(absolute-difference abs-difference abs-diff adiff adifference a-) ; select=kbesta ; default
+##                       ##    diff      # $score=$a-$b ; aliases=qw(difference diff d minus -)
+##                       ##    sum       # $score=$a+$b ; aliases=qw(sum add)
+##                       ##    min       # $score=min($a,$b)
+##                       ##    max       # $score=max($a,$b)
+##                       ##    avg       # $score=avg($a,$b) ; aliases=qw(average avg mean)
+##                       ##    harmonic  # $score=harmonic_avg($a,$b) ; aliases=qw(harmonic-average harmonic-mean havg hmean ha h)
 ##    ##-- DiaColloDB::Profile keys
 ##    label => $label,   ##-- string label (used by Multi; undef for none(default))
 ##    #N   => $N,         ##-- OVERRIDE:unused: total marginal relation frequency
@@ -47,6 +55,7 @@ sub new {
   my $dprf = $that->SUPER::new(
 			       prf1=>$prf1,
 			       prf2=>$prf2,
+			       diff=>'adiff',
 			       %opts,
 			      );
   delete @$dprf{grep {!defined($opts{$_})} qw(N f1 f2 f12)};
@@ -62,6 +71,7 @@ sub clone {
   my ($dprf,$force) = @_;
   return bless({
 		label=>$dprf->{label},
+		diff=>$dprf->{diff},
 		(defined($dprf->{prf1}) ? $dprf->{prf1}->clone($force) : qw()),
 		(defined($dprf->{prf2}) ? $dprf->{prf2}->clone($force) : qw()),
 	       }, ref($dprf));
@@ -208,6 +218,64 @@ sub saveHtmlFile {
 ##==============================================================================
 ## Compilation
 
+##----------------------------------------------------------------------
+## Compilation: diff-ops
+
+## %DIFFOPS : ($opAlias => $opName, ...) : canonical diff-operation names
+our %DIFFOPS =
+  (
+   (map {($_=>'diff')} qw(difference diff d minus -)),
+   (map {($_=>'adiff')} qw(absolute-difference abs-difference abs-diff adiff adifference a- DEFAULT)),
+   (map {($_=>'sum')} qw(add plus sum +)),
+   (map {($_=>'min')} qw(minimum min)),
+   (map {($_=>'max')} qw(maximum max)),
+   (map {($_=>'avg')} qw(average avg mean)),
+   (map {($_=>'havg')} qw(harmonic-average harmonic-avg harmonic harm haverage havg ha h)),
+  );
+
+## $opname = $dprf->diffop()
+## $opname = $CLASS_OR_OBJECT->diffop($opNameOrAlias)
+##  + returns canonical diff operation-name for $opNameOrAlias
+sub diffop {
+  my ($that,$op) = @_;
+  $op //= $that->{diff} if (ref($that));
+  return $DIFFOPS{$op} // $op // $DIFFOPS{DEFAULT};
+}
+
+## \&FUNC = $dprf->diffsub()
+## \&FUNC = $CLASS_OR_OBJECT->diffsub($opNameOrAlias)
+##  + gets low-level binary diff operation for diff-operation $opNameOrAlias (default=$dprf->{diff})
+sub diffsub {
+  my ($that,$opname) = @_;
+  my $op  = $that->diffop($opname);
+  my $sub = $that->can("diffop_$op");
+  return $sub if (defined($sub));
+  $that->logwarn("unknown low-level diff operation '$opname' defaults to '$DIFFOPS{DEFAULT}'");
+  return \&diffop_diff;
+}
+
+## $selector = $dprf->diffkbest()
+## $selector = $dprf->diffkbest($opNameOrAlias)
+##  + returns 'kbest' selector appropriate for which() or trim() methods
+sub diffkbest {
+  my ($that,$op) = @_;
+  return $that->diffop($op) eq 'adiff' ? 'kbesta' : 'kbest';
+}
+
+BEGIN { *diffop_adiff = \&diffop_diff; }
+sub diffop_diff  { return $_[0]-$_[1]; }
+sub diffop_sum   { return $_[0]+$_[1]; }
+sub diffop_min   { return $_[0]<$_[1] ? $_[0] : $_[1]; }
+sub diffop_max   { return $_[0]>$_[1] ? $_[0] : $_[1]; }
+sub diffop_avg   { return ($_[0]+$_[1])/2.0; }
+#sub diffop_havg  { return $_[0]==0 || $_[1]==0 ? 0 : 2.0/(1.0/$_[0] + 1.0/$_[1]); }
+
+our $havg_eps = 0.1;
+sub diffop_havg  { return 2.0/(1.0/($_[0]+$havg_eps) + 1.0/($_[1]+$havg_eps)); }
+
+##----------------------------------------------------------------------
+## Compilation: guts
+
 ## $dprf = $dprf->populate()
 ## $dprf = $dprf->populate($prf1,$prf2)
 ##  + populates diff-profile by subtracting $prf2 scores from $prf1
@@ -223,14 +291,15 @@ sub populate {
   my $scoref = $dprf->{score} = $dprf->{score} // $pa->{score} // $pb->{score} // 'f12';
   my ($af2,$af12,$ascore) = @$pa{qw(f2 f12),$scoref};
   my ($bf2,$bf12,$bscore) = @$pb{qw(f2 f12),$scoref};
-  my $dscore              = $dprf->{$scoref} = ($dprf->{$scoref} // {});
+  my $dscore  = $dprf->{$scoref} = ($dprf->{$scoref} // {});
+  my $diffsub = $dprf->diffsub();
   $dprf->logconfess("populate(): no {$scoref} key for \$pa") if (!$ascore);
   $dprf->logconfess("populate(): no {$scoref} key for \$pb") if (!$bscore);
   foreach (keys %$bscore) {
     $af2->{$_}    //= 0;
     $af12->{$_}   //= 0;
     $ascore->{$_} //= 0;
-    $dscore->{$_} = $ascore->{$_} - $bscore->{$_};
+    $dscore->{$_} = $diffsub->(($ascore->{$_}//0), ($bscore->{$_}//0));
   }
   return $dprf;
 }

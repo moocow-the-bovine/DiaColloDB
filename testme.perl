@@ -1238,7 +1238,7 @@ sub test_ddcprf {
 
   exit 0;
 }
-test_ddcprf(@ARGV);
+#test_ddcprf(@ARGV);
 
 ##--------------------------------------------------------------
 sub test_ddcdiff {
@@ -1285,6 +1285,29 @@ sub test_pnndiff {
 }
 #test_pnndiff(@ARGV);
 
+##--------------------------------------------------------------
+sub test_diffop {
+  my $dbdir = shift || 'dta.d';
+  my %opts  = map {split(/=/,$_,2)} @_;
+  %opts = (
+	   aquery => "Mann",
+	   bquery => "Frau",
+	   aslice => 0,
+	   bslice => 0,
+	   score => 'ld',
+	   kbest => 10,
+	   diff   => 'max',
+	   #global => 1,
+	   %opts,
+	  );
+
+  my $coldb = DiaColloDB->new(dbdir=>$dbdir) or die("$0: failed to open $dbdir/: $!");
+  $mp = $coldb->compare('cof',%opts) or die("$0: failed to acquire profile: $!");
+  $mp->saveTextFile('-');
+
+  exit 0;
+}
+test_diffop(@ARGV);
 
 
 

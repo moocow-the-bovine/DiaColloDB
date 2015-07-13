@@ -191,6 +191,7 @@ sub profile {
 ##     kbest   => $k,             ##-- return only $k best collocates per date (slice) : default=-1:all
 ##     cutoff  => $cutoff,        ##-- minimum score
 ##     global  => $bool,          ##-- trim profiles globally (vs. locally for each date-slice?) (default=0)
+##     diff    => $diff,          ##-- low-level score-diff operation (adiff|diff|sum|min|max|avg|havg); default='adiff'
 ##     ##
 ##     ##-- profiling and debugging parameters
 ##     strings => $bool,          ##-- do/don't stringify (default=do)
@@ -220,12 +221,14 @@ sub compare {
   $reldb->vlog($logProfile, "compare(): align and trim (".($opts{global} ? 'global' : 'local').")");
   my $ppairs = DiaColloDB::Profile::MultiDiff->align($mpa,$mpb);
   DiaColloDB::Profile::MultiDiff->trimPairs($ppairs, %opts);
-  my $diff = DiaColloDB::Profile::MultiDiff->new($mpa,$mpb,titles=>$mpa->{titles});
-  $diff->trim(kbesta=>$opts{kbest}) if (!$opts{global});
+  my $diff = DiaColloDB::Profile::MultiDiff->new($mpa,$mpb, titles=>$mpa->{titles}, diff=>$opts{diff});
+  $diff->trim( DiaColloDB::Profile::Diff->diffkbest($opts{diff})=>$opts{kbest} ) if (!$opts{global});
 
   ##-- finalize: stringify
-  $reldb->vlog($logProfile, "compare(): stringify");
-  $diff->stringify($groupby->{g2s}) if ($opts{strings}//1);
+  if ($opts{strings}//1) {
+    $reldb->vlog($logProfile, "compare(): stringify");
+    $diff->stringify($groupby->{g2s});
+  }
 
   return $diff;
 }
