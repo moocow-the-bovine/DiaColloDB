@@ -264,7 +264,7 @@ sub diffsub {
 ##  + returns true iff diff should pre-trim operand profiles
 sub diffpretrim {
   my ($that,$op) = @_;
-  return $that->diffop($op) =~ m/^adiff|min/;
+  return $that->diffop($op) =~ m/^a?diff|min|max/;
 }
 
 ## $selector = $dprf->diffkbest()
