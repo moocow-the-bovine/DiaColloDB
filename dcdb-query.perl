@@ -43,7 +43,7 @@ our %query = (
 	      ##
 	      eps => 0,		##-- smoothing constant
 	      score =>'ld',	##-- score func
-	      diff=>'abs-diff', ##-- diff-op
+	      diff=>'adiff',    ##-- diff-op
 	      kbest =>10,	##-- k-best items per date
 	      cutoff =>undef,	##-- minimum score cutoff
 	      global =>0,       ##-- trim globally (vs. slice-locally)?
@@ -227,6 +227,8 @@ dcdb-query.perl - query a DiaColloDB
    -nokbest              # disable k-best pruning
    -cutoff CUTOFF        # set minimum score for returned items (default=none)
    -nocutoff             # disable cutoff pruning
+   -eps EPS              # smoothing constant (default=0.5)
+   -diff DIFFOP          # diff operation (default=adiff)
    -[no]global           # do/don't trim profiles globally (vs. locally by date-slice; default=don't)
    -[no]strings          # debug: do/don't stringify returned profile (default=do)
 
@@ -246,6 +248,9 @@ dcdb-query.perl - query a DiaColloDB
    GROUPBY is a space- or comma-separated list of the form ATTR1[:FILTER1] ..., where:
    - ATTR is the name or alias of a supported attribute (e.g. 'lemma', 'pos', etc.), and
    - FILTER is either a |-separated LIST of literal values or a /REGEX/[gimsadlu]*
+   
+ Diff Operations:
+   DIFF is one of: adiff diff sum min max avg havg gavg lavg
 
 =cut
 
