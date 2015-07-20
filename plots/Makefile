@@ -17,14 +17,14 @@ diff-%.gp:
 	:>$@
 	echo "load \"diffs.gp\";" >> $@
 	echo "set title \"$*(a,b)\";" >> $@
-	test \! -e "$*.gpo" || cat $(wildcard $*.gpo) >>$@
+	test \! -e "diff-$*.gpo" || cat $(wildcard diff-$*.gpo) >>$@
 	echo "splot $*(x,y) notitle;" >> $@
 
 score-%.gp:
 	:>$@
 	echo "load \"scores.gp\";" >> $@
 	echo "set title \"$*(f2,f12) [N=100k,f1=100]\";" >> $@
-	test \! -e "$*.gpo" || cat $(wildcard $*.gpo) >>$@
+	test \! -e "score-$*.gpo" || cat $(wildcard score-$*.gpo) >>$@
 	echo "splot $*(x,y) notitle;" >> $@
 
 ##--------------------------------------------------------------
