@@ -18,13 +18,5 @@ set zlabel "diff";
 set xrange [0:10];
 set yrange [0:10];
 set zrange [0:10];
-set view map;
-set pm3d;
-set style function pm3d;
-set isosamples 64,64;
-set size ratio 0.9;
-set lmargin 0;
-set rmargin 0;
-set tmargin 0;
-set bmargin 0;
 
+load "common.gp";

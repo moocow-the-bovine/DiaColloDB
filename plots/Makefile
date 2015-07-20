@@ -1,55 +1,67 @@
 ##-*- Mode: GNUmakefile -*-
 
-diffs ?= diff adiff min max sum avg havg gavg lavg
+diffs  ?= diff adiff min max sum avg havg gavg lavg
+scores ?= f fm lf lfm mi ld
+src    ?= $(patsubst %,diff-%,$(diffs)) $(patsubst %,score-%,$(scores))
+#src    ?= $(patsubst %,score-%,$(scores))
 
-TARGETS ?= svg png
+plotdeps ?= diffs.gp scores.gp common.gp
+
+TARGETS ?= png
 
 all: $(TARGETS)
 
 ##--------------------------------------------------------------
-gp: $(diffs:=.gp)
-%.gp:
+gp: $(src:=.gp)
+diff-%.gp:
 	:>$@
-	echo "load \"diffops.gp\";" >> $@
+	echo "load \"diffs.gp\";" >> $@
 	echo "set title \"$*(a,b)\";" >> $@
 	test \! -e "$*.gpo" || cat $(wildcard $*.gpo) >>$@
 	echo "splot $*(x,y) notitle;" >> $@
 
+score-%.gp:
+	:>$@
+	echo "load \"scores.gp\";" >> $@
+	echo "set title \"$*(f2,f12) [N=100k,f1=100]\";" >> $@
+	test \! -e "$*.gpo" || cat $(wildcard $*.gpo) >>$@
+	echo "splot $*(x,y) notitle;" >> $@
+
 ##--------------------------------------------------------------
-mono-png: $(diffs:=.mono.png)
-png-mono: $(diffs:=.mono.png)
+mono-png: $(src:=.mono.png)
+png-mono: $(src:=.mono.png)
 %.mono.png: %.mono.eps
 	pstopnm -stdout -pgm -portrait -xsize 640 $< | pnmcrop -white | pnmtopng -compression 7 > $@
 
-png: $(diffs:=.png)
-%.png: %.gp diffops.gp
+png: $(src:=.png)
+%.png: %.gp $(plotdeps)
 	echo "set term png crop; set output \"$@\"; load \"$<\";" | gnuplot
 
 ##--------------------------------------------------------------
-svg: $(diffs:=.svg)
-%.svg: %.gp diffops.gp
+svg: $(src:=.svg)
+%.svg: %.gp $(plotdeps)
 	echo "set term svg background rgb \"#FFFFFF\"; set output \"$@\"; load \"$<\";" | gnuplot
 
 ##--------------------------------------------------------------
-pdf-cairo: $(diffs:=.cairo.pdf)
-cairo-pdf: $(diffs:=.cairo.pdf)
-%.cairo.pdf: %.gp diffops.gp
+pdf-cairo: $(src:=.cairo.pdf)
+cairo-pdf: $(src:=.cairo.pdf)
+%.cairo.pdf: %.gp $(plotdeps)
 	echo "set term pdfcairo; set output \"$@\"; load \"$<\";" | gnuplot
 
-pdf: $(diffs:=.pdf)
+pdf: $(src:=.pdf)
 %.pdf: %.eps
 	epstopdf --outfile=$@ $<
 
 ##--------------------------------------------------------------
-eps: $(diffs:=.eps)
-%.eps: %.gp diffops.gp
+eps: $(src:=.eps)
+%.eps: %.gp $(plotdeps)
 	echo "set term postscript eps color; set output \"$@\"; load \"$<\";" | gnuplot
 
-mono-eps: $(diffs:=.mono.eps)
-eps-mono: $(diffs:=.mono.eps)
-%.mono.eps: %.gp diffops.gp
+mono-eps: $(src:=.mono.eps)
+eps-mono: $(src:=.mono.eps)
+%.mono.eps: %.gp $(plotdeps)
 	echo "set term postscript eps mono; set output \"$@\"; load \"$<\";" | gnuplot
 
 ##--------------------------------------------------------------
 clean:
-	rm -f *.svg *.png *.jpg *.eps *.pdf $(diffs:=.gp)
+	rm -f *.svg *.png *.jpg *.eps *.pdf $(src:=.gp)
