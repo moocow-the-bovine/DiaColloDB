@@ -1,1 +1,1 @@
-set cbrange [0:mi(100,100)];
+set cbrange [mi(10000,1):mi(100,100)];
