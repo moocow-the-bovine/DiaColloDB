@@ -21,7 +21,7 @@ set zrange [0:10];
 set view map;
 set pm3d;
 set style function pm3d;
-set isosamples 32,32;
+set isosamples 64,64;
 set size ratio 0.9;
 set lmargin 0;
 set rmargin 0;

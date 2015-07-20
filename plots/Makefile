@@ -16,9 +16,14 @@ gp: $(diffs:=.gp)
 	echo "splot $*(x,y) notitle;" >> $@
 
 ##--------------------------------------------------------------
+mono-png: $(diffs:=.mono.png)
+png-mono: $(diffs:=.mono.png)
+%.mono.png: %.mono.eps
+	pstopnm -stdout -pgm -portrait -xsize 640 $< | pnmcrop -white | pnmtopng -compression 7 > $@
+
 png: $(diffs:=.png)
 %.png: %.gp diffops.gp
-	echo "set term png; set output \"$@\"; load \"$<\";" | gnuplot
+	echo "set term png crop; set output \"$@\"; load \"$<\";" | gnuplot
 
 ##--------------------------------------------------------------
 svg: $(diffs:=.svg)
