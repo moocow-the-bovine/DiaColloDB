@@ -17,6 +17,7 @@ use DiaColloDB::Relation;
 use DiaColloDB::Relation::Unigrams;
 use DiaColloDB::Relation::Cofreqs;
 use DiaColloDB::Relation::DDC;
+#use DiaColloDB::Relation::Vsem;
 use DiaColloDB::Profile;
 use DiaColloDB::Profile::Multi;
 use DiaColloDB::Profile::MultiDiff;
@@ -33,7 +34,7 @@ use strict;
 ##==============================================================================
 ## Globals & Constants
 
-our $VERSION = "0.07.006";
+our $VERSION = "0.08.001";
 our @ISA = qw(DiaColloDB::Client);
 
 ## $PGOOD_DEFAULT
@@ -99,6 +100,8 @@ our $MMCLASS = 'DiaColloDB::MultiMapFile';
 ##    dmax  => $dmax,     ##-- maximum distance for collocation-frequencies and implicit ddc near() queries (default=5)
 ##    cfmin => $cfmin,    ##-- minimum co-occurrence frequency for Cofreqs and ddc queries (default=2)
 ##    keeptmp => $bool,   ##-- keep temporary files? (default=0)
+##    index_vsem => $bool,##-- make vector-semantic index? (default=undef: if available)
+##    vbreak => $break,   ##-- use break-type $break for vsem index (default=undef: files)
 ##    ##
 ##    ##-- runtime ddc relation options
 ##    ddcServer => "$host:$port", ##-- server for ddc relation
@@ -128,6 +131,7 @@ our $MMCLASS = 'DiaColloDB::MultiMapFile';
 ##    ${a}enum => $aenum,   ##-- attribute enum: $aenum : ($dbdir/${a}_enum.*) : $astr<=>$ai : A*<=>N
 ##                          ##    e.g.  lemmata: $lenum : ($dbdir/l_enum.*   )  : $lstr<=>$li : A*<=>N
 ##    ${a}2x   => $a2x,     ##-- attribute multimap: $a2x : ($dbdir/${a}_2x.*) : $ai=>@xis  : N=>N*
+##    ${a}2w   => $a2w,     ##-- attribute multimap: $a2w : ($dbdir/${a}_2w.*) : $ai=>@wis  : N=>N*
 ##    pack_x$a => $fmt      ##-- pack format: extract attribute-id $ai from a packed tuple-string $xs ; $ai=unpack($coldb->{"pack_x$a"},$xs)
 ##    ##
 ##    ##-- tuple data (+dates)
@@ -137,13 +141,14 @@ our $MMCLASS = 'DiaColloDB::MultiMapFile';
 ##    xdmax => $xdmax,      ##-- maximum date
 ##    ##
 ##    ##-- tuple data (-dates)
-##    #tenum  => $tenum,     ##-- enum: attribute-tuples (no dates), only if $coldb->{indexAttrs}
-##    #pack_t => $fmt,       ##-- symbol pack-format for $tenum : "${pack_id}[Nattrs]"
+##    wenum  => $wenum,     ##-- enum: attribute-tuples (no dates), only if $coldb->{index_vsem}
+##    pack_w => $fmt,       ##-- symbol pack-format for $tenum : "${pack_id}[Nattrs]"
 ##    ##
 ##    ##-- relation data
 ##    xf    => $xf,       ##-- ug: $xi => $f($xi) : N=>N
 ##    cof   => $cof,      ##-- cf: [$xi1,$xi2] => $f12
 ##    ddc   => $ddc,      ##-- ddc client relation
+##    vsem  => $vsem,     ##-- vector-space semantic model
 ##   )
 sub new {
   my $that = shift;
@@ -162,6 +167,8 @@ sub new {
 		      dmax => 5,
 		      cfmin => 2,
 		      #keeptmp => 0,
+		      index_vsem => undef,
+		      vbreak => undef,
 
 		      ##-- filters
 		      pgood => $PGOOD_DEFAULT,
@@ -191,20 +198,26 @@ sub new {
 		      #l2x   => undef, #$MMCLASS->new(pack_i=>$coldb->{pack_id}, pack_o=>$coldb->{pack_off}, pack_l=>$coldb->{pack_id}),
 		      #pack_xl => 'N',
 
-		      ##-- tuples
+		      ##-- tuples (+dates)
 		      #xenum  => undef, #$XECLASS::FixedLen->new(pack_i=>$coldb->{pack_id}, pack_s=>$coldb->{pack_x}),
 		      #pack_x => 'Nn',
+
+		      ##-- tuples (-dates)
+		      #wenum  => undef, #$XECLASS::FixedLen->new(pack_i=>$coldb->{pack_id}, pack_s=>$coldb->{pack_w}),
+		      #pack_w => 'N',
 
 		      ##-- relations
 		      #xf    => undef, #DiaColloDB::Relation::Unigrams->new(packas=>$coldb->{pack_f}),
 		      #cof   => undef, #DiaColloDB::Relation::Cofreqs->new(pack_f=>$pack_f, pack_i=>$pack_i, dmax=>$dmax, fmin=>$cfmin),
 		      #ddc   => undef, #DiaColloDB::Relation::DDC->new(),
+		      #vsem  => undef, #DiaColloDB::Relation::Vsem->new(),
 
 		      @_,	##-- user arguments
 		     },
 		     ref($that)||$that);
   $coldb->{class}  = ref($coldb);
   $coldb->{pack_x} = $coldb->{pack_id} . $coldb->{pack_date};
+  $coldb->{pack_w} = $coldb->{pack_id};
   if (defined($coldb->{dbdir})) {
     ##-- avoid initial close() if called with dbdir=>$dbdir argument
     my $dbdir = $coldb->{dbdir};
@@ -260,6 +273,14 @@ sub open {
   $coldb->loadHeader()
     or $coldb->logconfess("open(): failed to load header file", $coldb->headerFile, ": $!");
 
+  ##-- open: vsem
+  if ($coldb->{index_vsem}) {
+    if (!require "DiaColloDB/Relation/Vsem.pm") {
+      $coldb->logwarn("open(): require failed for DiaColloDB/Relation/Vsem.pm ; vector-space modelling disabled", ($@ ? "\n: $@" : ''));
+      $coldb->{index_vsem} = 0;
+    }
+  }
+
   ##-- open: common options
   my %efopts = (flags=>$flags, pack_i=>$coldb->{pack_id}, pack_o=>$coldb->{pack_off}, pack_l=>$coldb->{pack_len});
   my %mmopts = (%efopts, pack_l=>$coldb->{pack_id});
@@ -276,6 +297,10 @@ sub open {
       or $coldb->logconfess("open(): failed to open enum ${abase}enum.*: $!");
     $coldb->{"${a}2x"} = $MMCLASS->new(base=>"${abase}2x", %mmopts)
       or $coldb->logconfess("open(): failed to open expansion multimap ${abase}2x.*: $!");
+    if ($coldb->{index_vsem}) {
+      $coldb->{"${a}2w"} = $MMCLASS->new(base=>"${abase}2w", %mmopts)
+	or $coldb->logconfess("open(): failed to open dateless expansion multimap ${abase}2w.*: $!");
+    }
     $coldb->{"pack_x$a"} //= "\@${axat}$coldb->{pack_id}";
     $axat += packsize($coldb->{pack_id});
   }
@@ -298,6 +323,14 @@ sub open {
     @$coldb{qw(xdmin xdmax)} = ($dmin,$dmax);
   }
 
+  ##-- open: wenum
+  if (-r "$dbdir/wenum.hdr") {
+    $coldb->{wenum} = $XECLASS->new(base=>"$dbdir/wenum", %efopts, pack_s=>$coldb->{pack_w})
+      or $coldb->logconfess("open(): failed to open attribute-tuple-enum $dbdir/wenum.*: $!");
+  } else {
+    delete $coldb->{wenum};
+  }
+
   ##-- open: xf
   $coldb->{xf} = DiaColloDB::Relation::Unigrams->new(file=>"$dbdir/xf.dba", flags=>$flags, packas=>$coldb->{pack_f})
     or $coldb->logconfess("open(): failed to open tuple-unigrams $dbdir/xf.dba: $!");
@@ -314,6 +347,11 @@ sub open {
   $coldb->{ddc} = DiaColloDB::Relation::DDC->new(-r "$dbdir/ddc.hdr" ? (base=>"$dbdir/ddc") : qw())->fromDB($coldb)
     // 'DiaColloDB::Relation::DDC';
 
+  ##-- open: vsem (if available)
+  if ($coldb->{index_vsem}) {
+    $coldb->{vsem} = DiaColloDB::Relation::Vsem->new(-r "$dbdir/vsem.hdr" ? (base=>"$dbdir/vsem") : qw());
+  }
+
   ##-- all done
   return $coldb;
 }
@@ -321,8 +359,8 @@ sub open {
 ## @dbkeys = $coldb->dbkeys()
 sub dbkeys {
   return (
-	  (ref($_[0]) ? (map {($_."enum",$_."2x")} $_[0]->attrs) : qw()),
-	  qw(xenum xf cof),
+	  (ref($_[0]) ? (map {($_."enum",$_."2x",$_."2w")} $_[0]->attrs) : qw()),
+	  qw(xenum wenum xf cof vsem),
 	 );
 }
 
@@ -480,14 +518,14 @@ sub attrQuery {
 ## \@attrdata = $coldb->attrData()
 ## \@attrdata = $coldb->attrData(\@attrs=$coldb->attrs)
 ##  + get attribute data for \@attrs
-##  + return @attrdata = ({a=>$a, i=>$i, enum=>$aenum, pack_x=>$pack_xa, a2x=>$a2x, ...})
+##  + return @attrdata = ({a=>$a, i=>$i, enum=>$aenum, pack_x=>$pack_xa, a2x=>$a2x, a2w=>$a2w, ...})
 sub attrData {
   my ($coldb,$attrs) = @_;
   $attrs //= $coldb->attrs;
   my ($a);
   return [map {
     $a = $coldb->attrName($attrs->[$_]);
-    {i=>$_, a=>$a, enum=>$coldb->{"${a}enum"}, pack_x=>$coldb->{"pack_x$a"}, a2x=>$coldb->{"${a}2x"}}
+    {i=>$_, a=>$a, enum=>$coldb->{"${a}enum"}, pack_x=>$coldb->{"pack_x$a"}, a2x=>$coldb->{"${a}2x"}, a2w=>$coldb->{"${a}2w"}}
   } (0..$#$attrs)];
 }
 
@@ -521,6 +559,17 @@ sub create {
   make_path($dbdir)
     or $coldb->logconfess("create(): could not create DB directory $dbdir: $!");
 
+  ##-- initialize: vsem
+  $coldb->{index_vsem} //= 1;
+  if ($coldb->{index_vsem}) {
+    if (!require "DiaColloDB/Relation/Vsem.pm") {
+      $coldb->logwarn("create(): require failed for DiaColloDB/Relation/Vsem.pm ; vector-space modelling disabled", ($@ ? "\n: $@" : ''));
+      $coldb->{index_vsem} = 0;
+    } else {
+      $coldb->info("vector-space modelling via DiaColloDB::Relation::Vsem enabled.");
+    }
+  }
+
   ##-- initialize: attributes
   my $attrs = $coldb->{attrs} = [map {$coldb->attrName($_)} @{$coldb->attrs(undef,['l'])}];
 
@@ -530,14 +579,15 @@ sub create {
   my $pack_f     = $coldb->{pack_f};
   my $pack_off   = $coldb->{pack_off};
   my $pack_len   = $coldb->{pack_len};
-  my $pack_x     = $coldb->{pack_x} = $pack_id."[".scalar(@$attrs)."]".$pack_date;
+  my $pack_w     = $coldb->{pack_w} = $pack_id."[".scalar(@$attrs)."]";
+  my $pack_x     = $coldb->{pack_x} = $pack_w.$pack_date;
 
   ##-- initialize: common flags
   my %efopts = (flags=>$flags, pack_i=>$coldb->{pack_id}, pack_o=>$coldb->{pack_off}, pack_l=>$coldb->{pack_len});
   my %mmopts = (%efopts, pack_l=>$coldb->{pack_id});
 
   ##-- initialize: attribute enums
-  my $aconf = [];  ##-- [{a=>$a, i=>$i, enum=>$aenum, pack_x=>$pack_xa, s2i=>\%s2i, ns=>$nstrings, #a2x=>$a2x, ...}, ]
+  my $aconf = [];  ##-- [{a=>$a, i=>$i, enum=>$aenum, pack_x=>$pack_xa, s2i=>\%s2i, ns=>$nstrings, #a2x=>$a2x, #a2w=>$a2w, ...}, ]
   my $axpos = 0;
   my ($a,$ac);
   foreach (0..$#$attrs) {
@@ -551,16 +601,34 @@ sub create {
   my @aconfm = grep { defined($_->{ma})} @$aconf; ##-- meta-attributes
   my @aconfw = grep {!defined($_->{ma})} @$aconf; ##-- token-attributes
 
-  ##-- initialize: tuple enum
+  ##-- initialize: tuple enum (+dates)
   my $xenum = $coldb->{xenum} = $XECLASS->new(%efopts, pack_s=>$pack_x);
   my $xs2i  = $xenum->{s2i};
   my $nx    = 0;
 
+  ##-- initialize: tuple enum (-dates)
+  my $wenum = $coldb->{wenum} = $coldb->{index_vsem} ? $XECLASS->new(%efopts, pack_s=>$pack_w) : undef;
+  my $ws2i  = $wenum ? $wenum->{s2i} : undef;
+  my $nw    = 0;
 
   ##-- initialize: corpus token-list (temporary)
   my $tokfile =  "$dbdir/tokens.dat";
   CORE::open(my $tokfh, ">$tokfile")
     or $coldb->logconfess("$0: open failed for $tokfile: $!");
+
+  ##-- initialize: vsem: doc-data directory (temporary)
+  my ($docdir);
+  if ($coldb->{index_vsem}) {
+    $docdir = "$dbdir/docdata.d";
+    !-d $docdir
+      or remove_tree($docdir)
+	or $coldb->logconfess("create(): could not remove stale doc-data directory $docdir: $!");
+    make_path($docdir)
+      or $coldb->logconfess("create(): could not create doc-data directory $docdir: $!");
+  }
+  my $vbreak = ($coldb->{vbreak} // '#file');
+  $vbreak    = "#$vbreak" if ($vbreak !~ /^#/);
+  $coldb->{vbreak} = $vbreak;
 
   ##-- initialize: filter regexes
   my $pgood = $coldb->{pgood} ? qr{$coldb->{pgood}} : undef;
@@ -582,13 +650,17 @@ sub create {
   $coldb->vlog($coldb->{logCreate},"create(): processing $nfiles corpus file(s)");
   my ($xdmin,$xdmax) = ('inf','-inf');
   my ($bos,$eos) = @$coldb{qw(bos eos)};
-  my ($doc, $date,$tok,$w,$p,$l,@ais,$x,$xi, $filei);
+  my ($doc, $date,$tok,$w,$p,$l,@ais,$x,$xi, $wx,$wxi,@sigs,$sig, $filei);
   my ($last_was_eos,$bosxi,$eosxi);
   for ($corpus->ibegin(); $corpus->iok; $corpus->inext) {
     $coldb->vlog($coldb->{logCorpusFile}, sprintf("create(): processing files [%3d%%]: %s", 100*$filei/$nfiles, $corpus->ifile))
       if ($logFileN && ($filei++ % $logFileN)==0);
     $doc  = $corpus->idocument();
     $date = $doc->{date};
+
+    ##-- initalize vsem signatures
+    @sigs = qw();
+    $sig  = {}; ##-- ($wi => $count, ...)
 
     ##-- get date-range
     $xdmin = $date if ($date < $xdmin);
@@ -609,10 +681,10 @@ sub create {
       $eosxi = $xi if (defined($eos) && $w eq $eos);
     }
 
-    ##-- iterate over tokens
+    ##-- iterate over tokens, populating enums and writing $tokfile
     $last_was_eos = 1;
     foreach $tok (@{$doc->{tokens}}) {
-      if (defined($tok)) {
+      if (ref($tok)) {
 	##-- normal token
 	($w,$p,$l) = @$tok{qw(w p l)};
 
@@ -632,12 +704,35 @@ sub create {
 
 	$tokfh->print(($last_was_eos && defined($bosxi) ? ($bosxi,"\n") : qw()), $xi,"\n");
 	$last_was_eos = 0;
+
+	##-- extract signature for vsem
+	if ($wenum) {
+	  $wx  = pack($pack_w, @ais);
+	  $wxi = $ws2i->{$wx} = ++$nw if (!defined($wxi=$ws2i->{$wx}));
+	  ++$sig->{$wxi};
+	}
       }
-      elsif (!$last_was_eos) {
+      elsif (!defined($tok) && !$last_was_eos) {
 	##-- eos
 	$tokfh->print((defined($eosxi) ? ($eosxi,"\n") : qw()), "\n");
 	$last_was_eos = 1;
       }
+      elsif (defined($tok) && $tok eq $vbreak && %$sig) {
+	##-- break:vsem
+	push(@sigs,$sig);
+	$sig = {};
+      }
+    }
+
+    ##-- store doc-data (for vsem)
+    push(@sigs,$sig) if (%$sig);
+    if (@sigs && $docdir) {
+      DiaColloDB::Utils::saveJsonFile({
+				       sigs => \@sigs,
+				       (map {($_=>$doc->{$_})} qw(meta date label)),
+				      },
+				      "$docdir/$filei.json",
+				      pretty=>1);
     }
   }
   ##-- store date-range
@@ -653,6 +748,14 @@ sub create {
   $xenum->save("$dbdir/xenum")
     or $coldb->logconfess("create(): failed to save $dbdir/xenum: $!");
 
+  ##-- compile: wenum
+  if ($wenum) {
+    $coldb->vlog($coldb->{logCreate}, "create(): creating attribute tuple-enum $dbdir/wenum.*");
+    $wenum->fromHash($ws2i);
+    $wenum->save("$dbdir/wenum")
+      or $coldb->logconfess("create(): failed to save $dbdir/wenum: $!");
+  }
+
   ##-- compile: by attribute
   foreach $ac (@$aconf) {
     ##-- compile: by attribte: enum
@@ -661,8 +764,13 @@ sub create {
     $ac->{enum}->save("$dbdir/$ac->{a}_enum")
       or $coldb->logconfess("create(): failed to save $dbdir/$ac->{a}_enum: $!");
 
-    ##-- compile: by attribute: expansion multimaps
-    $coldb->create_xmap("$dbdir/$ac->{a}_2x",$xs2i,$ac->{pack_x},"attribute expansion multimap");
+    ##-- compile: by attribute: expansion multimaps (+dates)
+    $coldb->create_xmap("$dbdir/$ac->{a}_2x",$xs2i,$ac->{pack_x},"attribute expansion multimap (+dates)");
+
+    ##-- compile: by attribute: expansion multimaps (-dates)
+    if ($wenum) {
+      $coldb->create_xmap("$dbdir/$ac->{a}_2w",$ws2i,$ac->{pack_x},"attribute expansion multimap (-dates)");
+    }
   }
 
   ##-- compute unigrams
@@ -685,6 +793,14 @@ sub create {
   $cof->create($coldb, $tokfile)
     or $coldb->logconfess("create(): failed to create co-frequency index: $!");
 
+  ##-- create vector-space model (if requested & available)
+  if ($coldb->{index_vsem}) {
+    $coldb->info("creating vector-space model $dbdir/vsem*");
+    $coldb->{vsem} = DiaColloDB::Relation::Vsem->create($coldb);
+  } else {
+    $coldb->info("NOT creating vector-space model, 'vsem' profiling relation disabled");
+  }
+
   ##-- create ddc client relation (no-op if ddcServer option is not set)
   if ($coldb->{ddcServer}) {
     $coldb->info("creating ddc client configuration $dbdir/ddc.hdr [ddcServer=$coldb->{ddcServer}]");
@@ -701,7 +817,14 @@ sub create {
   $coldb->vlog($coldb->{logCreate}, "create(): DB $dbdir created.");
 
   ##-- cleanup
-  CORE::unlink($tokfile) if (!$coldb->{keeptmp});
+  if (!$coldb->{keeptmp}) {
+    CORE::unlink($tokfile)
+	or $coldb->logwarn("create(): clould not remove temporary file '$tokfile': $!");
+    !$docdir
+      or !-d $docdir
+	or remove_tree($docdir)
+	  or $coldb->logwarn("create(): could not remove temporary doc-data directory $docdir: $!");
+  }
 
   return $coldb;
 }
@@ -829,9 +952,12 @@ sub union {
   $xenum->save("$dbdir/xenum")
     or $coldb->logconfess("union(): failed to save $dbdir/xenum: $!");
 
+  ##-- TODO/vsem: union: wenum
+
   ##-- union: expansion maps
   foreach (@$adata) {
     $coldb->create_xmap("$dbdir/$_->{a}_2x",$xs2i,$_->{pack_x},"attribute expansion multimap");
+    ##-- TODO/vsem: union: ${a}_2w
   }
 
   ##-- intermediate cleanup: xs2i
@@ -944,7 +1070,8 @@ sub dbexport {
 
   ##-- dump: common: stringification
   my $pack_x = $coldb->{pack_x};
-  my ($xs2txt,$xi2txt);
+  my $pack_w = $coldb->{pack_w};
+  my ($xs2txt,$xi2txt, $ws2txt,$wi2txt);
   if ($export_sdat) {
     $coldb->vlog($coldb->{logExport}, "dbexport(): preparing tuple-stringification structures");
 
@@ -964,6 +1091,17 @@ sub dbexport {
       @x = unpack($pack_x, $xi2s->[$_[0]//0]//'');
       return join("\t", (map {$ai2s[$_][$x[$_]//0]//''} (0..$#ai2s)), $x[$#x]//0);
     };
+
+    my $wi2s = $coldb->{wenum} ? $coldb->{wenum}->toArray : undef;
+    my (@w);
+    $ws2txt = sub {
+      @w = unpack($pack_w,$_[0]);
+      return join("\t", (map {$ai2s[$_][$w[$_]//0]//''} (0..$#ai2s)));
+    };
+    $wi2txt = sub {
+      @w = unpack($pack_w, $wi2s->[$_[0]//0]//'');
+      return join("\t", (map {$ai2s[$_][$w[$_]//0]//''} (0..$#ai2s)));
+    };
   }
 
   ##-- dump: xenum: raw
@@ -976,6 +1114,20 @@ sub dbexport {
     $coldb->vlog($coldb->{logExport}, "dbexport(): exporting stringified tuple-enum file $outdir/xenum.sdat");
     $coldb->{xenum}->saveTextFile("$outdir/xenum.sdat", pack_s=>$xs2txt)
       or $coldb->logconfess("dbexport() failed for $outdir/xenum.sdat");
+  }
+
+  if ($coldb->{wenum}) {
+    ##-- dump: wenum: raw
+    $coldb->vlog($coldb->{logExport}, "dbexport(): exporting raw attribute-tuple-enum file $outdir/wenum.dat");
+    $coldb->{wenum}->saveTextFile("$outdir/wenum.dat", pack_s=>$pack_w)
+      or $coldb->logconfess("export failed for $outdir/wenum.dat");
+
+    ##-- dump: wenum: stringified
+    if ($export_sdat) {
+      $coldb->vlog($coldb->{logExport}, "dbexport(): exporting stringified attribute-tuple-enum file $outdir/wenum.sdat");
+      $coldb->{wenum}->saveTextFile("$outdir/wenum.sdat", pack_s=>$ws2txt)
+	or $coldb->logconfess("dbexport() failed for $outdir/wenum.sdat");
+    }
   }
 
   ##-- dump: by attribute: enum
@@ -998,6 +1150,20 @@ sub dbexport {
       $coldb->vlog($coldb->{logExport}, "dbexport(): exporting attribute expansion multimap $outdir/$_->{a}_2x.sdat (strings)");
       $_->{a2x}->saveTextFile("$outdir/$_->{a}_2x.sdat", a2s=>$_->{i2txt}, b2s=>$xi2txt)
 	or $coldb->logconfess("dbexport() failed for $outdir/$_->{a}_2x.sdat");
+    }
+
+    if ($coldb->{"$_->{a}2w"}) {
+      ##-- dump: by attribute: a2w: raw
+      $coldb->vlog($coldb->{logExport}, "dbexport(): exporting dateless attribute expansion multimap $outdir/$_->{a}_2w.dat (raw)");
+      $_->{a2w}->saveTextFile("$outdir/$_->{a}_2w.dat")
+	or $coldb->logconfess("dbexport() failed for $outdir/$_->{a}_2w.dat");
+
+      ##-- dump: by attribute: a2w: stringified
+      if ($export_sdat) {
+	$coldb->vlog($coldb->{logExport}, "dbexport(): exporting attribute expansion multimap $outdir/$_->{a}_2w.sdat (strings)");
+	$_->{a2w}->saveTextFile("$outdir/$_->{a}_2w.sdat", a2s=>$_->{i2txt}, b2s=>$wi2txt)
+	  or $coldb->logconfess("dbexport() failed for $outdir/$_->{a}_2w.sdat");
+      }
     }
   }
 

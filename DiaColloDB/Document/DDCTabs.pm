@@ -72,14 +72,10 @@ sub fromFile {
   my $eosre    = $doc->{eosre};
   $eosre       = qr{$eosre} if ($eosre && !ref($eosre));
   my $last_was_eos = 1;
+  my $is_eos = 0;
   my ($w,$p,$l);
   while (defined($_=<$fh>)) {
     chomp;
-    if ($eosre && $_ =~ $eosre) {
-      push(@$tokens,$eos) if (!$last_was_eos);
-      $last_was_eos = 1;
-      next;
-    }
     if (/^%%/) {
       if (/^%%(?:\$DDC:meta\.date_|\$?date)=([0-9]+)/) {
 	$doc->{date} = $1;
@@ -96,6 +92,18 @@ sub fromFile {
       elsif (/^%%\$DDC:index\[([0-9]+)\]=Lemma\b/ || /^%%\$DDC:index\[([0-9]+)\]=\S+ l$/) {
 	$lf = $doc->{lf} = $1;
       }
+      elsif (/^%%\$DDC:BREAK.([^=]+)/) {
+	push(@$tokens,"#$1");
+      }
+      if ($eosre && $_ =~ $eosre) {
+	push(@$tokens,$eos) if (!$last_was_eos);
+	$last_was_eos = 1;
+      }
+      next;
+    }
+    elsif ($eosre && $_ =~ $eosre) {
+      push(@$tokens,$eos) if (!$last_was_eos);
+      $last_was_eos = 1;
       next;
     }
     ($w,$p,$l) = (split(/\t/,$_))[$wf,$pf,$lf];

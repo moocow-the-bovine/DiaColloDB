@@ -87,7 +87,11 @@ DiaColloDB::Document inherits from L<DiaColloDB::Logger|DiaColloDB::Logger>.
  tokens =>\@tokens,  ##-- tokens, including undef for eos
  meta   =>\%meta,    ##-- document metadata (e.g. author, title, collection, ...)
 
-Each token in @tokens is a HASH-ref {w=E<gt>$word,p=E<gt>$pos,l=E<gt>$lemma,...}, or undef for EOS
+Each token in @tokens is one of the following:
+
+ undef              : EOS (default, for collocation profiling)
+ a HASH-ref         : normal token: {w=>$word,p=>$pos,l=>$lemma,...}
+ a string "#BREAK"  : block boundary / "break" of type BREAK, e.g. "#s": sentence-break, "#p": paragraph-break, ...
 
 =back
 
