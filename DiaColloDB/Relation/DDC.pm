@@ -382,7 +382,7 @@ sub countQuery {
     push(@qnodes2,$_) if ($_->getMatchId==2);
   }
   $rel->logconfess("no primary target-nodes found in daughter query '", $qdtr->toString, "': use match-id =1 to specify primary target(s)")
-    if (!@qnodes1);
+    if (!@qnodes1 && !@qnodes2);
   $_->setMatchId(1) foreach (@qnodes1);
 
   ##-- check for target match-id =2 and maybe implicitly construct near() query
@@ -485,6 +485,7 @@ sub countQuery {
 					      }
 					      return $nod;
 					    });
+  $qtemplate->setOptions($qdtr->getOptions->clone) if (!$qtemplate->getOptions); ##-- traversal bug
   $qtemplate->getOptions->setFilters([@$filters,@qtfilters]);
 
   ##-- cleanup coldb parser (so we're using "real" refcounts)
