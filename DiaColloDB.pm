@@ -7,9 +7,10 @@ package DiaColloDB;
 use DiaColloDB::Client;
 use DiaColloDB::Logger;
 use DiaColloDB::EnumFile;
-use DiaColloDB::EnumFile::MMap;
+use DiaColloDB::EnumFile::Identity;
 use DiaColloDB::EnumFile::FixedLen;
 use DiaColloDB::EnumFile::FixedMap;
+use DiaColloDB::EnumFile::MMap;
 use DiaColloDB::EnumFile::Tied;
 use DiaColloDB::MultiMapFile;
 use DiaColloDB::PackedFile;
@@ -77,6 +78,19 @@ our $XECLASS = 'DiaColloDB::EnumFile::FixedLen::MMap';
 our $MMCLASS = 'DiaColloDB::MultiMapFile';
 #our $MMCLASS = 'DiaColloDB::MultiMapFile::MMap'; ##-- TODO
 
+## %VSOPTS : vsem: default options for DocClassify::Mapper->new()
+our %VSOPTS = (
+	       lzClass=>'Raw',
+	       minDocFreq=>5,
+	       minFreq=>10,
+	       twRaw=>1,
+	       twCooked=>1,
+	       svdr=>64,
+	       weightByCat=>0,
+	       nullCat=>undef,
+	       clearCache=>0,
+	      );
+
 ##==============================================================================
 ## Constructors etc.
 
@@ -100,8 +114,9 @@ our $MMCLASS = 'DiaColloDB::MultiMapFile';
 ##    dmax  => $dmax,     ##-- maximum distance for collocation-frequencies and implicit ddc near() queries (default=5)
 ##    cfmin => $cfmin,    ##-- minimum co-occurrence frequency for Cofreqs and ddc queries (default=2)
 ##    keeptmp => $bool,   ##-- keep temporary files? (default=0)
-##    index_vsem => $bool,##-- make vector-semantic index? (default=undef: if available)
-##    vbreak => $break,   ##-- use break-type $break for vsem index (default=undef: files)
+##    index_vsem => $bool,##-- vsem: create/use vector-semantic index? (default=undef: if available)
+##    vbreak => $break,   ##-- vsem: use break-type $break for vsem index (default=undef: files)
+##    vsopts => \%vsopts, ##-- vsem: options for DocClassify::Mapper->new(); default=%VSOPTS
 ##    ##
 ##    ##-- runtime ddc relation options
 ##    ddcServer => "$host:$port", ##-- server for ddc relation
@@ -169,6 +184,7 @@ sub new {
 		      #keeptmp => 0,
 		      index_vsem => undef,
 		      vbreak => undef,
+		      vsopts => Storable::dclone(\%VSOPTS),
 
 		      ##-- filters
 		      pgood => $PGOOD_DEFAULT,
@@ -349,7 +365,8 @@ sub open {
 
   ##-- open: vsem (if available)
   if ($coldb->{index_vsem}) {
-    $coldb->{vsem} = DiaColloDB::Relation::Vsem->new(-r "$dbdir/vsem.hdr" ? (base=>"$dbdir/vsem") : qw());
+    $coldb->{vsem} = DiaColloDB::Relation::Vsem->new((-r "$dbdir/vsem.hdr" ? (base=>"$dbdir/vsem") : qw()),
+						     vsopts => ($coldb->{vsopts}//{}));
   }
 
   ##-- all done
@@ -729,6 +746,7 @@ sub create {
     if (@sigs && $docdir) {
       DiaColloDB::Utils::saveJsonFile({
 				       sigs => \@sigs,
+				       id   => $corpus->icur(),
 				       (map {($_=>$doc->{$_})} qw(meta date label)),
 				      },
 				      "$docdir/$filei.json",
@@ -1010,7 +1028,7 @@ sub union {
 ## @keys = $coldb->headerKeys()
 ##  + keys to save as header
 sub headerKeys {
-  return (qw(attrs), grep {!ref($_[0]{$_}) && $_ !~ m{^(?:dbdir$|flags$|perms$|log)}} keys %{$_[0]});
+  return (qw(attrs), grep {!ref($_[0]{$_}) && $_ !~ m{^(?:dbdir$|flags$|perms$|info$|vsopts$|log)}} keys %{$_[0]});
 }
 
 ## $bool = $coldb->loadHeaderData()

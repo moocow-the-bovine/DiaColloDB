@@ -21,8 +21,10 @@ our @ISA = qw(DiaColloDB::Relation);
 ## $vs = CLASS_OR_OBJECT->new(%args)
 ## + %args, object structure:
 ##   (
-##   ##-- PackedFile: user options
+##   ##-- user options
 ##   base   => $basename,   ##-- relation basename
+##   flags  => $flags,      ##-- i/o flags (default: 'r')
+##   dcopts => \%dcopts,    ##-- options for DocClassify::Mapper->new()
 ##   ##
 ##   ##-- guts
 ##   dcmap  => $dcmap,      ##-- underlying DocClassify::Mapper object
@@ -30,6 +32,8 @@ our @ISA = qw(DiaColloDB::Relation);
 sub new {
   my $that = shift;
   my $vs   = $that->DiaColloDB::PackedFile::new(
+						dcopts => {},
+						flags => 'r',
 						dcmap => undef,
 						@_
 					       );
@@ -42,15 +46,53 @@ sub new {
 ## @files = $obj->diskFiles()
 ##  + returns disk storage files, used by du() and timestamp()
 sub diskFiles {
-  return ("$_[0]{base}.hdr", glob("$_[0]{base}_*"));
+  return ("$_[0]{base}.hdr", glob("$_[0]{base}_*"), glob("$_[0]{base}.map/*"));
 }
 
 ##==============================================================================
-## Persistent API: open/close: TODO
+## API: open/close: TODO
+
+## $vs_or_undef = $vs->open($base)
+## $vs_or_undef = $vs->open($base,$flags)
+## $vs_or_undef = $vs->open()
+sub open {
+  my ($vs,$base,$flags) = @_;
+  $base  //= $vs->{base};
+  $flags //= $vs->{flags};
+  $vs->close() if ($vs->opened);
+  $vs->{base}  = $base;
+  $vs->{flags} = $flags = fcflags($flags);
+
+  if (fcread($flags) && !fctrunc($flags)) {
+    $vs->loadHeader()
+      or $vs->logconess("failed to load header from '$vs->{base}.hdr': $!");
+  }
+
+  $vs->{dcmap} = DocClassify::Mapper->loadDir("${base}.map", verboseIO=>1, mmap=>1)
+    or $vs->logconfess("open(): failed to load mapper data from ${base}.map: $!");
+
+  #$vs->logconfess("open(): not yet implemented");
+
+  return $vs;
+}
+
+## $vs_or_undef = $vs->close()
+sub close {
+  my $vs = shift;
+  if ($vs->opened && fcwrite($vs->{flags})) {
+    $vs->saveHeader() or return undef;
+#   $vs->{dcmap}->saveDir("$vs->{base}.map", verboseIO=>1, mmap=>1)
+#     or $vs->logconfess("close(): failed to save mapper data to $vs->{base}.map: $!");
+  }
+  undef $vs->{base};
+  undef $vs->{dcmap};
+  return $vs;
+}
 
 ## $bool = $obj->opened()
 sub opened {
-  return $_[0]{dcmap} && $_[0]{dcmap}->compiled();
+  my $vs = shift;
+  return defined($vs->{dcmap}) && $vs->{dcmap}->compiled();
 }
 
 ##==============================================================================
@@ -71,11 +113,6 @@ sub create {
   @$vs{keys %opts} = values %opts;
 
   ##-- TODO: CONTINUE HERE
-
-  ##-- ensure openend
-  $vs->opened
-    or $vs->open()
-      or $vs->logconfess("create(): failed to open vector-space semantic model: $!");
 
   ##-- done
   $vs->logconfess("create(): not yet implemented");

@@ -1169,6 +1169,29 @@ sub test_tied_enum {
 #test_tied_enum(@ARGV);
 
 ##==============================================================================
+## test: identity enums
+
+sub test_idenum {
+  my $n    = shift // 10;
+  my $base = shift // 'idenum';
+  my $e = DiaColloDB::EnumFile::Identity->new();
+  $e->setsize($n);
+
+  $e->save($base) or die("$0: save failed for '$base': $!");
+  my $e2 = ref($e)->new(base=>$base) or die("$0: open failed for '$base': $!");
+
+  my ($i2s,$s2i) = $e2->tiepair();
+  my $s0 = $i2s->[0];
+  my $i0 = $s2i->{0};
+
+  print "--dump--\n";
+  $e->saveTextFile("-");
+  exit 0;
+}
+test_idenum(@ARGV);
+
+
+##==============================================================================
 ## test: parseRequest via ddc
 
 ##--------------------------------------------------------------
@@ -1308,7 +1331,7 @@ sub test_diffop {
 
   exit 0;
 }
-test_diffop(@ARGV);
+#test_diffop(@ARGV);
 
 
 

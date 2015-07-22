@@ -1,7 +1,7 @@
 ## -*- Mode: CPerl -*-
 ## File: DiaColloDB::EnumFile::Tied.pm
 ## Author: Bryan Jurish <moocow@cpan.org>
-## Description: collocation db: flat fixed-length record-oriented files: tied interface
+## Description: collocation db: file-based enums: tied interface
 
 package DiaColloDB::EnumFile::Tied;
 1;
@@ -44,9 +44,23 @@ sub tiepair {
     or $that->logconfess("tiepair(): could not create EnumFile object");
 
   my (@id2sym,%sym2id);
-  tie(@id2sym, "DiaColloDB::EnumFile::TiedArray", $enum);
-  tie(%sym2id, "DiaColloDB::EnumFile::TiedHash",  $enum);
+  tie(@id2sym, $enum->tieArrayClass, $enum);
+  tie(%sym2id, $enum->tieHashClass,  $enum);
   return (\@id2sym,\%sym2id);
+}
+
+## $class = $CLASS_OR_OBJECT->tieArrayClass()
+##  + returns class for tied arrays to be returned by tiepair() method
+##  + default just returns "DiaColloDB::EnumFile::TiedArray"
+sub tieArrayClass {
+  return "DiaColloDB::EnumFile::TiedArray";
+}
+
+## $class = $CLASS_OR_OBJECT->tieHashClass()
+##  + returns class for tied arrays to be returned by tiepair() method
+##  + default just returns "DiaColloDB::EnumFile::TiedHash"
+sub tieHashClass {
+  return "DiaColloDB::EnumFile::TiedHash";
 }
 
 ##==============================================================================
@@ -128,7 +142,7 @@ sub CLEAR {
 
 
 ##==============================================================================
-## API: TiedArray
+## API: TiedHash
 
 package DiaColloDB::EnumFile::TiedHash;
 use Tie::Hash;

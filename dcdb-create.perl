@@ -24,7 +24,7 @@ our $listargs = 0; ##-- args are file-lists?
 our $union    = 0; ##-- args are db-dirs?
 our $dotime   = 1; ##-- report timing?
 our %corpus   = (dclass=>'DDCTabs', dopts=>{});
-our %coldb    = (pack_id=>'N', pack_date=>'n', pack_f=>'N', pack_off=>'N', pack_len=>'n', dmax=>5, cfmin=>2, keeptmp=>0);
+our %coldb    = (pack_id=>'N', pack_date=>'n', pack_f=>'N', pack_off=>'N', pack_len=>'n', dmax=>5, cfmin=>2, keeptmp=>0, vsopts=>{});
 
 ##----------------------------------------------------------------------
 ## Command-line processing
@@ -52,6 +52,9 @@ GetOptions(##-- general
 	   'index-attributes|attributes|attrs|a=s' => \$coldb{attrs},
 	   'max-distance|maxd|dmax|n=i' => \$coldb{dmax},
 	   'min-cofrequency|min-cf|mincf|cfmin=i' => \$coldb{cfmin},
+	   'index-vsem|vsem!' => \$coldb{index_vsem},
+	   'vsem-break|vbreak|vb=s' => \$coldb{vbreak},
+	   'vsem-option|vsopt|vso|vopt|vo|vO|V=s' => \$coldb{vsopts},
 	   'keeptmp|keep' => \$coldb{keeptmp},
 	   'nofilters|F' => sub { $coldb{$_}=undef foreach (qw(pgood pbad wgood wbad lgood lbad)); },
 	   'option|O=s%' => \%coldb,
