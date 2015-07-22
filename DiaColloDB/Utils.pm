@@ -25,7 +25,7 @@ our @EXPORT= qw();
 our %EXPORT_TAGS =
     (
      fcntl => [qw(fcflags fcread fcwrite fctrunc fccreat fcperl fcopen)],
-     json  => [qw(loadJsonString loadJsonFile saveJsonString saveJsonFile)],
+     json  => [qw(jsonxs loadJsonString loadJsonFile saveJsonString saveJsonFile)],
      sort  => [qw(csort_to csortuc_to)],
      run   => [qw(crun opencmd)],
      env   => [qw(env_set env_push env_pop)],
@@ -140,10 +140,14 @@ sub fcopen {
 
 ## $data = PACKAGE::loadJsonString( $string,%opts)
 ## $data = PACKAGE::loadJsonString(\$string,%opts)
+##  + %opts passed to JSON::from_json(), e.g. (relaxed=>0)
+##  + supports $opts{json} = $json_obj
 sub loadJsonString {
   my $that = UNIVERSAL::isa($_[0],__PACKAGE__) ? shift : __PACKAGE__;
   my $bufr = ref($_[0]) ? $_[0] : \$_[0];
-  return from_json($$bufr, {utf8=>!utf8::is_utf8($$bufr), relaxed=>1, allow_nonref=>1, @_[1..$#_]});
+  my %opts = @_[1..$#_];
+  return $opts{json}->decode($$bufr) if ($opts{json});
+  return from_json($$bufr, {utf8=>!utf8::is_utf8($$bufr), relaxed=>1, allow_nonref=>1, %opts});
 }
 
 ## $data = PACKAGE::loadJsonFile($filename_or_handle,%opts)
@@ -165,10 +169,13 @@ sub loadJsonFile {
 ## $str = PACKAGE::saveJsonString($data)
 ## $str = PACKAGE::saveJsonString($data,%opts)
 ##  + %opts passed to JSON::to_json(), e.g. (pretty=>0, canonical=>0)'
+##  + supports $opts{json} = $json_obj
 sub saveJsonString {
   my $that = UNIVERSAL::isa($_[0],__PACKAGE__) ? shift : __PACKAGE__;
   my $data = shift;
-  return to_json($data, {utf8=>1, allow_nonref=>1, allow_unknown=>1, allow_blessed=>1, convert_blessed=>1, pretty=>1, canonical=>1, @_});
+  my %opts = @_;
+  return $opts{json}->encode($data)  if ($opts{json});
+  return to_json($data, {utf8=>1, allow_nonref=>1, allow_unknown=>1, allow_blessed=>1, convert_blessed=>1, pretty=>1, canonical=>1, %opts});
 }
 
 ## $bool = PACKAGE::saveJsonFile($data,$filename_or_handle,%opts)
@@ -183,6 +190,27 @@ sub saveJsonFile {
   if (!ref($file)) { close($fh) || return undef; }
   return 1;
 }
+
+##--------------------------------------------------------------
+## JSON: object
+
+## $json = jsonxs()
+## $json = jsonxs(%opts)
+## $json = jsonxs(\%opts)
+sub jsonxs {
+  my $that = UNIVERSAL::isa($_[0],__PACKAGE__) ? shift : __PACKAGE__;
+  my %opts = (
+	      utf8=>1, relaxed=>1, allow_nonref=>1, allow_unknown=>1, allow_blessed=>1, convert_blessed=>1, pretty=>1, canonical=>1,
+	      (@_==1 ? %{$_[0]} : @_),
+	     );
+  my $jxs  = JSON->new;
+  foreach (grep {$jxs->can($_)} keys %opts) {
+    $jxs->can($_)->($jxs,$opts{$_});
+  }
+  return $jxs;
+}
+
+BEGIN { *json = \&jsonxs; }
 
 ##==============================================================================
 ## Functions: env
@@ -454,11 +482,13 @@ sub file_timestamp {
   return file_timestamp(file_mtime(@_));
 }
 
-## $nbytes = du_file(@filenames_or_fh)
+## $nbytes = du_file(@filenames_or_dirnames_or_fhs)
 sub du_file {
   shift if (UNIVERSAL::isa($_[0],__PACKAGE__));
   my $du = 0;
-  $du += (-s $_)//0 foreach (@_);
+  foreach (@_) {
+    $du += (!ref($_) && -d $_ ? du_glob("$_/*") : (-s $_))//0;
+  }
   return $du;
 }
 

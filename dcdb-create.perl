@@ -1,12 +1,14 @@
 #!/usr/bin/perl -w
 
-use lib qw(. lib);
+use lib qw(. lib dclib);
 use DiaColloDB;
 use DiaColloDB::Utils qw(:si);
 use Getopt::Long qw(:config no_ignore_case);
 use Pod::Usage;
 use File::Basename qw(basename);
 use strict;
+
+use DiaColloDB::Relation::Vsem; ##-- DEBUG
 
 ##----------------------------------------------------------------------
 ## Globals
@@ -54,7 +56,7 @@ GetOptions(##-- general
 	   'min-cofrequency|min-cf|mincf|cfmin=i' => \$coldb{cfmin},
 	   'index-vsem|vsem!' => \$coldb{index_vsem},
 	   'vsem-break|vbreak|vb=s' => \$coldb{vbreak},
-	   'vsem-option|vsopt|vso|vopt|vo|vO|V=s' => \$coldb{vsopts},
+	   'vsem-option|vsopt|vso|vopt|vo|vO=s%' => \$coldb{vsopts},
 	   'keeptmp|keep' => \$coldb{keeptmp},
 	   'nofilters|F' => sub { $coldb{$_}=undef foreach (qw(pgood pbad wgood wbad lgood lbad)); },
 	   'option|O=s%' => \%coldb,

@@ -1,6 +1,6 @@
 #!/usr/bin/perl -w
 
-use lib qw(. lib);
+use lib qw(. lib dclib);
 use DiaColloDB;
 use Getopt::Long qw(:config no_ignore_case);
 use Pod::Usage;

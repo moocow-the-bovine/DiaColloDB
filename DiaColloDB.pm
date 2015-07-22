@@ -24,7 +24,7 @@ use DiaColloDB::Profile::Multi;
 use DiaColloDB::Profile::MultiDiff;
 use DiaColloDB::Corpus;
 use DiaColloDB::Persistent;
-use DiaColloDB::Utils qw(:fcntl :json :sort :pack :regex :file :si);
+use DiaColloDB::Utils qw(:math :fcntl :json :sort :pack :regex :file :si);
 use DiaColloDB::Timer;
 use DDC::XS; ##-- for query parsing
 use Fcntl;
@@ -80,15 +80,23 @@ our $MMCLASS = 'DiaColloDB::MultiMapFile';
 
 ## %VSOPTS : vsem: default options for DocClassify::Mapper->new()
 our %VSOPTS = (
+	       class=>'LSI',
+	       verbose=>2,
 	       lzClass=>'Raw',
 	       minDocFreq=>5,
 	       minFreq=>10,
+	       smoothf=>1.001,
+	       mapccs=>1,
+	       nullCat=>undef,
+	       termWeight=>'max-entropy-quotient',
 	       twRaw=>1,
 	       twCooked=>1,
 	       svdr=>64,
+	       catProfile=>'average',
 	       weightByCat=>0,
 	       nullCat=>undef,
 	       clearCache=>0,
+	       trainExclusive=>0, ##-- we don't need this and it's a bit more expensive
 	      );
 
 ##==============================================================================
@@ -115,8 +123,8 @@ our %VSOPTS = (
 ##    cfmin => $cfmin,    ##-- minimum co-occurrence frequency for Cofreqs and ddc queries (default=2)
 ##    keeptmp => $bool,   ##-- keep temporary files? (default=0)
 ##    index_vsem => $bool,##-- vsem: create/use vector-semantic index? (default=undef: if available)
-##    vbreak => $break,   ##-- vsem: use break-type $break for vsem index (default=undef: files)
-##    vsopts => \%vsopts, ##-- vsem: options for DocClassify::Mapper->new(); default=%VSOPTS
+##    vbreak => $vbreak,  ##-- vsem: use break-type $break for vsem index (default=undef: files)
+##    vsopts => \%vsopts, ##-- vsem: options for DocClassify::Mapper->new(); default={} (all inherited from %VSOPTS)
 ##    ##
 ##    ##-- runtime ddc relation options
 ##    ddcServer => "$host:$port", ##-- server for ddc relation
@@ -184,7 +192,7 @@ sub new {
 		      #keeptmp => 0,
 		      index_vsem => undef,
 		      vbreak => undef,
-		      vsopts => Storable::dclone(\%VSOPTS),
+		      vsopts => {},
 
 		      ##-- filters
 		      pgood => $PGOOD_DEFAULT,
@@ -289,7 +297,7 @@ sub open {
   $coldb->loadHeader()
     or $coldb->logconfess("open(): failed to load header file", $coldb->headerFile, ": $!");
 
-  ##-- open: vsem
+  ##-- open: vsem: require
   if ($coldb->{index_vsem}) {
     if (!require "DiaColloDB/Relation/Vsem.pm") {
       $coldb->logwarn("open(): require failed for DiaColloDB/Relation/Vsem.pm ; vector-space modelling disabled", ($@ ? "\n: $@" : ''));
@@ -365,6 +373,8 @@ sub open {
 
   ##-- open: vsem (if available)
   if ($coldb->{index_vsem}) {
+    $coldb->{vsopts}     //= {};
+    $coldb->{vsopts}{$_} //= $VSOPTS{$_} foreach (keys %VSOPTS); ##-- vsem: default options
     $coldb->{vsem} = DiaColloDB::Relation::Vsem->new((-r "$dbdir/vsem.hdr" ? (base=>"$dbdir/vsem") : qw()),
 						     vsopts => ($coldb->{vsopts}//{}));
   }
@@ -376,7 +386,7 @@ sub open {
 ## @dbkeys = $coldb->dbkeys()
 sub dbkeys {
   return (
-	  (ref($_[0]) ? (map {($_."enum",$_."2x",$_."2w")} $_[0]->attrs) : qw()),
+	  (ref($_[0]) ? (map {($_."enum",$_."2x",$_."2w")} @{$_[0]->attrs}) : qw()),
 	  qw(xenum wenum xf cof vsem),
 	 );
 }
@@ -656,12 +666,8 @@ sub create {
   my $lbad  = $coldb->{lbad}  ? qr{$coldb->{lbad}}  : undef;
 
   ##-- initialize: logging
-  my $logFileN = $coldb->{logCorpusFileN};
   my $nfiles   = $corpus->size();
-  if (!defined($logFileN)) {
-    $logFileN = int($nfiles / 100);
-    $logFileN = 1 if ($logFileN < 1);
-  }
+  my $logFileN = $coldb->{logCorpusFileN} // max2(1,int($nfiles/100));
 
   ##-- initialize: enums, date-range
   $coldb->vlog($coldb->{logCreate},"create(): processing $nfiles corpus file(s)");
@@ -670,7 +676,7 @@ sub create {
   my ($doc, $date,$tok,$w,$p,$l,@ais,$x,$xi, $wx,$wxi,@sigs,$sig, $filei);
   my ($last_was_eos,$bosxi,$eosxi);
   for ($corpus->ibegin(); $corpus->iok; $corpus->inext) {
-    $coldb->vlog($coldb->{logCorpusFile}, sprintf("create(): processing files [%3d%%]: %s", 100*$filei/$nfiles, $corpus->ifile))
+    $coldb->vlog($coldb->{logCorpusFile}, sprintf("create(): processing files [%3d%%]: %s", 100*($filei-1)/$nfiles, $corpus->ifile))
       if ($logFileN && ($filei++ % $logFileN)==0);
     $doc  = $corpus->idocument();
     $date = $doc->{date};
@@ -813,8 +819,10 @@ sub create {
 
   ##-- create vector-space model (if requested & available)
   if ($coldb->{index_vsem}) {
-    $coldb->info("creating vector-space model $dbdir/vsem*");
-    $coldb->{vsem} = DiaColloDB::Relation::Vsem->create($coldb);
+    $coldb->info("creating vector-space model $dbdir/vsem* [vbreak=$vbreak]");
+    $coldb->{vsopts}     //= {};
+    $coldb->{vsopts}{$_} //= $VSOPTS{$_} foreach (keys %VSOPTS); ##-- vsem: default options
+    $coldb->{vsem} = DiaColloDB::Relation::Vsem->create($coldb, undef, base=>"$dbdir/vsem");
   } else {
     $coldb->info("NOT creating vector-space model, 'vsem' profiling relation disabled");
   }

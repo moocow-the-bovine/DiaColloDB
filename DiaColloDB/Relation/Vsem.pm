@@ -5,7 +5,7 @@
 
 package DiaColloDB::Relation::Vsem;
 use DiaColloDB::Relation;
-use DiaColloDB::Utils qw(:sort :env :run :pack :file);
+use DiaColloDB::Utils qw(:fcntl :file :math :json);
 use DocClassify;
 use DocClassify::Mapper::Train;
 use strict;
@@ -31,12 +31,14 @@ our @ISA = qw(DiaColloDB::Relation);
 ##   )
 sub new {
   my $that = shift;
-  my $vs   = $that->DiaColloDB::PackedFile::new(
-						dcopts => {},
-						flags => 'r',
-						dcmap => undef,
-						@_
-					       );
+  my $vs   = $that->SUPER::new(
+			       dcopts => {}, ##-- inherited from $coldb->{vsopts}
+			       dcio   => {verboseIO=>0,mmap=>1}, ##-- I/O opts for DocClassify
+			       flags => 'r',
+			       dcmap => undef,
+			       @_
+			      );
+  return $vs->open() if ($vs->{base});
   return $vs;
 }
 
@@ -46,11 +48,22 @@ sub new {
 ## @files = $obj->diskFiles()
 ##  + returns disk storage files, used by du() and timestamp()
 sub diskFiles {
-  return ("$_[0]{base}.hdr", glob("$_[0]{base}_*"), glob("$_[0]{base}.map/*"));
+  return ("$_[0]{base}.hdr", glob("$_[0]{base}_*"));
 }
 
 ##==============================================================================
-## API: open/close: TODO
+## Persistent API: header
+
+## @keys = $obj->headerKeys()
+##  + keys to save as header; default implementation returns all keys of all non-references
+sub headerKeys {
+  my $obj = shift;
+  return ('dcopts', $obj->SUPER::headerKeys);
+}
+
+
+##==============================================================================
+## API: open/close
 
 ## $vs_or_undef = $vs->open($base)
 ## $vs_or_undef = $vs->open($base,$flags)
@@ -68,8 +81,8 @@ sub open {
       or $vs->logconess("failed to load header from '$vs->{base}.hdr': $!");
   }
 
-  $vs->{dcmap} = DocClassify::Mapper->loadDir("${base}.map", verboseIO=>1, mmap=>1)
-    or $vs->logconfess("open(): failed to load mapper data from ${base}.map: $!");
+  $vs->{dcmap} = DocClassify::Mapper->loadDir("${base}_map.d", %{$vs->{dcio}//{}})
+    or $vs->logconfess("open(): failed to load mapper data from ${base}_map.d: $!");
 
   #$vs->logconfess("open(): not yet implemented");
 
@@ -81,8 +94,8 @@ sub close {
   my $vs = shift;
   if ($vs->opened && fcwrite($vs->{flags})) {
     $vs->saveHeader() or return undef;
-#   $vs->{dcmap}->saveDir("$vs->{base}.map", verboseIO=>1, mmap=>1)
-#     or $vs->logconfess("close(): failed to save mapper data to $vs->{base}.map: $!");
+#   $vs->{dcmap}->saveDir("$vs->{base}_map.d", %{$vs->{dcio}//{}})
+#     or $vs->logconfess("close(): failed to save mapper data to $vs->{base}_map.d: $!");
   }
   undef $vs->{base};
   undef $vs->{dcmap};
@@ -112,10 +125,61 @@ sub create {
   $vs = $vs->new() if (!ref($vs));
   @$vs{keys %opts} = values %opts;
 
-  ##-- TODO: CONTINUE HERE
+  ##-- sanity check(s)
+  my $docdir = "$coldb->{dbdir}/docdata.d";
+  $vs->logconfess("create(): no source document directory '$docdir'") if (!-d $docdir);
+  $vs->logconfess("create(): no 'base' key defined") if (!$vs->{base});
 
-  ##-- done
-  $vs->logconfess("create(): not yet implemented");
+  ##-- create dcmap
+  $vs->{dcopts} //= {};
+  @{$vs->{dcopts}}{keys %{$coldb->{vsopts}//{}}} = values %{$coldb->{vsopts}//{}};
+  my $map = $vs->{dcmap} = DocClassify::Mapper->new( %{$vs->{dcopts}} )
+    or $vs->logconfess("create(): failed to create DocClassify::Mapper object");
+  my $mverbose = $map->{verbose};
+  $map->{verbose} = 1;
+
+  ##-- initialize: logging
+  my $logCreate = $coldb->{logCreate};
+  my @docfiles  = glob("$docdir/*.json");
+  my $nfiles    = scalar(@docfiles);
+  my $logFileN  = $coldb->{logCorpusFileN} // max2(1,int($nfiles/10));
+
+  ##-- simulate $map->trainCorpus()
+  $vs->vlog($logCreate, "create(): simulating trainCorpus() [N=$nfiles]");
+  my $json = DiaColloDB::Utils->jsonxs();
+  my ($filei,$docfile,$doc,$doclabel,$docid, $sig,$sigi,$dcdoc);
+  foreach $docfile (@docfiles) {
+    $vs->vlog($coldb->{logCorpusFile}, sprintf("create(): processing signatures [%3d%%]: %s", 100*($filei-1)/$nfiles, $docfile))
+      if ($logFileN && ($filei++ % $logFileN)==0);
+
+    $doc      = DiaColloDB::Utils::loadJsonFile($docfile,json=>$json);
+    $doclabel = $doc->{meta}{basename} // $doc->{meta}{file_} // $doc->{label} // $docfile;
+    $docid    = $doc->{id} // ++$docid;
+    $sigi     = 0;
+    foreach $sig (@{$doc->{sigs}}) {
+      $dcdoc = bless({
+		      label=>$doclabel."#".($sigi++),
+		      cats=>[{id=>$docid,deg=>0,name=>$doclabel}],
+		      sig =>bless({tf=>$sig},'DocClassify::Signature'),
+		     }, 'DocClassify::Document');
+      $map->trainDocument($dcdoc);
+    }
+  }
+
+  ##-- compile mapper
+  $vs->vlog($logCreate, "create(): compiling ", ref($map), " object");
+  $map->compile()
+    or $vs->logconfess("create(): failed to compile ", ref($map), " object");
+
+  ##-- save
+  $vs->vlog($logCreate, "create(): saving to $vs->{base}*");
+  $vs->saveHeader()
+    or $vs->logconfess("create(): failed to save header data: $!");
+  $map->saveDir("$vs->{base}_map.d", %{$vs->{dcio}//{}})
+    or $vs->logconfess("create(): failed to save mapper data to $vs->{base}_map.d: $!");
+
+  ##-- 
+
   return $vs;
 }
 

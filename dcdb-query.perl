@@ -1,6 +1,6 @@
 #!/usr/bin/perl -w
 
-use lib '.';
+use lib qw(. lib dclib);
 use DiaColloDB;
 use DiaColloDB::Utils qw(:json :time);
 use Getopt::Long qw(:config no_ignore_case);
