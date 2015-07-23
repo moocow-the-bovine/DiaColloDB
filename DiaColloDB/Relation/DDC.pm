@@ -298,7 +298,7 @@ sub ddcQuery {
   my $logas = $opts{logas} // 'ddcQuery';
   my $level = exists($opts{loglevel}) ? $opts{loglevel} : $coldb->{logProfile};
 
-  my $qstr = ref($query) ? $query->toString : $query;
+  my $qstr = ref($query) ? $query->toStringFull : $query;
   my $cli  = $rel->ddcClient();
   $cli->{limit} = $opts{limit}//-1 if (exists($opts{limit}));
 
@@ -481,7 +481,7 @@ sub countQuery {
   my $qtemplate = $qdtr->clone->mapTraverse(sub {
 					      my $nod = shift;
 					      if (UNIVERSAL::can($nod,'getMatchId') && $nod->getMatchId==2) {
-						return $qtconds;
+						return $qtconds // $nod;
 					      }
 					      return $nod;
 					    });
