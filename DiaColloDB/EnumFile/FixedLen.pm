@@ -80,6 +80,8 @@ sub open {
   if (fcread($flags) && !fctrunc($flags)) {
     $enum->loadHeader()
       or $enum->logconess("failed to load header from '$enum->{base}.hdr': $!");
+    return $enum->promote($enum->{hclass})->open($base,$flags)
+      if ($enum->{hclass} && !$enum->isa($enum->{hclass}));  ##-- auto-promote based on header data
   }
 
   $enum->{sxfh} = fcopen("$base.fsx", $flags, $enum->{perms})

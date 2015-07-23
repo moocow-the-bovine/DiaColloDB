@@ -8,6 +8,8 @@ use Pod::Usage;
 use File::Basename qw(basename);
 use strict;
 
+use DiaColloDB::Relation::Vsem; ##-- DEBUG
+
 BEGIN {
   select STDERR; $|=1; select STDOUT;
 }

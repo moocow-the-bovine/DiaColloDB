@@ -1178,7 +1178,7 @@ sub test_idenum {
   $e->setsize($n);
 
   $e->save($base) or die("$0: save failed for '$base': $!");
-  my $e2 = ref($e)->new(base=>$base) or die("$0: open failed for '$base': $!");
+  my $e2 = DiaColloDB::EnumFile->new(base=>$base) or die("$0: open failed for '$base': $!");
 
   my ($i2s,$s2i) = $e2->tiepair();
   my $s0 = $i2s->[0];
