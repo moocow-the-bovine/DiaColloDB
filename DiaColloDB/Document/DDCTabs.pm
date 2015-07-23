@@ -95,6 +95,9 @@ sub fromFile {
       elsif (/^%%\$DDC:BREAK.([^=]+)/) {
 	push(@$tokens,"#$1");
       }
+      elsif (/^%%\$DDC:PAGE=/) {
+	push(@$tokens,"#page");
+      }
       if ($eosre && $_ =~ $eosre) {
 	push(@$tokens,$eos) if (!$last_was_eos);
 	$last_was_eos = 1;

@@ -41,7 +41,7 @@ sub new {
   my $that = shift;
   my $vs   = $that->SUPER::new(
 			       dcopts => {}, ##-- inherited from $coldb->{vsopts}
-			       dcio   => {verboseIO=>1,mmap=>1}, ##-- I/O opts for DocClassify
+			       dcio   => {verboseIO=>0,mmap=>1}, ##-- I/O opts for DocClassify
 			       flags => 'r',
 			       meta  => [],
 			       dcmap => undef,
