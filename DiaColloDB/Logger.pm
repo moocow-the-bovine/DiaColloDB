@@ -30,7 +30,7 @@ BEGIN {
        stderr    => 1,
        logdate   => 1,
        logtime   => 1,
-       logwhich  => [qw(DiaColloDB DocClassify DTA.CAB DTA.TokWrap)],
+       logwhich  => [qw(DiaColloDB DocClassify DDC.XS DTA.CAB DTA.TokWrap)],
        file      => undef,
        rotate    => undef, ##-- default: haveFileRotate()
        syslog    => 0,

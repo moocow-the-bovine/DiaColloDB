@@ -5,6 +5,7 @@
 
 package DiaColloDB::Relation::Vsem;
 use DiaColloDB::Relation;
+use DiaColloDB::Relation::Vsem::Query;
 use DiaColloDB::Utils qw(:fcntl :file :math :json);
 use DocClassify;
 use DocClassify::Mapper::Train;
@@ -104,7 +105,7 @@ sub open {
     or $vs->logconfess("open(): failed to load mapper data from $vsdir/map.d: $!");
 
   ##-- load: aux data: piddles
-  foreach (qw(map2w w2map d2c c2date)) {
+  foreach (qw(t2w w2t d2c c2date)) {
     defined($vs->{$_}=$map->readPdlFile("$vsdir/$_.pdl", %ioopts))
       or $vs->logconfess("open(): failed to load piddle data from $vsdir/$_.pdl: $!");
   }
@@ -178,10 +179,10 @@ sub create {
   my $map = $vs->{dcmap} = DocClassify::Mapper->new( %{$vs->{dcopts}} )
     or $vs->logconfess("create(): failed to create DocClassify::Mapper object");
   my $mverbose = $map->{verbose};
-  $map->{verbose} = 1;
+  $map->{verbose} = min2($mverbose,1);
 
   ##-- initialize: logging
-  my $logCreate = $coldb->{logCreate};
+  my $logCreate = 'trace';
   my @docfiles  = glob("$docdir/*.json");
   my $nfiles    = scalar(@docfiles);
   my $logFileN  = $coldb->{logCorpusFileN} // max2(1,int($nfiles/10));
@@ -229,13 +230,13 @@ sub create {
   $map->compile()
     or $vs->logconfess("create(): failed to compile ", ref($map), " object");
 
-  ##-- create: aux: map2w,w2map: term-translation pdls
+  ##-- create: aux: t2w,w2t: term-translation pdls
   my %ioopts = %{$vs->{dcio}//{}};
   $vs->vlog($logCreate, "create(): creating term-translation piddles");
   my ($tmp);
-  my $map2w  = $vs->{map2w} = pdl(long, $map->{tenum}{id2sym});    ##-- pdl($NW_dc) : [$wi_map] => $wi_coldb
-  (my $w2map = $vs->{w2map} = zeroes(long, $coldb->{wenum}->size)) .= -1;
-  ($tmp=$w2map->index($map2w)) .= $map2w->xvals;
+  my $t2w  = $vs->{t2w} = pdl(long, $map->{tenum}{id2sym});            ##-- pdl($NW_dc) : [$wi_map] => $wi_coldb
+  (my $w2t = $vs->{w2t} = zeroes(long, $coldb->{wenum}->size)) .= -1;
+  ($tmp=$w2t->index($t2w)) .= $t2w->xvals;
 
   ##-- create: aux: d2c: [$di] => $ci
   $vs->vlog($logCreate, "create(): creating doc-category piddle");
@@ -278,7 +279,7 @@ sub create {
     or $vs->logconfess("create(): failed to save mapper data to ${vsdir}/map.d: $!");
 
   ##-- save: aux data: piddles
-  foreach (qw(map2w w2map d2c c2date)) {
+  foreach (qw(t2w w2t d2c c2date)) {
     $map->writePdlFile($vs->{$_}, "$vsdir/$_.pdl", %ioopts)
       or $vs->logconfss("create(): failed to save auxilliary piddle $vsdir/$_.pdl: $!");
   }
@@ -322,13 +323,54 @@ sub union {
 }
 
 ##==============================================================================
-## Relation API: default: profiling
+## Relation API: profile
 
-## $prf = $vs->subprofile(\@xids, %opts)
-##  + get frequency profile for @xids (db must be opened)
-##  + %opts:
-##     groupby => \&gbsub,  ##-- key-extractor $key2_or_undef = $gbsub->($i2)
-##  + TODO
+## $mprf = $rel->profile($coldb, %opts)
+## + get a relation profile for selected items as a DiaColloDB::Profile::Multi object
+## + %opts: as for DiaColloDB::Relation::profile()
+sub profile {
+  my ($vs,$coldb,%opts) = @_;
+
+  ##-- common variables
+  my $logProfile = $coldb->{logProfile};
+
+  ##-- parse query
+  my ($gbexprs,$gbrestr,$gbfilters) = $coldb->parseGroupBy($opts{groupby}, %opts);
+  my $q = $coldb->parseQuery($opts{query}, logas=>'query', default=>'', ddcmode=>1);
+  my ($qo);
+  $q->setOptions($qo=DDC::XS::CQueryOptions->new) if (!defined($qo=$q->getOptions));
+  $qo->setFilters([@{$qo->getFilters}, @$gbfilters]) if (@$gbfilters);
+
+  ##-- evaluate query components
+  my %vqopts = (%opts,coldb=>$coldb,vsem=>$vs);
+  my $vq = DiaColloDB::Relation::Vsem::Query->new($q)->evaluate(%vqopts);
+  my ($ti,$ci) = @$vq{qw(ti ci)};
+
+  ##-- parse and apply date-request
+  my ($dfilter,$dslo,$dshi,$dlo,$dhi) = $coldb->parseDateRequest(@opts{qw(date slice fill)},1);
+  $vq->restrictByDate($dlo,$dhi,%vqopts);
+
+  $vs->logconfess("profile(): work in progress");
+}
+
+##==============================================================================
+## Profile: Utils: query parsing
+
+## $wi_map = $vs->w2t($wi_coldb)
+##   + maps an index-piddle $wi_coldb over $coldb->{wenum} to an index-piddle $wi_map over $vs->{dcmap}{wenum}
+sub w2t {
+  my ($vs,$wi) = @_;
+  my $ti = $vs->{w2t}->index($wi);
+  return $ti->where($ti>=0);
+}
+
+## $wi_coldb = $vs->t2w($ti_map)
+##   + maps an index-piddle $wi_map over $vs->{dcmap}{wenum} to an index-piddle $wi_coldb over $coldb->{wenum}
+sub t2w {
+  my ($vs,$ti) = @_;
+  return $vs->{t2w}->index($ti);
+}
+
 
 ##==============================================================================
 ## Relation API: default: query info

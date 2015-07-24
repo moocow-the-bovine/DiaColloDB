@@ -75,6 +75,7 @@ GetOptions(##-- general
 	   'collocations|collocs|collo|col|cofreqs|cof|co|f12|f2|12|2' => sub { $rel='cof' },
 	   'unigrams|ug|u|f1|1' => sub { $rel='xf' },
 	   'ddc' => sub { $rel='ddc' },
+	   'vector-space|vec|vector-semantics|vsem|vs|semantics|sem|lsi' => sub { $rel='vsem' },
 	   ##
 	   (map {("${_}date|${_}d=s"=>\$query{"${_}date"})} ('',qw(a b))), 				  ##-- date,adate,bdate
 	   (map {("${_}date-slice|${_}ds|${_}slice|${_}sl|${_}s=s"=>\$query{"${_}slice"})} ('',qw(a b))), ##-- slice,aslice,bslice
@@ -220,7 +221,7 @@ dcdb-query.perl - query a DiaColloDB
    -O KEY=VALUE          # set DiaColloDB::Client option
 
  Query Options:
-   -col , -ug , -ddc     # select profile type (collocations, unigrams, or ddc client; default=-col)
+   -col, -ug, -ddc, -vs  # select profile type (collocations, unigrams, ddc client, vector-space; default=-col)
    -(a|b)?date DATES     # set target DATE or /REGEX/ or MIN-MAX
    -(a|b)?slice SLICE    # set target date slice (default=1)
    -groupby GROUPBY      # set result aggregation (default=l)

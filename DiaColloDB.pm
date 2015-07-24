@@ -1335,6 +1335,9 @@ sub relname {
   elsif ($rel =~ m/^(?:c|f?1?2$)/) {
     return 'cof';
   }
+  elsif ($rel =~ m/^(?:v|sem|lsi)/) {
+    return 'vsem';
+  }
   return $rel;
 }
 

@@ -121,7 +121,7 @@ sub open {
     $enum->loadHeader()
       or $enum->logconess("failed to load header from '$enum->{base}.hdr': $!");
     return $enum->promote($enum->{hclass})->open($base,$flags)
-      if ($enum->{hclass} && !$enum->isa($enum->{hclass})); ##-- auto-promote based on header
+      if ($enum->{hclass} && !$enum->isa($enum->{hclass})); ##-- auto-promote based on header data
   }
 
   $enum->{sfh} = fcopen("$base.es", $flags, $enum->{perms})
