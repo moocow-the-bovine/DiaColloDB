@@ -55,12 +55,13 @@ our @ISA = qw(DiaColloDB::Persistent);
 ##    titles => \@titles, ##-- item group titles (default:undef: unknown)
 ##    #
 ##    eps => $eps,       ##-- smoothing constant (default=0.5)
-##    score => $func,    ##-- selected scoring function qw(f fm lf lfm mi ld)
+##    score => $func,    ##-- selected scoring function qw(f fm lf lfm mi ld vsim)
 ##    mi => \%mi12,      ##-- score: mutual information * logFreq a la Wortprofil; requires compile_mi()
 ##    ld => \%ld12,      ##-- score: log-dice a la Wortprofil; requires compile_ld()
 ##    fm => \%fm12,      ##-- frequency per million score; requires compile_fm()
 ##    lf => \%lf12,      ##-- log-frequency ; requires compile_lf()
 ##    lfm => \%lfm12,    ##-- log-frequency per million; requires compile_lfm()
+##    vsim => \%vsim,    ##-- vector-cosine similarity (Vsem relations only)
 ##   )
 sub new {
   my $that = shift;
@@ -74,7 +75,6 @@ sub new {
 		    #titles=>undef,
 		    #mi=>{},
 		    #ld=>{},
-		    #fm=>{},
 		    @_
 		   }, (ref($that)||$that));
   return $prf;
@@ -132,7 +132,7 @@ sub titles {
 ## @keys = $prf->scoreKeys()
 ##  + returns known score function keys
 sub scoreKeys {
-  return qw(mi ld fm lf lfm);
+  return qw(mi ld fm lf lfm vsim);
 }
 
 ## $bool = $prf->empty()
@@ -213,6 +213,7 @@ sub saveTextFh {
   $prf->saveTextHeader($fh,%opts) if ($opts{header}//1);
   foreach (sort {$fscore->{$b} <=> $fscore->{$a}} keys %$fscore) {
     $fh->print(join("\t",
+		    map {$_//0}
 		    $N,
 		    $f1,
 		    $f2->{$_},
@@ -261,7 +262,7 @@ sub saveHtmlFile {
   my $fscore = $prf->{$prf->{score}//'f12'};
   my $fmt   = $opts{format} || "%.4f";
   foreach (sort {$fscore->{$b} <=> $fscore->{$a}} keys %$fscore) {
-    $fh->print("<tr>", (map {"<td>".htmlesc($_)."</td>"}
+    $fh->print("<tr>", (map {"<td>".htmlesc($_//0)."</td>"}
 			$N,
 			$f1,
 			$f2->{$_},
@@ -293,6 +294,7 @@ sub compile {
   return $prf->compile_lfm(@_) if ($func =~ m{^(?:l(?:og)?-?f(?:req(?:uency)?)?(?:-?p(?:er)?)?(?:-?m(?:(?:ill)?ion)?)(?:12)?)$}i);
   return $prf->compile_ld(@_)  if ($func =~ m{^(?:ld|log-?dice)}i);
   return $prf->compile_mi(@_)  if ($func =~ m{^(?:l?f?mi|mutual-?information)$}i);
+  return $prf->compile_vsim(@_)  if ($func =~ m{^vsim$}i);
   $prf->logwarn("compile(): unknown score function '$func'");
   return $prf->compile_f(@_);
 }
@@ -412,6 +414,16 @@ sub compile_ld {
 			  );
   }
   $prf->{score} = 'ld';
+  return $prf;
+}
+
+## $prf = $prf->compile_vsim(%opts)
+##  + DUMMY: ensures 'vsim' profile in $prf->{vsim}
+##  + really should only be called if $prf->{vsim} already exists
+sub compile_vsim {
+  my ($prf,%opts) = @_;
+  $prf->logconfess("compile_vsim() called but no {vsim} key present") if (!defined($prf->{vsim}));
+  $prf->{score} = 'vsim';
   return $prf;
 }
 

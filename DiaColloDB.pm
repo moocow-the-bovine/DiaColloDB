@@ -1758,6 +1758,7 @@ sub parseRequest {
 ##  + %opts:
 ##     warn  => $level,    ##-- log-level for unknown attributes (default: 'warn')
 ##     relax => $bool,     ##-- allow unsupported attributes (default=0)
+##     xenum => $xenum,    ##-- enum to use for \&x2g and \&g2s (default: $coldb->{xenum})
 sub groupby {
   my ($coldb,$gbreq,%opts) = @_;
   return $gbreq if (UNIVERSAL::isa($gbreq,'HASH'));
@@ -1776,7 +1777,7 @@ sub groupby {
   $gb->{titles} = [map {$coldb->attrTitle($_)} @$gbattrs];
 
   ##-- get groupby-sub
-  my $xenum = $coldb->{xenum};
+  my $xenum = $opts{xenum} // $coldb->{xenum};
   my $gbpack = join('',map {$coldb->{"pack_x$_"}} @$gbattrs);
   my ($ids);
   my @gbids  = (

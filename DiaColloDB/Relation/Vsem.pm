@@ -28,6 +28,7 @@ our @ISA = qw(DiaColloDB::Relation);
 ##   base   => $basename,   ##-- relation basename
 ##   flags  => $flags,      ##-- i/o flags (default: 'r')
 ##   dcopts => \%dcopts,    ##-- options for DocClassify::Mapper->new()
+##   dcio   => \%dcio,      ##-- options for DocClassify::Mapper->saveDir()
 ##   ##
 ##   ##-- guts: metadata
 ##   meta => \@attrs,         ##-- known metadata attributes
@@ -42,7 +43,7 @@ sub new {
   my $that = shift;
   my $vs   = $that->SUPER::new(
 			       dcopts => {}, ##-- inherited from $coldb->{vsopts}
-			       dcio   => {verboseIO=>0,mmap=>1}, ##-- I/O opts for DocClassify
+			       dcio   => {verboseIO=>0,saveSvdUS=>1,mmap=>1}, ##-- I/O opts for DocClassify
 			       flags => 'r',
 			       meta  => [],
 			       dcmap => undef,
@@ -105,7 +106,7 @@ sub open {
     or $vs->logconfess("open(): failed to load mapper data from $vsdir/map.d: $!");
 
   ##-- load: aux data: piddles
-  foreach (qw(t2w w2t d2c c2date)) {
+  foreach (qw(t2w w2t d2c c2d c2date)) {
     defined($vs->{$_}=$map->readPdlFile("$vsdir/$_.pdl", %ioopts))
       or $vs->logconfess("open(): failed to load piddle data from $vsdir/$_.pdl: $!");
   }
@@ -239,10 +240,24 @@ sub create {
   ($tmp=$w2t->index($t2w)) .= $t2w->xvals;
 
   ##-- create: aux: d2c: [$di] => $ci
-  $vs->vlog($logCreate, "create(): creating doc-category piddle");
+  $vs->vlog($logCreate, "create(): creating doc<->category translation piddles");
   my $ND  = $map->{denum}->size();
   my $d2c = $vs->{d2c} = zeroes(long, $ND);
   ($tmp=$d2c->index($map->{dcm}->_whichND->slice("(0),"))) .= $map->{dcm}->_whichND->slice("(1),");
+
+  ##-- create: aux: c2d (2,$NC): [0,$ci] => $di_off, [1,$ci] => $di_len
+  my ($c2d_n,$c2d_vals) = $d2c->rle();
+  my $c2d_which = $c2d_n->which;
+  $c2d_n    = $c2d_n->index($c2d_which);
+  $c2d_vals = $c2d_vals->index($c2d_which);
+  my $c2d_off = $c2d_n->append(0)->rotate(1)->slice("0:-2")->cumusumover;
+  my $c2d     = $vs->{c2d} = zeroes(long,2,$NC);
+  ($tmp=$c2d->slice("(0),")->index($c2d_vals)) .= $c2d_off;
+  ($tmp=$c2d->slice("(1),")->index($c2d_vals)) .= $c2d_n;
+  ##--
+  ##-- create: aux: c2d : CCS ($ND,$NC): [$ci,$di] => 1 iff $di \in $ci
+  #my $c2d = $vs->{c2d} = PDL::CCS::Nd->newFromWhich($d2c->cat($d2c->xvals)->xchg(0,1), ones(byte,$ND));
+
 
   ##-- create: aux: c2date: [$ci] => $date -- NOTHING TO DO HERE: populated in training loop above
 
@@ -263,6 +278,10 @@ sub create {
       or $vs->logconfess("create(): failed to save metadata value-piddle $vsdir/meta_v_$mattr: $!");
   }
 
+  ##-- tweak mapper piddles
+  $vs->vlog($logCreate, "create(): tweaking mapper piddles");
+  $map->{dcm}->inplace->convert(byte) if (defined($map->{dcm}));
+
   ##-- tweak mapper enums
   $vs->vlog($logCreate, "create(): creating dummy mapper identity-enums");
   $map->{$_} = $vs->idEnum($map->{$_}) foreach (qw(gcenum lcenum tenum denum));
@@ -279,7 +298,7 @@ sub create {
     or $vs->logconfess("create(): failed to save mapper data to ${vsdir}/map.d: $!");
 
   ##-- save: aux data: piddles
-  foreach (qw(t2w w2t d2c c2date)) {
+  foreach (qw(t2w w2t d2c c2d c2date)) {
     $map->writePdlFile($vs->{$_}, "$vsdir/$_.pdl", %ioopts)
       or $vs->logconfss("create(): failed to save auxilliary piddle $vsdir/$_.pdl: $!");
   }
@@ -333,9 +352,11 @@ sub profile {
 
   ##-- common variables
   my $logProfile = $coldb->{logProfile};
+  my $map = $vs->{dcmap};
 
   ##-- parse query
-  my ($gbexprs,$gbrestr,$gbfilters) = $coldb->parseGroupBy($opts{groupby}, %opts);
+  my ($gbexprs,$gbrestr,$gbfilters) = $coldb->parseGroupBy($opts{groupby}, %opts); ##-- for restrictions
+  my $groupby= $coldb->groupby($opts{groupby}, xenum=>$coldb->{wenum}, relax=>1);  ##-- TODO: make "real" groupby-clause here
   my $q = $coldb->parseQuery($opts{query}, logas=>'query', default=>'', ddcmode=>1);
   my ($qo);
   $q->setOptions($qo=DDC::XS::CQueryOptions->new) if (!defined($qo=$q->getOptions));
@@ -344,13 +365,88 @@ sub profile {
   ##-- evaluate query components
   my %vqopts = (%opts,coldb=>$coldb,vsem=>$vs);
   my $vq = DiaColloDB::Relation::Vsem::Query->new($q)->evaluate(%vqopts);
-  my ($ti,$ci) = @$vq{qw(ti ci)};
 
   ##-- parse and apply date-request
   my ($dfilter,$dslo,$dshi,$dlo,$dhi) = $coldb->parseDateRequest(@opts{qw(date slice fill)},1);
+  $vs->vlog($coldb->{logProfile}, "profile(): query vector: dates");
   $vq->restrictByDate($dlo,$dhi,%vqopts);
 
-  $vs->logconfess("profile(): work in progress");
+  ##-- construct query: common
+  my ($qvec); ##-- query-vector: ($svdR,1) : [$ri] => $x
+  my ($ti,$ci) = @$vq{qw(ti ci)};
+  my $prf = DiaColloDB::Profile->new(N=>0,score=>'vsim',vsim=>{});
+
+  ##-- construct query: sanity checks: null vectors
+  if ($opts{fill}) {
+    return $prf if ((defined($ti) && !$ti->nelem) || (defined($ci) && $ci->nelem));
+  } else {
+    $vs->logconfess("no index term(s) found for user query \`$opts{query}'") if (defined($ti) && !$ti->nelem);
+    $vs->logconfess("no index document(s) found for user query \`$opts{query}'") if (defined($ci) && !$ci->nelem);
+  }
+
+  ##-- construct query: dispatch
+  if (defined($ti) && defined($ci)) {
+    ##-- both term- and document-conditions
+    $vs->vlog($coldb->{logProfile}, "profile(): query vector: xsubset");
+    my $q_c2d     = $vs->{c2d}->dice_axis(1,$ci);
+    my $di        = $q_c2d->slice("(1),")->rldseq($q_c2d->slice("(0),"))->qsort;
+    my $q_tdm     = $map->{tdm}->xsubset2d($ti,$di);
+    return $prf if ($q_tdm->allmissing); ##-- empty subset
+    $q_tdm = $q_tdm->sumover->dummy(0,1)->make_physically_indexed;
+    #$vs->vlog($coldb->{logProfile}, "profile(): query vector: xsubset: svdapply");
+    $qvec = $map->{svd}->apply1($q_tdm)->xchg(0,1);
+  }
+  elsif (defined($ti)) {
+    ##-- term-conditions only: slice from $svd->{v}
+    $vs->vlog($coldb->{logProfile}, "profile(): query vector: terms");
+    my $xtm = $map->{svd}{v};
+    $qvec   = $xtm->dice_axis(1,$ti);
+    if ($ti->nelem > 1) {
+      $qvec = $qvec->xchg(0,1)->sumover->dummy(1,1) / $ti->nelem;
+    }
+  }
+  elsif (defined($ci)) {
+    ##-- doc-conditions only: slice from $map->{xcm}
+    $vs->vlog($coldb->{logProfile}, "profile(): query vector: cats");
+    my $xcm = $map->{xcm};
+    $qvec   = $xcm->dice_axis(1,$ci);
+    if ($ci->nelem > 1) {
+      $qvec = $qvec->xchg(0,1)->sumover->dummy(1,1) / $ci->nelem;
+    }
+  }
+
+  ##-- TEST: map to & extract k-best terms
+  $vs->vlog($coldb->{logProfile}, "profile(): TEST: getting k-nearest neighbors");
+  my $dist = $map->qdistance($qvec, $map->{svd}{v});
+  my $sim  = (2-$dist);
+  $sim->inplace->divide(2,$sim,0);
+  my $simi  = $sim->qsorti->slice("-1:0");
+  ##
+  ##-- TODO: aggregate based on groupby request; maybe query {xcm} instead
+  ##
+  my $best_ti = $simi->slice("0:".($opts{kbest} < $simi->nelem ? ($opts{kbest}-1) : "-1"));
+  my $best_wi = $vs->{t2w}->index($best_ti);
+  my $best_sim = $sim->index($best_ti);
+
+  ##-- TEST: construct profile [TODO: do we need to simulate f1, f12, etc?  do we need a special profile subclass?]
+  $vs->vlog($coldb->{logProfile}, "profile(): TEST: constructing output profile");
+  my ($gi);
+  my $x2g = $groupby->{x2g};
+  %{$prf->{vsim}} = map {
+    $gi = $best_wi->at($_);
+    $gi = $x2g->($gi) if (defined($x2g));
+    ($gi => $best_sim->at($_))
+  } (0..($best_wi->nelem-1));
+
+  ##-- TODO: construct qinfo
+
+  ##-- TEST: stringify
+  $vs->vlog($logProfile, "profile(): stringify");
+  my $mp = DiaColloDB::Profile::Multi->new(profiles=>[$prf], titles=>$groupby->{titles}, qinfo=>'TODO');
+  $mp->stringify($groupby->{g2s}) if ($opts{strings});
+
+
+  return $mp;
 }
 
 ##==============================================================================
