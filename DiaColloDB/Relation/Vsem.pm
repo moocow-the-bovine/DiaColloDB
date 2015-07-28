@@ -29,6 +29,8 @@ our @ISA = qw(DiaColloDB::Relation);
 ##   flags  => $flags,      ##-- i/o flags (default: 'r')
 ##   dcopts => \%dcopts,    ##-- options for DocClassify::Mapper->new()
 ##   dcio   => \%dcio,      ##-- options for DocClassify::Mapper->saveDir()
+##   mgood  => $regex,      ##-- positive filter regex for metadata attributes
+##   mbad   => $regex,      ##-- negative filter regex for metadata attributes
 ##   ##
 ##   ##-- guts: metadata
 ##   meta => \@attrs,         ##-- known metadata attributes
@@ -42,9 +44,11 @@ our @ISA = qw(DiaColloDB::Relation);
 sub new {
   my $that = shift;
   my $vs   = $that->SUPER::new(
+			       flags => 'r',
+			       mgood => $DiaColloDB::VSMGOOD_DEFAULT,
+			       mbad  => $DiaColloDB::VSMBAD_DEFAULT,
 			       dcopts => {}, ##-- inherited from $coldb->{vsopts}
 			       dcio   => {verboseIO=>0,saveSvdUS=>1,mmap=>1}, ##-- I/O opts for DocClassify
-			       flags => 'r',
 			       meta  => [],
 			       dcmap => undef,
 			       @_
@@ -158,6 +162,7 @@ sub create {
   ##-- create/clobber
   $vs = $vs->new() if (!ref($vs));
   @$vs{keys %opts} = values %opts;
+  $vs->{$_} = $coldb->{"vs$_"} foreach (grep {exists $coldb->{"vs$_"}} qw(mgood mbad));
 
   ##-- sanity check(s)
   my $docdir = "$coldb->{dbdir}/docdata.d";
@@ -188,13 +193,17 @@ sub create {
   my $nfiles    = scalar(@docfiles);
   my $logFileN  = $coldb->{logCorpusFileN} // max2(1,int($nfiles/10));
 
+  ##-- initialize: metadata
+  my %meta = qw(); ##-- ( $meta_attr => {n=>$nkeys, s2i=>\%s2i, vals=>$pdl}, ... )
+  my $mgood = $vs->{mgood} ? qr{$vs->{mgood}} : undef;
+  my $mbad  = $vs->{mbad}  ? qr{$vs->{mbad}}  : undef;
+
   ##-- simulate $map->trainCorpus()
   $vs->vlog($logCreate, "create(): simulating trainCorpus() [N=$nfiles]");
   my $NC     = $nfiles;
   my $c2date = $vs->{c2date} = zeroes(ushort, $NC);
   my $json   = DiaColloDB::Utils->jsonxs();
   my ($filei,$docfile,$doc,$doclabel,$docid);
-  my %meta = qw(); ##-- ( $meta_attr => {n=>$nkeys, s2i=>\%s2i, vals=>$pdl}, ... )
   my ($mattr,$mval,$mdata,$mvali,$mvals);
   my ($sig,$sigi,$dcdoc);
   foreach $docfile (@docfiles) {
@@ -209,7 +218,7 @@ sub create {
 
     ##-- parse metadata
     while (($mattr,$mval) = each %{$doc->{meta}//{}}) {
-      next if ($mattr =~ /_$/);
+      next if ((defined($mgood) && $mattr !~ $mgood) || (defined($mbad) && $mattr =~ $mbad));
       $mdata = $meta{$mattr} = {n=>1, s2i=>{''=>0}, vals=>zeroes(long,$NC)} if (!defined($mdata=$meta{$mattr}));
       $mvali = ($mdata->{s2i}{$mval} //= $mdata->{n}++);
       $mdata->{vals}->set($docid,$mvali);

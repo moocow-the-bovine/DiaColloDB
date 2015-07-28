@@ -59,9 +59,19 @@ our $WBAD_DEFAULT   = q/[\.]/;
 ##  + default positive lemma regex for document parsing
 our $LGOOD_DEFAULT   = undef;
 
-## $WBAD_DEFAULT
+## $LBAD_DEFAULT
 ##  + default negative lemma regex for document parsing
 our $LBAD_DEFAULT   = undef;
+
+## $VSMGOOD_DEFAULT
+##  + default positive meta-field regex for document parsing (vsem only)
+##  + don't use qr// here, since Storable doesn't like pre-compiled Regexps
+our $VSMGOOD_DEFAULT = q/^(?:author|title|basename|collection|flags|textClass)$/;
+
+## $VSMBAD_DEFAULT
+##  + default negative meta-field regex for document parsing (vsem only)
+##  + don't use qr// here, since Storable doesn't like pre-compiled Regexps
+our $VSMBAD_DEFAULT = q/_$/;
 
 ## $ECLASS
 ##  + enum class
@@ -137,6 +147,8 @@ our %VSOPTS = (
 ##    wbad   => $regex,   ##-- negative filter regex for word text
 ##    lgood  => $regex,   ##-- positive filter regex for lemma text
 ##    lbad   => $regex,   ##-- negative filter regex for lemma text
+##    vsmgood => $regex,  ##-- positive filter regex for metadata attributes (vsem only)
+##    vsmbade => $regex,  ##-- negative filter regex for metadata attributes (vsem only)
 ##    ##
 ##    ##-- logging
 ##    logOpen => $level,        ##-- log-level for open/close (default='info')
@@ -201,6 +213,8 @@ sub new {
 		      wbad  => $WBAD_DEFAULT,
 		      lgood => $LGOOD_DEFAULT,
 		      lbad  => $LBAD_DEFAULT,
+		      vsmgood => $VSMGOOD_DEFAULT,
+		      vsmbad  => $VSMBAD_DEFAULT,
 
 		      ##-- logging
 		      logOpen => 'info',

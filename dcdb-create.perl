@@ -58,7 +58,7 @@ GetOptions(##-- general
 	   'vsem-break|vbreak|vb=s' => \$coldb{vbreak},
 	   'vsem-option|vsopt|vso|vopt|vo|vO=s%' => \$coldb{vsopts},
 	   'keeptmp|keep' => \$coldb{keeptmp},
-	   'nofilters|F' => sub { $coldb{$_}=undef foreach (qw(pgood pbad wgood wbad lgood lbad)); },
+	   'nofilters|F' => sub { $coldb{$_}=undef foreach (qw(pgood pbad wgood wbad lgood lbad vsmgood vsmbad)); },
 	   'option|O=s%' => \%coldb,
 	   '64bit|64|quad|Q!'   => sub { pack64( $_[1]); },
 	   '32bit|32|long|L|N!' => sub { pack64(!$_[1]); },
@@ -157,15 +157,15 @@ dcdb-create.perl - create a DiaColloDB collocation database from a corpus dump
    -dmax DIST           ##-- maximum distance for collocation-frequencies (default=5)
    -cfmin CFMIN         ##-- minimum relation co-occurrence frequency (default=2)
    -option OPT=VAL      ##-- set arbitrary DiaColloDB option, e.g.
-                        ##   pack_id=PACKFMT     # pack-format for IDs
-                        ##   pack_f=PACKFMT      # pack-format for frequencies
-                        ##   pack_date=PACKFMT   # pack-format for dates
-                        ##   bos=STR             # bos string
-                        ##   eos=STR             # eos string
-                        ##   (p|w|l)good=REGEX   # positive regex for (postags|words|lemmata)
-                        ##   (p|w|l)bad=REGEX    # negative regex for (postags|words|lemmata)
-                        ##   ddcServer=HOST:PORT # server for ddc relations
-                        ##   ddcTimeout=SECONDS  # timeout for ddc relations
+                        ##   pack_id=PACKFMT       # pack-format for IDs
+                        ##   pack_f=PACKFMT        # pack-format for frequencies
+                        ##   pack_date=PACKFMT     # pack-format for dates
+                        ##   bos=STR               # bos string
+                        ##   eos=STR               # eos string
+                        ##   (p|w|l|vsm)good=REGEX # positive regex for (postags|words|lemmata|vsem-metadata)
+                        ##   (p|w|l|vsm)bad=REGEX  # negative regex for (postags|words|lemmata|vsem-metadata)
+                        ##   ddcServer=HOST:PORT   # server for ddc relations
+                        ##   ddcTimeout=SECONDS    # timeout for ddc relations
 
  I/O and Logging Options:
    -log-level LEVEL     ##-- set log-level (default=TRACE)
