@@ -388,9 +388,10 @@ sub profile {
   ##-- construct query: sanity checks: null vectors
   if ($opts{fill}) {
     return $prf if ((defined($ti) && !$ti->nelem) || (defined($ci) && $ci->nelem));
-  } else {
-    $vs->logconfess("no index term(s) found for user query \`$opts{query}'") if (defined($ti) && !$ti->nelem);
-    $vs->logconfess("no index document(s) found for user query \`$opts{query}'") if (defined($ci) && !$ci->nelem);
+  } elsif (defined($ti) && !$ti->nelem) {
+    $vs->logconfess($coldb->{error}="no index term(s) matched user query \`$opts{query}'");
+  } elsif (defined($ci) && !$ci->nelem) {
+    $vs->logconfess($coldb->{error}="no index document(s) matched user query \`$opts{query}'");
   }
 
   ##-- construct query: dispatch
@@ -476,6 +477,24 @@ sub t2w {
   return $vs->{t2w}->index($ti);
 }
 
+## $bool = $vs->hasMeta($attr)
+##  + returns true iff $vs supports metadata attribute $attr
+sub hasMeta {
+  my ($vs,$attr) = @_;
+  return (defined($vs->{"meta_e_$attr"}) || !defined($vs->{"meta_v_$attr"}));
+}
+
+## \%attr_or_undef = metaAttr($attr)
+##  + returns metadata attribute handlers for $attr as a HASH-ref %$attr =
+##    (
+##     enum => $enum,
+##     vals => $vals,
+##    )
+sub metaAttr {
+  my ($vs,$attr) = @_;
+  return undef if (!$vs->hasMeta($attr));
+  return {enum=>$vs->{"meta_e_$attr"}, vals=>$vs->{"meta_v_$attr"}};
+}
 
 ##==============================================================================
 ## Relation API: default: query info

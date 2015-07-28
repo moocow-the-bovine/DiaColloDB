@@ -13,6 +13,8 @@ use Data::Dumper;
 use Benchmark qw(timethese cmpthese);
 use utf8;
 
+use DiaColloDB::Relation::Vsem; ##-- DEBUG
+
 ##==============================================================================
 ## test: enum
 
@@ -1188,7 +1190,7 @@ sub test_idenum {
   $e->saveTextFile("-");
   exit 0;
 }
-test_idenum(@ARGV);
+#test_idenum(@ARGV);
 
 
 ##==============================================================================
@@ -1332,6 +1334,26 @@ sub test_diffop {
   exit 0;
 }
 #test_diffop(@ARGV);
+
+##==============================================================================
+## test: vsem
+
+sub test_vsem {
+  my $dbdir = shift || 'dta_ner.d';
+  my %opts  = map {split(/=/,$_,2)} @_;
+  %opts = (
+	   query => "Objekt #has[author,/Kant/]",
+	   slice => 0,
+	   kbest => 10,
+	   date => '1700:1899',
+	   %opts,
+	  );
+
+  my $coldb = DiaColloDB->new(dbdir=>$dbdir) or die("$0: failed to open $dbdir/: $!");
+  $mp = $coldb->profile('vsem',%opts) or die("$0: failed to acquire profile: $!");
+  $mp->saveTextFile('-');
+}
+test_vsem(@ARGV);
 
 
 
