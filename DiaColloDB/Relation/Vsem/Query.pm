@@ -4,6 +4,7 @@
 ## Description: collocation db, profiling relation: vector-space semantic model: query hacks
 
 package DiaColloDB::Relation::Vsem::Query;
+use DiaColloDB::Utils qw(:pdl);
 use DDC::XS;
 use PDL;
 use PDL::VectorValued;
@@ -89,42 +90,19 @@ sub restrictByDate {
 ##   + destructive intersection
 sub _intersect {
   my ($vq,$vq2) = @_;
-  $vq->{ti} = _intersect_p($vq->{ti},$vq2->{ti});
-  $vq->{ci} = _intersect_p($vq->{ci},$vq2->{ci});
+  $vq->{ti} = DiaColloDB::Utils::_intersect_p($vq->{ti},$vq2->{ti});
+  $vq->{ci} = DiaColloDB::Utils::_intersect_p($vq->{ci},$vq2->{ci});
   return $vq;
-}
-
-## $i = _intersect_p($p1,$p2)
-##  + intersection of 2 piddles; undef is treated as the universal set
-##  + argument piddles MUST be sorted in ascending order
-sub _intersect_p {
-  return (defined($_[0])
-	  ? (defined($_[1])
-	     ? v_intersect($_[0],$_[1]) ##-- v_intersect is 1.5-3x faster than PDL::Primitive::intersect()
-	     : $_[0])
-	  : $_[1]);
 }
 
 ## $vq = $vq->_union($vq2)
 ##   + destructive union
 sub _union {
   my ($vq,$vq2) = @_;
-  $vq->{ti} = _union_p($vq->{ti},$vq2->{ti});
-  $vq->{ci} = _union_p($vq->{ci},$vq2->{ci});
+  $vq->{ti} = DiaColloDB::Utils::_union_p($vq->{ti},$vq2->{ti});
+  $vq->{ci} = DiaColloDB::Utils::_union_p($vq->{ci},$vq2->{ci});
   return $vq;
 }
-
-## $i = _union_p($p1,$p2)
-##  + union of 2 piddles; undef is treated as the universal set
-##  + argument piddles MUST be sorted in ascending order
-sub _union_p {
-  return (defined($_[0])
-	  ? (defined($_[1])
-	     ? v_union($_[0],$_[1])  ##-- v_union is 1.5-3x faster than PDL::Primitive::setops($a,'OR',$b)
-	     : $_[0])
-	  : $_[1]);
-}
-
 
 
 ##==============================================================================
@@ -138,9 +116,6 @@ BEGIN {
   push(@DDC::XS::Object::ISA, 'DiaColloDB::Logger') if (!UNIVERSAL::isa('DDC::XS::Object', 'DiaColloDB::Logger'));
 }
 
-##======================================================================
-## Wrappers: DDC::XS::CQuery
-
 ##----------------------------------------------------------------------
 ## $vq = $DDC_XS_OBJECT->__dcvs_eval($vq,%opts)
 ##  + evaluates DDC::XS::Object (CQuery or CQFilter) $cquery
@@ -150,6 +125,9 @@ sub DDC::XS::Object::__dcvs_eval {
   my ($cq,$vq,%opts) = @_;
   $vq->logconfess("unsupported query expression of type ", ref($cq), " (", $cq->toString, ")");
 }
+
+##======================================================================
+## Wrappers: DDC::XS::CQuery
 
 ##----------------------------------------------------------------------
 ## $vq_or_undef = $CQToken->__dcvs_init($vq,%opts)
@@ -169,17 +147,26 @@ sub DDC::XS::CQToken::__dcvs_attr {
   return $opts{coldb}->attrData([$cq->getIndexName])->[0];
 }
 
+## \%adata = $CQToken->__dcvs_eval_neg($vq,%opts)
+##   + negates $vq if applicable
+sub DDC::XS::CQToken::__dcvs_eval_neg {
+  my ($cq,$vq,%opts) = @_;
+  $vq->{ti} = DiaColloDB::Utils::_negate_p($vq->{ti}, $opts{vsem}->nTerms)
+    if ($cq->getNegated xor ($cq->can('getRegexNegated') ? $cq->getRegexNegated : 0));
+  return $vq;
+}
+
 ##----------------------------------------------------------------------
 ## $vq = $CQTokExact->__dcvs_eval($vq,%opts)
-##  + should set $vq->{ti}
+##  + sets $vq->{ti}
+##  + cals DDC::XS::CQToken::__dcvs_eval_neg()
 sub DDC::XS::CQTokExact::__dcvs_eval {
   my ($cq,$vq,%opts) = @_;
   $cq->__dcvs_init($vq,%opts);
   my $attr = $cq->__dcvs_attr($vq,%opts);
   my $ai = $attr->{enum}->s2i($cq->getValue);
-  my $wi = pdl(long, $attr->{a2w}->fetch($ai));
-  my $ti = $vq->{ti} = $opts{vsem}->w2t($wi);
-  return $vq;
+  my $ti = $vq->{ti} = $opts{vsem}->termIds($attr->{a}, $ai);
+  return $cq->__dcvs_eval_neg($vq,%opts);
 }
 
 ##----------------------------------------------------------------------
@@ -201,10 +188,8 @@ sub DDC::XS::CQTokRegex::__dcvs_eval {
   $cq->__dcvs_init($vq,%opts);
   my $attr = $cq->__dcvs_attr($vq,%opts);
   my $ais  = $attr->{enum}->re2i($cq->getValue);
-  my $wis  = pdl(long, [map {$attr->{a2w}->fetch($_)} @$ais]);
-  my $ti   = $vq->{ti} = $opts{vsem}->w2t($wis);
-  $ti      = $ti->where($ti>=0);
-  return $vq;
+  my $ti = $vq->{ti} = $opts{vsem}->termIds($attr->{a}, $ais);
+  return $cq->__dcvs_eval_neg($vq,%opts);
 }
 
 
@@ -257,68 +242,24 @@ sub DDC::XS::CQFHasField::__dcvs_init {
 ##  + honors $cq->getNegated() flag, alters $vq->{ci} if applicable
 sub DDC::XS::CQFHasField::__dcvs_eval_neg {
   my ($cq,$vq,%opts) = @_;
-  return $vq if (!$cq->getNegated);
-  if (!defined($vq->{ci})) {
-    ##-- neg(\universe) = \emptyset
-    $vq->{ci} = null->long;
-  }
-  elsif ($vq->{ci}->nelem==0) {
-    ##-- neg(\emptyset) = \universe
-    delete($vq->{ci});
-  }
-  else {
-    ##-- non-trivial negation
-    my $NC = $opts{vsem}{c2date}->nelem;
-    ##
-    ##-- v_mask: ca. 2.2x faster than v_setdiff
-    my $ci_mask = ones(byte,$NC);
-    (my $tmp=$ci_mask->index($vq->{ci})) .= 0;
-    $vq->{ci} = $ci_mask->which;
-    ##
-    ##-- v_setdiff: ca. 68% slower than mask
-    #my $C  = sequence($vq->{ci}->type, $NC);
-    #$vq->{ci} = $C->v_setdiff($vq->{ci});
-  }
+  $vq->{ci} = DiaColloDB::Utils::_negate_p($vq->{ci}, $opts{vsem}->nCats) if ($cq->getNegated);
   return $vq;
 }
 
 ##----------------------------------------------------------------------
-## $vq = $CQFHasFieldSet->__dcvs_eval_p($vq,%opts)
+## $vq = $CQFHasField->__dcvs_eval_p($vq,%opts)
 ##  + populates $vq->{ci} from @opts{qw(attrs ais)}
-##  + calls $CQFHasFieldValue->__dcvs_eval_neg($vq,%opts)
+##  + calls $CQFHasField->__dcvs_eval_neg($vq,%opts)
 ##  + requires additional %opts:
 ##    (
-##     attr => \%attr,   ##-- attribute data as returned by Vsem::metaAttr()
-##     ais  => $ais,     ##-- attribute-value index piddle
+##     attr   => \%attr,   ##-- attribute data as returned by Vsem::metaAttr()
+##     valids => $valids,  ##-- attribute-value ids
 ##    )
 ##  + TODO: use a persistent reverse-index here (but first build it in create())
 sub DDC::XS::CQFHasField::__dcvs_eval_p {
   my ($cq,$vq,%opts) = @_;
-  my ($attr,$ais) = @opts{qw(attr ais)};
-  ##
-  if ($ais->nelem == 0) {
-    ##-- null-value: easy answer
-    $vq->{ci} = null->long;
-  }
-  elsif ($ais->nelem == 1) {
-    ##-- single-value: easy answer
-    $vq->{ci} = ($attr->{vals}==$ais)->which; ##-- TODO: use reverse-index
-  }
-  else {
-    ##-- multiple target values: harder (TODO: use reverse-index)
-    #$vq->{ci} = ($attr->{vals}->slice("*1,")==$ais)->borover->which;
-    my $vals     = $attr->{vals};
-    my $vals_qsi = $vals->qsorti;
-    my $vals_qs  = $vals->index($vals_qsi);
-    my $i0       = $ais->vsearch($vals_qs);
-    my $i0_mask  = ($vals_qs->index($i0) == $ais);
-    $i0          = $i0->where($i0_mask);
-    my $ilen     = ($ais->where($i0_mask)+1)->vsearch($vals_qs);
-    $ilen       -= $i0;
-    $ilen->inplace->lclip(1);
-    my $iseq     = $ilen->rldseq($i0);
-    $vq->{ci} = $vals_qsi->index($iseq)->qsort;
-  }
+  my ($attr,$valids) = @opts{qw(attr valids)};
+  $vq->{ci} = $opts{vsem}->catIds(@opts{qw(attr valids)});
   return DDC::XS::CQFHasField::__dcvs_eval_neg($cq,$vq,%opts);
 }
 
@@ -330,9 +271,10 @@ sub DDC::XS::CQFHasField::__dcvs_eval_p {
 sub DDC::XS::CQFHasFieldValue::__dcvs_eval {
   my ($cq,$vq,%opts) = @_;
   $cq->__dcvs_init($vq,%opts);
-  my $attr = $opts{vsem}->metaAttr($cq->getArg0);
-  my $ai   = $attr->{enum}->s2i($cq->getArg1);
-  return $cq->__dcvs_eval_p($vq,%opts, attr=>$attr, ais=>(defined($ai) ? pdl(long,$ai) : null->long));
+  my $attr  = $cq->getArg0;
+  my $enum  = $opts{vsem}->metaEnum($attr);
+  my $vals  = $enum->s2i($cq->getArg1);
+  return $cq->__dcvs_eval_p($vq, %opts, attr=>$attr, valids=>$vals);
 }
 
 ##----------------------------------------------------------------------
@@ -341,9 +283,10 @@ sub DDC::XS::CQFHasFieldValue::__dcvs_eval {
 sub DDC::XS::CQFHasFieldRegex::__dcvs_eval {
   my ($cq,$vq,%opts) = @_;
   $cq->__dcvs_init($vq,%opts);
-  my $attr = $opts{vsem}->metaAttr($cq->getArg0);
-  my $ais  = $attr->{enum}->re2i($cq->getArg1);
-  return $cq->__dcvs_eval_p($vq,%opts, attr=>$attr, ais=>($ais && @$ais ? pdl(long,$ais) : null->long));
+  my $attr = $cq->getArg0;
+  my $enum = $opts{vsem}->metaEnum($attr);
+  my $vals = $enum->re2i($cq->getArg1);
+  return $cq->__dcvs_eval_p($vq,%opts, attr=>$attr, valids=>$vals);
 }
 
 

@@ -6,7 +6,7 @@
 package DiaColloDB::Relation::Vsem;
 use DiaColloDB::Relation;
 use DiaColloDB::Relation::Vsem::Query;
-use DiaColloDB::Utils qw(:fcntl :file :math :json);
+use DiaColloDB::Utils qw(:fcntl :file :math :json :list :pdl);
 use DocClassify;
 use DocClassify::Mapper::Train;
 use File::Path qw(make_path remove_tree);
@@ -32,10 +32,18 @@ our @ISA = qw(DiaColloDB::Relation);
 ##   mgood  => $regex,      ##-- positive filter regex for metadata attributes
 ##   mbad   => $regex,      ##-- negative filter regex for metadata attributes
 ##   ##
-##   ##-- guts: metadata
-##   meta => \@attrs,         ##-- known metadata attributes
+##   ##-- guts: aux term-tuples ($NA:number of term-attributes, $NT:number of term-tuples)
+##   attrs  => \@attrs,       ##-- known term attributes
+##   tvals  => $tvals,        ##-- pdl($NA,$NT) : [$apos,$ti] => $avali_at_term_ti
+##   tsorti => $tsorti,       ##-- pdl($NT,$NA) : [,($apos)]  => $tvals->slice("($apos),")->qsorti
+##   tpos   => \%a2pos,       ##-- term-attribute positions: $apos=$a2pos{$aname}
+##   ##
+##   ##-- guts: aux: metadata ($NM:number of metas-attributes, $NC:number of cats (source files))
+##   meta => \@mattrs         ##-- known metadata attributes
 ##   meta_e_${ATTR} => $enum, ##-- metadata-attribute enum
-##   meta_v_${ATTR} => $pdl,  ##-- metadata-attribute pdl ($NC) : [$ci] => $val_id s.t. ATTR(docid($ci)) = $enum->i2s($val_id)
+##   mvals => $mvals,         ##-- pdl($NM,$NC) : [$mpos,$ci] => $mvali_at_ci
+##   msorti => $msorti,       ##-- pdl($NC,$NM) : [,($mpos)]  => $mvals->slice("($mpos),")->qsorti
+##   mpos  => \%m2pos,        ##-- meta-attribute positions: $mpos=$m2pos{$mattr}
 ##   ##
 ##   ##-- guts: mapper
 ##   dcmap  => $dcmap,      ##-- underlying DocClassify::Mapper object
@@ -50,6 +58,7 @@ sub new {
 			       dcopts => {}, ##-- inherited from $coldb->{vsopts}
 			       dcio   => {verboseIO=>0,saveSvdUS=>1,mmap=>1}, ##-- I/O opts for DocClassify
 			       meta  => [],
+			       attrs => [],
 			       dcmap => undef,
 			       @_
 			      );
@@ -73,7 +82,7 @@ sub diskFiles {
 ##  + keys to save as header; default implementation returns all keys of all non-references
 sub headerKeys {
   my $obj = shift;
-  return ('dcopts', 'meta', $obj->SUPER::headerKeys);
+  return (qw(dcopts meta attrs), $obj->SUPER::headerKeys);
 }
 
 
@@ -110,18 +119,16 @@ sub open {
     or $vs->logconfess("open(): failed to load mapper data from $vsdir/map.d: $!");
 
   ##-- load: aux data: piddles
-  foreach (qw(t2w w2t d2c c2d c2date)) {
+  foreach (qw(tvals tsorti mvals msorti d2c c2d c2date)) {
     defined($vs->{$_}=$map->readPdlFile("$vsdir/$_.pdl", %ioopts))
       or $vs->logconfess("open(): failed to load piddle data from $vsdir/$_.pdl: $!");
   }
 
-  ##-- load: metadata
+  ##-- load: metadata: enums
   my %efopts = (flags=>$vs->{flags}); #, pack_i=>$coldb->{pack_id}, pack_o=>$coldb->{pack_off}, pack_l=>$coldb->{pack_len}
   foreach my $mattr (@{$vs->{meta}}) {
     $vs->{"meta_e_$mattr"} = $DiaColloDB::ECLASS->new(base=>"$vsdir/meta_e_$mattr", %efopts)
       or $vs->logconfess("open(): failed to open metadata enum $vsdir/meta_e_$mattr: $!");
-    defined($vs->{"meta_v_$mattr"} = $map->readPdlFile("$vsdir/meta_v_$mattr.pdl",%ioopts))
-      or $vs->logconfess("open(): failed to load metadata values from $vsdir/meta_v_$mattr.pdl: $!");
   }
 
   return $vs;
@@ -165,9 +172,11 @@ sub create {
   $vs->{$_} = $coldb->{"vs$_"} foreach (grep {exists $coldb->{"vs$_"}} qw(mgood mbad));
 
   ##-- sanity check(s)
-  my $docdir = "$coldb->{dbdir}/docdata.d";
+  my $doctmpd = "$coldb->{dbdir}/doctmp.d";
+  my $doctmpf = "$coldb->{dbdir}/doctmp.files";
   my $base   = $vs->{base};
-  $vs->logconfess("create(): no source document directory '$docdir'") if (!-d $docdir);
+  $vs->logconfess("create(): no source document directory '$doctmpd'") if (!-d $doctmpd);
+  $vs->logconfess("create(): no source document file-list '$doctmpf'") if (!-f $doctmpf);
   $vs->logconfess("create(): no 'base' key defined") if (!$base);
 
   ##-- initialize: output directory
@@ -187,9 +196,14 @@ sub create {
   my $mverbose = $map->{verbose};
   $map->{verbose} = min2($mverbose,1);
 
+  ##-- initialize: file-list
+  CORE::open(my $doctmpfh, "<$doctmpf")
+      or $vs->logconfess("create(): could not open source document file-list $doctmpf: $!");
+  my @docfiles = map {chomp; $_} <$doctmpfh>;
+  CORE::close($doctmpfh);
+
   ##-- initialize: logging
   my $logCreate = 'trace';
-  my @docfiles  = glob("$docdir/*.json");
   my $nfiles    = scalar(@docfiles);
   my $logFileN  = $coldb->{logCorpusFileN} // max2(1,int($nfiles/10));
 
@@ -240,17 +254,32 @@ sub create {
   $map->compile()
     or $vs->logconfess("create(): failed to compile ", ref($map), " object");
 
-  ##-- create: aux: t2w,w2t: term-translation pdls
-  my %ioopts = %{$vs->{dcio}//{}};
-  $vs->vlog($logCreate, "create(): creating term-translation piddles");
+  ##-- create: aux: common variables
   my ($tmp);
-  my $t2w  = $vs->{t2w} = pdl(long, $map->{tenum}{id2sym});            ##-- pdl($NW_dc) : [$wi_map] => $wi_coldb
-  (my $w2t = $vs->{w2t} = zeroes(long, $coldb->{wenum}->size)) .= -1;
-  ($tmp=$w2t->index($t2w)) .= $t2w->xvals;
+  my %ioopts = %{$vs->{dcio}//{}};
+
+  ##-- create: aux: tenum
+  my $NT = $map->{tenum}->size;
+  my $NA = scalar(@{$coldb->{attrs}});
+  $vs->vlog($logCreate, "create(): creating term-attribute pseudo-enum (NA=$NA x NT=$NT)");
+  my $pack_t = $coldb->{pack_w};
+  my $ti2s   = $map->{tenum}{id2sym};
+  my $tvals  = $vs->{tvals} = zeroes(long, $NA,$NT); ##-- [$apos,$ti] => $avali_at_term_ti
+  foreach (0..$#$ti2s) {
+    ($tmp=$tvals->slice(",($_)")) .= [unpack($pack_t,$ti2s->[$_])] if (defined($_));
+  }
+  ##
+  #$vs->vlog($logCreate, "create(): creating term-attribute sort-indices (NA=$NA x NT=$NT)");
+  my $tsorti = $vs->{tsorti} = zeroes(long, $NT,$NA); ##-- [,($apos)] => $tvals->slice("($apos),")->qsorti
+  foreach (0..($NA-1)) {
+    $tvals->slice("($_),")->qsorti($tsorti->slice(",($_)"));
+  }
+  ##
+  $vs->{attrs} = $coldb->{attrs}; ##-- save local copy of attributes
 
   ##-- create: aux: d2c: [$di] => $ci
-  $vs->vlog($logCreate, "create(): creating doc<->category translation piddles");
   my $ND  = $map->{denum}->size();
+  $vs->vlog($logCreate, "create(): creating doc<->category translation piddles (ND=$ND, NC=$NC)");
   my $d2c = $vs->{d2c} = zeroes(long, $ND);
   ($tmp=$d2c->index($map->{dcm}->_whichND->slice("(0),"))) .= $map->{dcm}->_whichND->slice("(1),");
 
@@ -272,19 +301,26 @@ sub create {
 
   ##-- create: aux: metadata attributes
   @{$vs->{meta}} = sort keys %meta;
-  my %efopts = (flags=>$vs->{flags}, pack_i=>$coldb->{pack_id}, pack_o=>$coldb->{pack_off}, pack_l=>$coldb->{pack_len});
+  my %efopts     = (flags=>$vs->{flags}, pack_i=>$coldb->{pack_id}, pack_o=>$coldb->{pack_off}, pack_l=>$coldb->{pack_len});
+  my $NM         = scalar @{$vs->{meta}};
+  $mvals         = $vs->{mvals} = zeroes(long,$NM,$NC); ##-- [$mpos,$ci] => $mvali_at_ci
   my ($menum);
-  foreach $mattr (@{$vs->{meta}}) {
-    $vs->vlog($logCreate, "create(): creating metadata map for attribute '$mattr'");
+  foreach (0..($NM-1)) {
+    $vs->vlog($logCreate, "create(): creating metadata enum for attribute '$vs->{meta}[$_]'");
+    $mattr = $vs->{meta}[$_];
     $mdata = $meta{$mattr};
     $menum = $vs->{"meta_e_$mattr"} = $DiaColloDB::ECLASS->new(%efopts);
-    $mvals = $vs->{"meta_v_$mattr"} = $mdata->{vals};
+    ($tmp=$mvals->slice("($_),")) .= $mdata->{vals};
     $menum->fromHash($mdata->{s2i})
       or $vs->logconfess("create(): failed to create metadata enum for attribute '$mattr': $!");
     $menum->save("$vsdir/meta_e_$mattr")
       or $vs->logconfess("create(): failed to save metadata enum $vsdir/meta_e_$mattr: $!");
-    $map->writePdlFile($mvals, "$vsdir/meta_v_${mattr}.pdl", %ioopts)
-      or $vs->logconfess("create(): failed to save metadata value-piddle $vsdir/meta_v_$mattr: $!");
+  }
+  ##
+  $vs->vlog($logCreate, "create(): creating metadata sort-indices (NM=$NM x NC=$NC)");
+  my $msorti = $vs->{msorti} = zeroes(long, $NC,$NM); ##-- [,($mi)] => $mvals->slice("($mi),")->qsorti
+  foreach (0..($NM-1)) {
+    $mvals->slice("($_),")->qsorti($msorti->slice(",($_)"));
   }
 
   ##-- tweak mapper piddles
@@ -307,7 +343,7 @@ sub create {
     or $vs->logconfess("create(): failed to save mapper data to ${vsdir}/map.d: $!");
 
   ##-- save: aux data: piddles
-  foreach (qw(t2w w2t d2c c2d c2date)) {
+  foreach (qw(tvals tsorti mvals msorti d2c c2d c2date)) {
     $map->writePdlFile($vs->{$_}, "$vsdir/$_.pdl", %ioopts)
       or $vs->logconfss("create(): failed to save auxilliary piddle $vsdir/$_.pdl: $!");
   }
@@ -363,13 +399,18 @@ sub profile {
   my $logProfile = $coldb->{logProfile};
   my $map = $vs->{dcmap};
 
+  ##-- sanity checks / fixes
+  $vs->{attrs} = $coldb->{attrs} if (!@{$vs->{attrs}//[]});
+
   ##-- parse query
-  my ($gbexprs,$gbrestr,$gbfilters) = $coldb->parseGroupBy($opts{groupby}, %opts); ##-- for restrictions
-  my $groupby= $coldb->groupby($opts{groupby}, xenum=>$coldb->{wenum}, relax=>1);  ##-- TODO: make "real" groupby-clause here
+  my $groupby = $vs->groupby($coldb, $opts{groupby}, relax=>0);
+  #my $groupby= $coldb->groupby($opts{groupby}, relax=>1);  ##-- TODO: make "real" groupby-clause here
+  #my ($gbexprs,$gbrestr,$gbfilters) = $coldb->parseGroupBy($opts{groupby}, %opts); ##-- DDC for restrictions
+  ##
   my $q = $coldb->parseQuery($opts{query}, logas=>'query', default=>'', ddcmode=>1);
   my ($qo);
   $q->setOptions($qo=DDC::XS::CQueryOptions->new) if (!defined($qo=$q->getOptions));
-  $qo->setFilters([@{$qo->getFilters}, @$gbfilters]) if (@$gbfilters);
+  #$qo->setFilters([@{$qo->getFilters}, @$gbfilters]) if (@$gbfilters);
 
   ##-- evaluate query components
   my %vqopts = (%opts,coldb=>$coldb,vsem=>$vs);
@@ -425,28 +466,26 @@ sub profile {
     }
   }
 
-  ##-- TEST: map to & extract k-best terms
-  $vs->vlog($coldb->{logProfile}, "profile(): TEST: getting k-nearest neighbors");
-  my $dist = $map->qdistance($qvec, $map->{svd}{v});
-  my $sim  = (2-$dist);
-  $sim->inplace->divide(2,$sim,0);
-  my $simi  = $sim->qsorti->slice("-1:0");
-  ##
-  ##-- TODO: aggregate based on groupby request; maybe query {xcm} instead
-  ##
-  my $best_ti = $simi->slice("0:".($opts{kbest} < $simi->nelem ? ($opts{kbest}-1) : "-1"));
-  my $best_wi = $vs->{t2w}->index($best_ti);
-  my $best_sim = $sim->index($best_ti);
+  ##-- map to & extract k-best terms (TODO: maybe map to cats by querying {xcm} instead of {xtm}~{svd}{v} ?)
+  $vs->vlog($coldb->{logProfile}, "profile(): extracting k-nearest neighbors (terms)");
+  my $dist = $map->qdistance($qvec,
+			     (defined($groupby->{ghaving})
+			      ? $map->{svd}{v}->dice_axis(1,$groupby->{ghaving})
+			      : $map->{svd}{v}));
 
-  ##-- TEST: construct profile [TODO: do we need to simulate f1, f12, etc?  do we need a special profile subclass?]
-  $vs->vlog($coldb->{logProfile}, "profile(): TEST: constructing output profile");
-  my ($gi);
-  my $x2g = $groupby->{x2g};
-  %{$prf->{vsim}} = map {
-    $gi = $best_wi->at($_);
-    $gi = $x2g->($gi) if (defined($x2g));
-    ($gi => $best_sim->at($_))
-  } (0..($best_wi->nelem-1));
+  ##-- groupby: aggregate
+  my ($g_keys,$g_dist) = $groupby->{gaggr}->($dist);
+
+  ##-- groupby: k-best items
+  my $g_sorti = $g_dist->qsorti;
+  my $g_besti = $g_sorti->slice("0:".($opts{kbest} < $g_sorti->nelem ? ($opts{kbest}-1) : "-1"));
+
+  ##-- convert distance to similarity (simple linear method; range=[-1:1])
+  my $g_sim = (1-$g_dist);
+
+  ##-- construct profile [TODO: do we need to simulate f1, f12, etc?  do we need a special profile subclass?]
+  $vs->vlog($coldb->{logProfile}, "profile(): constructing output profile");
+  %{$prf->{vsim}} = map { ($g_keys->at($_)=>$g_sim->at($_)) } $g_besti->list;
 
   ##-- TODO: construct qinfo
 
@@ -455,46 +494,252 @@ sub profile {
   my $mp = DiaColloDB::Profile::Multi->new(profiles=>[$prf], titles=>$groupby->{titles}, qinfo=>'TODO');
   $mp->stringify($groupby->{g2s}) if ($opts{strings});
 
-
   return $mp;
 }
 
 ##==============================================================================
-## Profile: Utils: query parsing
+## Profile: Utils: domain sizes
 
-## $wi_map = $vs->w2t($wi_coldb)
-##   + maps an index-piddle $wi_coldb over $coldb->{wenum} to an index-piddle $wi_map over $vs->{dcmap}{wenum}
-sub w2t {
-  my ($vs,$wi) = @_;
-  my $ti = $vs->{w2t}->index($wi);
-  return $ti->where($ti>=0);
+## $NT = $vs->nTerms()
+##  + gets number of terms
+sub nTerms {
+  return $_[0]{dcmap}{tenum}->size;
 }
 
-## $wi_coldb = $vs->t2w($ti_map)
-##   + maps an index-piddle $wi_map over $vs->{dcmap}{wenum} to an index-piddle $wi_coldb over $coldb->{wenum}
-sub t2w {
-  my ($vs,$ti) = @_;
-  return $vs->{t2w}->index($ti);
+## $ND = $vs->nDocs()
+##  + returns number of documents (breaks)
+BEGIN { *nBreaks = \&nDocs; }
+sub nDocs {
+  return $_[0]{dcmap}{denum}->size;
+}
+
+## $NC = $vs->nFiles()
+##  + returns number of categories (original source files)
+BEGIN { *nCategories = *nCats = \&nFiles; }
+sub nFiles {
+  return $_[0]{dcmap}{lcenum}->size;
+}
+
+##==============================================================================
+## Profile: Utils: attribute positioning
+
+## \%tpos = $vs->tpos()
+##  $tpos = $vs->tpos($tattr)
+##  + get or build term-attribute position lookup hash
+sub tpos {
+  $_[0]{tpos} //= { (map {($_[0]{attrs}[$_]=>$_)} (0..$#{$_[0]{attrs}})) };
+  return @_>1 ? $_[0]{tpos}{$_[1]} : $_[0]{tpos};
+}
+
+## \%mpos = $vs->mpos()
+## $mpos  = $vs->mpos($mattr)
+##  + get or build meta-attribute position lookup hash
+sub mpos {
+  $_[0]{mpos} //= { (map {($_[0]{meta}[$_]=>$_)} (0..$#{$_[0]{meta}})) };
+  return @_>1 ? $_[0]{mpos}{$_[1]} : $_[0]{mpos};
+}
+
+##==============================================================================
+## Profile: Utils: query parsing & evaluation
+
+## $idPdl = $vs->idpdl($idPdl)
+## $idPdl = $vs->idpdl(\@ids)
+## $idPdl = $vs->idpdl($ids)
+sub idpdl {
+  shift if (UNIVERSAL::isa($_[0],__PACKAGE__));
+  my $ids = shift;
+  return null->long   if (!defined($ids));
+  $ids = [$ids] if (!ref($ids));
+  $ids = pdl(long,$ids) if (!UNIVERSAL::isa($ids,'PDL'));
+  return $ids;
+}
+
+## $tupleIds = $vs->tupleIds($attrType, $attrName, $valIdsPdl)
+## $tupleIds = $vs->tupleIds($attrType, $attrName, \@valIds)
+## $tupleIds = $vs->tupleIds($attrType, $attrName, $valId)
+sub tupleIds {
+  my ($vs,$typ,$attr,$valids) = @_;
+  $valids = $valids=$vs->idpdl($valids);
+
+  ##-- check for empty value-set
+  if ($valids->nelem == 0) {
+    return null->long;
+  }
+
+  ##-- non-empty: get base data
+  my $apos = $vs->can("${typ}pos")->($vs,$attr);
+  my $vals = $vs->{"${typ}vals"}->slice("($apos),");
+
+  ##-- check for singleton value-set & maybe do simple linear search
+  if ($valids->nelem == 1) {
+    return ($vals==$valids)->which;
+  }
+
+  ##-- nontrivial value-set: do vsearch lookup
+  my $sorti   = $vs->{"${typ}sorti"}->slice(",($apos)");
+  my $vals_qs = $vals->index($sorti);
+  my $i0      = $valids->vsearch($vals_qs);
+  my $i0_mask = ($vals_qs->index($i0) == $valids);
+  $i0         = $i0->where($i0_mask);
+  my $ilen    = ($valids->where($i0_mask)+1)->vsearch($vals_qs);
+  $ilen      -= $i0;
+  $ilen->slice("-1")->lclip(1) if ($ilen->nelem); ##-- hack for bogus 0-length at final element
+  my $iseq    = $ilen->rldseq($i0);
+  return $sorti->index($iseq)->qsort;
+}
+
+## $ti = $vs->termIds($tattrName, $valIdsPDL)
+## $ti = $vs->termIds($tattrName, \@valIds)
+## $ti = $vs->termIds($tattrName, $valId)
+sub termIds {
+  return $_[0]->tupleIds('t',@_[1..$#_]);
+}
+
+## $ci = $vs->catIds($mattrName, $valIdsPDL)
+## $ci = $vs->catIds($mattrName, \@valIds)
+## $ci = $vs->catIds($mattrName, $valId)
+sub catIds {
+  return $_[0]->tupleIds('m',@_[1..$#_]);
 }
 
 ## $bool = $vs->hasMeta($attr)
 ##  + returns true iff $vs supports metadata attribute $attr
 sub hasMeta {
-  my ($vs,$attr) = @_;
-  return (defined($vs->{"meta_e_$attr"}) || !defined($vs->{"meta_v_$attr"}));
+  return defined($_[0]->mpos($_[1]));
 }
 
-## \%attr_or_undef = metaAttr($attr)
-##  + returns metadata attribute handlers for $attr as a HASH-ref %$attr =
-##    (
-##     enum => $enum,
-##     vals => $vals,
-##    )
-sub metaAttr {
+## $enum_or_undef = metaEnum($mattr)
+##  + returns metadata attribute enum for $attr
+sub metaEnum {
   my ($vs,$attr) = @_;
   return undef if (!$vs->hasMeta($attr));
-  return {enum=>$vs->{"meta_e_$attr"}, vals=>$vs->{"meta_v_$attr"}};
+  return $vs->{"meta_e_$attr"};
 }
+
+##~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+## \%groupby = $vs->groupby($coldb, $groupby_request, %opts)
+## \%groupby = $vs->groupby($coldb, \%groupby,        %opts)
+##  + modified version of DiaColloDB::groupby() suitable for pdl-ized Vsem relation
+##  + $grouby_request : see DiaColloDB::parseRequest()
+##  + returns a HASH-ref:
+##    (
+##     ##-- OLD: equivalent to DiaColloDB::groupby() return values
+##     req => $request,    ##-- save request
+##     areqs => \@areqs,   ##-- parsed attribute requests ([$attr,$ahaving],...)
+##     attrs => \@attrs,   ##-- like $coldb->attrs($groupby_request), modulo "having" parts
+##     titles => \@titles, ##-- like map {$coldb->attrTitle($_)} @attrs
+##     ##
+##     ##-- REMOVED: not constructed for Vsem::groupby()
+##     #x2g => \&x2g,       ##-- group-id extraction code suitable for e.g. DiaColloDB::Relation::Cofreqs::profile(groupby=>\&x2g)
+##     #g2s => \&g2s,       ##-- stringification object suitable for DiaColloDB::Profile::stringify() [CODE,enum, or undef]
+##     ##
+##     ##-- NEW: equivalent to DiaColloDB::groupby() return values
+##     ghaving => $ghaving, ##-- pdl ($NHavingOk) : term indices $ti s.t. $ti matches groupby "having" requests
+##     gaggr   => \&gaggr,  ##-- code: ($gkeys,$gdist) = gaggr($dist) : where $dist is diced to $ghaving on dim(1)
+##     g2s     => \&g2s,    ##-- stringification object suitable for DiaColloDB::Profile::stringify() [CODE,enum, or undef]
+##     ##
+##     ##-- NEW: pdl utilties
+##     #gv    => $gv,       ##-- pdl ($NG): [$gvi] => $gi : group-id enumeration
+##     #gn    => $gn,       ##-- pdl ($NG): [$gvi] => $n  : number of terms in group
+##    )
+##  + %opts:
+##     warn  => $level,    ##-- log-level for unknown attributes (default: 'warn')
+##     relax => $bool,     ##-- allow unsupported attributes (default=0)
+sub groupby {
+  my ($vs,$coldb,$gbreq,%opts) = @_;
+  return $gbreq if (UNIVERSAL::isa($gbreq,'HASH'));
+
+  ##-- get data
+  my $wlevel = $opts{warn} // 'warn';
+  my $gb = { req=>$gbreq };
+
+  ##-- get attribute requests
+  my $gbareqs = $gb->{areqs} = $coldb->parseRequest($gb->{req}, %opts,logas=>'groupby');
+
+  ##-- get attribute names (compat)
+  my $gbattrs = $gb->{attrs} = [map {$_->[0]} @$gbareqs];
+
+  ##-- get attribute titles
+  $gb->{titles} = [map {$coldb->attrTitle($_)} @$gbattrs];
+
+  ##-- get "having"-clause matches
+  my $ghaving = undef;
+  foreach (grep {$_->[1] && !UNIVERSAL::isa($_->[1],'DDC::XS::CQTokAny')} @$gbareqs) {
+    my $avalids = $coldb->enumIds($coldb->{"$_->[0]enum"}, $_->[1], logLevel=>$coldb->{logProfile}, logPrefix=>"groupby(): fetch filter ids: $_->[0]");
+    my $ahaving = $vs->termIds($_->[0], $avalids);
+    $ghaving    = DiaColloDB::Utils::_intersect_p($ghaving,$ahaving);
+  }
+  $gb->{ghaving} = $ghaving;
+
+  ##-- get pdl-ized group-aggregation and -stringification objects
+  my ($g_keys); ##-- pdl ($NHavingOk): [$hvi] => $gi : term-ids for generic aggregation by $ghaving or raw term-id
+  if (@{luniq($gbattrs)} == @{luniq($coldb->{attrs})}) {
+    ##-- project all attributes: t2g: use native term-ids
+    #$gb->{t2g} = sub { return $_[0]; };
+
+    ##-- project all attribute: aggregate by term-identity (i.e. don't)
+    $gb->{gaggr} = sub {
+      return (defined($ghaving)
+	      ? ($ghaving,$_[0])
+	      : (sequence(long,$_[0]->nelem),$_[0]));
+    };
+
+    ##-- project all attributes: g2s: stringification
+    my $tvals  = $vs->{tvals};
+    my @tenums = map {$coldb->{"${_}enum"}} @{$vs->{attrs}};
+    my @gbpos  = map {$vs->tpos($_)} @$gbattrs;
+    $gb->{g2s} = sub {
+      return join("\t", map {$tenums[$_]->i2s($tvals->at($_,$_[0]))//''} @gbpos);
+    };
+  }
+  elsif (@$gbattrs == 1) {
+    ##-- project single attribute: t2g: use native attribute-ids
+    my $gpos   = $vs->tpos($gbattrs->[0]);
+    #$gb->{t2g} = sub { return $vs->{tvals}->slice("($gpos),")->index($_[0]); };
+
+    ##-- project single attribute: gaggr: aggregate by native attribute-ids
+    $g_keys = $vs->{tvals}->slice("($gpos),");
+
+    ##-- project single attribute: g2s: stringification
+    my $gbenum = $coldb->{$gbattrs->[0]."enum"};
+    $gb->{g2s} = sub { return $gbenum->i2s($_[0]); };
+  }
+  else {
+    ##-- project multiple attributes: t2g: create local vector-enum
+    my $gpos   = [map {$vs->tpos($_)} @$gbattrs];
+    my $gvecs  = $vs->{tvals}->dice_axis(0,$gpos);
+    my $gsorti = $gvecs->vv_qsortveci;
+    my $gvids  = zeroes(long, $gvecs->dim(1));
+    $gvecs->dice_axis(1,$gsorti)->enumvecg($gvids->index($gsorti));
+    #$gb->{t2g} = sub { return $gvids->index($_[0]); };
+
+    ##-- project multiple attributes: gaggr: aggregate by local vector-enum
+    $g_keys = $gvids;
+
+    ##-- project multiple attributes: g2s: stringification
+    my @tenums = map {$coldb->{"${_}enum"}} @{$vs->{attrs}};
+    $gb->{g2s} = sub {
+      return join("\t", map {$tenums[$gpos->[$_]]->i2s($gvecs->at($_,$_[0]))//''} (0..$#$gpos));
+    };
+  }
+
+  ##-- aggregation: generic
+  if (!defined($gb->{gaggr})) {
+    $g_keys      = $g_keys->index($ghaving) if (defined($ghaving));
+    my ($gv,$gn) = $g_keys->valcounts;
+    my $g_vids   = $g_keys->vsearch($gv);
+    $gb->{gaggr} = sub {
+      my $dist = shift;
+      my $g_vdist = zeroes($dist->type,$gv->nelem);
+      $dist->indadd($g_vids, $g_vdist);
+      $g_vdist /= $gn;
+      return ($gv,$g_vdist);
+    };
+  }
+
+  return $gb;
+}
+
 
 ##==============================================================================
 ## Relation API: default: query info

@@ -1339,13 +1339,14 @@ sub test_diffop {
 ## test: vsem
 
 sub test_vsem {
-  my $dbdir = shift || 'dta_ner.d';
+  my $dbdir = shift || 'dta_phil.d';
   my %opts  = map {split(/=/,$_,2)} @_;
   %opts = (
-	   query => "Objekt #has[author,/Kant/]",
+	   query => "Vernunft !#has[author,/Kant/]",
 	   slice => 0,
 	   kbest => 10,
-	   date => '1700:1899',
+	   #date => '1700:1899',
+	   groupby => 'l,p=NN',
 	   %opts,
 	  );
 

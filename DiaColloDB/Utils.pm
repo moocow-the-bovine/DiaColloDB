@@ -37,6 +37,7 @@ our %EXPORT_TAGS =
      time  => [qw(s2hms s2timestr timestamp)],
      file  => [qw(file_mtime file_timestamp du_file du_glob)],
      si    => [qw(si_str)],
+     pdl   => [qw(_intersect_p _union_p _complement_p)],
     );
 our @EXPORT_OK = map {@$_} values(%EXPORT_TAGS);
 $EXPORT_TAGS{all} = [@EXPORT_OK];
@@ -524,6 +525,68 @@ sub si_str {
   return sprintf("%.2fy", $x*10**24) if ($x >= 10**-24); ##-- yocto
   return sprintf("%.2g", $x); ##-- default
 }
+
+##==============================================================================
+## Functions: pdl
+
+
+## $pi = CLASS::_intersect_p($p1,$p2)
+## $pi = CLASS->_intersect_p($p1,$p2)
+##  + intersection of 2 piddles; undef is treated as the universal set
+##  + argument piddles MUST be sorted in ascending order
+sub _intersect_p {
+  shift if (UNIVERSAL::isa($_[0],__PACKAGE__));
+  return (defined($_[0])
+	  ? (defined($_[1])
+	     ? $_[0]->v_intersect($_[1]) ##-- v_intersect is 1.5-3x faster than PDL::Primitive::intersect()
+	     : $_[0])
+	  : $_[1]);
+}
+## $pu = CLASS::_union_p($p1,$p2)
+## $pi = CLASS->_intersect_p($p1,$p2)
+##  + union of 2 piddles; undef is treated as the universal set
+##  + argument piddles MUST be sorted in ascending order
+sub _union_p {
+  shift if (UNIVERSAL::isa($_[0],__PACKAGE__));
+  return (defined($_[0])
+	  ? (defined($_[1])
+	     ? $_[0]->v_union($_[1])  ##-- v_union is 1.5-3x faster than PDL::Primitive::setops($a,'OR',$b)
+	     : $_[0])
+	  : $_[1]);
+}
+
+
+## $pneg = CLASS::_complement_p($p,$N)
+## $pneg = CLASS->_complement_p($p,$N)
+##  + index-piddle negation; undef is treated as the universal set
+##  + $N is the total number of elements in the index-universed
+BEGIN { *_not_p = *_negate_p = \&_complement_p; }
+sub _complement_p {
+  shift if (UNIVERSAL::isa($_[0],__PACKAGE__));
+  my ($p,$N) = @_;
+  if (!defined($p)) {
+    ##-- neg(\universe) = \emptyset
+    return PDL->null->long;
+  }
+  elsif ($p->nelem==0) {
+    ##-- neg(\emptyset) = \universe
+    return undef;
+  }
+  else {
+    ##-- non-trivial negation
+    ##
+    ##-- mask: ca. 2.2x faster than v_setdiff
+    no strict 'subs';
+    my $mask = PDL->ones(PDL::byte(),$N);
+    (my $tmp=$mask->index($p)) .= 0;
+    return $mask->which;
+    ##
+    ##-- v_setdiff: ca. 68% slower than mask
+    #my $U = sequence($p->type, $N);
+    #return scalar($U->v_setdiff($p));
+  }
+}
+
 
 ##==============================================================================
 ## Footer
