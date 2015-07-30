@@ -37,7 +37,7 @@ our %EXPORT_TAGS =
      time  => [qw(s2hms s2timestr timestamp)],
      file  => [qw(file_mtime file_timestamp du_file du_glob)],
      si    => [qw(si_str)],
-     pdl   => [qw(_intersect_p _union_p _complement_p)],
+     pdl   => [qw(_intersect_p _union_p _complement_p _setdiff_p)],
     );
 our @EXPORT_OK = map {@$_} values(%EXPORT_TAGS);
 $EXPORT_TAGS{all} = [@EXPORT_OK];
@@ -555,11 +555,10 @@ sub _union_p {
 	  : $_[1]);
 }
 
-
 ## $pneg = CLASS::_complement_p($p,$N)
 ## $pneg = CLASS->_complement_p($p,$N)
 ##  + index-piddle negation; undef is treated as the universal set
-##  + $N is the total number of elements in the index-universed
+##  + $N is the total number of elements in the index-universe
 BEGIN { *_not_p = *_negate_p = \&_complement_p; }
 sub _complement_p {
   shift if (UNIVERSAL::isa($_[0],__PACKAGE__));
@@ -584,6 +583,36 @@ sub _complement_p {
     ##-- v_setdiff: ca. 68% slower than mask
     #my $U = sequence($p->type, $N);
     #return scalar($U->v_setdiff($p));
+  }
+}
+
+
+## $pdiff = CLASS::_setdiff_p($a,$b,$N)
+## $pdiff = CLASS->_setdiff_p($a,$b,$N)
+##  + index-piddle difference; undef is treated as the universal set
+##  + $N is the total number of elements in the index-universe
+sub _setdiff_p {
+  shift if (UNIVERSAL::isa($_[0],__PACKAGE__));
+  my ($a,$b,$N) = @_;
+  if (!defined($a)) {
+    ##-- \universe - b = \neg(b)
+    return _complement_p($b,$N);
+  }
+  elsif (!defined($b)) {
+    ##-- a - \universe = \emptyset
+    return PDL->null->long;
+  }
+  elsif ($a->nelem==0) {
+    ##-- \empyset - b = \emptyset
+    return $a;
+  }
+  elsif ($b->nelem==0) {
+    ##-- a - \emptyset = a
+    return $a;
+  }
+  else {
+    ##-- non-trivial setdiff
+    return scalar($a->v_setdiff($b));
   }
 }
 

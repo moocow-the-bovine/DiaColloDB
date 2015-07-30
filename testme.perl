@@ -1342,8 +1342,8 @@ sub test_vsem {
   my $dbdir = shift || 'dta_phil.d';
   my %opts  = map {split(/=/,$_,2)} @_;
   %opts = (
-	   query => "Vernunft !#has[author,/Kant/]",
-	   slice => 0,
+	   query => "Vernunft",
+	   slice => 100,
 	   kbest => 10,
 	   #date => '1700:1899',
 	   groupby => 'l,p=NN',
