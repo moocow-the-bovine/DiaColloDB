@@ -6,7 +6,8 @@
 package DiaColloDB::Relation::Vsem;
 use DiaColloDB::Relation;
 use DiaColloDB::Relation::Vsem::Query;
-use DiaColloDB::Relation::Vsem::Result;
+use DiaColloDB::Profile::Pdl;
+use DiaColloDB::Profile::PdlDiff;
 use DiaColloDB::Utils qw(:fcntl :file :math :json :list :pdl);
 use DocClassify;
 use DocClassify::Mapper::Train;
@@ -32,7 +33,7 @@ our @ISA = qw(DiaColloDB::Relation);
 ##   dcio   => \%dcio,      ##-- options for DocClassify::Mapper->saveDir()
 ##   mgood  => $regex,      ##-- positive filter regex for metadata attributes
 ##   mbad   => $regex,      ##-- negative filter regex for metadata attributes
-##   logSubprofile => $level, ##-- log-level for subprofile() (default=undef:none)
+##   logvprofile => $level, ##-- log-level for vprofile() and vpslice() (default=undef:none)
 ##   ##
 ##   ##-- guts: aux term-tuples ($NA:number of term-attributes, $NT:number of term-tuples)
 ##   attrs  => \@attrs,       ##-- known term attributes
@@ -63,8 +64,7 @@ sub new {
 			       attrs => [],
 			       dcmap => undef,
 			       ##
-			       #logSubprofile => 'trace',
-			       logSubprofile => undef,
+			       logvprofile  => undef,
 			       ##
 			       @_
 			      );
@@ -393,90 +393,159 @@ sub union {
 }
 
 ##==============================================================================
+## Relation API: profiling & comparison: top-level
+
+##--------------------------------------------------------------
 ## Relation API: profile
 
 ## $mprf = $rel->profile($coldb, %opts)
 ## + get a relation profile for selected items as a DiaColloDB::Profile::Multi object
 ## + %opts: as for DiaColloDB::Relation::profile()
+## + really just wraps $rel->vprofile(), DiaColloDB::Relation::Vsem::Result::toProfile(), and DiaColloDB::Profile::Multi::stringify()
 sub profile {
   my ($vs,$coldb,%opts) = @_;
 
-  ##-- common variables
-  my $logLocal = $coldb->{logProfile};
-
-  ##-- sanity checks / fixes
-  $vs->{attrs} = $coldb->{attrs} if (!@{$vs->{attrs}//[]});
-
-  ##-- parse query
-  my $groupby = $opts{groupby} = $vs->groupby($coldb, $opts{groupby}, relax=>0); ##-- TODO: allow metadata restrictions (but not group-keys)
-  ##
-  my $q = $coldb->parseQuery($opts{query}, logas=>'query', default=>'', ddcmode=>1);
-  my ($qo);
-  $q->setOptions($qo=DDC::XS::CQueryOptions->new) if (!defined($qo=$q->getOptions));
-  #$qo->setFilters([@{$qo->getFilters}, @$gbfilters]) if (@$gbfilters);
-
-  ##-- parse date-request
-  my ($dfilter,$dslo,$dshi,$dlo,$dhi) = $coldb->parseDateRequest(@opts{qw(date slice fill)},1);
-  @opts{qw(dslo dshi dlo dhi)} = ($dslo,$dshi,$dlo,$dhi);
-
-  ##-- parse & compile query
-  my %vqopts = (%opts,coldb=>$coldb,vsem=>$vs);
-  my $vq     = $opts{vq} = DiaColloDB::Relation::Vsem::Query->new($q)->compile(%vqopts);
-
-  ##-- sanity checks: null-query
-  my ($ti,$ci) = @$vq{qw(ti ci)};
-  if (defined($ti) && !$ti->nelem) {
-    $vs->logconfess($coldb->{error}="no index term(s) matched user query \`$opts{query}'");
-  } elsif (defined($ci) && !$ci->nelem) {
-    $vs->logconfess($coldb->{error}="no index document(s) matched user query \`$opts{query}'");
-  }
-
-  ##-- evaluate query by slice
-  $vs->vlog($logLocal, "profile(): evaluating query by target slice");
-  my (@vrs,$vr);
-  foreach my $sliceVal ($opts{slice} ? ($vq->{slices}->list) : 0) {
-    $vr = $vs->subprofile($coldb,$sliceVal,%opts);
-    push(@vrs,$vr);
-  }
-
-  ##-- trim results
-  if ($opts{global} && @vrs > 1) {
-    ##-- trim: global
-    my $vrg  = DiaColloDB::Relation::Vsem::Result->averageOver(\@vrs);
-    my $keep = $vrg->gwhich(%opts);
-    $_->gtrim(keep=>$keep) foreach (@vrs);
-  }
-  else {
-    ##-- trim: local
-    $_->gtrim(%opts) foreach (@vrs);
-  }
+  ##-- vector-based profile
+  my $vrs     = $vs->vprofile($coldb,\%opts);
+  my $groupby = $opts{groupby};
 
   ##-- construct multi-profile
-  $vs->vlog($logLocal, "profile(): constructing output profile [strings=".($opts{strings} ? 1 : 0)."]");
-  my $mp = DiaColloDB::Profile::Multi->new(profiles=>[map {$_->toProfile} @vrs], titles=>$groupby->{titles}, qinfo=>'TODO');
+  $vs->vlog($vs->{logvprofile}, "profile(): constructing output profile [strings=".($opts{strings} ? 1 : 0)."]");
+  my $mp = DiaColloDB::Profile::Multi->new(profiles=>[map {$_->toProfile} @$vrs], titles=>$groupby->{titles}, qinfo=>'TODO');
   $mp->stringify($groupby->{g2s}) if ($opts{strings});
 
   return $mp;
 }
 
-##==============================================================================
-## Profile: Utils: slice-wise subprofile
+##--------------------------------------------------------------
+## Relation API: comparison (diff)
 
-## $vprf_or_undef = $vs->subprofile($coldb, $sliceVal, %opts)
-## + get a slice-local profile as a DiaColloDB::Relation::Vsem::Result object
-## + %opts: as for DiaColloDB::Relation::profile(), also:
-##   (
-##    groupby => \%groupby,   ##-- HASH-ref as returned by $vs->groupby() [REQUIRED]
-##    vq      => $vq,         ##-- parsed and evaluated query as a DiaColloDB::Relation::Vsem::Query object
-##   )
-sub subprofile {
-  my ($vs,$coldb,$sliceVal,%opts) = @_;
+## $mpdiff = $rel->compare($coldb, %opts)
+##  + get a relation comparison profile for selected items as a DiaColloDB::Profile::MultiDiff object
+##  + %opts as for DiaColloDB::Relation::compare(), of which this method is a modified version
+sub compare {
+  my ($vs,$coldb,%opts) = @_;
+
+  ##-- sanity checks / fixes
+  $vs->{attrs} = $coldb->{attrs} if (!@{$vs->{attrs}//[]});
 
   ##-- common variables
-  my $logLocal = $vs->{logSubprofile};
-  my ($groupby,$vq) = @opts{qw(groupby vq)};
+  my $logLocal   = $coldb->{logProfile};
+  my $groupby    = $opts{groupby} = $vs->groupby($coldb, $opts{groupby}, relax=>0);
+  my %aopts      = map {exists($opts{"a$_"}) ? ($_=>$opts{"a$_"}) : qw()} (qw(query date slice), @{$opts{_abkeys}//[]});
+  my %bopts      = map {exists($opts{"b$_"}) ? ($_=>$opts{"b$_"}) : qw()} (qw(query date slice), @{$opts{_abkeys}//[]});
+  my %popts      = (kbest=>-1,cutoff=>'',global=>0,strings=>0,fill=>1, groupby=>$groupby);
+
+  ##-- get profiles to compare
+  my $mra = $reldb->vprofile($coldb,{%opts, %aopts,%popts}) or return undef;
+  my $mrb = $reldb->vprofile($coldb,{%opts, %bopts,%popts}) or return undef;
+
+  ##-- alignment and trimming
+  $reldb->vlog($logLocal, "compare(): align and trim (".($opts{global} ? 'global' : 'local').")");
+  my $ppairs = DiaColloDB::Profile::MultiDiff->align($mra,$mrb);
+  DiaColloDB::Relation::Vsem::Result->trimPairs($ppairs, %opts); ##-- vsem version
+  if (!$opts{global}) {
+    $_->gtrim( DiaColloDB::Profile::Diff->diffkbest($opts{diff})=>$opts{kbest} ) foreach (grep {$_} map {@$_} @$ppairs);
+  }
+
+  ##-- convert to multi-profile
+  my $diff = DiaColloDB::Profile::MultiDiff->new($mpa,$mpb, titles=>$mpa->{titles}, diff=>$opts{diff});
+  $diff->trim( DiaColloDB::Profile::Diff->diffkbest($opts{diff})=>$opts{kbest} ) if (!$opts{global});
+
+  ##-- finalize: stringify
+  if ($opts{strings}//1) {
+    $reldb->vlog($logLocal, "compare(): stringify");
+    $diff->stringify($groupby->{g2s});
+  }
+
+  return $diff;
+}
+
+
+##==============================================================================
+## Profile: Utils: Vector-based profiling
+
+## \@vrs = $vs->vprofile($coldb, \%opts)
+## + get a relation profile for selected items as an ARRAY of DiaColloDB::Relation::Vsem::Result objects
+## + %opts: as for DiaColloDB::Relation::profile()
+## + altered %opts:
+##   (
+##    vq      => $vq,        ##-- parsed query
+##    groubpy => \%groupby,  ##-- as returned by $vs->groupby($coldb, \%opts)
+##    dlo     => $dlo,       ##-- as returned by $coldb->parseDateRequest(@opts{qw(date slice fill)},1);
+##    dhi     => $dhi,       ##-- as returned by $coldb->parseDateRequest(@opts{qw(date slice fill)},1);
+##    dslo    => $dslo,      ##-- as returned by $coldb->parseDateRequest(@opts{qw(date slice fill)},1);
+##    dshi    => $dshi,      ##-- as returned by $coldb->parseDateRequest(@opts{qw(date slice fill)},1);
+##   )
+sub vprofile {
+  my ($vs,$coldb,$opts) = @_;
+
+  ##-- common variables
+  my $logLocal = $vs->{logvprofile};
+
+  ##-- sanity checks / fixes
+  $vs->{attrs} = $coldb->{attrs} if (!@{$vs->{attrs}//[]});
+
+  ##-- parse query
+  my $groupby = $opts->{groupby} = $vs->groupby($coldb, $opts->{groupby}, relax=>0); ##-- TODO: allow metadata restrictions (but not group-keys)
+  ##
+  my $q = $coldb->parseQuery($opts->{query}, logas=>'query', default=>'', ddcmode=>1);
+  my ($qo);
+  $q->setOptions($qo=DDC::XS::CQueryOptions->new) if (!defined($qo=$q->getOptions));
+  #$qo->setFilters([@{$qo->getFilters}, @$gbfilters]) if (@$gbfilters);
+
+  ##-- parse date-request
+  my ($dfilter,$dslo,$dshi,$dlo,$dhi) = $coldb->parseDateRequest(@$opts{qw(date slice fill)},1);
+  @$opts{qw(dslo dshi dlo dhi)} = ($dslo,$dshi,$dlo,$dhi);
+
+  ##-- parse & compile query
+  my %vqopts = (%$opts,coldb=>$coldb,vsem=>$vs);
+  my $vq     = $opts->{vq} = DiaColloDB::Relation::Vsem::Query->new($q)->compile(%vqopts);
+
+  ##-- sanity checks: null-query
+  my ($ti,$ci) = @$vq{qw(ti ci)};
+  if (defined($ti) && !$ti->nelem) {
+    $vs->logconfess($coldb->{error}="no index term(s) matched user query \`$opts->{query}'");
+  } elsif (defined($ci) && !$ci->nelem) {
+    $vs->logconfess($coldb->{error}="no index document(s) matched user query \`$opts->{query}'");
+  }
+
+  ##-- evaluate query by slice
+  $vs->vlog($logLocal, "vprofile(): evaluating query by target slice");
+  my (@vrs,$vr);
+  foreach my $sliceVal ($opts->{slice} ? ($vq->{slices}->list) : 0) {
+    $vr = $vs->vpslice($coldb,$sliceVal,$opts);
+    push(@vrs,$vr);
+  }
+
+  ##-- trim results
+  if ($opts->{global} && @vrs > 1) {
+    ##-- trim: global
+    my $vrg  = DiaColloDB::Relation::Vsem::Result->averageOver(\@vrs);
+    my $keep = $vrg->gwhich(%$opts);
+    $_->gtrim(keep=>$keep) foreach (@vrs);
+  }
+  else {
+    ##-- trim: local
+    $_->gtrim(%$opts) foreach (@vrs);
+  }
+
+  ##-- return
+  return \@vrs;
+}
+
+##----------------------------------------------------------------------
+## $vr_or_undef = $vs->vpslice($coldb, $sliceVal, \%opts)
+## + get a slice-local profile as a DiaColloDB::Relation::Vsem::Result object
+## + %opts: as for vprofile()
+sub vpslice {
+  my ($vs,$coldb,$sliceVal,$opts) = @_;
+
+  ##-- common variables
+  my $logLocal = $vs->{logvprofile};
+  my ($groupby,$vq) = @$opts{qw(groupby vq)};
   my $map    = $vs->{dcmap};
-  my %vqopts = (%opts,vsem=>$vs,coldb=>$coldb);
+  my %vqopts = (%$opts,vsem=>$vs,coldb=>$coldb);
 
   ##-- construct query: common
   my ($qvec); ##-- query-vector: ($svdR,1) : [$ri] => $x
@@ -490,7 +559,7 @@ sub subprofile {
   ##-- construct query: dispatch
   if (defined($ti) && defined($ci)) {
     ##-- both term- and document-conditions
-    $vs->vlog($logLocal, "subprofile($sliceVal): query vector: xsubset");
+    $vs->vlog($logLocal, "vpslice($sliceVal): query vector: xsubset");
     my $q_c2d     = $vs->{c2d}->dice_axis(1,$ci);
     my $di        = $q_c2d->slice("(1),")->rldseq($q_c2d->slice("(0),"))->qsort;
     my $q_tdm     = $map->{tdm}->xsubset2d($ti,$di);
@@ -501,7 +570,7 @@ sub subprofile {
   }
   elsif (defined($ti)) {
     ##-- term-conditions only: slice from $svd->{v}
-    $vs->vlog($logLocal, "subprofile($sliceVal): query vector: terms");
+    $vs->vlog($logLocal, "vpslice($sliceVal): query vector: terms");
     my $xtm = $map->{svd}{v};
     $qvec   = $xtm->dice_axis(1,$ti);
     if ($ti->nelem > 1) {
@@ -510,7 +579,7 @@ sub subprofile {
   }
   elsif (defined($ci)) {
     ##-- doc-conditions only: slice from $map->{xcm}
-    $vs->vlog($logLocal, "subprofile($sliceVal): query vector: cats");
+    $vs->vlog($logLocal, "vpslice($sliceVal): query vector: cats");
     my $xcm = $map->{xcm};
     $qvec   = $xcm->dice_axis(1,$ci);
     if ($ci->nelem > 1) {
@@ -519,7 +588,7 @@ sub subprofile {
   }
 
   ##-- map to & extract k-best terms (TODO: maybe map to cats by querying {xcm} instead of {xtm}~{svd}{v} ?)
-  $vs->vlog($logLocal, "subprofile($sliceVal): extracting k-nearest neighbors (terms)");
+  $vs->vlog($logLocal, "vpslice($sliceVal): extracting k-nearest neighbors (terms)");
   my $dist = $map->qdistance($qvec,
 			     (defined($groupby->{ghaving})
 			      ? $map->{svd}{v}->dice_axis(1,$groupby->{ghaving})
@@ -530,7 +599,7 @@ sub subprofile {
 
   ##-- convert distance to similarity (simple linear method; range=[-1:1]) & return
   my $g_sim = (1-$g_dist);
-  @$vr{qw(g_keys g_sim)} = ($g_keys,$g_sim);
+  @$vr{qw(g_keys g_vals)} = ($g_keys,$g_sim);
   return $vr;
 }
 
@@ -653,8 +722,7 @@ sub metaEnum {
   return $vs->{"meta_e_$attr"};
 }
 
-##==============================================================================
-## Profile: Utils: groupby
+##----------------------------------------------------------------------
 
 ## \%groupby = $vs->groupby($coldb, $groupby_request, %opts)
 ## \%groupby = $vs->groupby($coldb, \%groupby,        %opts)

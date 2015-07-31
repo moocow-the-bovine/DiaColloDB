@@ -243,7 +243,7 @@ our %DIFFOPS =
 sub diffop {
   my ($that,$op) = @_;
   $op //= $that->{diff} if (ref($that));
-  return $DIFFOPS{$op} // $op // $DIFFOPS{DEFAULT};
+  return (defined($op) ? $DIFFOPS{$op} : undef) // $op // $DIFFOPS{DEFAULT};
 }
 
 ## \&FUNC = $dprf->diffsub()
@@ -303,6 +303,33 @@ sub diffop_lavg {
   my $delta  = $x<=1 ? (1-$x) : 0;
   return exp( log(($x+$delta)*($y+$delta))/2.0 ) - $delta;
 }
+BEGIN { *diffop_adiff = \&diffop_diff; }
+sub diffop_diff  { return $_[0]-$_[1]; }
+sub diffop_sum   { return $_[0]+$_[1]; }
+sub diffop_min   { return $_[0]<$_[1] ? $_[0] : $_[1]; }
+sub diffop_max   { return $_[0]>$_[1] ? $_[0] : $_[1]; }
+sub diffop_avg   { return ($_[0]+$_[1])/2.0; }
+
+#sub diffop_havg  { return $_[0]<=0 || $_[1]<=0 ? 0 : 2.0/(1.0/$_[0] + 1.0/$_[1]); }
+##--
+#our $havg_eps = 0.1;
+#sub diffop_havg  { return 2.0/(1.0/($_[0]+$havg_eps) + 1.0/($_[1]+$havg_eps)) - $havg_eps; }
+##--
+sub diffop_havg0  { return $_[0]<=0 || $_[1]<=0 ? 0 : (2*$_[0]*$_[1])/($_[0]+$_[1]); }
+sub diffop_havg   { return diffop_avg(diffop_havg0(@_),diffop_avg(@_)); }
+
+sub nthRoot { return ($_[0]<0 ? -1 : 1) * abs($_[0])**(1/$_[1]); }
+#sub diffop_gavg   { return nthRoot($_[0]*$_[1], 2); }
+##--
+sub diffop_gavg0 { return nthRoot($_[0]*$_[1], 2); }
+sub diffop_gavg  { return diffop_avg(diffop_gavg0(@_),diffop_avg(@_)); }
+
+
+sub diffop_lavg {
+  my ($x,$y) = $_[0]<$_[1] ? @_[0,1] : @_[1,0];
+  my $delta  = $x<=1 ? (1-$x) : 0;
+  return exp( log(($x+$delta)*($y+$delta))/2.0 ) - $delta;
+}
 
 
 ##----------------------------------------------------------------------
@@ -310,7 +337,7 @@ sub diffop_lavg {
 
 ## $dprf = $dprf->populate()
 ## $dprf = $dprf->populate($prf1,$prf2)
-##  + populates diff-profile by subtracting $prf2 scores from $prf1
+##  + populates diff-profile by applying the selected diff-operation on aligned operand scores
 sub populate {
   my ($dprf,$pa,$pb) = @_;
   $pa //= $dprf->{prf1};
