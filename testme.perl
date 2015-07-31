@@ -1342,11 +1342,11 @@ sub test_vsem {
   my $dbdir = shift || 'dta_phil.d';
   my %opts  = map {split(/=/,$_,2)} @_;
   %opts = (
-	   query => "Vernunft",
+	   query => "Mann",
 	   slice => 100,
 	   kbest => 10,
-	   #date => '1700:1899',
-	   groupby => 'l,p=NN',
+	   date => '1700:1899', ##-- BUGGY ?!
+	   groupby => 'l,p=AJDA',
 	   %opts,
 	  );
 
@@ -1355,6 +1355,26 @@ sub test_vsem {
   $mp->saveTextFile('-');
 }
 test_vsem(@ARGV);
+
+sub test_vsem_diff {
+  my $dbdir = shift || 'dta_phil.d';
+  my %opts  = map {split(/=/,$_,2)} @_;
+  %opts = (
+	   aquery => "Mann",
+	   bquery => "Frau",
+	   #slice => 100,
+	   kbest => 10,
+	   #date => '1700:1899',
+	   groupby => 'l',
+	   %opts,
+	  );
+
+  my $coldb = DiaColloDB->new(dbdir=>$dbdir) or die("$0: failed to open $dbdir/: $!");
+  $mp = $coldb->compare('vsem',%opts) or die("$0: failed to acquire profile: $!");
+  $mp->saveTextFile('-');
+}
+#test_vsem_diff(@ARGV);
+
 
 
 

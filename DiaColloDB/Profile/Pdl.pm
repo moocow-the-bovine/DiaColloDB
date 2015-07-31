@@ -200,7 +200,7 @@ sub averageOver {
   my $gvals = zeroes(double,$gkeys->nelem);
   foreach (@$pprfs) {
     if (!defined($_) || $_->empty) {
-      $gvals += $SIM_MIN;
+      $gvals += ($_ ? $_->missing : $that->missing);
       next;
     }
     my $keyi = $gkeys->vsearch($_->{gkeys});

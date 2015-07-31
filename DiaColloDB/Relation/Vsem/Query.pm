@@ -145,7 +145,7 @@ sub compileSlice {
 ##  + requires $vq->compileSlice()
 sub sliceCats {
   my ($vq,$sliceVal,%opts) = @_;
-  return $vq->{ci} if ($opts{slice}==0); ##-- may be undef
+  return $vq->{ci} if (!$opts{slice}); ##-- may be undef
 
   ##-- get slice mask
   my $mask = zeroes(byte,$vq->{cslice}->nelem);

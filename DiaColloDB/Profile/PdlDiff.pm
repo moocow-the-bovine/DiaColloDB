@@ -45,6 +45,7 @@ sub new {
   my $dprf = $that->SUPER::new(
 			       prf1=>$prf1,
 			       prf2=>$prf2,
+			       diff=>'adiff',
 			       %opts,
 			      );
   return $dprf->populate() if ($dprf->{prf1} && $dprf->{prf2});
@@ -73,11 +74,11 @@ sub toProfile {
   my $prf1 = defined($dpprf->{prf1}) ? $dpprf->{prf1}->toProfile : undef;
   my $prf2 = defined($dpprf->{prf2}) ? $dpprf->{prf2}->toProfile : undef;
 
-  my ($gkeys,$gvals) = @$pprf{qw(gkeys gvals)};
+  my ($gkeys,$gvals) = @$dpprf{qw(gkeys gvals)};
   my $score = $opts{score} // $dpprf->{score} // 'vsim';
   my $vals  = {};
-  %$vals = (map {($gkeys->at($_)=>$gvals->at($_)) } (0..($gkeys->nelem-1))) if (!$pprf->empty);
-  return DiaColloDB::Profile::Diff->new(label=>$dpprf->{label}, %opts, prf1=>$prf1, prf2=>$prf2, score=>$score, $score=>$vals);
+  %$vals = (map {($gkeys->at($_)=>$gvals->at($_)) } (0..($gkeys->nelem-1))) if (!$dpprf->empty);
+  return DiaColloDB::Profile::Diff->new(label=>$dpprf->{label}, diff=>$dpprf->{diff}, %opts, prf1=>$prf1, prf2=>$prf2, score=>$score, $score=>$vals);
 }
 
 ##==============================================================================
@@ -100,15 +101,14 @@ sub trimPairs {
     ##-- trim globally
     my $gpa = $that->averageOver(xluniq([map {$_->[0]} @$ppairs]), eps=>$opts{eps});
     my $gpb = $that->averageOver(xluniq([map {$_->[0]} @$ppairs]), eps=>$opts{eps});
-    my $keep;
     if (DiaColloDB::Profile::Diff->diffpretrim($opts{diff})) {
       ##-- pre-trim (global)
-      $keep = _union_p($gpa->gwhich(%opts), $gpb->gwhich(%opts));
+      my $keep = _union_p($gpa->gwhich(%opts), $gpb->gwhich(%opts));
       $gpa->gtrim(keep=>$keep);
       $gpb->gtrim(keep=>$keep);
     }
 
-    my $gdiff = $that->diff($gpa,$gbp, diff=>$opts{diff});
+    my $gdiff = $that->diff($gpa,$gpb, diff=>$opts{diff});
     my $keep  = $gdiff->gwhich( DiaColloDB::Profile::Diff->diffkbest($opts{diff})=>$opts{kbest} );
     $_->gtrim(keep=>$keep) foreach (grep {$_} map {@$_} @$ppairs);
   }
@@ -117,10 +117,9 @@ sub trimPairs {
     my ($pa,$pb,$pdiff,$keep);
     foreach (@$ppairs) {
       ($pa,$pb) = @$_;
-      next if (!defined($pdiff = $that->diff($pa,$pb,diff=>$opts{diff})));
-      $keep = $pdiff->trim(keep=>$keep);
-      $pa->gtrim(keep=>$keep) if ($pa);
-      $pb->gtrim(keep=>$keep) if ($pb);
+      $keep = _union_p(($pa ? $pa->gwhich(%opts)->qsort : undef), ($pb ? $pb->gwhich(%opts)->qsort : undef));
+      $pa->gtrim(keep=>$keep) if (defined($keep) && $pa);
+      $pb->gtrim(keep=>$keep) if (defined($keep) && $pb);
     }
  }
 
@@ -140,11 +139,11 @@ sub populate {
   $pprf1    = $pprf2->shadow() if (!$pprf1 &&  $pprf2);
   $pprf2    = $pprf1->shadow() if ( $pprf1 && !$pprf2);
   @$dpprf{qw(prf1 prf2)} = ($pprf1,$pprf2);
-  $dprf->{label} = $pprf1->label() . "-" . $pprf2->label();
+  $dpprf->{label} = $pprf1->label() . "-" . $pprf2->label();
 
-  ##-- get diff-op
-  my $diffop  = DiaColloDB::Profile::Diff->diffop($opts{diff});
-  my $diffsub = $that->diffsub($diffop);
+  ##-- get diff-sub (pdl-ized)
+  $dpprf->{diff} //= $dpprf->diffop();
+  my $diffsub      = $dpprf->diffsub();
 
   my ($dkeys,$dvals,$tmp);
   my ($keys1,$vals1,$keys2,$vals2) = map {@$_{qw(gkeys gvals)}} ($pprf1,$pprf2);
@@ -161,7 +160,7 @@ sub populate {
     my $keys1m = ($dkeys->index($keys1i) == $keys1);
     my $keys2m = ($dkeys->index($keys2i) == $keys2);
 
-    $dvals = zeroes($vals1->type, 2,$keys->nelem) + $VAL_NONE;
+    $dvals = zeroes($vals1->type, 2,$dkeys->nelem) + $dpprf->missing;
     ($tmp=$dvals->slice("(0),")->index($keys1i->where($keys1m))) .= $vals1->where($keys1m);
     ($tmp=$dvals->slice("(1),")->index($keys2i->where($keys2m))) .= $vals2->where($keys2m);
   }
@@ -179,28 +178,33 @@ sub populate {
 ##  + gets low-level binary diff operation for diff-operation $opNameOrAlias (default=$dprf->{diff})
 ##  + wraps DiaColloDB::Profile::Diff::diffsub
 sub diffsub {
-  return DiaColloDB::Profile::Diff::diffsub(@_);
+  return DiaColloDB::Profile::Diff::diffsub(@_)->($_[0]);
 }
 
-##-- diffsubs: called as DIFFSUB($dvals)
+##-- diffsubs: called as
+## + DIFFSUB_CLOSURE = $dpprf->DIFFSUB()
+## + $diff_vals = DIFFSUB_CLOSURE($dvals)
 ## + $dvals: pdl (2,$NG) : [0]=>$aval, [1]=>$bval
 BEGIN { *diffop_adiff = \&diffop_diff; }
-sub diffop_diff  { return $_[0]->slice("(0),")-$_[0]->slice("(1),"); }
-sub diffop_sum   { return $_[0]->sumover; }
-sub diffop_min   { return $_[0]->minimum; }
-sub diffop_max   { return $_[0]->maximum; }
-sub diffop_avg   { return $_[0]->average; }
+sub diffop_diff  { return sub { $_[0]->slice("(0),")-$_[0]->slice("(1),"); }; }
+sub diffop_sum   { return sub { $_[0]->sumover; }; }
+sub diffop_min   { return sub { $_[0]->minimum; }; }
+sub diffop_max   { return sub { $_[0]->maximum; }; }
+sub diffop_avg   { return sub { $_[0]->average; }; }
 
 sub diffop_havg {
-  my $dvals = $_[0]-$VAL_NONE;   ##-- work on range [0:2] ($VAL_NONE)
-  my $havg  = $dvals->prodover;
-  $havg    *= 2;
-  $havg    /= $dvals->sumover;
-  $havg->inplace->setnantobad->inplace->setbadtoval(0);
-  $havg    += $dvals->average;
-  $havg    /= 2;
-  $havg    += $VAL_NONE;         ##-- convert back to range [-1:1] ($VAL_NONE)
-  return $havg;
+  my $that = shift;
+  return sub {
+    my $dvals = $_[0]-$that->missing;   ##-- work on range [0:2] ($MISSING)
+    my $havg  = $dvals->prodover;
+    $havg    *= 2;
+    $havg    /= $dvals->sumover;
+    $havg->inplace->setnantobad->inplace->setbadtoval(0);
+    $havg    += $dvals->average;
+    $havg    /= 2;
+    $havg    += $that->missing;         ##-- convert back to range [-1:1] ($MISSING)
+    return $havg;
+  };
 }
 
 ## $sqrt = ssqrt($x)
@@ -213,24 +217,28 @@ sub ssqrt {
   return $sqrt;
 }
 sub diffop_gavg {
-  my $dvals = shift;
-  my $gavg  = ssqrt($gavg->prodover);
-  $gavg    += $dvals->average;
-  $gavg    /= 2;
-  return $gavg;
+  return sub {
+    my $dvals = shift;
+    my $gavg  = ssqrt($dvals->prodover);
+    $gavg    += $dvals->average;
+    $gavg    /= 2;
+    return $gavg;
+  };
 }
 
 sub diffop_lavg {
-  my $dvals = shift->qsort;
-  my $delta = 1-$dvals->slice("(0),");
-  (my $tmp=$delta->where($dvals->slice("(0),") >= 1)) .= 0;
-  $dvals += $delta->slice("*1,");
-  my $lavg = $dvals->prodover;
-  $lavg->inplace->log;
-  $lavg /= 2.0;
-  $lavg->inplace->exp;
-  $lavg -= $delta;
-  return $lavg;
+  return sub {
+    my $dvals = shift->qsort;
+    my $delta = 1-$dvals->slice("(0),");
+    (my $tmp=$delta->where($dvals->slice("(0),") >= 1)) .= 0;
+    $dvals += $delta->slice("*1,");
+    my $lavg = $dvals->prodover;
+    $lavg->inplace->log;
+    $lavg /= 2.0;
+    $lavg->inplace->exp;
+    $lavg -= $delta;
+    return $lavg;
+  };
 }
 
 

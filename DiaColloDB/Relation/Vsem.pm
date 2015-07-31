@@ -401,17 +401,17 @@ sub union {
 ## $mprf = $rel->profile($coldb, %opts)
 ## + get a relation profile for selected items as a DiaColloDB::Profile::Multi object
 ## + %opts: as for DiaColloDB::Relation::profile()
-## + really just wraps $rel->vprofile(), DiaColloDB::Relation::Vsem::Result::toProfile(), and DiaColloDB::Profile::Multi::stringify()
+## + really just wraps $rel->vprofile(), DiaColloDB::Profile::Pdl::toProfile(), and DiaColloDB::Profile::Multi::stringify()
 sub profile {
   my ($vs,$coldb,%opts) = @_;
 
   ##-- vector-based profile
-  my $vrs     = $vs->vprofile($coldb,\%opts);
+  my $pprfs     = $vs->vprofile($coldb,\%opts);
   my $groupby = $opts{groupby};
 
   ##-- construct multi-profile
   $vs->vlog($vs->{logvprofile}, "profile(): constructing output profile [strings=".($opts{strings} ? 1 : 0)."]");
-  my $mp = DiaColloDB::Profile::Multi->new(profiles=>[map {$_->toProfile} @$vrs], titles=>$groupby->{titles}, qinfo=>'TODO');
+  my $mp = DiaColloDB::Profile::Multi->new(profiles=>[map {$_->toProfile} @$pprfs], titles=>$groupby->{titles}, qinfo=>'TODO');
   $mp->stringify($groupby->{g2s}) if ($opts{strings});
 
   return $mp;
@@ -437,24 +437,23 @@ sub compare {
   my %popts      = (kbest=>-1,cutoff=>'',global=>0,strings=>0,fill=>1, groupby=>$groupby);
 
   ##-- get profiles to compare
-  my $mra = $reldb->vprofile($coldb,{%opts, %aopts,%popts}) or return undef;
-  my $mrb = $reldb->vprofile($coldb,{%opts, %bopts,%popts}) or return undef;
+  my $aprfs = $vs->vprofile($coldb,{%opts, %aopts,%popts}) or return undef;
+  my $bprfs = $vs->vprofile($coldb,{%opts, %bopts,%popts}) or return undef;
 
   ##-- alignment and trimming
-  $reldb->vlog($logLocal, "compare(): align and trim (".($opts{global} ? 'global' : 'local').")");
-  my $ppairs = DiaColloDB::Profile::MultiDiff->align($mra,$mrb);
-  DiaColloDB::Relation::Vsem::Result->trimPairs($ppairs, %opts); ##-- vsem version
+  $vs->vlog($logLocal, "compare(): align and trim (".($opts{global} ? 'global' : 'local').")");
+  my $ppairs = DiaColloDB::Profile::MultiDiff->align($aprfs,$bprfs);
+  DiaColloDB::Profile::PdlDiff->trimPairs($ppairs, %opts); ##-- vsem version
+  my $pdiffs = [map {DiaColloDB::Profile::PdlDiff->new(@$_)} @$ppairs];
   if (!$opts{global}) {
-    $_->gtrim( DiaColloDB::Profile::Diff->diffkbest($opts{diff})=>$opts{kbest} ) foreach (grep {$_} map {@$_} @$ppairs);
+    $_->gtrim( DiaColloDB::Profile::Diff->diffkbest($opts{diff})=>$opts{kbest} ) foreach (@$pdiffs);
   }
 
-  ##-- convert to multi-profile
-  my $diff = DiaColloDB::Profile::MultiDiff->new($mpa,$mpb, titles=>$mpa->{titles}, diff=>$opts{diff});
-  $diff->trim( DiaColloDB::Profile::Diff->diffkbest($opts{diff})=>$opts{kbest} ) if (!$opts{global});
-
-  ##-- finalize: stringify
+  ##-- convert to multi-diff and stringify
+  my $diffs = [map {$_->toProfile} @$pdiffs];
+  my $diff  = DiaColloDB::Profile::MultiDiff->new(profiles=>$diffs, titles=>$opts{groupby}{titles}, diff=>$opts{diff}, populate=>0);
   if ($opts{strings}//1) {
-    $reldb->vlog($logLocal, "compare(): stringify");
+    $vs->vlog($logLocal, "compare(): stringify");
     $diff->stringify($groupby->{g2s});
   }
 
@@ -465,8 +464,8 @@ sub compare {
 ##==============================================================================
 ## Profile: Utils: Vector-based profiling
 
-## \@vrs = $vs->vprofile($coldb, \%opts)
-## + get a relation profile for selected items as an ARRAY of DiaColloDB::Relation::Vsem::Result objects
+## \@pprfs = $vs->vprofile($coldb, \%opts)
+## + get a relation profile for selected items as an ARRAY of DiaColloDB::Profile::Pdl objects
 ## + %opts: as for DiaColloDB::Relation::profile()
 ## + altered %opts:
 ##   (
@@ -512,31 +511,31 @@ sub vprofile {
 
   ##-- evaluate query by slice
   $vs->vlog($logLocal, "vprofile(): evaluating query by target slice");
-  my (@vrs,$vr);
+  my (@pprfs,$pprf);
   foreach my $sliceVal ($opts->{slice} ? ($vq->{slices}->list) : 0) {
-    $vr = $vs->vpslice($coldb,$sliceVal,$opts);
-    push(@vrs,$vr);
+    $pprf = $vs->vpslice($coldb,$sliceVal,$opts);
+    push(@pprfs,$pprf);
   }
 
   ##-- trim results
-  if ($opts->{global} && @vrs > 1) {
+  if ($opts->{global} && @pprfs > 1) {
     ##-- trim: global
-    my $vrg  = DiaColloDB::Relation::Vsem::Result->averageOver(\@vrs);
-    my $keep = $vrg->gwhich(%$opts);
-    $_->gtrim(keep=>$keep) foreach (@vrs);
+    my $pprfg  = DiaColloDB::Profile::Pdl->averageOver(\@pprfs);
+    my $keep = $pprfg->gwhich(%$opts);
+    $_->gtrim(keep=>$keep) foreach (@pprfs);
   }
   else {
     ##-- trim: local
-    $_->gtrim(%$opts) foreach (@vrs);
+    $_->gtrim(%$opts) foreach (@pprfs);
   }
 
   ##-- return
-  return \@vrs;
+  return \@pprfs;
 }
 
 ##----------------------------------------------------------------------
-## $vr_or_undef = $vs->vpslice($coldb, $sliceVal, \%opts)
-## + get a slice-local profile as a DiaColloDB::Relation::Vsem::Result object
+## $pprf_or_undef = $vs->vpslice($coldb, $sliceVal, \%opts)
+## + get a slice-local profile as a DiaColloDB::Profile::Pdl object
 ## + %opts: as for vprofile()
 sub vpslice {
   my ($vs,$coldb,$sliceVal,$opts) = @_;
@@ -549,12 +548,12 @@ sub vpslice {
 
   ##-- construct query: common
   my ($qvec); ##-- query-vector: ($svdR,1) : [$ri] => $x
-  my $vr  = DiaColloDB::Relation::Vsem::Result->new(label=>$sliceVal);
+  my $pprf  = DiaColloDB::Profile::Pdl->new(label=>$sliceVal);
   my $ti  = $vq->{ti};
   my $ci  = $vq->sliceCats($sliceVal,%vqopts);
 
   ##-- construct query: sanity checks: null vectors
-  return $vr if ((defined($ti) && !$ti->nelem) || (defined($ci) && !$ci->nelem));
+  return $pprf if ((defined($ti) && !$ti->nelem) || (defined($ci) && !$ci->nelem));
 
   ##-- construct query: dispatch
   if (defined($ti) && defined($ci)) {
@@ -563,7 +562,7 @@ sub vpslice {
     my $q_c2d     = $vs->{c2d}->dice_axis(1,$ci);
     my $di        = $q_c2d->slice("(1),")->rldseq($q_c2d->slice("(0),"))->qsort;
     my $q_tdm     = $map->{tdm}->xsubset2d($ti,$di);
-    return $vr if ($q_tdm->allmissing); ##-- empty subset
+    return $pprf if ($q_tdm->allmissing); ##-- empty subset
     $q_tdm = $q_tdm->sumover->dummy(0,1)->make_physically_indexed;
     #$vs->vlog($logLocal, "profile(): query vector: xsubset: svdapply");
     $qvec = $map->{svd}->apply1($q_tdm)->xchg(0,1);
@@ -599,8 +598,8 @@ sub vpslice {
 
   ##-- convert distance to similarity (simple linear method; range=[-1:1]) & return
   my $g_sim = (1-$g_dist);
-  @$vr{qw(g_keys g_vals)} = ($g_keys,$g_sim);
-  return $vr;
+  @$pprf{qw(gkeys gvals)} = ($g_keys,$g_sim);
+  return $pprf;
 }
 
 ##==============================================================================
