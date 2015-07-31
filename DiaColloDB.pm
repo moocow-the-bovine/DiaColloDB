@@ -33,7 +33,7 @@ use strict;
 ##==============================================================================
 ## Globals & Constants
 
-our $VERSION = "0.07.007";
+our $VERSION = "0.07.008";
 our @ISA = qw(DiaColloDB::Client);
 
 ## $PGOOD_DEFAULT
@@ -1267,7 +1267,7 @@ sub xidsByDate {
   my ($xi,$d);
   foreach $xi (@$xids) {
     $d = unpack($pack_xd, $xenum->i2s($xi));
-    next if ($dfilter && !$dfilter->($d));
+    next if (($dfilter && !$dfilter->($d)) || $d < $coldb->{xdmin} || $d > $coldb->{xdmax});
     $d = $slice ? int($d/$slice)*$slice : 0;
     push(@{$d2xis->{$d}}, $xi);
   }
