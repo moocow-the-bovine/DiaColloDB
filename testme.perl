@@ -1,6 +1,6 @@
 #!/usr/bin/perl -w
 
-use lib qw(.);
+use lib qw(. dclib);
 use DiaColloDB;
 use DiaColloDB::Utils qw(:sort :regex);
 use PDL;
@@ -1338,6 +1338,42 @@ sub test_diffop {
 ##==============================================================================
 ## test: vsem
 
+sub test_vsem_reindex {
+  my $dbdir = shift || 'dta_phil.d';
+
+  ##-- open (index_vsem:0)
+  my $coldb = DiaColloDB->new(dbdir=>$dbdir) or die("$0: failed to open $dbdir/: $!");
+  $coldb->{index_vsem} = 1;
+  $coldb->{vbreak} = '#p';
+
+  ##-- (re-)index vsem (dying with log:
+  # 2015-08-03 13:30:17 dcdb-create.perl[19761] INFO: DocClassify.Mapper.LSI: compile(): lemmatizer class: DocClassify::Lemmatizer::Raw
+  # 2015-08-03 13:30:17 dcdb-create.perl[19761] INFO: DocClassify.Mapper.LSI: compileTrim(): by #/terms per doc: maxTermsPerDoc=0
+  # 2015-08-03 13:30:17 dcdb-create.perl[19761] INFO: DocClassify.Mapper.LSI: compileTrim(): by global term freqency: minFreq=10
+  # 2015-08-03 13:30:18 dcdb-create.perl[19761] INFO: DocClassify.Mapper.LSI: compileTrim(): by document term frequency: minDocFreq=5
+  # 2015-08-03 13:30:19 dcdb-create.perl[19761] INFO: DocClassify.Mapper.LSI: compileCatEnum(): nullCat='(none)'
+  # 2015-08-03 13:30:19 dcdb-create.perl[19761] INFO: DocClassify.Mapper.LSI: compileTermEnum()
+  # 2015-08-03 13:30:19 dcdb-create.perl[19761] INFO: DocClassify.Mapper.LSI: compile_dcm(): matrix: dcm: (ND=408339 x NC=15915) [Doc x Cat -> Deg]
+  # 2015-08-03 13:30:21 dcdb-create.perl[19761] INFO: DocClassify.Mapper.LSI: compile_tdm0(): matrix: tdm0: (NT=72972 x ND=408339) [Term x Doc -> Freq]
+  # 2015-08-03 13:30:21 dcdb-create.perl[19761] INFO: DocClassify.Mapper.LSI: compile_tdm0(): matrix: tdm0: doc_wt [Doc -> Terms]
+  # 2015-08-03 13:30:32 dcdb-create.perl[19761] INFO: DocClassify.Mapper.LSI: compile_tdm0(): matrix: tdm0: Nnz
+  # 2015-08-03 13:30:32 dcdb-create.perl[19761] INFO: DocClassify.Mapper.LSI: compile_tdm0(): matrix: tdm0: PDL::CCS::Nd
+  # 2015-08-03 13:31:03 dcdb-create.perl[19761] INFO: DocClassify.Mapper.LSI: compile_tdm_log(): smooth(smoothf=1.001)
+  # 2015-08-03 13:31:04 dcdb-create.perl[19761] INFO: DocClassify.Mapper.LSI: compile_tw(): vector: tw: (NT=72972) [Term -> Weight]
+  # 2015-08-03 13:31:04 dcdb-create.perl[19761] INFO: DocClassify.Mapper.LSI: compile_tw(): tw=max-entropy-quotient, weightByCat=0, wRaw=1, wCooked=1
+  # Out of memory!
+  # ... on plato, source=kern01.files
+  my %VSOPTS = %DiaColloDB::VSOPTS;
+  $coldb->info("creating vector-space model $dbdir/vsem* [vbreak=$coldb->{vbreak}]");
+  $coldb->{vsopts} //= {};
+  $coldb->{vsopts}{$_} //= $VSOPTS{$_} foreach (keys %VSOPTS); ##-- vsem: default options
+  $coldb->{vsopts}{weightByCat} = 1;
+  $coldb->{vsem} = DiaColloDB::Relation::Vsem->create($coldb, undef, base=>"$dbdir/vsem");
+
+  exit 0;
+}
+test_vsem_reindex(@ARGV);
+
 sub test_vsem {
   my $dbdir = shift || 'dta_phil.d';
   my %opts  = map {split(/=/,$_,2)} @_;
@@ -1359,15 +1395,16 @@ sub test_vsem {
 #test_vsem(@ARGV);
 
 sub test_vsem_diff {
-  my $dbdir = shift || 'dta_phil.d';
+  my $dbdir = shift || 'kern01.d';
   my %opts  = map {split(/=/,$_,2)} @_;
   %opts = (
-	   aquery => "Junge",
-	   bquery => "Mädchen",
-	   slice => 100,
+	   aquery => "Katze",
+	   bquery => "Maus",
+	   slice => 0,
 	   kbest => 10,
-	   date => '1600:1699', ##-- Can't call method "nelem" on an undefined value at DiaColloDB/Profile/PdlDiff.pm line 150.
-	   groupby => 'l',
+	   #date => '1600:1699', ##-- Can't call method "nelem" on an undefined value at DiaColloDB/Profile/PdlDiff.pm line 150.
+	   groupby => 'l,p=NN',
+	   diff => 'havg',
 	   %opts,
 	  );
 
@@ -1376,7 +1413,7 @@ sub test_vsem_diff {
   $mp->saveTextFile('-');
   exit 0;
 }
-test_vsem_diff(@ARGV);
+#test_vsem_diff(@ARGV);
 
 
 

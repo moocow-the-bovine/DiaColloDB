@@ -341,7 +341,7 @@ sub open {
     my ($dmin,$dmax,$d) = ('inf','-inf');
     foreach (@{$coldb->{xenum}->toArray}) {
       next if (!$_);
-      $d = unpack($pack_xdate,$_);
+      next if (!defined($d = unpack($pack_xdate,$_))); ##-- strangeness: getting only 9-bytes in $_ for 10-byte values in file and toArray(): why?!
       $dmin = $d if ($d < $dmin);
       $dmax = $d if ($d > $dmax);
     }
@@ -376,6 +376,7 @@ sub open {
   ##-- all done
   return $coldb;
 }
+
 
 ## @dbkeys = $coldb->dbkeys()
 sub dbkeys {

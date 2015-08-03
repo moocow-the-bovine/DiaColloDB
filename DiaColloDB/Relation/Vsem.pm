@@ -463,10 +463,11 @@ sub compare {
   my $bprfs = $vs->vprofile($coldb,{%opts, %bopts,%popts}) or return undef;
 
   ##-- alignment and trimming
-  $vs->vlog($logLocal, "compare(): align and trim (".($opts{global} ? 'global' : 'local').")");
+  my $diffop = DiaColloDB::Profile::PdlDiff->diffop($opts{diff});
+  $vs->vlog($logLocal, "compare(): align and trim (".($opts{global} ? 'global' : 'local')."; diff=$diffop)");
   my $ppairs = DiaColloDB::Profile::MultiDiff->align($aprfs,$bprfs);
   DiaColloDB::Profile::PdlDiff->trimPairs($ppairs, %opts); ##-- vsem version
-  my $pdiffs = [map {DiaColloDB::Profile::PdlDiff->new(@$_)} @$ppairs];
+  my $pdiffs = [map {DiaColloDB::Profile::PdlDiff->new(@$_, diff=>$opts{diff})} @$ppairs];
   if (!$opts{global}) {
     $_->gtrim( DiaColloDB::Profile::Diff->diffkbest($opts{diff})=>$opts{kbest} ) foreach (@$pdiffs);
   }

@@ -54,7 +54,7 @@ GetOptions(##-- general
 	   'index-attributes|attributes|attrs|a=s' => \$coldb{attrs},
 	   'max-distance|maxd|dmax|n=i' => \$coldb{dmax},
 	   'min-cofrequency|min-cf|mincf|cfmin=i' => \$coldb{cfmin},
-	   'index-vsem|vsem!' => \$coldb{index_vsem},
+	   'index-vsem|vsem|vs!' => \$coldb{index_vsem},
 	   'vsem-break|vbreak|vb=s' => \$coldb{vbreak},
 	   'vsem-option|vsopt|vso|vopt|vo|vO=s%' => \$coldb{vsopts},
 	   'keeptmp|keep' => \$coldb{keeptmp},
