@@ -30,7 +30,7 @@ our $MISSING = -1;
 ##    score => $score,       ##-- output score function name (for toProfile() method)
 ##    ##
 ##    ##-- NEW for DiaColloDB::Profile::Pdl
-##    gkeys => $gkeys,       ##-- pdl ($NGKeys) : group-keys
+##    gkeys => $gkeys,       ##-- pdl ($NGKeys) : group-keys (+sorted)
 ##    gvals => $gvals,       ##-- pdl ($NGKeys) : group-similarities [-1:1]
 ##    missing => $missing,   ##-- missing value (default=$VAL_NONE)
 ##    ##
@@ -41,8 +41,8 @@ sub new {
   my $gvals = ref($_[0]) ? shift : undef;
   return bless({
 		#label=>undef,
-		gkeys=>$gkeys,
-		gvals=>$gvals,
+		(defined($gkeys) ? (gkeys=>$gkeys) : qw()),
+		(defined($gvals) ? (gvals=>$gvals) : qw()),
 		missing=>$MISSING,
 		@_
 	       }, ref($that)||$that);
@@ -56,7 +56,7 @@ sub shadow {
   return ref($pprf)->new(%$pprf) if ($pprf->empty);
 
   my $gvals = zeroes($pprf->{gvals}->type,1);
-  $gvals   .= $pprf->missing;
+  $gvals   .= $pprf->missing if ($pprf->missing);
   return ref($pprf)->new(%$pprf, gkeys=>$pprf->{keys}, gvals=>$gvals);
 }
 
@@ -100,6 +100,7 @@ sub toProfile {
 
 ##----------------------------------------------------------------------
 ## $gkeys_good = $pprf->gwhich(%opts)
+##  + returned key-list is sorted
 ##  + %opts:
 ##    (
 ##     cutoff => $cutoff,  ##-- retain only items with $prf->{$prf->{score}}{$item} >= $cutoff
@@ -119,7 +120,9 @@ sub gwhich {
   ##-- gwhich: by explicit cutoff
   if (($opts{cutoff}//'') ne '') {
     my $ibad = ($gvals < $opts{cutoff})->which;
-    (my $tmp=$gvals->index($ibad)) .= $pprf->missing;
+    if ( (my $missing=$pprf->{missing}) ) {
+      (my $tmp=$gvals->index($ibad)) .= $missing;
+    }
     $igood = _setdiff_p($igood,$ibad,$gvals->nelem);
   }
 
@@ -128,6 +131,7 @@ sub gwhich {
   if (defined($kbest=$opts{kbest}) && $kbest > 0) {
     my $gsorti = $gvals->qsorti->slice("-1:0");
     my $gbesti = $gsorti->slice("0:".($kbest < $gsorti->nelem ? ($kbest-1) : "-1"));
+    $gbesti->inplace->qsort;
     $igood = _intersect_p($igood,$gbesti);
   }
 
@@ -136,18 +140,19 @@ sub gwhich {
   if (defined($kbesta=$opts{kbesta}) && $kbesta > 0) {
     my $gsorti = $gvals->abs->qsorti->slice("-1:0");
     my $gbesti = $gsorti->slice("0:".($kbesta < $gsorti->nelem ? ($kbesta-1) : "-1"));
+    $gbesti->inplace->qsort;
     $igood = _intersect_p($igood,$gbesti);
   }
 
   ##-- which: return
-  return defined($igood) ? $pprf->{gkeys}->index($igood) : $pprf->{gkeys};
+  return defined($igood) ? $pprf->{gkeys}->index($igood)->qsort : $pprf->{gkeys};
 }
 
 ##----------------------------------------------------------------------
 ## $pprf = $pprf->gtrim(%opts)
 ##  + %opts: as for gwhich(), also:
 ##    (
-##     keep => $gwhich   ##-- pdl of group-vals to keep; overrides other options if present (undef:all)
+##     keep => $gwhich   ##-- pdl of group-vals to keep (+sorted); overrides other options if present (undef:all)
 ##    )
 sub gtrim {
   my ($pprf,%opts) = @_;
@@ -164,7 +169,7 @@ sub gtrim {
   my $k_keyi  = $keep->vsearch($gkeys);
   my $k_keepi = $k_keyi->where( $gkeys->index($k_keyi)==$keep );
 
-  $pprf->{gkeys} = $gkeys->index($k_keepi);
+  $pprf->{gkeys} = $gkeys->index($k_keepi); #->qsort
   $pprf->{gvals} = $pprf->{gvals}->index($k_keepi);
 
   return $pprf;
@@ -193,14 +198,15 @@ sub averageOver {
   #  $gkeys = $gkeys->uniq;
   ##--
   my $gkeys = undef;
-  $gkeys = _union_p($gkeys,$_->{gkeys}->qsort) foreach (grep {!$_->empty} @$pprfs);
+  $gkeys = _union_p($gkeys,$_->{gkeys}) foreach (grep {!$_->empty} @$pprfs);
   return $pprf if ($gkeys->nelem==0);
 
   ##-- step 2: get score-values
   my $gvals = zeroes(double,$gkeys->nelem);
   foreach (@$pprfs) {
     if (!defined($_) || $_->empty) {
-      $gvals += ($_ ? $_->missing : $that->missing);
+      my $missing = ($_ ? $_->missing : $that->missing);
+      $gvals += $missing if ($missing);
       next;
     }
     my $keyi = $gkeys->vsearch($_->{gkeys});
@@ -209,7 +215,7 @@ sub averageOver {
       $gvals += $_->{gvals}->index($keyi);
     } else {
       $gvals->where( $mask) += $_->{gvals}->index($keyi->where($mask));
-      $gvals->where(!$mask) += $_->missing;
+      $gvals->where(!$mask) += $_->missing if ($_->missing);
     }
   }
   $gvals /= scalar(@$pprfs);

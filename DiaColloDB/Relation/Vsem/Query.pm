@@ -37,8 +37,8 @@ sub new {
   my $cq   = (@_%2)==1 ? shift : undef;
   return bless({
 		cq=>$cq,
-		ti=>undef,
-		ci=>undef,
+		#ti=>undef,
+		#ci=>undef,
 		@_
 	       }, ref($that)||$that);
 }
@@ -92,7 +92,7 @@ sub compileOptions {
 sub compileDate {
   my ($vq,%opts) = @_;
   my ($dlo,$dhi) = map {($_//'')} @opts{qw(dlo dhi)};
-  my $c_date = $vq->{cdate} //= defined($vq->{ci}) ? $opts{vsem}{c2date}->index($vq->{ci}) : $opts{vsem}{c2date};
+  my $c_date = defined($vq->{ci}) ? $opts{vsem}{c2date}->index($vq->{ci}) : $opts{vsem}{c2date};
   if (($dlo ne '') || ($dhi ne '')) {
     my ($c_mask);
     if ($dlo ne '') {
@@ -102,7 +102,9 @@ sub compileDate {
       $c_mask  = ($c_date<=$dhi);
     }
     $vq->{ci} = defined($vq->{ci}) ? $vq->{ci}->where($c_mask) : $c_mask->which;
+    $c_date   = $c_date->where($c_mask);
   }
+  $vq->{cdate} = $c_date;
   return $vq;
 }
 

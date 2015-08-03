@@ -146,7 +146,8 @@ sub populate {
   my $diffsub      = $dpprf->diffsub();
 
   my ($dkeys,$dvals,$tmp);
-  my ($keys1,$vals1,$keys2,$vals2) = map {@$_{qw(gkeys gvals)}} ($pprf1,$pprf2);
+  my ($keys1,$keys2) = map {$_->{gkeys} // null->long} ($pprf1,$pprf2);
+  my ($vals1,$vals2) = map {$_->{gvals} // null->double} ($pprf1,$pprf2);
   if ($keys1->nelem==$keys2->nelem && all($keys1==$keys2)) {
     ##-- optimize for co-indexed keys
     $dkeys = $keys1;
@@ -169,6 +170,19 @@ sub populate {
   $dpprf->{gvals} = $diffsub->($dvals);
   return $dpprf;
 }
+
+##----------------------------------------------------------------------
+## $pprf = $pprf->gtrim(%opts)
+##  + %opts: as for DiaCollo::Profile::Pdl::gtrim()
+##  + also trims sub-profiles
+sub gtrim {
+  my ($dpprf,%opts) = @_;
+  $dpprf->SUPER::gtrim(%opts);
+  $dpprf->{prf1}->gtrim(keep=>$dpprf->{gkeys}) if ($dpprf->{prf1});
+  $dpprf->{prf2}->gtrim(keep=>$dpprf->{gkeys}) if ($dpprf->{prf2});
+  return $dpprf;
+}
+
 
 ##----------------------------------------------------------------------
 ## Compilation: diff-ops

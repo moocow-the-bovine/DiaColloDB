@@ -552,7 +552,7 @@ sub vpslice {
   my $ti  = $vq->{ti};
   my $ci  = $vq->sliceCats($sliceVal,%vqopts);
 
-  ##-- construct query: sanity checks: null vectors
+  ##-- construct query: sanity checks: null vectors --> null profile
   return $pprf if ((defined($ti) && !$ti->nelem) || (defined($ci) && !$ci->nelem));
 
   ##-- construct query: dispatch
@@ -562,7 +562,7 @@ sub vpslice {
     my $q_c2d     = $vs->{c2d}->dice_axis(1,$ci);
     my $di        = $q_c2d->slice("(1),")->rldseq($q_c2d->slice("(0),"))->qsort;
     my $q_tdm     = $map->{tdm}->xsubset2d($ti,$di);
-    return $pprf if ($q_tdm->allmissing); ##-- empty subset
+    return $pprf if ($q_tdm->allmissing); ##-- empty subset --> null profile
     $q_tdm = $q_tdm->sumover->dummy(0,1)->make_physically_indexed;
     #$vs->vlog($logLocal, "profile(): query vector: xsubset: svdapply");
     $qvec = $map->{svd}->apply1($q_tdm)->xchg(0,1);
@@ -598,6 +598,12 @@ sub vpslice {
 
   ##-- convert distance to similarity (simple linear method; range=[-1:1]) & return
   my $g_sim = (1-$g_dist);
+  #$g_sim   /= 2; ##-- map to range [0:1]
+  ##
+  ##-- convert distance to similarity: gaussian (distribution *does* look quite normal modulo long tail of "good" (latent) matches)
+  #my $g_sim = (2-$g_dist)->gausscdf(1,0.25);
+  #$g_sim->inplace->minus(1,$g_sim,1);
+  ##
   @$pprf{qw(gkeys gvals)} = ($g_keys,$g_sim);
   return $pprf;
 }
@@ -741,7 +747,7 @@ sub metaEnum {
 ##     ##
 ##     ##-- NEW: equivalent to DiaColloDB::groupby() return values
 ##     ghaving => $ghaving, ##-- pdl ($NHavingOk) : term indices $ti s.t. $ti matches groupby "having" requests
-##     gaggr   => \&gaggr,  ##-- code: ($gkeys,$gdist) = gaggr($dist) : where $dist is diced to $ghaving on dim(1)
+##     gaggr   => \&gaggr,  ##-- code: ($gkeys,$gdist) = gaggr($dist) : where $dist is diced to $ghaving on dim(1) and $gkeys is sorted
 ##     g2s     => \&g2s,    ##-- stringification object suitable for DiaColloDB::Profile::stringify() [CODE,enum, or undef]
 ##     ##
 ##     ##-- NEW: pdl utilties
@@ -783,7 +789,7 @@ sub groupby {
     ##-- project all attributes: t2g: use native term-ids
     #$gb->{t2g} = sub { return $_[0]; };
 
-    ##-- project all attribute: aggregate by term-identity (i.e. don't)
+    ##-- project all attribute: aggregate by term-identity; i.e. don't (+sorted)
     $gb->{gaggr} = sub {
       return (defined($ghaving)
 	      ? ($ghaving,$_[0])
@@ -803,7 +809,7 @@ sub groupby {
     my $gpos   = $vs->tpos($gbattrs->[0]);
     #$gb->{t2g} = sub { return $vs->{tvals}->slice("($gpos),")->index($_[0]); };
 
-    ##-- project single attribute: gaggr: aggregate by native attribute-ids
+    ##-- project single attribute: gaggr: aggregate by native attribute-ids (-sorted)
     $g_keys = $vs->{tvals}->slice("($gpos),");
 
     ##-- project single attribute: g2s: stringification
@@ -819,7 +825,7 @@ sub groupby {
     $gvecs->dice_axis(1,$gsorti)->enumvecg($gvids->index($gsorti));
     #$gb->{t2g} = sub { return $gvids->index($_[0]); };
 
-    ##-- project multiple attributes: gaggr: aggregate by local vector-enum
+    ##-- project multiple attributes: gaggr: aggregate by local vector-enum (-sorted)
     $g_keys = $gvids;
 
     ##-- project multiple attributes: g2s: stringification

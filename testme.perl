@@ -1342,29 +1342,31 @@ sub test_vsem {
   my $dbdir = shift || 'dta_phil.d';
   my %opts  = map {split(/=/,$_,2)} @_;
   %opts = (
-	   query => "Mann",
-	   slice => 100,
+	   query => "Mädchen",
+	   slice => 0,
 	   kbest => 10,
-	   date => '1700:1899', ##-- BUGGY ?!
-	   groupby => 'l,p=AJDA',
+	   slice => 100,
+	   date => '1600:1699', ##-- BUGGY ?!
+	   groupby => 'l',
 	   %opts,
 	  );
 
   my $coldb = DiaColloDB->new(dbdir=>$dbdir) or die("$0: failed to open $dbdir/: $!");
   $mp = $coldb->profile('vsem',%opts) or die("$0: failed to acquire profile: $!");
   $mp->saveTextFile('-');
+  exit 0;
 }
-test_vsem(@ARGV);
+#test_vsem(@ARGV);
 
 sub test_vsem_diff {
   my $dbdir = shift || 'dta_phil.d';
   my %opts  = map {split(/=/,$_,2)} @_;
   %opts = (
-	   aquery => "Mann",
-	   bquery => "Frau",
-	   #slice => 100,
+	   aquery => "Junge",
+	   bquery => "Mädchen",
+	   slice => 100,
 	   kbest => 10,
-	   #date => '1700:1899',
+	   date => '1600:1699', ##-- Can't call method "nelem" on an undefined value at DiaColloDB/Profile/PdlDiff.pm line 150.
 	   groupby => 'l',
 	   %opts,
 	  );
@@ -1372,8 +1374,9 @@ sub test_vsem_diff {
   my $coldb = DiaColloDB->new(dbdir=>$dbdir) or die("$0: failed to open $dbdir/: $!");
   $mp = $coldb->compare('vsem',%opts) or die("$0: failed to acquire profile: $!");
   $mp->saveTextFile('-');
+  exit 0;
 }
-#test_vsem_diff(@ARGV);
+test_vsem_diff(@ARGV);
 
 
 
