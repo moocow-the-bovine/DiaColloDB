@@ -495,6 +495,19 @@ sub union {
 }
 
 ##==============================================================================
+## Relation API: dbinfo
+
+## \%info = $rel->dbinfo($coldb)
+##  + embedded info-hash for $coldb->dbinfo()
+sub dbinfo {
+  my $cof = shift;
+  my $info = $cof->SUPER::dbinfo();
+  @$info{qw(fmin dmax size1 size2 N)} = @$cof{qw(fmin dmax size1 size2 N)};
+  return $info;
+}
+
+
+##==============================================================================
 ## Utilities: lookup
 
 ## $f = $cof->f1( @ids)
