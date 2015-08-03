@@ -1211,7 +1211,8 @@ sub dbinfo {
 	       } @$adata],
 
 	       ##-- relations
-	       relations => [grep {UNIVERSAL::isa(ref($coldb->{$_}),'DiaColloDB::Relation')} keys %$coldb],
+	       #relations => [$coldb->relations],
+	       relations => { map {($_=>$coldb->{$_}->dbinfo($coldb))} $coldb->relations },
 
 	       ##-- overrides
 	       %{$coldb->{info}//{}},
@@ -1288,6 +1289,13 @@ sub relname {
 ##  + wraps $coldb->{$coldb->relname($rel)}
 sub relation {
   return $_[0]->{$_[0]->relname($_[1])};
+}
+
+##~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+## @relnames = $coldb->relations()
+##  + gets list of defined relations
+sub relations {
+  return grep {UNIVERSAL::isa(ref($_[0]{$_}),'DiaColloDB::Relation')} keys %{$_[0]};
 }
 
 ##~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~

@@ -49,7 +49,7 @@ sub new {
 }
 
 ##==============================================================================
-## API: disk usage
+## Persistent API: disk usage
 
 ## @files = $obj->diskFiles()
 ##  + returns disk storage files, used by du() and timestamp()
@@ -170,6 +170,20 @@ sub union {
 
   return $ug;
 }
+
+##==============================================================================
+## Relation API: dbinfo
+
+## \%info = $rel->dbinfo($coldb)
+##  + embedded info-hash for $coldb->dbinfo()
+sub dbinfo {
+  my $ug = shift;
+  my $info = $ug->SUPER::dbinfo();
+  $info->{N} = $ug->{N};
+  $info->{size} = $ug->size();
+  return $info;
+}
+
 
 ##==============================================================================
 ## Relation API: default: profiling

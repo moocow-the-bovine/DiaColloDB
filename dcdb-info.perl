@@ -7,6 +7,8 @@ use Pod::Usage;
 use File::Basename qw(basename);
 use strict;
 
+use DiaColloDB::Relation::Vsem; ##-- DEBUG
+
 ##----------------------------------------------------------------------
 ## Globals
 ##----------------------------------------------------------------------

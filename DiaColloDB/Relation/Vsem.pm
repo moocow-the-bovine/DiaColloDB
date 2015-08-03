@@ -35,7 +35,10 @@ our @ISA = qw(DiaColloDB::Relation);
 ##   mbad   => $regex,      ##-- negative filter regex for metadata attributes
 ##   logvprofile => $level, ##-- log-level for vprofile() and vpslice() (default=undef:none)
 ##   ##
-##   ##-- guts: aux term-tuples ($NA:number of term-attributes, $NT:number of term-tuples)
+##   ##-- guts: aux: info
+##   N => $tdm0Total,       ##-- total number of (doc,term) frequencies counted
+##   ##
+##   ##-- guts: aux: term-tuples ($NA:number of term-attributes, $NT:number of term-tuples)
 ##   attrs  => \@attrs,       ##-- known term attributes
 ##   tvals  => $tvals,        ##-- pdl($NA,$NT) : [$apos,$ti] => $avali_at_term_ti
 ##   tsorti => $tsorti,       ##-- pdl($NT,$NA) : [,($apos)]  => $tvals->slice("($apos),")->qsorti
@@ -78,7 +81,7 @@ sub new {
 ## @files = $obj->diskFiles()
 ##  + returns disk storage files, used by du() and timestamp()
 sub diskFiles {
-  return ("$_[0]{base}.hdr", glob("$_[0]{base}_*"));
+  return ("$_[0]{base}.hdr", "$_[0]{base}.d");
 }
 
 ##==============================================================================
@@ -329,6 +332,9 @@ sub create {
     $mvals->slice("($_),")->qsorti($msorti->slice(",($_)"));
   }
 
+  ##-- create: aux: info
+  $vs->{N} = $map->{tdm0}->_vals->sum;
+
   ##-- tweak mapper piddles
   $vs->vlog($logCreate, "create(): tweaking mapper piddles");
   $map->{dcm}->inplace->convert(byte) if (defined($map->{dcm}));
@@ -391,6 +397,22 @@ sub union {
   $vs->logconfess("union(): not yet implemented");
   return $vs;
 }
+
+##==============================================================================
+## Relation API: dbinfo
+
+## \%info = $rel->dbinfo($coldb)
+##  + embedded info-hash for $coldb->dbinfo()
+sub dbinfo {
+  my $vs = shift;
+  my $info = $vs->SUPER::dbinfo();
+  @$info{qw(dcopts attrs meta mgood mbad N)} = @$vs{qw(dcopts attrs meta mgood mbad N)};
+  $info->{nTerms} = $vs->nTerms;
+  $info->{nDocs}  = $vs->nDocs;
+  $info->{nCats}  = $vs->nCats;
+  return $info;
+}
+
 
 ##==============================================================================
 ## Relation API: profiling & comparison: top-level

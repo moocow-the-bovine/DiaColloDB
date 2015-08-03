@@ -93,6 +93,21 @@ sub union {
 }
 
 ##==============================================================================
+## Relation API: dbinfo
+
+## \%info = $rel->dbinfo($coldb)
+##  + embedded info-hash for $coldb->dbinfo()
+sub dbinfo {
+  my ($rel,$coldb) = @_;
+  $rel = $rel->fromDB($coldb);
+  my $info = $rel->SUPER::dbinfo();
+  my @keys = qw(ddcServer ddcTimeout ddcLimit ddcSample dmax cfmin);
+  @$info{@keys} = @$rel{@keys};
+  return $info;
+}
+
+
+##==============================================================================
 ## Relation API: profiling & comparison: top-level
 
 ##--------------------------------------------------------------

@@ -7,6 +7,7 @@ package DiaColloDB::Relation;
 use DiaColloDB::Persistent;
 use DiaColloDB::Profile;
 use DiaColloDB::Profile::Multi;
+use DiaColloDB::Utils qw(:si);
 use strict;
 
 ##==============================================================================
@@ -49,6 +50,22 @@ sub union {
   my ($rel,$coldb, $pairs,%opts) = @_;
   $rel->logconfess("union(): abstract method called");
 }
+
+##==============================================================================
+## Relation API: info
+
+## \%info = $rel->dbinfo($coldb)
+##  + embedded info-hash for $coldb->dbinfo()
+sub dbinfo {
+  my $rel = shift;
+  my $info = { class=>ref($rel) };
+  if ($rel->can('du')) {
+    $info->{du_b} = $rel->du();
+    $info->{du_h} = si_str($info->{du_b});
+  }
+  return $info;
+}
+
 
 ##==============================================================================
 ## Relation API: profiling & comparison: top-level
