@@ -91,7 +91,7 @@ sub diskFiles {
 ##  + keys to save as header; default implementation returns all keys of all non-references
 sub headerKeys {
   my $obj = shift;
-  return (qw(dcopts meta attrs), $obj->SUPER::headerKeys);
+  return (qw(dcopts meta attrs), grep {$_ !~ m/(?:flags|perms|base)/} $obj->SUPER::headerKeys);
 }
 
 
@@ -222,7 +222,7 @@ sub create {
   my $mbad  = $vs->{mbad}  ? qr{$vs->{mbad}}  : undef;
 
   ##-- simulate $map->trainCorpus()
-  $vs->vlog($logCreate, "create(): simulating trainCorpus() [N=$nfiles]");
+  $vs->vlog($logCreate, "create(): simulating trainCorpus() [NC=$nfiles]");
   my $NC     = $nfiles;
   my $c2date = $vs->{c2date} = zeroes(ushort, $NC);
   my $json   = DiaColloDB::Utils->jsonxs();

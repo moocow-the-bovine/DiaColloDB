@@ -1339,12 +1339,12 @@ sub test_diffop {
 ## test: vsem
 
 sub test_vsem_reindex {
-  my $dbdir = shift || 'dta_phil.d';
+  my $dbdir = shift || 'kern01.d';
 
   ##-- open (index_vsem:0)
-  my $coldb = DiaColloDB->new(dbdir=>$dbdir) or die("$0: failed to open $dbdir/: $!");
-  $coldb->{index_vsem} = 1;
-  $coldb->{vbreak} = '#p';
+  my $coldb = DiaColloDB->new() or die("$0: failed to create DiaColloDB object");
+  $coldb->open($dbdir, index_vsem=>0) or die("$0: failed to open DiaColloDB directory $dbdir/:_ $!");
+  #$coldb->{vbreak} = '#p';
 
   ##-- (re-)index vsem (dying with log:
   # 2015-08-03 13:30:17 dcdb-create.perl[19761] INFO: DocClassify.Mapper.LSI: compile(): lemmatizer class: DocClassify::Lemmatizer::Raw
@@ -1367,7 +1367,13 @@ sub test_vsem_reindex {
   $coldb->info("creating vector-space model $dbdir/vsem* [vbreak=$coldb->{vbreak}]");
   $coldb->{vsopts} //= {};
   $coldb->{vsopts}{$_} //= $VSOPTS{$_} foreach (keys %VSOPTS); ##-- vsem: default options
-  $coldb->{vsopts}{weightByCat} = 1;
+
+  ##-- tweak options
+  #$coldb->{vsopts}{weightByCat} = 1;
+  #$coldb->{vsopts}{termWeight} = 'uniform';
+  @{$coldb->{vsopts}}{qw(twRaw twCooked)} = qw(1 0);
+
+  ##-- re-index
   $coldb->{vsem} = DiaColloDB::Relation::Vsem->create($coldb, undef, base=>"$dbdir/vsem");
 
   exit 0;

@@ -276,12 +276,12 @@ sub open {
   my ($coldb,$dbdir,%opts) = @_;
   DiaColloDB::Logger->ensureLog();
   $coldb = $coldb->new() if (!ref($coldb));
-  @$coldb{keys %opts} = values %opts;
+  #@$coldb{keys %opts} = values %opts; ##-- clobber options after loadHeader()
   $dbdir //= $coldb->{dbdir};
   $dbdir =~ s{/$}{};
   $coldb->close() if ($coldb->opened);
   $coldb->{dbdir} = $dbdir;
-  my $flags = fcflags($coldb->{flags});
+  my $flags = fcflags($opts{flags} // $coldb->{flags});
   $coldb->vlog($coldb->{logOpen}, "open($dbdir)");
 
   ##-- open: truncate
@@ -302,8 +302,10 @@ sub open {
   ##-- open: header
   $coldb->loadHeader()
     or $coldb->logconfess("open(): failed to load header file", $coldb->headerFile, ": $!");
+  @$coldb{keys %opts} = values %opts; ##-- clobber header options with user-supplied values
 
   ##-- open: vsem: require
+  $coldb->{index_vsem} = 0 if (!-r "$dbdir/vsem.hdr");
   if ($coldb->{index_vsem}) {
     if (!require "DiaColloDB/Relation/Vsem.pm") {
       $coldb->logwarn("open(): require failed for DiaColloDB/Relation/Vsem.pm ; vector-space modelling disabled", ($@ ? "\n: $@" : ''));
