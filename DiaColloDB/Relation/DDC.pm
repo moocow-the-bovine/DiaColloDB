@@ -245,7 +245,7 @@ sub profile {
 					   titles   => \@titles,
 					   qinfo    => $qinfo,
 					  );
-  $mp->trim(%opts);
+  $mp->trim(%opts, empty=>!$opts{fill});
 
   ##-- return
   return $mp;
