@@ -222,7 +222,8 @@ sub create {
   my $mbad  = $vs->{mbad}  ? qr{$vs->{mbad}}  : undef;
 
   ##-- simulate $map->trainCorpus()
-  $vs->vlog($logCreate, "create(): simulating trainCorpus() [NC=$nfiles]");
+  $vs->vlog($logCreate, "create(): simulating trainCorpus() [NC=$nfiles, saveMem=".($map->{saveMem}//0)."]");
+  $map->trainInit();
   my $NC     = $nfiles;
   my $c2date = $vs->{c2date} = zeroes(ushort, $NC);
   my $json   = DiaColloDB::Utils->jsonxs();

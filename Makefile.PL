@@ -21,7 +21,7 @@ WriteMakefile
 		    'Log::Log4perl' => 1.07,   # 1.29
 		    ##
 		    ##-- for vector-semantic models (Vsem)
-		    'DocClassify' => '0.14',
+		    'DocClassify' => '0.15',
 		    'PDL::VectorValued::Version' => '1.0.1',
 		   },
 

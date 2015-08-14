@@ -1371,6 +1371,7 @@ sub test_vsem_reindex {
   ##-- tweak options
   #$coldb->{vsopts}{weightByCat} = 1;
   #$coldb->{vsopts}{termWeight} = 'uniform';
+  $coldb->{vsopts}{saveMem} = 1;
   @{$coldb->{vsopts}}{qw(twRaw twCooked)} = qw(1 0);
 
   ##-- re-index
