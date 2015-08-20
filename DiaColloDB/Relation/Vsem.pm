@@ -184,8 +184,7 @@ sub create {
   my $doctmpd = "$coldb->{dbdir}/doctmp.d";
   my $doctmpf = "$coldb->{dbdir}/doctmp.files";
   my $base   = $vs->{base};
-  $vs->logconfess("create(): no source document directory '$doctmpd'") if (!-d $doctmpd);
-  $vs->logconfess("create(): no source document file-list '$doctmpf'") if (!-f $doctmpf);
+  $vs->logconfess("create(): no source document array in parent DB") if (!UNIVERSAL::isa($coldb->{doctmpa},'ARRAY'));
   $vs->logconfess("create(): no 'base' key defined") if (!$base);
 
   ##-- initialize: output directory
@@ -205,15 +204,12 @@ sub create {
   my $mverbose = $map->{verbose};
   $map->{verbose} = min2($mverbose,1);
 
-  ##-- initialize: file-list
-  CORE::open(my $doctmpfh, "<$doctmpf")
-      or $vs->logconfess("create(): could not open source document file-list $doctmpf: $!");
-  my @docfiles = map {chomp; $_} <$doctmpfh>;
-  CORE::close($doctmpfh);
+  ##-- initialize: temporary doc-array
+  my $doctmpa = $coldb->{doctmpa};
 
   ##-- initialize: logging
   my $logCreate = 'trace';
-  my $nfiles    = scalar(@docfiles);
+  my $nfiles    = scalar(@$doctmpa);
   my $logFileN  = $coldb->{logCorpusFileN} // max2(1,int($nfiles/10));
 
   ##-- initialize: metadata
@@ -227,20 +223,22 @@ sub create {
   my $NC     = $nfiles;
   my $c2date = $vs->{c2date} = zeroes(ushort, $NC);
   my $json   = DiaColloDB::Utils->jsonxs();
-  my ($filei,$docfile,$doc,$doclabel,$docid);
+  my ($doc,$filei,$doclabel,$docid);
   my ($mattr,$mval,$mdata,$mvali,$mvals);
   my ($sig,$sigi,$dcdoc);
-  foreach $docfile (@docfiles) {
-    $vs->vlog($coldb->{logCorpusFile}, sprintf("create(): processing signatures [%3d%%]: %s", 100*($filei-1)/$nfiles, $docfile))
+  foreach $doc (@$doctmpa) {
+    $doclabel = $doc->{meta}{basename} // $doc->{meta}{file_} // $doc->{label};
+    $vs->vlog($coldb->{logCorpusFile}, sprintf("create(): processing signatures [%3.0f%%]: %s", 100*($filei-1)/$nfiles, $doclabel))
       if ($logFileN && ($filei++ % $logFileN)==0);
 
-    $doc      = DiaColloDB::Utils::loadJsonFile($docfile,json=>$json);
-    $doclabel = $doc->{meta}{basename} // $doc->{meta}{file_} // $doc->{label} // $docfile;
     $docid    = $doc->{id} // ++$docid;
     $sigi     = 0;
+
+    #$vs->debug("c2date: id=$docid/$NC ; doc=$doclabel");
     $c2date->set($docid,$doc->{date});
 
     ##-- parse metadata
+    #$vs->debug("meta: id=$docid/$NC ; doc=$doclabel");
     while (($mattr,$mval) = each %{$doc->{meta}//{}}) {
       next if ((defined($mgood) && $mattr !~ $mgood) || (defined($mbad) && $mattr =~ $mbad));
       $mdata = $meta{$mattr} = {n=>1, s2i=>{''=>0}, vals=>zeroes(long,$NC)} if (!defined($mdata=$meta{$mattr}));
@@ -249,6 +247,7 @@ sub create {
     }
 
     ##-- create temporary DocClassify::Document objects for each embedded signature
+    #$vs->debug("sigs: id=$docid/$NC ; doc=$doclabel");
     foreach $sig (@{$doc->{sigs}}) {
       $dcdoc = bless({
 		      label=>$doclabel."#".($sigi++),
@@ -272,11 +271,11 @@ sub create {
   my $NT = $map->{tenum}->size;
   my $NA = scalar(@{$coldb->{attrs}});
   $vs->vlog($logCreate, "create(): creating term-attribute pseudo-enum (NA=$NA x NT=$NT)");
-  my $pack_t = $coldb->{pack_w};
+  #my $pack_t = $coldb->{pack_w};
   my $ti2s   = $map->{tenum}{id2sym};
   my $tvals  = $vs->{tvals} = zeroes(long, $NA,$NT); ##-- [$apos,$ti] => $avali_at_term_ti
   foreach (0..$#$ti2s) {
-    ($tmp=$tvals->slice(",($_)")) .= [unpack($pack_t,$ti2s->[$_])] if (defined($_));
+    ($tmp=$tvals->slice(",($_)")) .= [split(' ',$ti2s->[$_])] if (defined($_));
   }
   ##
   #$vs->vlog($logCreate, "create(): creating term-attribute sort-indices (NA=$NA x NT=$NT)");

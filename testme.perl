@@ -1338,13 +1338,101 @@ sub test_diffop {
 ##==============================================================================
 ## test: vsem
 
+##--------------------------------------------------------------
+## test: vsem: get sig sizes
+sub test_vsem_sigsize {
+  my $dbdir = shift || 'kern01.d';
+  print STDERR "$0: sigsize: $dbdir\n";
+
+  my @docs;
+  tie(@docs, 'Tie::File::Indexed::JSON', "$dbdir/doctmp.a", mode=>'ra')
+    or die("$0: tie filed for $dbdir/doctmp.a: $!");
+
+  ##-- dump sig sizes
+  my ($doc,$sig,$n);
+  foreach $doc (@docs) {
+    foreach $sig (@{$doc->{sigs}}) {
+      $n = 0;
+      $n += $_ foreach (values %$sig);
+      print "$n\n";
+    }
+  }
+
+  exit 0;
+}
+#test_vsem_sigsize(@ARGV);
+
+##--------------------------------------------------------------
+## test: vsem: trim sigs
+sub test_vsem_trimsigs {
+  my $tmpfile = shift || 'doctmp.a';
+  my $nmin    = shift || 8;
+  my $nmax    = shift || 1024;
+
+  print STDERR "$0: trimsigs: $tmpfile (min=$nmin, max=$nmax)\n";
+
+  my (@idocs,@odocs);
+  tie(@idocs, 'Tie::File::Indexed::JSON', $tmpfile, mode=>'ra')
+    or die("$0: tie filed for $tmpfile: $!");
+
+  my $outfile = "$tmpfile.out";
+  tie(@odocs, 'Tie::File::Indexed::JSON', $outfile, mode=>'rw')
+    or die("$0: tie filed for $outfile: $!");
+
+  ##-- trim sigs
+  my ($doc,$sig,$n,@sigs);
+  my ($ndocs,$nsig_in,$nsig_out,$ntok_in,$ntok_out) = (0,0,0,0,0);
+  foreach $doc (@idocs) {
+    @sigs = qw();
+    foreach $sig (@{$doc->{sigs}}) {
+      $n = 0;
+      $n += $_ foreach (values %$sig);
+      ++$nsig_in;
+      $ntok_in += $n;
+      if ($n >= $nmin && $n <= $nmax) {
+	push(@sigs,$sig);
+	++$nsig_out;
+	$ntok_out += $n;
+      }
+    }
+    if (@sigs) {
+      $doc->{id} = $ndocs++;
+      $doc->{sigs} = \@sigs;
+      push(@odocs, $doc);
+    }
+  }
+  my $ndoc_in  = @idocs;
+  my $ndoc_out = @odocs;
+
+  untie(@idocs);
+  tied(@odocs)->rename($tmpfile);
+  untie(@odocs);
+
+  my $lfmt = "%3s";
+  my $nfmt = "%".length($ntok_in)."d";
+  my $pfmt = "%6.2f%%";
+  my $trimline = sub {
+    my ($label,$n_in,$n_out) = @_;
+    return sprintf(" + $lfmt: $nfmt in, $nfmt out ($pfmt trimmed)\n", $label, $n_in, $n_out, 100*($n_in-$n_out)/$n_in);
+  };
+  print STDERR
+    ("$0: file=$tmpfile ; outfile=$outfile\n",
+     $trimline->('docs', $ndoc_in, $ndoc_out),
+     $trimline->('sigs', $nsig_in, $nsig_out),
+     $trimline->('toks', $ntok_in, $ntok_out),
+    );
+  exit 0;
+}
+#test_vsem_trimsigs(@ARGV);
+
+##--------------------------------------------------------------
+## test: vsem: reindex
 sub test_vsem_reindex {
   my $dbdir = shift || 'kern01.d';
 
   ##-- open (index_vsem:0)
   my $coldb = DiaColloDB->new() or die("$0: failed to create DiaColloDB object");
   $coldb->open($dbdir, index_vsem=>0) or die("$0: failed to open DiaColloDB directory $dbdir/:_ $!");
-  #$coldb->{vbreak} = '#p';
 
   ##-- (re-)index vsem (dying with log:
   # 2015-08-03 13:30:17 dcdb-create.perl[19761] INFO: DocClassify.Mapper.LSI: compile(): lemmatizer class: DocClassify::Lemmatizer::Raw
@@ -1363,16 +1451,23 @@ sub test_vsem_reindex {
   # 2015-08-03 13:31:04 dcdb-create.perl[19761] INFO: DocClassify.Mapper.LSI: compile_tw(): tw=max-entropy-quotient, weightByCat=0, wRaw=1, wCooked=1
   # Out of memory!
   # ... on plato, source=kern01.files
+  # ... see vsnotes.txt; better but not yet really memory-friendly
   my %VSOPTS = %DiaColloDB::VSOPTS;
   $coldb->info("creating vector-space model $dbdir/vsem* [vbreak=$coldb->{vbreak}]");
   $coldb->{vsopts} //= {};
   $coldb->{vsopts}{$_} //= $VSOPTS{$_} foreach (keys %VSOPTS); ##-- vsem: default options
 
+  ##-- tie doctmp array
+  -e "$dbdir/doctmp.a"
+    && ($coldb->{doctmpa} = [])
+    && tie(@{$coldb->{doctmpa}}, 'Tie::File::Indexed::JSON', "$dbdir/doctmp.a", mode=>'ra', temp=>0)
+    || $coldb->logconfess("could not tie temporary doc-data array to $dbdir/doctmp.a: $!");
+
   ##-- tweak options
   #$coldb->{vsopts}{weightByCat} = 1;
   #$coldb->{vsopts}{termWeight} = 'uniform';
+  #@{$coldb->{vsopts}}{qw(twRaw twCooked)} = qw(1 0);
   $coldb->{vsopts}{saveMem} = 1;
-  @{$coldb->{vsopts}}{qw(twRaw twCooked)} = qw(1 0);
 
   ##-- re-index
   $coldb->{vsem} = DiaColloDB::Relation::Vsem->create($coldb, undef, base=>"$dbdir/vsem");

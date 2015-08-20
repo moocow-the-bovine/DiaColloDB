@@ -27,6 +27,7 @@ use DiaColloDB::Persistent;
 use DiaColloDB::Utils qw(:math :fcntl :json :sort :pack :regex :file :si);
 use DiaColloDB::Timer;
 use DDC::XS; ##-- for query parsing
+use Tie::File::Indexed::JSON; ##-- for vsem training
 use Fcntl;
 use File::Path qw(make_path remove_tree);
 use strict;
@@ -107,6 +108,7 @@ our %VSOPTS = (
 	       nullCat=>undef,
 	       clearCache=>0,
 	       trainExclusive=>0, ##-- we don't need this and it's a bit more expensive
+	       saveMem=>1, ##-- slower but memory-friendlier
 	      );
 
 ##==============================================================================
@@ -135,6 +137,9 @@ our %VSOPTS = (
 ##    index_vsem => $bool,##-- vsem: create/use vector-semantic index? (default=undef: if available)
 ##    vbreak => $vbreak,  ##-- vsem: use break-type $break for vsem index (default=undef: files)
 ##    vsopts => \%vsopts, ##-- vsem: options for DocClassify::Mapper->new(); default={} (all inherited from %VSOPTS)
+##    vbnmin => $vbnmin,  ##-- vsem: minimum number of content-tokens in signature-blocks (default=8)
+##                        ##   + for kern (n:%sigs,%toks): 1:0%,0%, 2:5.1%,0.5%, 4:18%,1.6%, 5:22%,2.3%, 8:34%,4.6%, 10:40%,6.5%, 16:54%,12.8%
+##    vbnmax => $vbnmax,  ##-- vsem: maximum number of content-tokens in signature-blocks (default=1024)
 ##    ##
 ##    ##-- runtime ddc relation options
 ##    ddcServer => "$host:$port", ##-- server for ddc relation
@@ -201,6 +206,8 @@ sub new {
 		      index_vsem => undef,
 		      vbreak => undef,
 		      vsopts => {},
+		      vbnmin => 8,
+		      vbnmax => 1024,
 
 		      ##-- filters
 		      pgood => $PGOOD_DEFAULT,
@@ -635,20 +642,17 @@ sub create {
   CORE::open(my $tokfh, ">$tokfile")
     or $coldb->logconfess("$0: open failed for $tokfile: $!");
 
-  ##-- initialize: vsem: doc-data directory (temporary)
-  my ($doctmpd,$doctmpf,$doctmpfh);
+  ##-- initialize: vsem: doc-data array (temporary)
+  my ($doctmpa);
+  my $doctmpn = 0; ##-- current size of @$doctmpa
   my $index_vsem = $coldb->{index_vsem};
   if ($index_vsem) {
-    $doctmpd = "$dbdir/doctmp.d";
-    $doctmpf = "$dbdir/doctmp.files";
-    !-d $doctmpd
-      or remove_tree($doctmpd)
-	or $coldb->logconfess("create(): could not remove stale doc-data directory $doctmpd: $!");
-    make_path($doctmpd)
-      or $coldb->logconfess("create(): could not create doc-data directory $doctmpd: $!");
-    CORE::open($doctmpfh,">$doctmpf")
-      or $coldb->logconfess("create(): could not create doc-data file list $doctmpf: $!");
+    $doctmpa = $coldb->{doctmpa} = [];
+    tie(@$doctmpa, 'Tie::File::Indexed::JSON', "$dbdir/doctmp.a", mode=>'rw', temp=>!$coldb->{keeptmp})
+      or $coldb->logconfess("create(): could not tie temporary doc-data array to $dbdir/doctmp.a: $!");
   }
+  my $vbnmin = $coldb->{vbnmin} = max2(($coldb->{vbnmin}//0),1);
+  my $vbnmax = $coldb->{vbnmax} = min2(($coldb->{vbnmax}//'inf'),'inf');
   my $vbreak = ($coldb->{vbreak} // '#file');
   $vbreak    = "#$vbreak" if ($vbreak !~ /^#/);
   $coldb->{vbreak} = $vbreak;
@@ -663,16 +667,16 @@ sub create {
 
   ##-- initialize: logging
   my $nfiles   = $corpus->size();
-  my $logFileN = $coldb->{logCorpusFileN} // max2(1,int($nfiles/100));
+  my $logFileN = $coldb->{logCorpusFileN} // max2(1,int($nfiles/20));
 
   ##-- initialize: enums, date-range
   $coldb->vlog($coldb->{logCreate},"create(): processing $nfiles corpus file(s)");
   my ($xdmin,$xdmax) = ('inf','-inf');
   my ($bos,$eos) = @$coldb{qw(bos eos)};
-  my ($doc, $date,$tok,$w,$p,$l,@ais,$x,$xi, $wx,@sigs,$sig, $filei);
+  my ($doc, $date,$tok,$w,$p,$l,@ais,$x,$xi, $wx,@sigs,$sig,$sign, $filei);
   my ($last_was_eos,$bosxi,$eosxi);
   for ($corpus->ibegin(); $corpus->iok; $corpus->inext) {
-    $coldb->vlog($coldb->{logCorpusFile}, sprintf("create(): processing files [%3d%%]: %s", 100*($filei-1)/$nfiles, $corpus->ifile))
+    $coldb->vlog($coldb->{logCorpusFile}, sprintf("create(): processing files [%3.0f%%]: %s", 100*($filei-1)/$nfiles, $corpus->ifile))
       if ($logFileN && ($filei++ % $logFileN)==0);
     $doc  = $corpus->idocument();
     $date = $doc->{date};
@@ -680,6 +684,7 @@ sub create {
     ##-- initalize vsem signatures
     @sigs = qw();
     $sig  = {}; ##-- ($wi => $count, ...)
+    $sign = 0;
 
     ##-- get date-range
     $xdmin = $date if ($date < $xdmin);
@@ -725,42 +730,41 @@ sub create {
 	$last_was_eos = 0;
 
 	##-- extract signature for vsem
-	++$sig->{pack($pack_w,@ais)} if ($index_vsem);
+	if ($index_vsem) {
+	  ++$sig->{join(' ',@ais)};
+	  ++$sign;
+	}
       }
       elsif (!defined($tok) && !$last_was_eos) {
 	##-- eos
 	$tokfh->print((defined($eosxi) ? ($eosxi,"\n") : qw()), "\n");
 	$last_was_eos = 1;
       }
-      elsif (defined($tok) && $tok eq $vbreak && %$sig) {
+      elsif (defined($tok) && $tok eq $vbreak && $sign >= $vbnmin && $sign <= $vbnmax) {
 	##-- break:vsem
 	push(@sigs,$sig);
-	$sig = {};
+	$sig  = {};
+	$sign = 0;
       }
     }
 
     ##-- store doc-data (for vsem)
-    push(@sigs,$sig) if (%$sig);
-    if (@sigs && $doctmpd) {
-      DiaColloDB::Utils::saveJsonFile({
-				       sigs => \@sigs,
-				       id   => $corpus->icur(),
-				       (map {($_=>$doc->{$_})} qw(meta date label)),
-				      },
-				      "$doctmpd/$filei.json",
-				      pretty=>1);
-      print $doctmpfh "$doctmpd/$filei.json\n";
+    if ($doctmpa) {
+      push(@sigs,$sig) if ($sign >= $vbnmin && $sign <= $vbnmax);
+      push(@$doctmpa, {
+		       sigs => \@sigs,
+		       id   => $doctmpn++,
+		       (map {($_=>$doc->{$_})} qw(meta date label)),
+		      })
+	if (@sigs);
     }
   }
   ##-- store date-range
   @$coldb{qw(xdmin xdmax)} = ($xdmin,$xdmax);
 
-  ##-- close temporary storage files
+  ##-- close temporary storage file(s)
   CORE::close($tokfh)
     or $corpus->logconfess("create(): failed to close temporary token storage file '$tokfile': $!");
-  !$doctmpf
-    or CORE::close($doctmpfh)
-      or $corpus->logconfess("create(): failed to close temporary document list-file '$doctmpf': $!");
 
   ##-- compile: xenum
   $coldb->vlog($coldb->{logCreate}, "create(): creating tuple-enum $dbdir/xenum.*");
@@ -829,15 +833,12 @@ sub create {
   if (!$coldb->{keeptmp}) {
     CORE::unlink($tokfile)
 	or $coldb->logwarn("create(): clould not remove temporary file '$tokfile': $!");
-    !$doctmpd
-      or !-d $doctmpd
-	or remove_tree($doctmpd)
-	  or $coldb->logwarn("create(): could not remove temporary doc-data directory $doctmpd: $!");
-    !$doctmpf
-      or !-e $doctmpf
-	or CORE::unlink($doctmpf)
-	  or $coldb->logwarn("create(): could not remove temporary doc-list file $doctmpf: $!");
   }
+  !$doctmpa
+    or !tied(@$doctmpa)
+    or untie(@$doctmpa)
+    or $coldb->logwarn("create(): could untie temporary doc-data array $dbdir/doctmp.a: $!");
+  delete $coldb->{doctmpa};
 
   return $coldb;
 }
