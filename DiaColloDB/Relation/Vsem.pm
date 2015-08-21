@@ -67,7 +67,7 @@ sub new {
 			       attrs => [],
 			       dcmap => undef,
 			       ##
-			       logvprofile  => undef,
+			       logvprofile  => 'trace',
 			       ##
 			       @_
 			      );
@@ -91,7 +91,7 @@ sub diskFiles {
 ##  + keys to save as header; default implementation returns all keys of all non-references
 sub headerKeys {
   my $obj = shift;
-  return (qw(dcopts meta attrs), grep {$_ !~ m/(?:flags|perms|base)/} $obj->SUPER::headerKeys);
+  return (qw(dcopts meta attrs), grep {$_ !~ m/(?:flags|perms|base|log)/} $obj->SUPER::headerKeys);
 }
 
 
@@ -241,7 +241,7 @@ sub create {
     #$vs->debug("meta: id=$docid/$NC ; doc=$doclabel");
     while (($mattr,$mval) = each %{$doc->{meta}//{}}) {
       next if ((defined($mgood) && $mattr !~ $mgood) || (defined($mbad) && $mattr =~ $mbad));
-      $mdata = $meta{$mattr} = {n=>1, s2i=>{''=>0}, vals=>zeroes(long,$NC)} if (!defined($mdata=$meta{$mattr}));
+      $mdata = $meta{$mattr} = {n=>1, s2i=>{''=>0}, vals=>zeroes($map->itype,$NC)} if (!defined($mdata=$meta{$mattr}));
       $mvali = ($mdata->{s2i}{$mval} //= $mdata->{n}++);
       $mdata->{vals}->set($docid,$mvali);
     }
@@ -273,13 +273,13 @@ sub create {
   $vs->vlog($logCreate, "create(): creating term-attribute pseudo-enum (NA=$NA x NT=$NT)");
   #my $pack_t = $coldb->{pack_w};
   my $ti2s   = $map->{tenum}{id2sym};
-  my $tvals  = $vs->{tvals} = zeroes(long, $NA,$NT); ##-- [$apos,$ti] => $avali_at_term_ti
+  my $tvals  = $vs->{tvals} = zeroes($map->itype, $NA,$NT); ##-- [$apos,$ti] => $avali_at_term_ti
   foreach (0..$#$ti2s) {
     ($tmp=$tvals->slice(",($_)")) .= [split(' ',$ti2s->[$_])] if (defined($_));
   }
   ##
   #$vs->vlog($logCreate, "create(): creating term-attribute sort-indices (NA=$NA x NT=$NT)");
-  my $tsorti = $vs->{tsorti} = zeroes(long, $NT,$NA); ##-- [,($apos)] => $tvals->slice("($apos),")->qsorti
+  my $tsorti = $vs->{tsorti} = zeroes($map->itype, $NT,$NA); ##-- [,($apos)] => $tvals->slice("($apos),")->qsorti
   foreach (0..($NA-1)) {
     $tvals->slice("($_),")->qsorti($tsorti->slice(",($_)"));
   }
@@ -289,7 +289,7 @@ sub create {
   ##-- create: aux: d2c: [$di] => $ci
   my $ND  = $map->{denum}->size();
   $vs->vlog($logCreate, "create(): creating doc<->category translation piddles (ND=$ND, NC=$NC)");
-  my $d2c = $vs->{d2c} = zeroes(long, $ND);
+  my $d2c = $vs->{d2c} = zeroes($map->itype, $ND);
   ($tmp=$d2c->index($map->{dcm}->_whichND->slice("(0),"))) .= $map->{dcm}->_whichND->slice("(1),");
 
   ##-- create: aux: c2d (2,$NC): [0,$ci] => $di_off, [1,$ci] => $di_len
@@ -298,7 +298,7 @@ sub create {
   $c2d_n    = $c2d_n->index($c2d_which);
   $c2d_vals = $c2d_vals->index($c2d_which);
   my $c2d_off = $c2d_n->append(0)->rotate(1)->slice("0:-2")->cumusumover;
-  my $c2d     = $vs->{c2d} = zeroes(long,2,$NC);
+  my $c2d     = $vs->{c2d} = zeroes($map->itype,2,$NC);
   ($tmp=$c2d->slice("(0),")->index($c2d_vals)) .= $c2d_off;
   ($tmp=$c2d->slice("(1),")->index($c2d_vals)) .= $c2d_n;
   ##--
@@ -312,7 +312,7 @@ sub create {
   @{$vs->{meta}} = sort keys %meta;
   my %efopts     = (flags=>$vs->{flags}, pack_i=>$coldb->{pack_id}, pack_o=>$coldb->{pack_off}, pack_l=>$coldb->{pack_len});
   my $NM         = scalar @{$vs->{meta}};
-  $mvals         = $vs->{mvals} = zeroes(long,$NM,$NC); ##-- [$mpos,$ci] => $mvali_at_ci
+  $mvals         = $vs->{mvals} = zeroes($map->itype,$NM,$NC); ##-- [$mpos,$ci] => $mvali_at_ci
   my ($menum);
   foreach (0..($NM-1)) {
     $vs->vlog($logCreate, "create(): creating metadata enum for attribute '$vs->{meta}[$_]'");
@@ -327,7 +327,7 @@ sub create {
   }
   ##
   $vs->vlog($logCreate, "create(): creating metadata sort-indices (NM=$NM x NC=$NC)");
-  my $msorti = $vs->{msorti} = zeroes(long, $NC,$NM); ##-- [,($mi)] => $mvals->slice("($mi),")->qsorti
+  my $msorti = $vs->{msorti} = zeroes($map->itype, $NC,$NM); ##-- [,($mi)] => $mvals->slice("($mi),")->qsorti
   foreach (0..($NM-1)) {
     $mvals->slice("($_),")->qsorti($msorti->slice(",($_)"));
   }
@@ -357,7 +357,7 @@ sub create {
   ##-- save: aux data: piddles
   foreach (qw(tvals tsorti mvals msorti d2c c2d c2date)) {
     $map->writePdlFile($vs->{$_}, "$vsdir/$_.pdl", %ioopts)
-      or $vs->logconfss("create(): failed to save auxilliary piddle $vsdir/$_.pdl: $!");
+      or $vs->logconfess("create(): failed to save auxilliary piddle $vsdir/$_.pdl: $!");
   }
 
 
@@ -587,7 +587,7 @@ sub vpslice {
     my $q_tdm     = $map->{tdm}->xsubset2d($ti,$di);
     return $pprf if ($q_tdm->allmissing); ##-- empty subset --> null profile
     $q_tdm = $q_tdm->sumover->dummy(0,1)->make_physically_indexed;
-    #$vs->vlog($logLocal, "profile(): query vector: xsubset: svdapply");
+    $vs->vlog($logLocal, "profile(): query vector: xsubset: svdapply");
     $qvec = $map->{svd}->apply1($q_tdm)->xchg(0,1);
   }
   elsif (defined($ti)) {
@@ -742,13 +742,23 @@ sub hasMeta {
   return defined($_[0]->mpos($_[1]));
 }
 
-## $enum_or_undef = metaEnum($mattr)
+## $enum_or_undef = $vs->metaEnum($mattr)
 ##  + returns metadata attribute enum for $attr
 sub metaEnum {
   my ($vs,$attr) = @_;
   return undef if (!$vs->hasMeta($attr));
   return $vs->{"meta_e_$attr"};
 }
+
+## $cats = $vs->catSubset($terms)
+## $cats = $vs->catSubset($terms,$cats)
+##  + gets (sorted) cat-subset for (sorted) term-set $terms
+sub catSubset {
+  my ($vs,$terms,$cats) = @_;
+  return $cats if (!defined($terms));
+  return DiaColloDB::Utils::_intersect_p($cats, $vs->{d2c}->index($vs->{dcmap}{tdm}->dice_axis(0,$terms)->_whichND->slice("(1),"))->uniq);
+}
+
 
 ##----------------------------------------------------------------------
 

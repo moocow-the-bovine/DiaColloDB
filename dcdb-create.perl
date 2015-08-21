@@ -26,7 +26,20 @@ our $listargs = 0; ##-- args are file-lists?
 our $union    = 0; ##-- args are db-dirs?
 our $dotime   = 1; ##-- report timing?
 our %corpus   = (dclass=>'DDCTabs', dopts=>{});
-our %coldb    = (pack_id=>'N', pack_date=>'n', pack_f=>'N', pack_off=>'N', pack_len=>'n', dmax=>5, cfmin=>2, keeptmp=>0, vsopts=>{});
+our %coldb    = (
+		 pack_id=>'N',
+		 pack_date=>'n',
+		 pack_f=>'N',
+		 pack_off=>'N',
+		 pack_len=>'n',
+		 dmax=>5,
+		 cfmin=>2,
+		 keeptmp=>0,
+		 vsopts=>{},
+		 vbreak=>'#file',
+		 vbnmin=>8,
+		 vbnmax=>'inf',
+		);
 
 ##----------------------------------------------------------------------
 ## Command-line processing
@@ -34,6 +47,8 @@ our %coldb    = (pack_id=>'N', pack_date=>'n', pack_f=>'N', pack_off=>'N', pack_
 sub pack64 {
   $coldb{$_}=($_[1] ? 'Q>' : 'N') foreach qw(pack_id pack_f pack_off);
   $coldb{pack_len}=($_[1] ? 'n' : 'N');
+  $coldb{vsopts}{itype} = $_[1] ? 'ccs_indx' : 'long';
+  $coldb{vsopts}{vtype} = $_[1] ? 'double' : 'float';
 }
 GetOptions(##-- general
 	   'help|h' => \$help,
@@ -56,6 +71,8 @@ GetOptions(##-- general
 	   'min-cofrequency|min-cf|mincf|cfmin=i' => \$coldb{cfmin},
 	   'index-vsem|vsem|vs!' => \$coldb{index_vsem},
 	   'vsem-break|vbreak|vb=s' => \$coldb{vbreak},
+	   'vsem-break-min-size|vsem-break-min|vsem-nmin|vbnmin|vbmin' => \$coldb{vbnmin},
+	   'vsem-break-max-size|vsem-break-max|vsem-nmax|vbnmax|vbmax' => \$coldb{bvnmax},
 	   'vsem-option|vsopt|vso|vopt|vo|vO=s%' => \$coldb{vsopts},
 	   'keeptmp|keep' => \$coldb{keeptmp},
 	   'nofilters|F' => sub { $coldb{$_}=undef foreach (qw(pgood pbad wgood wbad lgood lbad vsmgood vsmbad)); },
@@ -156,6 +173,17 @@ dcdb-create.perl - create a DiaColloDB collocation database from a corpus dump
    -32bit               ##-- use 32-bit integers where available
    -dmax DIST           ##-- maximum distance for collocation-frequencies (default=5)
    -cfmin CFMIN         ##-- minimum relation co-occurrence frequency (default=2)
+   -[no]vsem            ##-- do/don't create vector-semantic index relation (default=if available)
+   -vsem-break BREAK    ##-- set vector-model "document" granularity (e.g. s,p,page,file; default=file)
+   -vsem-nmin VNMIN     ##-- set minimum number of content tokens per vector-model "document" (default=8)
+   -vsem-nmax VNMAX     ##-- set maximum number of content tokens per vector-model "document (default=inf)
+   -vsem-option OPT=VAL ##-- set arbitrary vector-model option, e.g.
+                        ##   verbose=LEVEL         # verbosity level (default=2)
+                        ##   smoothf=FLOAT         # frequency smoothing constant (default=1.001)
+                        ##   minFreq=INT           # minimum term frequency (default=10)
+                        ##   minDocFreq=INT        # minimum term document-"frequency" (default=5)
+                        ##   svdr=INT              # target model rank (default=64)
+                        ##   saveMem=BOOL          # use less memory when compiling (default=1)
    -option OPT=VAL      ##-- set arbitrary DiaColloDB option, e.g.
                         ##   pack_id=PACKFMT       # pack-format for IDs
                         ##   pack_f=PACKFMT        # pack-format for frequencies

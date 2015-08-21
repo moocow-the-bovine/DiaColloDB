@@ -108,7 +108,9 @@ our %VSOPTS = (
 	       nullCat=>undef,
 	       clearCache=>0,
 	       trainExclusive=>0, ##-- we don't need this and it's a bit more expensive
-	       saveMem=>1, ##-- slower but memory-friendlier
+	       saveMem=>1, 	  ##-- slower but memory-friendlier compilation
+	       vtype=>'float',    ##-- store compiled values as 32-bit floats
+	       itype=>'long',     ##-- store compiled indices as 32-bit integers
 	      );
 
 ##==============================================================================
@@ -207,7 +209,7 @@ sub new {
 		      vbreak => undef,
 		      vsopts => {},
 		      vbnmin => 8,
-		      vbnmax => 1024,
+		      vbnmax => 'inf',
 
 		      ##-- filters
 		      pgood => $PGOOD_DEFAULT,

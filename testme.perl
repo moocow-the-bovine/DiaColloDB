@@ -1426,6 +1426,30 @@ sub test_vsem_trimsigs {
 #test_vsem_trimsigs(@ARGV);
 
 ##--------------------------------------------------------------
+## test: vsem: tofloat
+sub test_vsem_tofloat {
+  my $dbdir = shift || 'kern01.d';
+
+  my %dcio = (verboseIO=>1, saveSvdUS=>1, mmap=>0);
+  my $vs = DiaColloDB::Relation::Vsem->new(base=>"$dbdir/vsem", flags=>'r', dcio=>\%dcio)
+    or die("$0: failed to open $dbdir/vsem: $!");
+
+  ##-- tweak map
+  my $map = $vs->{dcmap};
+  $map->{itype} = 'long';
+  $map->{vtype} = 'float';
+
+  ##-- convert types & re-save
+  $map->compile_types() or die("$0: compile_types() failed");
+  $map->saveDir("$dbdir/vsem.d/map.d-32", %dcio)
+    or die("$0: failed to save $dbdir/vsem.d/map.d-32");
+
+  ##-- all done
+  exit 0;
+}
+#test_vsem_tofloat(@ARGV);
+
+##--------------------------------------------------------------
 ## test: vsem: reindex
 sub test_vsem_reindex {
   my $dbdir = shift || 'kern01.d';
@@ -1468,6 +1492,7 @@ sub test_vsem_reindex {
   #$coldb->{vsopts}{termWeight} = 'uniform';
   #@{$coldb->{vsopts}}{qw(twRaw twCooked)} = qw(1 0);
   $coldb->{vsopts}{saveMem} = 1;
+  $coldb->{vsopts}{svdr} = 32;
 
   ##-- re-index
   $coldb->{vsem} = DiaColloDB::Relation::Vsem->create($coldb, undef, base=>"$dbdir/vsem");

@@ -203,7 +203,7 @@ sub DDC::XS::Object::__dcvs_compile {
 }
 
 ##======================================================================
-## Wrappers: DDC::XS::CQuery
+## Wrappers: DDC::XS::CQuery: CQToken
 
 ##----------------------------------------------------------------------
 ## $vq_or_undef = $CQToken->__dcvs_init($vq,%opts)
@@ -224,12 +224,22 @@ sub DDC::XS::CQToken::__dcvs_attr {
 }
 
 ## \%adata = $CQToken->__dcvs_compile_neg($vq,%opts)
-##   + negates $vq if applicable
+##   + negates $vq if applicable ({ti} only)
 sub DDC::XS::CQToken::__dcvs_compile_neg {
   my ($cq,$vq,%opts) = @_;
   $vq->{ti} = DiaColloDB::Utils::_negate_p($vq->{ti}, $opts{vsem}->nTerms)
     if ($cq->getNegated xor ($cq->can('getRegexNegated') ? $cq->getRegexNegated : 0));
   return $vq;
+}
+
+## $vq = $CQToken->__dcvs_compile_re($vq,$regex,%opts)
+sub DDC::XS::CQToken::__dcvs_compile_re {
+  my ($cq,$vq,$regex,%opts) = @_;
+  $cq->__dcvs_init($vq,%opts);
+  my $attr = $cq->__dcvs_attr($vq,%opts);
+  my $ais  = $attr->{enum}->re2i($regex);
+  my $ti = $vq->{ti} = $opts{vsem}->termIds($attr->{a}, $ais);
+  return $cq->__dcvs_compile_neg($vq,%opts);
 }
 
 ##----------------------------------------------------------------------
@@ -261,24 +271,225 @@ sub DDC::XS::CQTokExact::__dcvs_compile {
 ##  + should set $vq->{ti}
 sub DDC::XS::CQTokInfl::__dcvs_compile {
   my ($cq,$vq,%opts) = @_;
+  return DDC::XS::Object::__dcvs_compile(@_) if (ref($cq) ne 'DDC::XS::CQTokInfl');
   $vq->logwarn("ignoring non-trivial expansion chain in ", ref($cq), " expression (", $cq->toString, ")")
     if (@{$cq->getExpanders//[]});
   return DDC::XS::CQTokExact::__dcvs_compile(@_);
 }
 
 ##----------------------------------------------------------------------
+## $vq = $CQTokSet->__dcvs_compile($vq,%opts)
+##  + should set $vq->{ti}
+sub DDC::XS::CQTokSet::__dcvs_compile {
+  my ($cq,$vq,%opts) = @_;
+  return DDC::XS::Object::__dcvs_compile(@_) if (ref($cq) !~ /^DDC::XS::CQTokSet(?:Infl)?$/);
+  $cq->__dcvs_init($vq,%opts);
+  my $attr = $cq->__dcvs_attr($vq,%opts);
+  my $enum = $attr->{enum};
+  my $ais  = [map {$enum->s2i($_)} @{$cq->getValues}];
+  my $ti   = $vq->{ti} = $opts{vsem}->termIds($attr->{a}, $ais);
+  return $cq->__dcvs_compile_neg($vq,%opts);
+}
+
+##----------------------------------------------------------------------
+## $vq = $CQTokSetInfl->__dcvs_compile($vq,%opts)
+##  + should set $vq->{ti}
+sub DDC::XS::CQTokSetInfl::__dcvs_compile {
+  my ($cq,$vq,%opts) = @_;
+  $vq->logwarn("ignoring non-trivial expansion chain in ", ref($cq), " expression (", $cq->toString, ")")
+    if (@{$cq->getExpanders//[]});
+  return DDC::XS::Object::__dcvs_compile($vq,@_) if (ref($cq) ne 'DDC::XS::CQTokSetInfl');
+  return $cq->DDC::XS::CQTokSet::__dcvs_compile($vq,@_);
+}
+
+
+##----------------------------------------------------------------------
 ## $vq = $CQTokRegex->__dcvs_compile($vq,%opts)
 ##  + should set $vq->{ti}
 sub DDC::XS::CQTokRegex::__dcvs_compile {
   my ($cq,$vq,%opts) = @_;
-  return DDC::XS::Object::__dcvs_compile(@_) if (ref($cq) ne 'DDC::XS::CQTokRegex');
-  $cq->__dcvs_init($vq,%opts);
-  my $attr = $cq->__dcvs_attr($vq,%opts);
-  my $ais  = $attr->{enum}->re2i($cq->getValue);
-  my $ti = $vq->{ti} = $opts{vsem}->termIds($attr->{a}, $ais);
+  return DDC::XS::Object::__dcvs_compile($vq,@_) if (ref($cq) ne 'DDC::XS::CQTokRegex');
+  return $cq->__dcvs_compile_re($vq,$cq->getValue,%opts);
+}
+
+##----------------------------------------------------------------------
+## $vq = $CQTokPrefix->__dcvs_compile($vq,%opts)
+##  + should set $vq->{ti}
+sub DDC::XS::CQTokPrefix::__dcvs_compile {
+  my ($cq,$vq,%opts) = @_;
+  return DDC::XS::Object::__dcvs_compile($vq,@_) if (ref($cq) ne 'DDC::XS::CQTokPrefix');
+  return $cq->__dcvs_compile_re($vq,('^'.quotemeta($cq->getValue)),%opts);
+}
+
+##----------------------------------------------------------------------
+## $vq = $CQTokSuffix->__dcvs_compile($vq,%opts)
+##  + should set $vq->{ti}
+sub DDC::XS::CQTokSuffix::__dcvs_compile {
+  my ($cq,$vq,%opts) = @_;
+  return DDC::XS::Object::__dcvs_compile($vq,@_) if (ref($cq) ne 'DDC::XS::CQTokSuffix');
+  return $cq->__dcvs_compile_re($vq,(quotemeta($cq->getValue).'$'),%opts);
+}
+
+##----------------------------------------------------------------------
+## $vq = $CQTokInfix->__dcvs_compile($vq,%opts)
+##  + should set $vq->{ti}
+sub DDC::XS::CQTokInfix::__dcvs_compile {
+  my ($cq,$vq,%opts) = @_;
+  return DDC::XS::Object::__dcvs_compile($vq,@_) if (ref($cq) ne 'DDC::XS::CQTokInfix');
+  return $cq->__dcvs_compile_re($vq,quotemeta($cq->getValue),%opts);
+}
+
+##----------------------------------------------------------------------
+## $vq = $CQTokPrefixSet->__dcvs_compile($vq,%opts)
+##  + should set $vq->{ti}
+sub DDC::XS::CQTokPrefixSet::__dcvs_compile {
+  my ($cq,$vq,%opts) = @_;
+  return DDC::XS::Object::__dcvs_compile($vq,@_) if (ref($cq) ne 'DDC::XS::CQTokPrefixSet');
+  return $cq->__dcvs_compile_re($vq, ('^(?:'.join('|', map {quotemeta($_)} @{$cq->getValues}).')'), %opts);
+}
+
+##----------------------------------------------------------------------
+## $vq = $CQTokSuffixSet->__dcvs_compile($vq,%opts)
+##  + should set $vq->{ti}
+sub DDC::XS::CQTokSuffixSet::__dcvs_compile {
+  my ($cq,$vq,%opts) = @_;
+  return DDC::XS::Object::__dcvs_compile($vq,@_) if (ref($cq) ne 'DDC::XS::CQTokSuffixSet');
+  return $cq->__dcvs_compile_re($vq, ('(?:'.join('|', map {quotemeta($_)} @{$cq->getValues}).')$'), %opts);
+}
+
+##----------------------------------------------------------------------
+## $vq = $CQTokInfixSet->__dcvs_compile($vq,%opts)
+##  + should set $vq->{ti}
+sub DDC::XS::CQTokInfixSet::__dcvs_compile {
+  my ($cq,$vq,%opts) = @_;
+  return DDC::XS::Object::__dcvs_compile($vq,@_) if (ref($cq) ne 'DDC::XS::CQTokInfixSet');
+  return $cq->__dcvs_compile_re($vq, ('(?:'.join('|', map {quotemeta($_)} @{$cq->getValues}).')'), %opts);
+}
+
+##----------------------------------------------------------------------
+## $vq = $CQTokLemma->__dcvs_compile($vq,%opts)
+##  + should set $vq->{ti}
+sub DDC::XS::CQTokLemma::__dcvs_compile {
+  my ($cq,$vq,%opts) = @_;
+  return DDC::XS::Object::__dcvs_compile($vq,@_) if (ref($cq) ne 'DDC::XS::CQTokLemma');
+  return DDC::XS::CQTokExact::__dcvs_compile(@_);
+}
+
+##======================================================================
+## Wrappers: DDC::XS::CQuery: CQNegatable
+
+##----------------------------------------------------------------------
+## \%adata = $CQNegatable->__dcvs_compile_neg($vq,%opts)
+##   + negates $vq if applicable (both {ti} and {ci})
+sub DDC::XS::CQNegatable::__dcvs_compile_neg {
+  my ($cq,$vq,%opts) = @_;
+  if ($cq->getNegated) {
+    $vq->{ti} = DiaColloDB::Utils::_negate_p($vq->{ti}, $opts{vsem}->nTerms);
+    $vq->{ci} = DiaColloDB::Utils::_negate_p($vq->{ci}, $opts{vsem}->nCats);
+  }
+  return $vq;
+}
+
+##======================================================================
+## Wrappers: DDC::XS::CQuery: CQBinOp
+
+##----------------------------------------------------------------------
+## ($vq1,$vq2) = $CQBinOp->__dcvs_compile_dtrs($vq,%opts)
+##  + compiles daughter nodes
+sub DDC::XS::CQBinOp::__dcvs_compile_dtrs {
+  my ($cq,$vq,%opts) = @_;
+  my $dtr1 = $cq->getDtr1;
+  my $dtr2 = $cq->getDtr2;
+  my $vq1 = ($dtr1 ? $dtr1->__dcvs_compile(ref($vq)->new(), %opts) : ref($vq)->new)
+    or $vq->logconfess("failed to compile ", ref($cq), " sub-query expression (", $dtr1->toString, ")");
+  my $vq2 = ($dtr2 ? $dtr2->__dcvs_compile(ref($vq)->new(), %opts) : ref($vq)->new)
+      or $vq->logconfess("failed to compile ", ref($cq), " sub-query expression (", $dtr2->toString, ")");
+  return ($vq1,$vq2);
+}
+
+##----------------------------------------------------------------------
+## $vq = $CQWith->__dcvs_compile($vq,%opts)
+##  + should set $vq->{ti} (term-intersection only)
+sub DDC::XS::CQWith::__dcvs_compile {
+  my ($cq,$vq,%opts) = @_;
+  return DDC::XS::Object::__dcvs_compile($vq,@_) if (ref($cq) ne 'DDC::XS::CQWith');
+  my ($vq1,$vq2) = $cq->__dcvs_compile_dtrs($vq,%opts);
+  $vq->{ti} = DiaColloDB::Utils::_intersect_p($vq1->{ti},$vq2->{ti});
+  return DDC::XS::CQToken::__dcvs_compile_neg($cq,$vq,%opts);
+}
+
+##----------------------------------------------------------------------
+## $vq = $CQWith->__dcvs_compile($vq,%opts)
+##  + should set $vq->{ti} (term-difference only)
+sub DDC::XS::CQWithout::__dcvs_compile {
+  my ($cq,$vq,%opts) = @_;
+  return DDC::XS::Object::__dcvs_compile($vq,@_) if (ref($cq) ne 'DDC::XS::CQWithout');
+  my ($vq1,$vq2) = $cq->__dcvs_compile_dtrs($vq,%opts);
+  $vq->{ti} = DiaColloDB::Utils::_setdiff_p($vq1->{ti},$vq2->{ti},$opts{vsem}->nTerms);
+  return DDC::XS::CQToken::__dcvs_compile_neg($cq,$vq,%opts);
+}
+
+##----------------------------------------------------------------------
+## $vq = $CQWith->__dcvs_compile($vq,%opts)
+##  + should set $vq->{ti}, $vq->{ci} (cat-intersection, term-union)
+##  + TODO: fix this to use minimum tdm0 frequency of compiled daughters
+##    - requires generalizing Query.pm to allow explicit frequencies (full tdm?) -- LATER!
+sub DDC::XS::CQAnd::__dcvs_compile {
+  my ($cq,$vq,%opts) = @_;
+  return DDC::XS::Object::__dcvs_compile($vq,@_) if (ref($cq) ne 'DDC::XS::CQAnd');
+  my ($vq1,$vq2) = $cq->__dcvs_compile_dtrs($vq,%opts);
+  $vq->{ti} = DiaColloDB::Utils::_union_p($vq1->{ti}, $vq2->{ti});
+  $vq->{ci} = DiaColloDB::Utils::_intersect_p($opts{vsem}->catSubset($vq1->{ti}, $vq1->{ci}),
+					      $opts{vsem}->catSubset($vq2->{ti}, $vq2->{ci}));
   return $cq->__dcvs_compile_neg($vq,%opts);
 }
 
+##----------------------------------------------------------------------
+## $vq = $CQWith->__dcvs_compile($vq,%opts)
+##  + should set $vq->{ti}, $vq->{ci} (cat-union, term-union)
+sub DDC::XS::CQOr::__dcvs_compile {
+  my ($cq,$vq,%opts) = @_;
+  return DDC::XS::Object::__dcvs_compile($vq,@_) if (ref($cq) ne 'DDC::XS::CQOr');
+  my ($vq1,$vq2) = $cq->__dcvs_compile_dtrs($vq,%opts);
+  $vq->{ti} = DiaColloDB::Utils::_union_p($vq1->{ti}, $vq2->{ti});
+  $vq->{ci} = DiaColloDB::Utils::_union_p($vq1->{ci}, $vq2->{ci});
+  return $cq->__dcvs_compile_neg($vq,%opts);
+}
+
+
+
+##======================================================================
+## Wrappers: DDC::XS::CQuery: TODO
+
+## DDC::XS::CQuery : @ISA=qw(DDC::XS::Object)
+# DDC::XS::CQNegatable : @ISA=qw(DDC::XS::CQuery)
+# DDC::XS::CQAtomic : @ISA=qw(DDC::XS::CQNegatable)
+# DDC::XS::CQBinOp : @ISA=qw(DDC::XS::CQNegatable)
+## DDC::XS::CQAnd : @ISA=qw(DDC::XS::CQBinOp)
+## DDC::XS::CQOr : @ISA=qw(DDC::XS::CQBinOp)
+## DDC::XS::CQWith : @ISA=qw(DDC::XS::CQBinOp)
+## DDC::XS::CQWithout : @ISA=qw(DDC::XS::CQWith)
+## DDC::XS::CQToken : @ISA=qw(DDC::XS::CQAtomic)
+## DDC::XS::CQTokExact : @ISA=qw(DDC::XS::CQToken)
+## DDC::XS::CQTokAny : @ISA=qw(DDC::XS::CQToken)
+# DDC::XS::CQTokAnchor : @ISA=qw(DDC::XS::CQToken)
+## DDC::XS::CQTokRegex : @ISA=qw(DDC::XS::CQToken)
+## DDC::XS::CQTokSet : @ISA=qw(DDC::XS::CQToken)
+## DDC::XS::CQTokInfl : @ISA=qw(DDC::XS::CQTokSet)
+## DDC::XS::CQTokSetInfl : @ISA=qw(DDC::XS::CQTokInfl)
+## DDC::XS::CQTokPrefix : @ISA=qw(DDC::XS::CQToken)
+## DDC::XS::CQTokSuffix : @ISA=qw(DDC::XS::CQToken)
+## DDC::XS::CQTokInfix : @ISA=qw(DDC::XS::CQToken)
+## DDC::XS::CQTokPrefixSet : @ISA=qw(DDC::XS::CQTokSet)
+## DDC::XS::CQTokSuffixSet : @ISA=qw(DDC::XS::CQTokSet)
+## DDC::XS::CQTokInfixSet : @ISA=qw(DDC::XS::CQTokSet)
+# DDC::XS::CQTokMorph : @ISA=qw(DDC::XS::CQToken)
+## DDC::XS::CQTokLemma : @ISA=qw(DDC::XS::CQTokMorph)
+# DDC::XS::CQTokThes : @ISA=qw(DDC::XS::CQToken)
+# DDC::XS::CQTokChunk : @ISA=qw(DDC::XS::CQToken)
+# DDC::XS::CQTokFile : @ISA=qw(DDC::XS::CQToken)
+# DDC::XS::CQNear : @ISA=qw(DDC::XS::CQNegatable)
+# DDC::XS::CQSeq : @ISA=qw(DDC::XS::CQAtomic)
 
 ##----------------------------------------------------------------------
 ## $vq = $OBJECT->__dcvs_compile($vq,%opts)

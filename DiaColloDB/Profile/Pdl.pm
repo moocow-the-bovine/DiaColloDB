@@ -115,7 +115,7 @@ sub gwhich {
   my $igood  = undef;
 
   ##-- sanity checks
-  return null->long if ($pprf->empty);
+  return null->ccs_indx if ($pprf->empty);
 
   ##-- gwhich: by explicit cutoff
   if (($opts{cutoff}//'') ne '') {
@@ -198,11 +198,15 @@ sub averageOver {
   #  $gkeys = $gkeys->uniq;
   ##--
   my $gkeys = undef;
-  $gkeys = _union_p($gkeys,$_->{gkeys}) foreach (grep {!$_->empty} @$pprfs);
+  my $valt  = undef;
+  foreach (grep {!$_->empty} @$pprfs) {
+    $gkeys = _union_p($gkeys,$_->{gkeys});
+    $valt  = $_->{gvals}->type if (!defined($valt) || $_->{gvals}->type > $valt);
+  }
   return $pprf if ($gkeys->nelem==0);
 
   ##-- step 2: get score-values
-  my $gvals = zeroes(double,$gkeys->nelem);
+  my $gvals = zeroes(($valt//double),$gkeys->nelem);
   foreach (@$pprfs) {
     if (!defined($_) || $_->empty) {
       my $missing = ($_ ? $_->missing : $that->missing);
