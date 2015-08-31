@@ -19,6 +19,10 @@ use strict;
 ## Globals & Constants
 
 our @ISA = qw(DiaColloDB::Relation);
+BEGIN {
+  no warnings 'once';
+  $PDL::BIGPDL = 1; ##-- avoid 'Probably false alloc of over 1Gb PDL' errors
+}
 
 ##==============================================================================
 ## Constructors etc.
@@ -273,9 +277,10 @@ sub create {
   $vs->vlog($logCreate, "create(): creating term-attribute pseudo-enum (NA=$NA x NT=$NT)");
   #my $pack_t = $coldb->{pack_w};
   my $ti2s   = $map->{tenum}{id2sym};
-  my $tvals  = $vs->{tvals} = zeroes($map->itype, $NA,$NT); ##-- [$apos,$ti] => $avali_at_term_ti
+  my $itype  = $map->itype;
+  my $tvals  = $vs->{tvals} = zeroes($itype, $NA,$NT); ##-- [$apos,$ti] => $avali_at_term_ti
   foreach (0..$#$ti2s) {
-    ($tmp=$tvals->slice(",($_)")) .= [split(' ',$ti2s->[$_])] if (defined($_));
+    ($tmp=$tvals->slice(",($_)")) .= pdl($itype, [split(' ',$ti2s->[$_])]) if (defined($_));
   }
   ##
   #$vs->vlog($logCreate, "create(): creating term-attribute sort-indices (NA=$NA x NT=$NT)");

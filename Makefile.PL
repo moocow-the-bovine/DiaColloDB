@@ -23,7 +23,7 @@ WriteMakefile
 		    ##-- for vector-semantic models (Vsem)
 		    'DocClassify' => '0.15',
 		    'PDL::VectorValued::Version' => '1.0.1',
-		    'Tie::Array::Indexed' => '0.02',
+		    'Tie::File::Indexed' => '0.03',
 		   },
 
 

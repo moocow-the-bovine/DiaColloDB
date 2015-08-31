@@ -1492,7 +1492,7 @@ sub test_vsem_reindex {
   #$coldb->{vsopts}{termWeight} = 'uniform';
   #@{$coldb->{vsopts}}{qw(twRaw twCooked)} = qw(1 0);
   $coldb->{vsopts}{saveMem} = 1;
-  $coldb->{vsopts}{svdr} = 32;
+  #$coldb->{vsopts}{svdr} = 32;
 
   ##-- re-index
   $coldb->{vsem} = DiaColloDB::Relation::Vsem->create($coldb, undef, base=>"$dbdir/vsem");
