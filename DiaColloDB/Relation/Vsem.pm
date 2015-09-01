@@ -170,8 +170,8 @@ sub opened {
 ## Relation API: create
 
 ## $vs = $CLASS_OR_OBJECT->create($coldb,$tokdat_file,%opts)
-##  + populates current database from $tokdat_file,
-##    a tt-style text file containing 1 token-id perl line with optional blank lines
+##  + populates current database for $coldb
+##  + implementation used (temporary, tied) doc-array $coldb->{doctmpa}
 ##  + %opts: clobber %$vs, also:
 ##    (
 ##     size=>$size,  ##-- set initial size
@@ -375,31 +375,276 @@ sub create {
 
 ##--------------------------------------------------------------
 ## $idEnum = PACKAGE->idEnum($mudlEnum)
+## $idEnum = PACKAGE->idEnum($size)
 ##  + creates a shadow identity MUDL::Enum for $mudlEnum
 sub idEnum {
   shift if (UNIVERSAL::isa($_[0],__PACKAGE__));
-  my $menum = shift;
-  my ($i2s,$s2i) = DiaColloDB::EnumFile::Identity->tiepair(size=>$menum->size,dirty=>1);
+  my ($size);
+  if (!ref($_[0])) {
+    $size = shift;
+  } else {
+    my $menum = shift;
+    $size = $menum->size;
+  }
+  my ($i2s,$s2i) = DiaColloDB::EnumFile::Identity->tiepair(size=>$size,dirty=>1);
   return MUDL::Enum->new(id2sym=>$i2s,sym2id=>$s2i);
 }
 
 ##==============================================================================
 ## Relation API: union
 
-## $vs = CLASS_OR_OBJECT->union($coldb, \@pairs, %opts)
+## $vs = CLASS_OR_OBJECT->union($coldb, \@dbargs, %opts)
 ##  + merge multiple co-frequency indices into new object
-##  + @pairs : array of pairs ([$vs,\@xi2u],...)
-##    of unigram-objects $vs and tuple-id maps \@xi2u for $vs
+##  + @dbargs : array of sub-objects ($coldb,...) containing {vsem} keys
 ##  + %opts: clobber %$vs
 ##  + implicitly flushes the new index
 sub union {
-  my ($vs,$coldb,$pairs,%opts) = @_;
+  my ($vs,$coldb,$dbargs,%opts) = @_;
 
-  ##-- create/clobber
+  ##-- union: create/clobber
   $vs = $vs->new() if (!ref($vs));
   @$vs{keys %opts} = values %opts;
 
-  $vs->logconfess("union(): not yet implemented");
+  ##-- union: sanity checks
+  my $base = $vs->{base};
+  $vs->logconfess("union(): no 'base' key defined") if (!$base);
+
+  ##-- union: output directory
+  my $vsdir = "$base.d";
+  $vsdir =~ s{/$}{};
+  !-d $vsdir
+    or remove_tree($vsdir)
+      or $vs->logconfess("union(): could not remove stale $vsdir: $!");
+  make_path($vsdir)
+    or $vs->logconfess("union(): could not create Vsem directory $vsdir: $!");
+
+  ##-- union: logging
+  my $logCreate = 'trace';
+
+  ##-- union: create dcmap
+  $vs->{dcopts} //= {};
+  @{$vs->{dcopts}}{keys %{$coldb->{vsopts}//{}}} = values %{$coldb->{vsopts}//{}};
+  my $map = $vs->{dcmap} = DocClassify::Mapper->new( %{$vs->{dcopts}} )
+    or $vs->logconfess("union(): failed to create DocClassify::Mapper object");
+  my $mverbose = $map->{verbose};
+  $map->{verbose} = min2($mverbose,1);
+
+  ##-- union: save local copy of attributes
+  $vs->{attrs} = $coldb->{attrs};
+
+  ##-- union: common variables
+  my $itype = $map->itype;
+  my $vtype = $map->vtype;
+  my %ioopts = %{$vs->{dcio}//{}};
+  my ($tmp,$tmp1);
+
+  ##-- union: term-attributes: extract tuples
+  my $NA  = scalar @{$coldb->{attrs}};
+  my $NT0 = pdl($itype, [map {$_->{vsem}->nTerms} @$dbargs])->sum;
+  $vs->vlog($logCreate, "union(): term-attribute tuples: extract (NA=$NA x NT<=$NT0)");
+  my ($db,$dbvs,$tslice,$utvals, $a,$apos,$uapos, $a2u);
+  my $tvals0 = zeroes($itype,$NA,$NT0);
+  my $toff = 0;
+  foreach $db (@$dbargs) {
+    $dbvs   = $db->{vsem};
+    $tslice = $db->{_vsunion_tslice0} = "$toff:".($toff+$dbvs->nTerms-1);
+    foreach $a (@{$dbvs->{attrs}}) {
+      next if (!defined($apos  = $dbvs->tpos($a)));
+      next if (!defined($uapos = $vs->tpos($a)));
+      $a2u = pdl($itype, $db->{"_union_${a}i2u"}->toArray);
+      ($tmp=$tvals0->slice("($uapos),$tslice")) .= $a2u->index( $dbvs->{tvals}->slice("($apos),") );
+      undef $a2u;
+    }
+    $toff += $dbvs->nTerms;
+  }
+
+  ##-- union: term-attributes: map
+  $vs->vlog($logCreate, "union(): term-attribute tuples: map & sort");
+  my $tvals = $vs->{tvals} = $tvals0->vv_uniqvec;
+  my $NT    = $tvals->dim(1);
+  foreach $db (@$dbargs) {
+    $tslice = $db->{"_vsunion_tslice0"};
+    $db->{"_vsunion_t2u"} = $tvals0->slice(",$tslice")->vsearchvec( $tvals );
+  }
+  my $tsorti = $vs->{tsorti} = zeroes($map->itype, $NT,$NA); ##-- [,($apos)] => $tvals->slice("($apos),")->qsorti
+  foreach (0..($NA-1)) {
+    $tvals->slice("($_),")->qsorti($tsorti->slice(",($_)"));
+  }
+  undef $tvals0;
+
+  ##-- union: metadata
+  $vs->vlog($logCreate, "union(): metadata: extract");
+  my $mgood = $vs->{mgood} ? qr{$vs->{mgood}} : undef;
+  my $mbad  = $vs->{mbad}  ? qr{$vs->{mbad}}  : undef;
+  my %meta = (map {($_=>{n=>0, s2i=>{}, vals=>undef})}
+	      grep { !(defined($mgood) && $_ !~ $mgood) || !(defined($mbad) && $_ =~ $mbad) }
+	      map {@{$_->{vsem}{meta}}}
+	      @$dbargs);
+  my $meta = $vs->{meta} = [sort keys %meta];
+  my $NM   = scalar @$meta;
+  my $NC   = pdl($itype, [map {$_->{vsem}->nCats} @$dbargs])->sum;
+  my $mvals = $vs->{mvals} = zeroes($itype, $NM,$NC);
+  my $moff = 0;
+  my ($mslice,$m,$mdata,$mi,$mstrs,$mpos,$umpos,$m2u);
+  foreach $db (@$dbargs) {
+    $dbvs = $db->{vsem};
+    $mslice = "$moff:".($moff+$dbvs->nCats-1);
+    foreach $m (@{$dbvs->{meta}}) {
+      next if (!defined($mpos = $dbvs->mpos($m)));
+      next if (!defined($umpos = $vs->mpos($m)));
+      next if (!defined($mdata = $meta{$m}));
+      foreach (@{$mstrs=$dbvs->{"meta_e_$m"}->toArray}) {
+	$mi = $mdata->{s2i}{$_} = $mdata->{n}++ if (!defined($mi=$mdata->{s2i}{$_}));
+      }
+      $m2u = pdl($itype, [@{$mdata->{s2i}}{@$mstrs}]);
+      ($tmp=$mvals->slice("($umpos),$mslice")) .= $m2u->index( $dbvs->{mvals}->slice("($mpos),") );
+      undef $m2u;
+    }
+    $moff += $dbvs->nCats;
+  }
+
+  ##-- union: meta-attributes: sort
+  $vs->vlog($logCreate, "union(): metadata: sort-indices (NM=$NM x NC=$NC)");
+  my $msorti = $vs->{msorti} = zeroes($map->itype, $NC,$NM); ##-- [,($mi)] => $mvals->slice("($mi),")->qsorti
+  foreach (0..($NM-1)) {
+    $mvals->slice("($_),")->qsorti($msorti->slice(",($_)"));
+  }
+
+  ##-- union: meta-attributes: enums
+  $vs->vlog($logCreate, "union(): metadata: enums");
+  my %efopts = (flags=>$vs->{flags}, pack_i=>$coldb->{pack_id}, pack_o=>$coldb->{pack_off}, pack_l=>$coldb->{pack_len});
+  my ($menum,$mattr);
+  foreach (0..($NM-1)) {
+    $vs->vlog($logCreate, "union(): metadata: enum: $vs->{meta}[$_]");
+    $mattr = $vs->{meta}[$_];
+    $mdata = $meta{$mattr};
+    $menum = $vs->{"meta_e_$mattr"} = $DiaColloDB::ECLASS->new(%efopts);
+    $menum->fromHash($mdata->{s2i})
+      or $vs->logconfess("union(): failed to create metadata enum for attribute '$mattr': $!");
+    $menum->save("$vsdir/meta_e_$mattr")
+      or $vs->logconfess("create(): failed to save metadata enum $vsdir/meta_e_$mattr: $!");
+  }
+  undef %meta;
+
+  ##-- union: aux: info
+  $vs->{N} = pdl($itype, [map {$_->{vsem}{N}} @$dbargs])->sum;
+
+  ##-- union: mapper: enums
+  my $ND = pdl($itype, [map {$_->{vsem}->nDocs} @$dbargs])->sum;
+  $vs->vlog($logCreate, "union(): mapper: identity-enums");
+  $map->{tenum}  = $vs->idEnum($NT);
+  $map->{gcenum} = $map->{lcenum} = $vs->idEnum($NC);
+  $map->{denum}  = $vs->idEnum($ND);
+
+  ##-- union: mapper: tw (weight by corpus size -- may be complete garbage)
+  $vs->vlog($logCreate, "union(): mapper: tw");
+  my $tw = $map->{tw} = zeroes($vtype, $NT);
+  my $tn = zeroes($vtype, $NT);
+  foreach $db (@$dbargs) {
+    ($tmp=$tn->index($db->{_vsunion_t2u})) += $db->{vsem}{N};
+  }
+  foreach $db (@$dbargs) {
+    ($tmp=$tw->index($db->{_vsunion_t2u})) += $db->{vsem}{dcmap}{tw} * $db->{vsem}{N};
+  }
+  my $tnmask = ($tn > 0);
+  $tw->where($tnmask) /= $tn->where($tnmask);
+  #undef $tnmask;
+  #undef $tn;
+
+  ##-- union:    d2c: ($ND)  : [$di]   => $ci
+  ##-- union:    c2d: (2,$NC): [0,$ci] => $di_off, [1,$ci] => $di_len
+  ##-- union: c2date: ($NC)  : [$ci]   => $date
+  $vs->vlog($logCreate, "union(): doc<->category translation piddles (ND=$ND, NC=$NC)");
+  my $d2c = $vs->{d2c} = zeroes($itype, $ND);
+  my $c2d = $vs->{c2d} = zeroes($itype, 2,$NC);
+  my $c2date = $vs->{c2date} = zeroes(ushort, $NC);
+  my ($doff,$coff) = (0,0);
+  foreach $db (@$dbargs) {
+    $dbvs   = $db->{vsem};
+
+    ($tmp=$d2c->slice("$doff:".($doff+$dbvs->nDocs-1))) .= $dbvs->{d2c};
+    $tmp  += $coff;
+
+    ($tmp=$c2d->slice(",$coff:".($coff+$dbvs->nCats-1))) .= $dbvs->{c2d};
+    ($tmp1=$tmp->slice("(0),")) += $doff;
+
+    ($tmp=$c2date->slice("$coff:".($coff+$dbvs->nCats-1))) .= $dbvs->{c2date};
+
+    $doff += $dbvs->nDocs;
+    $coff += $dbvs->nCats;
+  }
+
+  ##-- union: mapper: dcm
+  $vs->vlog($logCreate, "union(): mapper: dcm (ND=$ND x NC=$NC)");
+  my $dcm_w = zeroes($itype, 2,$ND);
+  ($tmp=$dcm_w->slice("(0),")) .= sequence($itype,$ND);
+  ($tmp=$dcm_w->slice("(1),")) .= $d2c;
+  my $dcm = $map->{dcm} = PDL::CCS::Nd->newFromWhich($dcm_w, ones(byte,$ND)->append(0), steal=>1);
+
+  ##-- union: mapper: tdm [TODO: fix this to use {tdm0} and really re-compile {tw} since we need tdm0 anyways in compileLocal()]
+  $vs->vlog($logCreate, "union(): mapper: tdm (NT=$NT x ND=$ND)");
+  my $tdm_nnz = pdl($itype, [map {$_->{vsem}{dcmap}{tdm}->_nnz} @$dbargs])->sum;
+  my $tdm_w   = zeroes($itype, 2,$tdm_nnz);
+  my $tdm_v   = zeroes($vtype,   $tdm_nnz+1);
+  $doff = 0;
+  my $nzoff = 0;
+  my ($dbmap,$nzslice);
+  foreach $db (@$dbargs) {
+    $dbvs  = $db->{vsem};
+    $dbmap = $dbvs->{dcmap};
+    $nzslice = "$nzoff:".($nzoff+$dbmap->{tdm}->_nnz-1);
+
+    ($tmp=$tdm_w->slice(",$nzslice")) .= $dbmap->{tdm}->_whichND;
+    ($tmp1=$tmp->slice("(0),")) .= $db->{_vsunion_t2u}->index( $dbmap->{tdm}->_whichND->slice("(0),") );
+    ($tmp1=$tmp->slice("(1),")) += $doff;
+
+    ($tmp=$tdm_v->slice("$nzslice")) .= $dbmap->{tdm}->_nzvals;
+
+    $doff  += $dbvs->nDocs;
+    $nzoff += $dbmap->{tdm}->_nnz;
+  }
+  $map->{tdm} = PDL::CCS::Nd->newFromWhich($tdm_w,$tdm_v, missing=>0,dims=>[$NT,$ND]);
+  undef $tdm_w;
+  undef $tdm_v;
+
+  ##-- union: mapper: ByLemma stuff
+  $map->compile_disto();
+  $map->lemmatizer();
+
+  ##-- union: mapper: svd
+  $vs->vlog($logCreate, "union(): mapper: svd");
+  $map->get_tdm0(); ##-- needed for compile_xcm() with catProfile='average'
+  $map->compileLocal(label=>"UNION", svdShrink=>1)
+    or $vs->logconfess("union(): failed to compile mapper sub-object");
+
+  ##-- mapper: aux data: ccsDocMissing ccsSvdNil (xcm|xdm|xtm)_sigma:implicit in DocClassify::Mapper::LSI::saveDirData()
+
+  ##-- save
+  $vs->vlog($logCreate, "union(): saving to $base*");
+
+  ##-- save: header
+  $vs->saveHeader()
+    or $vs->logconfess("union(): failed to save header data: $!");
+
+  ##-- save: mapper
+  $map->saveDir("$vsdir/map.d", %ioopts)
+    or $vs->logconfess("union(): failed to save mapper data to ${vsdir}/map.d: $!");
+
+  ##-- save: aux data: piddles
+  foreach (qw(tvals tsorti mvals msorti d2c c2d c2date)) {
+    $map->writePdlFile($vs->{$_}, "$vsdir/$_.pdl", %ioopts)
+      or $vs->logconfess("create(): failed to save auxilliary piddle $vsdir/$_.pdl: $!");
+  }
+
+  ##-- union: cleanup temporaries
+  if (!$vs->{keeptmp}) {
+    $vs->vlog($logCreate, "union(): cleaning up local temporaries");
+    foreach $db (@$dbargs) {
+      delete @$db{qw(_vsunion_tslice0 _vsunion_t2u)};
+    }
+  }
+
+  ##-- union: all done
   return $vs;
 }
 

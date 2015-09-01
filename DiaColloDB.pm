@@ -1006,6 +1006,26 @@ sub union {
     $coldb->vlog($coldb->{logCreate}, "union(): NOT creating co-frequency index $dbdir/cof.*; set index_cof=1 to enable");
   }
 
+  ##-- vsem: populate
+  my $db_vsem            = !grep {!$_->{index_vsem}} @dbargs;
+  $coldb->{index_vsem} //= $db_vsem;
+  if ($coldb->{index_vsem} && $db_vsem) {
+    $coldb->vlog($coldb->{logCreate}, "union(): creating vector-space index $dbdir/vsem.*");
+    my $vsopts0            = $dbargs[0]{vsem}{vsopts};
+    $coldb->{vsopts}     //= {};
+    $coldb->{vsopts}     //= $vsopts0->{$_} foreach (keys %$vsopts0); ##-- vsem: inherit options
+    $coldb->{vsopts}{$_} //= $VSOPTS{$_}    foreach (keys %VSOPTS);   ##-- vsem: default options
+    $coldb->{vsem} = DiaColloDB::Relation::Vsem->union($coldb, \@dbargs,
+						       base => "$dbdir/vsem",
+						       flags => $flags,
+						       keeptmp => $coldb->{keeptmp},
+						       %{$coldb->{vsopts}},
+						      )
+      or $coldb->logconfess("create(): failed to populate vector-space index $dbdir/vsem.*: $!");
+  } else {
+    $coldb->vlog($coldb->{logCreate}, "union(): NOT creating vector-space index $dbdir/vsem.*; set index_vsem=1 on all argument DBs to enable");
+  }
+
   ##-- cleanup
   if (!$coldb->{keeptmp}) {
     $coldb->vlog($coldb->{logCreate}, "union(): cleaning up temporary files");
