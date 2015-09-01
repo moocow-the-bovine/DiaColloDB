@@ -137,6 +137,7 @@ our %VSOPTS = (
 ##    cfmin => $cfmin,    ##-- minimum co-occurrence frequency for Cofreqs and ddc queries (default=2)
 ##    keeptmp => $bool,   ##-- keep temporary files? (default=0)
 ##    index_vsem => $bool,##-- vsem: create/use vector-semantic index? (default=undef: if available)
+##    index_cof  => $bool,##-- cof: create/use co-frequency index (default=1)
 ##    vbreak => $vbreak,  ##-- vsem: use break-type $break for vsem index (default=undef: files)
 ##    vsopts => \%vsopts, ##-- vsem: options for DocClassify::Mapper->new(); default={} (all inherited from %VSOPTS)
 ##    vbnmin => $vbnmin,  ##-- vsem: minimum number of content-tokens in signature-blocks (default=8)
@@ -206,6 +207,7 @@ sub new {
 		      cfmin => 2,
 		      #keeptmp => 0,
 		      index_vsem => undef,
+		      index_cof => 1,
 		      vbreak => undef,
 		      vsopts => {},
 		      vbnmin => 8,
@@ -366,11 +368,13 @@ sub open {
   $coldb->{xf}{N} = $coldb->{xN} if ($coldb->{xN} && !$coldb->{xf}{N}); ##-- compat
 
   ##-- open: cof
-  $coldb->{cof} = DiaColloDB::Relation::Cofreqs->new(base=>"$dbdir/cof", flags=>$flags,
-						     pack_i=>$coldb->{pack_id}, pack_f=>$coldb->{pack_f},
-						     dmax=>$coldb->{dmax}, fmin=>$coldb->{cfmin},
-						    )
-    or $coldb->logconfess("open(): failed to open co-frequency file $dbdir/cof.*: $!");
+  if ($coldb->{index_cof}//1) {
+    $coldb->{cof} = DiaColloDB::Relation::Cofreqs->new(base=>"$dbdir/cof", flags=>$flags,
+						       pack_i=>$coldb->{pack_id}, pack_f=>$coldb->{pack_f},
+						       dmax=>$coldb->{dmax}, fmin=>$coldb->{cfmin},
+						      )
+      or $coldb->logconfess("open(): failed to open co-frequency file $dbdir/cof.*: $!");
+  }
 
   ##-- open: ddc (undef if ddcServer isn't set in ddc.hdr or $coldb)
   $coldb->{ddc} = DiaColloDB::Relation::DDC->new(-r "$dbdir/ddc.hdr" ? (base=>"$dbdir/ddc") : qw())->fromDB($coldb)
@@ -796,15 +800,19 @@ sub create {
     or $coldb->logconfess("create(): failed to create unigram index: $!");
 
   ##-- compute collocation frequencies
-  $coldb->info("creating co-frequency index $dbdir/cof.* [dmax=$coldb->{dmax}, fmin=$coldb->{cfmin}]");
-  my $cof = $coldb->{cof} = DiaColloDB::Relation::Cofreqs->new(base=>"$dbdir/cof", flags=>$flags,
-							       pack_i=>$pack_id, pack_f=>$pack_f,
-							       dmax=>$coldb->{dmax}, fmin=>$coldb->{cfmin},
-							       keeptmp=>$coldb->{keeptmp},
-							      )
-    or $coldb->logconfess("create(): failed to create co-frequency index $dbdir/cof.*: $!");
-  $cof->create($coldb, $tokfile)
-    or $coldb->logconfess("create(): failed to create co-frequency index: $!");
+  if ($coldb->{index_cof}//1) {
+    $coldb->info("creating co-frequency index $dbdir/cof.* [dmax=$coldb->{dmax}, fmin=$coldb->{cfmin}]");
+    my $cof = $coldb->{cof} = DiaColloDB::Relation::Cofreqs->new(base=>"$dbdir/cof", flags=>$flags,
+								 pack_i=>$pack_id, pack_f=>$pack_f,
+								 dmax=>$coldb->{dmax}, fmin=>$coldb->{cfmin},
+								 keeptmp=>$coldb->{keeptmp},
+								)
+      or $coldb->logconfess("create(): failed to create co-frequency index $dbdir/cof.*: $!");
+    $cof->create($coldb, $tokfile)
+      or $coldb->logconfess("create(): failed to create co-frequency index: $!");
+  } else {
+    $coldb->info("NOT creating co-frequency index $dbdir/cof.*; set index_cof=1 to enable");
+  }
 
   ##-- create vector-space model (if requested & available)
   if ($coldb->{index_vsem}) {
@@ -984,15 +992,19 @@ sub union {
     or $coldb->logconfess("union(): could not populate unigram index $dbdir/xf.*: $!");
 
   ##-- co-frequencies: populate
-  $coldb->vlog($coldb->{logCreate}, "union(): creating co-frequency index $dbdir/cof.* [fmin=$coldb->{cfmin}]");
-  $coldb->{cof} = DiaColloDB::Relation::Cofreqs->new(base=>"$dbdir/cof", flags=>$flags,
-						     pack_i=>$pack_id, pack_f=>$pack_f,
-						     dmax=>$coldb->{dmax}, fmin=>$coldb->{cfmin},
-						     keeptmp=>$coldb->{keeptmp},
-						    )
-    or $coldb->logconfess("create(): failed to open co-frequency index $dbdir/cof.*: $!");
-  $coldb->{cof}->union($coldb, [map {[@$_{qw(cof _union_xi2u)}]} @dbargs])
-    or $coldb->logconfess("union(): could not populate co-frequency index $dbdir/cof.*: $!");
+  if ($coldb->{index_cof}//1) {
+    $coldb->vlog($coldb->{logCreate}, "union(): creating co-frequency index $dbdir/cof.* [fmin=$coldb->{cfmin}]");
+    $coldb->{cof} = DiaColloDB::Relation::Cofreqs->new(base=>"$dbdir/cof", flags=>$flags,
+						       pack_i=>$pack_id, pack_f=>$pack_f,
+						       dmax=>$coldb->{dmax}, fmin=>$coldb->{cfmin},
+						       keeptmp=>$coldb->{keeptmp},
+						      )
+      or $coldb->logconfess("create(): failed to open co-frequency index $dbdir/cof.*: $!");
+    $coldb->{cof}->union($coldb, [map {[@$_{qw(cof _union_xi2u)}]} @dbargs])
+      or $coldb->logconfess("union(): could not populate co-frequency index $dbdir/cof.*: $!");
+  } else {
+    $coldb->vlog($coldb->{logCreate}, "union(): NOT creating co-frequency index $dbdir/cof.*; set index_cof=1 to enable");
+  }
 
   ##-- cleanup
   if (!$coldb->{keeptmp}) {

@@ -1338,6 +1338,63 @@ sub test_diffop {
 ##==============================================================================
 ## test: vsem
 
+sub matcat2d {
+  my ($a,$b) = @_;
+  my $c = zeroes($a->type, $a->dim(0)+$b->dim(0), $a->dim(1)+$b->dim(1));
+  my ($tmp);
+  ($tmp=$c->slice("0:".($a->dim(0)-1).",0:".($a->dim(1)-1))) .= $a;
+  ($tmp=$c->slice(-$b->dim(0).":-1,".-$b->dim(1).":-1"))     .= $b;
+  return $c;
+}
+BEGIN {
+  *PDL::matcat2d = \&matcat2d;
+}
+
+sub isok {
+  my ($label,$bool) = @_;
+  print "$label: ".($bool ? "ok" : "NOT ok")."\n";
+}
+sub svdok {
+  my ($label,$raw,$v,$s,$u,$eps) = @_;
+  $eps //= 1e-5;
+  isok("svd:$label", all(($v x stretcher($s) x $u)->abs->approx($raw->abs,$eps)));
+}
+
+##--------------------------------------------------------------
+## test: vsem: union
+sub test_svd_union {
+  $, = ' ';
+  my @adims = (5,3);
+  my @bdims = (7,2);
+  my $a =    sequence(@adims)->xchg(0,1);
+  my $b = 10*sequence(@bdims)->xchg(0,1);
+  my ($tmp);
+  ($tmp=$a->where($a % 3)) .= 0;
+  ($tmp=$b->where($b % 3)) .= 0;
+
+  my $ab = matcat2d($a,$b);
+  my ($va,$sa,$ua) = $a->svd;
+  my ($vb,$sb,$ub) = $b->svd;
+  my ($vab,$sab,$uab) = $ab->svd;
+  svdok("a", $a,$va,$sa,$ua);
+  svdok("b", $b,$vb,$sb,$ub);
+  svdok("ab", $ab,$vab,$sab,$uab);
+
+  ##-- ok, but this doesn't help us with vsem union()
+  my $vabc = matcat2d($va,$vb);
+  my $sabc = $sa->append($sb);
+  my $uabc = matcat2d($ua,$ub);
+  svdok("ab:cat", $ab,$vabc,$sabc,$uabc);
+
+  ##-- stretcher values all == 1 (matrices already singular)
+  my ($vabv,$vabs,$vabu) = $vabc->svd;
+  my ($uabv,$uabs,$uabu) = $uabc->svd;
+
+  exit 0;
+}
+test_svd_union();
+
+
 ##--------------------------------------------------------------
 ## test: vsem: get sig sizes
 sub test_vsem_sigsize {
