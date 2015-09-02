@@ -533,23 +533,9 @@ sub union {
   my $ND = pdl($itype, [map {$_->{vsem}->nDocs} @$dbargs])->sum;
   $vs->vlog($logCreate, "union(): mapper: identity-enums");
   $map->{tenum}  = $vs->idEnum($NT);
-  $map->{gcenum} = $map->{lcenum} = $vs->idEnum($NC);
+  $map->{gcenum} = $vs->idEnum($NC);
+  $map->{lcenum} = $vs->idEnum($NC);
   $map->{denum}  = $vs->idEnum($ND);
-
-  ##-- union: mapper: tw (weight by corpus size -- may be complete garbage)
-  $vs->vlog($logCreate, "union(): mapper: tw");
-  my $tw = $map->{tw} = zeroes($vtype, $NT);
-  my $tn = zeroes($vtype, $NT);
-  foreach $db (@$dbargs) {
-    ($tmp=$tn->index($db->{_vsunion_t2u})) += $db->{vsem}{N};
-  }
-  foreach $db (@$dbargs) {
-    ($tmp=$tw->index($db->{_vsunion_t2u})) += $db->{vsem}{dcmap}{tw} * $db->{vsem}{N};
-  }
-  my $tnmask = ($tn > 0);
-  $tw->where($tnmask) /= $tn->where($tnmask);
-  #undef $tnmask;
-  #undef $tn;
 
   ##-- union:    d2c: ($ND)  : [$di]   => $ci
   ##-- union:    c2d: (2,$NC): [0,$ci] => $di_off, [1,$ci] => $di_len
@@ -581,31 +567,38 @@ sub union {
   ($tmp=$dcm_w->slice("(1),")) .= $d2c;
   my $dcm = $map->{dcm} = PDL::CCS::Nd->newFromWhich($dcm_w, ones(byte,$ND)->append(0), steal=>1);
 
-  ##-- union: mapper: tdm [TODO: fix this to use {tdm0} and really re-compile {tw} since we need tdm0 anyways in compileLocal()]
-  $vs->vlog($logCreate, "union(): mapper: tdm (NT=$NT x ND=$ND)");
-  my $tdm_nnz = pdl($itype, [map {$_->{vsem}{dcmap}{tdm}->_nnz} @$dbargs])->sum;
-  my $tdm_w   = zeroes($itype, 2,$tdm_nnz);
-  my $tdm_v   = zeroes($vtype,   $tdm_nnz+1);
+  ##-- union: mapper: tdm0
+  $vs->vlog($logCreate, "union(): mapper: tdm0 (NT=$NT x ND=$ND)");
+  my $tdm0_nnz = pdl($itype, [map {$_->{vsem}{dcmap}{tdm}->_nnz} @$dbargs])->sum;
+  my $tdm0_w   = zeroes($itype, 2,$tdm0_nnz);
+  my $tdm0_v   = zeroes($vtype,   $tdm0_nnz);
   $doff = 0;
   my $nzoff = 0;
-  my ($dbmap,$nzslice);
+  my ($dbmap,$dbtdm0,$nzslice);
   foreach $db (@$dbargs) {
-    $dbvs  = $db->{vsem};
-    $dbmap = $dbvs->{dcmap};
+    $dbvs   = $db->{vsem};
+    $dbmap  = $dbvs->{dcmap};
+    $dbtdm0 = $dbmap->get_tdm0();
     $nzslice = "$nzoff:".($nzoff+$dbmap->{tdm}->_nnz-1);
+    $vs->logconfess("union(): mapper: tdm0: size mismatch: nnz(tdm0)=".$dbtdm0->_nnz." != ".$dbmap->{tdm}->_nnz."=nnz(tdm)")
+      if ($dbtdm0->_nnz != $dbmap->{tdm}->_nnz);
 
-    ($tmp=$tdm_w->slice(",$nzslice")) .= $dbmap->{tdm}->_whichND;
-    ($tmp1=$tmp->slice("(0),")) .= $db->{_vsunion_t2u}->index( $dbmap->{tdm}->_whichND->slice("(0),") );
+    ($tmp=$tdm0_w->slice(",$nzslice")) .= $dbtdm0->_whichND;
+    ($tmp1=$tmp->slice("(0),")) .= $db->{_vsunion_t2u}->index( $dbtdm0->_whichND->slice("(0),") );
     ($tmp1=$tmp->slice("(1),")) += $doff;
 
-    ($tmp=$tdm_v->slice("$nzslice")) .= $dbmap->{tdm}->_nzvals;
+    ($tmp=$tdm0_v->slice("$nzslice")) .= $dbtdm0->_nzvals;
 
+    delete $dbmap->{tdm0};
     $doff  += $dbvs->nDocs;
-    $nzoff += $dbmap->{tdm}->_nnz;
+    $nzoff += $dbtdm0->_nnz;
   }
-  $map->{tdm} = PDL::CCS::Nd->newFromWhich($tdm_w,$tdm_v, missing=>0,dims=>[$NT,$ND]);
-  undef $tdm_w;
-  undef $tdm_v;
+  my $tdm0 = $map->{tdm0} = PDL::CCS::Nd->newFromWhich($tdm0_w,$tdm0_v, missing=>0,dims=>[$NT,$ND]);
+  undef $tdm0_w;
+  undef $tdm0_v;
+
+  ##-- union: mapper: tdm, tw, etc.
+  $map->compile_tdm();
 
   ##-- union: mapper: ByLemma stuff
   $map->compile_disto();
