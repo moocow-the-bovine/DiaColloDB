@@ -8,7 +8,7 @@ use Getopt::Long qw(:config no_ignore_case);
 ## command-line
 my ($help);
 my %vsopts = (
-	      saveMem => 1,
+	      #saveMem => 1, ##-- should be default
 	     );
 GetOptions(
 	   'help|h' => \$help,
@@ -46,7 +46,10 @@ sub test_vsem_reindex {
   $coldb->{vsopts}{$_} //= $VSOPTS{$_} foreach (keys %VSOPTS); ##-- vsem: default options
 
   ##-- clobber local options
-  $coldb->{vsopts}{keys %vsopts} = values %vsopts;
+  foreach (sort keys %vsopts) {
+    $coldb->vlog('info', "setting local vsem option $_=$vsopts{$_} (orig=".($coldb->{vsopts}{$_}//'(undef)').")");
+    $coldb->{vsopts}{$_} = $vsopts{$_};
+  }
 
   ##-- (re-)tie doctmp array
   -e "$dbdir/doctmp.a"
