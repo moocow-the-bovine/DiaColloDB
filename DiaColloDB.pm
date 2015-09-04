@@ -654,7 +654,7 @@ sub create {
   my $index_vsem = $coldb->{index_vsem};
   if ($index_vsem) {
     $doctmpa = $coldb->{doctmpa} = [];
-    tie(@$doctmpa, 'Tie::File::Indexed::JSON', "$dbdir/doctmp.a", mode=>'rw', temp=>!$coldb->{keeptmp})
+    tie(@$doctmpa, 'Tie::File::Indexed::JSON', "$dbdir/doctmp.a", mode=>'rw', temp=>!$coldb->{keeptmp}, pack_o=>'J', pack_l=>'J')
       or $coldb->logconfess("create(): could not tie temporary doc-data array to $dbdir/doctmp.a: $!");
   }
   my $vbnmin = $coldb->{vbnmin} = max2(($coldb->{vbnmin}//0),1);
