@@ -2,6 +2,7 @@
 
 use lib qw(. dclib);
 use DiaColloDB;
+use DiaColloDB::Relation::Vsem;
 use Getopt::Long qw(:config no_ignore_case);
 
 ##--------------------------------------------------------------
@@ -38,6 +39,10 @@ sub test_vsem_reindex {
     or die("$0: failed to create DiaColloDB object");
   $coldb->open($dbdir, index_vsem=>0)
     or die("$0: failed to open DiaColloDB directory $dbdir/:_ $!");
+
+  ##-- set keeptmp
+  $coldb->vlog('info', "setting local db option keeptmp=1");
+  $coldb->{keeptmp} = 1;
 
   ##-- set default options
   $coldb->info("creating vector-space model $dbdir/vsem* [vbreak=$coldb->{vbreak}]");
