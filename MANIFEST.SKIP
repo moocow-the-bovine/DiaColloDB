@@ -1,4 +1,5 @@
 ~$
+^plots\b
 ^footer\.rpod$
 ^Makefile$
 ^pm_to_blib$
@@ -33,3 +34,4 @@ ltt
 dump.mak
 \#
 ^(?:timeus|times|compare|countnotes|timeprof)\b
+^dcdb-update-header\.perl$
