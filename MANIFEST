@@ -3,6 +3,7 @@ Makefile.PL
 MANIFEST
 MANIFEST.SKIP
 MYMETA.yml
+MYMETA.json
 
 perlpod.css
 README.rpod
@@ -69,6 +70,5 @@ dcdb-export.perl
 dcdb-info.perl
 dcdb-query.perl
 dcdb-dump.perl
-dcdb-update-header.perl
 t/00_basic.t
 t/common.plt
