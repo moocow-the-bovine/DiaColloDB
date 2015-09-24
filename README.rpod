@@ -28,6 +28,8 @@ Available from https://sourceforge.net/projects/ddc-concordance/files/ddc-perl-x
 
 =item IPC::Run
 
+=item Log::Log4perl
+
 =item (a corpus to index or an existing index to query)
 
 =back
@@ -56,11 +58,11 @@ Issue the following commands to the shell:
 
 =item *
 
-http://kaskade.dwds.de/~moocow/dta/diacollo/ contains a live web demo of
+http://kaskade.dwds.de/dstar/dta/diacollo/ contains a live web demo of
 a DiaCollo index on the I<Deutsches Textarchiv> corpus, including a
 user-oriented help page.
 
-=for html See <a href="http://kaskade.dwds.de/~moocow/dta/diacollo/">here</a>.
+=for html See <a href="http://kaskade.dwds.de/dstar/dta/diacollo/">here</a>.
 
 =back
 
