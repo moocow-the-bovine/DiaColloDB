@@ -10,12 +10,12 @@
    xmlns:xlink="http://www.w3.org/1999/xlink"
    xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
    xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
-   width="910.67535"
-   height="928.69385"
+   width="899.69031"
+   height="786.66516"
    id="svg4233"
    version="1.1"
    inkscape:version="0.48.5 r10040"
-   sodipodi:docname="New document 25">
+   sodipodi:docname="diacollo-logo-dhorns.svg">
   <defs
      id="defs4235">
     <linearGradient
@@ -380,7 +380,7 @@
      inkscape:pageshadow="2"
      inkscape:zoom="0.49497475"
      inkscape:cx="247.24029"
-     inkscape:cy="533.36291"
+     inkscape:cy="391.33425"
      inkscape:document-units="px"
      inkscape:current-layer="layer1"
      showgrid="false"
@@ -403,7 +403,7 @@
         <dc:format>image/svg+xml</dc:format>
         <dc:type
            rdf:resource="http://purl.org/dc/dcmitype/StillImage" />
-        <dc:title></dc:title>
+        <dc:title />
       </cc:Work>
     </rdf:RDF>
   </metadata>
@@ -435,22 +435,6 @@
          inkscape:connector-curvature="0"
          id="path5082"
          d="m 443.3891,382.18973 c -19.6849,12.78356 6.99035,29.07485 10.75761,31.37799 l 1.08938,-0.25289 c 2.67216,-5.50705 7.28252,-9.98713 13.01418,-12.66403 -17.86126,-2.65153 -30.79996,-7.93475 -24.86117,-18.46107 z"
-         style="color:#000000;fill:#000000;fill-opacity:1;fill-rule:evenodd;stroke:#ffffff;stroke-width:0.6220119;stroke-linecap:butt;stroke-linejoin:miter;stroke-miterlimit:4;stroke-opacity:1;stroke-dasharray:none;stroke-dashoffset:0;marker:none;visibility:visible;display:inline;overflow:visible;enable-background:accumulate" />
-    </g>
-    <g
-       id="g7068"
-       transform="translate(138.20738,-87.244383)">
-      <path
-         sodipodi:nodetypes="ccccc"
-         id="path5082-0-5"
-         d="m 207.6678,931.67978 c 5.93878,10.52631 -6.99991,15.80953 -24.86117,18.46107 5.73166,2.67688 10.34202,7.15697 13.01418,12.66402 l 1.08938,0.25289 c 3.76726,-2.30314 30.44249,-18.59442 10.75761,-31.37798 z"
-         style="color:#000000;fill:#000000;fill-opacity:1;fill-rule:evenodd;stroke:#ffffff;stroke-width:0.62201166;stroke-linecap:butt;stroke-linejoin:miter;stroke-miterlimit:4;stroke-opacity:1;stroke-dasharray:none;stroke-dashoffset:0;marker:none;visibility:visible;display:inline;overflow:visible;enable-background:accumulate"
-         inkscape:connector-curvature="0" />
-      <path
-         sodipodi:nodetypes="ccccc"
-         inkscape:connector-curvature="0"
-         id="path5082-8"
-         d="m 100.37138,930.25121 c -19.684902,12.78356 6.99035,29.07485 10.75761,31.37799 l 1.08938,-0.25289 c 2.67216,-5.50705 7.28252,-9.98713 13.01418,-12.66403 -17.86126,-2.65153 -30.799962,-7.93475 -24.86117,-18.46107 z"
          style="color:#000000;fill:#000000;fill-opacity:1;fill-rule:evenodd;stroke:#ffffff;stroke-width:0.6220119;stroke-linecap:butt;stroke-linejoin:miter;stroke-miterlimit:4;stroke-opacity:1;stroke-dasharray:none;stroke-dashoffset:0;marker:none;visibility:visible;display:inline;overflow:visible;enable-background:accumulate" />
     </g>
     <g
