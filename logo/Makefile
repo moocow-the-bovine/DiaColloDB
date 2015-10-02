@@ -1,6 +1,6 @@
 ##-*- Mode: GNUmakefile -*-
 
-svg ?= $(wildcard diacollo-logo*.svg)
+svg ?= $(wildcard diacollo-logo*.svg) logo-bits.svg
 
 TARGETS ?= pdf png
 #TARGETS += eps

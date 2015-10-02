@@ -463,12 +463,12 @@
      borderopacity="1.0"
      inkscape:pageopacity="0.0"
      inkscape:pageshadow="2"
-     inkscape:zoom="0.7"
-     inkscape:cx="971.90396"
-     inkscape:cy="287.06189"
+     inkscape:zoom="0.175"
+     inkscape:cx="-497.96834"
+     inkscape:cy="348.07884"
      inkscape:document-units="px"
      inkscape:current-layer="layer2"
-     showgrid="true"
+     showgrid="false"
      showguides="true"
      inkscape:guide-bbox="true"
      fit-margin-top="20"
@@ -477,8 +477,8 @@
      fit-margin-bottom="20"
      inkscape:window-width="1399"
      inkscape:window-height="886"
-     inkscape:window-x="100"
-     inkscape:window-y="42"
+     inkscape:window-x="75"
+     inkscape:window-y="70"
      inkscape:window-maximized="0"
      inkscape:snap-global="true"
      inkscape:snap-to-guides="false"
@@ -492,6 +492,22 @@
        snapvisiblegridlinesonly="true"
        originx="31.64154px"
        originy="-29.999941px" />
+    <sodipodi:guide
+       position="12.857143,370.71429"
+       orientation="0,1848.2556"
+       id="guide6795" />
+    <sodipodi:guide
+       position="1848.2556,0"
+       orientation="-875.05988,0"
+       id="guide6797" />
+    <sodipodi:guide
+       position="-15.357143,286.78571"
+       orientation="0,-1848.2556"
+       id="guide6799" />
+    <sodipodi:guide
+       position="0,875.05988"
+       orientation="875.05988,0"
+       id="guide6801" />
   </sodipodi:namedview>
   <metadata
      id="metadata4238">
@@ -874,7 +890,7 @@
            id="path5082-8-6-2-0-9-2-5-2-4-2-5-2-9-0-4-4-3"
            transform="translate(-162.65007,5.8163151)"
            d="m 52.875,707.28125 c -61.68618,61.84835 18.296331,156.40625 67.5625,156.40625 49.26615,0 113.77104,-93.02338 58.34375,-156.40625 9.47025,47.65982 -32.83323,60 -43.78125,60 l -38.3125,0 c -10.948035,0 -56.23834,-7.34018 -43.8125,-60 z m 52.5,73.75 c 33.84064,-0.39974 37.27902,19.34152 37.625,29.375 0.56808,16.47438 -6.41964,35.95536 -41.0625,32.5625 L 102,781.15625 c 1.15581,-0.0558 2.28337,-0.11211 3.375,-0.125 z"
-           style="color:#000000;fill:url(#radialGradient4671);fill-opacity:1;fill-rule:evenodd;stroke:none;stroke-width:3.10889316;marker:none;visibility:visible;display:inline;overflow:visible;enable-background:accumulate"
+           style="color:#000000;fill:url(#radialGradient4671);fill-opacity:1.0;fill-rule:evenodd;stroke:none;stroke-width:3.10889316000000004;marker:none;visibility:visible;display:inline;overflow:visible;enable-background:accumulate"
            inkscape:connector-curvature="0" />
         <g
            transform="translate(-32.9131,346.96449)"
