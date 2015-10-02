@@ -11,16 +11,16 @@ all: $(TARGETS)
 
 pdf: $(svg:.svg=.pdf)
 %.pdf: %.svg
-	inkscape -C -A $@ $<
+	inkscape -D -A $@ $<
 
 eps: $(svg:.svg=.eps)
 %.eps: %.svg
-	inkscape -C -E $@ $<
+	inkscape -D -E $@ $<
 
 png: png-big
 png-big: $(svg:.svg=-big.png)
 %-big.png: %.svg
-	inkscape -C -d 100 -e $@ $<
+	inkscape -D -d 100 -e $@ $<
 
 png-med: $(svg:.svg=-med.png)
 %-med.png: %.svg
@@ -35,5 +35,5 @@ ico: $(svg:.svg=-small.ico)
 	convert -resize x16 -gravity center -crop 16x16+0+0 $< -background transparent -flatten -colors 256 $@
 
 clean:
-	rm -rf *.pdf *.eps *.png
+	rm -rf *.pdf *.eps *.png *.ico
 
