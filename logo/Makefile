@@ -2,7 +2,7 @@
 
 svg ?= $(wildcard diacollo-logo*.svg)
 
-TARGETS ?= png-big png-logo png-icon ico pdf
+TARGETS ?= png-big png-med png-small ico pdf
 #TARGETS += pdf
 #TARGETS += eps
 
@@ -20,18 +20,18 @@ eps: $(svg:.svg=.eps)
 png: png-big
 png-big: $(svg:.svg=-big.png)
 %-big.png: %.svg
-	inkscape -C -d 72 -e $@ $<
+	inkscape -C -d 100 -e $@ $<
 
-png-logo: $(svg:.svg=-logo.png)
-%-logo.png: %.svg
+png-med: $(svg:.svg=-med.png)
+%-med.png: %.svg
 	inkscape -D -h 57 -e $@ $<
 
-png-icon: $(svg:.svg=-icon.png)
-%-icon.png: %.svg
+png-small: $(svg:.svg=-small.png)
+%-small.png: %.svg
 	inkscape -D -h 16 -e $@ $<
 
-ico: $(svg:.svg=-icon.ico)
-%-icon.ico: %-icon.png
+ico: $(svg:.svg=-small.ico)
+%-small.ico: %-small.png
 	convert -resize x16 -gravity center -crop 16x16+0+0 $< -background transparent -flatten -colors 256 $@
 
 clean:
