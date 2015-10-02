@@ -14,7 +14,7 @@
    id="svg13257"
    version="1.1"
    inkscape:version="0.48.5 r10040"
-   sodipodi:docname="diacollo-logo-text-grey99.svg">
+   sodipodi:docname="diacollo-logo-text-white.svg">
   <defs
      id="defs13259" />
   <sodipodi:namedview
@@ -22,7 +22,7 @@
      pagecolor="#666666"
      bordercolor="#666666"
      borderopacity="1.0"
-     inkscape:pageopacity="0.6"
+     inkscape:pageopacity="0"
      inkscape:pageshadow="2"
      inkscape:zoom="0.49497475"
      inkscape:cx="362.2724"
@@ -47,7 +47,7 @@
         <dc:format>image/svg+xml</dc:format>
         <dc:type
            rdf:resource="http://purl.org/dc/dcmitype/StillImage" />
-        <dc:title></dc:title>
+        <dc:title />
       </cc:Work>
     </rdf:RDF>
   </metadata>
