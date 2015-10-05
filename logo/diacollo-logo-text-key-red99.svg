@@ -14,31 +14,56 @@
    id="svg13345"
    version="1.1"
    inkscape:version="0.48.5 r10040"
-   sodipodi:docname="diacollo-logo-text-key-grayb3.svg">
+   sodipodi:docname="diacollo-logo-text-key-greyb3.svg">
   <defs
      id="defs13347" />
   <sodipodi:namedview
      id="base"
-     pagecolor="#ffffff"
+     pagecolor="#000000"
      bordercolor="#666666"
      borderopacity="1.0"
-     inkscape:pageopacity="0.0"
+     inkscape:pageopacity="0"
      inkscape:pageshadow="2"
-     inkscape:zoom="0.7"
-     inkscape:cx="401.82432"
-     inkscape:cy="92.074991"
+     inkscape:zoom="0.98994949"
+     inkscape:cx="289.71338"
+     inkscape:cy="94.602228"
      inkscape:document-units="px"
-     inkscape:current-layer="g9581"
+     inkscape:current-layer="layer1"
      showgrid="false"
      fit-margin-top="10"
      fit-margin-left="10"
      fit-margin-right="10"
      fit-margin-bottom="10"
-     inkscape:window-width="1084"
-     inkscape:window-height="626"
+     inkscape:window-width="1169"
+     inkscape:window-height="554"
      inkscape:window-x="72"
      inkscape:window-y="72"
-     inkscape:window-maximized="0" />
+     inkscape:window-maximized="0"
+     showguides="false">
+    <inkscape:grid
+       type="xygrid"
+       id="grid3874"
+       empspacing="5"
+       visible="true"
+       enabled="true"
+       snapvisiblegridlinesonly="true" />
+    <sodipodi:guide
+       position="0,0"
+       orientation="0,578.03143"
+       id="guide3876" />
+    <sodipodi:guide
+       position="568.03572,6.25"
+       orientation="-179.38014,0"
+       id="guide3878" />
+    <sodipodi:guide
+       position="578.03143,179.38014"
+       orientation="0,-578.03143"
+       id="guide3880" />
+    <sodipodi:guide
+       position="0,179.38014"
+       orientation="179.38014,0"
+       id="guide3882" />
+  </sodipodi:namedview>
   <metadata
      id="metadata13350">
     <rdf:RDF>
@@ -57,38 +82,12 @@
      id="layer1"
      transform="translate(-85.984299,-442.67212)">
     <g
-       transform="translate(-815.84153,-1693.307)"
-       style="display:inline"
-       id="g9581">
-      <g
-         id="g9504"
-         transform="matrix(0.66647416,0,0,1,304.11745,461.78547)">
-        <g
-           id="g9506"
-           transform="matrix(5.2837008,0,0,1,-3905.989,220)">
-          <g
-             id="g9508"
-             transform="translate(0,864)">
-            <g
-               id="g9510">
-              <path
-                 style="fill:#990000;display:inline;fill-opacity:1"
-                 id="path9512"
-                 d="m 1070.2922,751.73209 c 0,4.32831 -3.3727,7.8417 -7.5343,7.8417 l -143.39779,0 c -4.16162,0 -7.53428,-3.51339 -7.53428,-7.8417 l 0,-143.69676 c 0,-4.32829 3.37266,-7.84168 7.53428,-7.84168 l 143.39779,0 c 4.1616,0 7.5343,3.51339 7.5343,7.84168 l 0,143.69676 0,0 z"
-                 inkscape:connector-curvature="0" />
-              <path
-                 style="fill:#ffffff;display:inline"
-                 id="path9514"
-                 d="m 1063.4438,604.29072 0,123.49051 c 0,4.32829 -7.5342,7.83041 -7.5342,7.83041 -25.3546,9.48843 -64.22431,23.48279 -129.19416,0 -6.57452,-2.37422 -7.53427,-3.50212 -7.53427,-7.83041 l 0,-123.49051"
-                 inkscape:connector-curvature="0" />
-            </g>
-          </g>
-        </g>
-      </g>
+       id="g3886"
+       style="fill:#990000;fill-opacity:1">
       <g
          style="fill:#990000;fill-opacity:1"
          id="g9555"
-         transform="matrix(0.62153158,0,0,0.62153158,992.20755,823.3455)">
+         transform="matrix(0.62153158,0,0,0.62153158,176.36602,-869.9615)">
         <g
            style="fill:#990000;fill-opacity:1;display:inline"
            id="g9557"
@@ -154,6 +153,13 @@
           </g>
         </g>
       </g>
+      <path
+         sodipodi:nodetypes="sssssssssccsccsc"
+         inkscape:connector-curvature="0"
+         id="path9512"
+         transform="translate(85.984299,442.67212)"
+         d="M 20.53125,10 C 10,10 10,13.51546 10,17.84375 l 0,143.6875 c 0,4.32831 0,7.84375 10.53125,7.84375 l 536.96875,0 c 10.53572,0 10.53125,-3.51544 10.53125,-7.84375 l 0,-143.6875 C 568.03125,13.51546 568.03572,10 557.5,10 z m -0.625,4.09375 540,0 0,123.5 c 0,4.32829 -42.53125,7.8125 -42.53125,7.8125 -89.28496,9.48843 -226.14942,23.48279 -454.9375,0 -23.15185,-2.37422 -42.601335,-3.48478 -42.53125,-7.8125 z"
+         style="fill:#990000;fill-opacity:1;display:inline" />
     </g>
   </g>
 </svg>
