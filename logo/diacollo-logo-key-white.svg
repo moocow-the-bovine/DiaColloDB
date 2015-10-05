@@ -14,30 +14,30 @@
    id="svg11546"
    version="1.1"
    inkscape:version="0.48.5 r10040"
-   sodipodi:docname="diacollo-logo-key-red99.svg">
+   sodipodi:docname="diacollo-logo-key-black.svg">
   <defs
      id="defs11548" />
   <sodipodi:namedview
      id="base"
-     pagecolor="#ffffff"
+     pagecolor="#8d8d8d"
      bordercolor="#666666"
      borderopacity="1.0"
-     inkscape:pageopacity="0.0"
+     inkscape:pageopacity="0"
      inkscape:pageshadow="2"
      inkscape:zoom="2.8"
-     inkscape:cx="75.061874"
-     inkscape:cy="66.906104"
+     inkscape:cx="82.134153"
+     inkscape:cy="82.714263"
      inkscape:document-units="px"
-     inkscape:current-layer="g7608"
+     inkscape:current-layer="g7658"
      showgrid="false"
      fit-margin-top="10"
      fit-margin-left="10"
      fit-margin-right="10"
      fit-margin-bottom="10"
-     inkscape:window-width="1068"
-     inkscape:window-height="782"
-     inkscape:window-x="18"
-     inkscape:window-y="100"
+     inkscape:window-width="1049"
+     inkscape:window-height="844"
+     inkscape:window-x="134"
+     inkscape:window-y="104"
      inkscape:window-maximized="0" />
   <metadata
      id="metadata11551">
@@ -60,21 +60,11 @@
        style="display:inline"
        id="g7658"
        transform="translate(-651.32212,-548.39857)">
-      <g
-         style="display:inline"
-         transform="translate(193.39328,757.04644)"
-         id="g7608">
-        <path
-           style="fill:#ffffff;fill-opacity:1;display:inline"
-           id="path7610"
-           d="m 867.06737,420.05843 c 0,3.82396 -3.09902,6.92796 -6.92298,6.92796 l -131.76325,0 c -3.82396,0 -6.92298,-3.104 -6.92298,-6.92796 l 0,-126.9528 c 0,-3.82395 3.09902,-6.92795 6.92298,-6.92795 l 131.76325,0 c 3.82396,0 6.92298,3.104 6.92298,6.92795 l 0,126.9528 0,0 z"
-           inkscape:connector-curvature="0" />
-        <path
-           style="fill:#666666;display:inline;fill-opacity:1"
-           id="path7612"
-           d="m 860.77466,289.79735 0,109.10104 c 0,3.82395 -6.92298,6.91799 -6.92298,6.91799 -23.29747,8.38281 -59.01345,20.74651 -118.71198,0 -6.0411,-2.09757 -6.92298,-3.09404 -6.92298,-6.91799 l 0,-109.10104"
-           inkscape:connector-curvature="0" />
-      </g>
+      <path
+         inkscape:connector-curvature="0"
+         id="path7610"
+         d="m 921.78894,1043.2241 c -3.82396,0 -6.9375,3.1136 -6.9375,6.9375 l 0,126.9375 c 0,3.824 3.11354,6.9375 6.9375,6.9375 l 131.74996,0 c 3.824,0 6.9063,-3.1135 6.9063,-6.9375 l 0,-126.9375 c 0,-3.8239 -3.0823,-6.9375 -6.9063,-6.9375 l -131.74996,0 z m -0.1875,3.625 132.56246,0 0,109.0938 c 0,3.8239 -6.9062,6.9062 -6.9062,6.9062 -23.2975,8.3828 -59.02023,20.7465 -118.71876,0 -6.0411,-2.0976 -6.9375,-3.0823 -6.9375,-6.9062 l 0,-109.0938 z"
+         style="fill:#ffffff;fill-opacity:1;display:inline" />
       <g
          style="fill:#ffffff;fill-opacity:1;display:inline"
          id="g7628"
