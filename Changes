@@ -2,6 +2,10 @@
 ##
 ## Change log for perl distribution DiaColloDB
 
+v0.07.012 Wed, 28 Oct 2015 13:04:20 +0100 moocow
+	* omit {pgood},{pbad} restrictions in Relation::qinfoData()
+	  - these are too expensive for large corpora, resulting in timeouts for KWIC-links
+
 v0.07.011 Tue, 29 Sep 2015 09:10:33 +0200 moocow
 	* require perl >= v5.10.0 (for // operator)
 
