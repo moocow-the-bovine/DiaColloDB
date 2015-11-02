@@ -139,7 +139,8 @@ sub scoreKeys {
 ##  + returns true iff profile is empty
 sub empty {
   my $p = shift;
-  return 0 if ($p->{f1});
+  #return 0 if ($p->{f1}); ##-- do we want to keep nonzero $f1 even if there are no collocates? i think not... moocow 2015-11-02
+  return 1 if (!$p->{f1});
   my $f = (grep {defined($p->{$_})} qw(f2 f12),$p->scoreKeys)[0];
   return !$f || !scalar(keys(%{$p->{$f}}));
 }
