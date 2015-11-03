@@ -35,3 +35,6 @@ dump.mak
 \#
 ^(?:timeus|times|compare|countnotes|timeprof)\b
 ^dcdb-update-header\.perl$
+^logo/
+^tags\.map$
+\.gp$
