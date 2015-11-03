@@ -83,6 +83,7 @@ GetOptions(##-- general
 	   'epsilon|eps|e=f'  => \$query{eps},
 	   'mutual-information|mi'    => sub {$query{score}='mi'},
 	   'log-dice|logdice|ld|dice' => sub {$query{score}='ld'},
+	   'log-likelihood|loglik|logl|ll' => sub {$query{score}='ll'},
 	   'frequency|freq|f'         => sub {$query{score}='f'},
 	   'frequency-per-million|fpm|fm'  => sub {$query{score}='fm'},
 	   'log-frequency|logf|lf' => sub { $query{score}='lf' },
@@ -222,7 +223,6 @@ dcdb-query.perl - query a DiaColloDB
    -(a|b)?date DATES     # set target DATE or /REGEX/ or MIN-MAX
    -(a|b)?slice SLICE    # set target date slice (default=1)
    -groupby GROUPBY      # set result aggregation (default=l)
-   -(l)f(m) , -mi , -ld  # set scoring function (default=-ld)
    -kbest KBEST          # return only KBEST items per date-slice (default=10)
    -nokbest              # disable k-best pruning
    -cutoff CUTOFF        # set minimum score for returned items (default=none)
@@ -231,6 +231,15 @@ dcdb-query.perl - query a DiaColloDB
    -diff DIFFOP          # diff operation (default=adiff)
    -[no]global           # do/don't trim profiles globally (vs. locally by date-slice; default=don't)
    -[no]strings          # debug: do/don't stringify returned profile (default=do)
+
+ Scoring Options:
+   -f                    # score by raw frequency
+   -lf                   # score by log-frequency
+   -fm                   # score by frequency per million tokens
+   -lfm                  # score by log-frequency per million tokens
+   -mi                   # score by pointwise mutual information x log-frequency product
+   -ld                   # score by scaled log-Dice coefficient (Rychlý 2008)
+   -ll                   # score by 1-sided log-likelihood ratio (Evert 2008)
 
  I/O Options:
    -user USER[:PASSWD]   # user credentials for HTTP queries

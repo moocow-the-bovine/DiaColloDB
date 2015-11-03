@@ -17,7 +17,12 @@
 ##    - Kilgarriff, A. and Tugwell, D. 2002. `Sketching words'. In M.-H. Corréard (ed.) Lexicography and Natural
 ##      Language Processing: A Festschrift in Honour of B. T. S. Atkins. EURALEX, 125-137.
 ##      URL http://www.kilgarriff.co.uk/Publications/2002-KilgTugwell-AtkinsFest.pdf
-
+##
+##    - Evert, Stefan (2008). "Corpora and collocations." In A. Lüdeling and M. Kytö (eds.),
+##      Corpus Linguistics. An International Handbook, article 58, pages 1212-1248.
+##      Mouton de Gruyter, Berlin.
+##      URL (extended manuscript): http://purl.org/stefan.evert/PUB/Evert2007HSK_extended_manuscript.pdf
+##
 
 package DiaColloDB::Profile;
 use DiaColloDB::Utils qw(:math :html);
@@ -55,9 +60,10 @@ our @ISA = qw(DiaColloDB::Persistent);
 ##    titles => \@titles, ##-- item group titles (default:undef: unknown)
 ##    #
 ##    eps => $eps,       ##-- smoothing constant (default=0.5)
-##    score => $func,    ##-- selected scoring function qw(f fm lf lfm mi ld)
+##    score => $func,    ##-- selected scoring function qw(f fm lf lfm mi ld ll)
 ##    mi => \%mi12,      ##-- score: mutual information * logFreq a la Wortprofil; requires compile_mi()
 ##    ld => \%ld12,      ##-- score: log-dice a la Wortprofil; requires compile_ld()
+##    ll => \%ll12,      ##-- score: 1-sided log-likelihood a la Evert (2008); requires compile_ll()
 ##    fm => \%fm12,      ##-- frequency per million score; requires compile_fm()
 ##    lf => \%lf12,      ##-- log-frequency ; requires compile_lf()
 ##    lfm => \%lfm12,    ##-- log-frequency per million; requires compile_lfm()
@@ -132,7 +138,7 @@ sub titles {
 ## @keys = $prf->scoreKeys()
 ##  + returns known score function keys
 sub scoreKeys {
-  return qw(mi ld fm lf lfm);
+  return qw(mi ld ll fm lf lfm);
 }
 
 ## $bool = $prf->empty()
@@ -293,6 +299,7 @@ sub compile {
   return $prf->compile_lf(@_)  if ($func =~ m{^(?:l(?:og)?-?f(?:req(?:uency)?)?(?:12)?)$}i);
   return $prf->compile_lfm(@_) if ($func =~ m{^(?:l(?:og)?-?f(?:req(?:uency)?)?(?:-?p(?:er)?)?(?:-?m(?:(?:ill)?ion)?)(?:12)?)$}i);
   return $prf->compile_ld(@_)  if ($func =~ m{^(?:ld|log-?dice)}i);
+  return $prf->compile_ll(@_)  if ($func =~ m{^(?:ll|log-?likelihood)}i);
   return $prf->compile_mi(@_)  if ($func =~ m{^(?:l?f?mi|mutual-?information)$}i);
   $prf->logwarn("compile(): unknown score function '$func'");
   return $prf->compile_f(@_);
@@ -413,6 +420,35 @@ sub compile_ld {
 			  );
   }
   $prf->{score} = 'ld';
+  return $prf;
+}
+
+## $prf = $prf->compile_ll(%opts)
+##  + computes 1-sided log-likelihood ration in $prf->{ll} a la Evert (2008)
+##  + sets $pf->{score}='ll'
+##  + %opts:
+##     eps => $eps  #-- clobber $prf->{eps}
+sub compile_ll {
+  my ($prf,%opts) = @_;
+  my $ll = $prf->{ll} = {};
+  my $eps = $opts{eps} // $prf->{eps} // 0; #0.5; ##-- IGNORED here
+  my ($N,$f1,$pf2,$pf12) = @$prf{qw(N f1 f2 f12)};
+  $N  += 2*$eps;
+  $f1 += $eps;
+  my ($i2,$f2,$f12);
+  while (($i2,$f2)=each(%$pf2)) {
+    $f12 = ($pf12->{$i2} // 0) + $eps;
+    $ll->{$i2} = (
+		  ($f12 < ($f1*$f2/$N) ? -1 : 1) ##-- one-sided log-likelihood a la Evert (2008): negative for dis-associations
+		  * (
+		     $f12*log($f12/($f1*$f2/$N))
+		     +($f1-$f12)*log(($f1-$f12)/(($f1*($N-$f2)/$N)))
+		     +($f2-$f12)*log(($f2-$f12)/(($N-$f1)*$f2/$N))
+		     +($N-$f1-$f2+$f12)*log(($N-$f1-$f2+$f12)/(($N-$f1)*($N-$f2)/$N))
+		    )
+		 );
+  }
+  $prf->{score} = 'll';
   return $prf;
 }
 

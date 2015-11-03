@@ -2,6 +2,12 @@
 ##
 ## Change log for perl distribution DiaColloDB
 
+v0.07.014 Tue, 03 Nov 2015 11:42:26 +0100 moocow
+	* added 1-sided log-likelihood ratio profiles a la Evert (2008)
+
+v0.07.013 2015-11-02 12:52:56 +0100 moocow
+	* fix for Profile::empty(): a profile is empty if it contains no collocates, even if it has nonzero f1
+
 v0.07.012 Wed, 28 Oct 2015 13:04:20 +0100 moocow
 	* omit {pgood},{pbad} restrictions in Relation::qinfoData()
 	  - these are too expensive for large corpora, resulting in timeouts for KWIC-links

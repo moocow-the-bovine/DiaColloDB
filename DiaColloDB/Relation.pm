@@ -87,7 +87,7 @@ sub dbinfo {
 ##     ##
 ##     ##-- scoring and trimming parameters
 ##     eps     => $eps,           ##-- smoothing constant (default=0)
-##     score   => $func,          ##-- scoring function ("f"|"fm"|"mi"|"ld") : default="f"
+##     score   => $func,          ##-- scoring function ("f"|"lf"|"fm"|"lfm"|"mi"|"ld"|"ll") : default="f"
 ##     kbest   => $k,             ##-- return only $k best collocates per date (slice) : default=-1:all
 ##     cutoff  => $cutoff,        ##-- minimum score
 ##     global  => $bool,          ##-- trim profiles globally (vs. locally for each date-slice?) (default=0)
@@ -204,7 +204,7 @@ sub profile {
 ##     ##
 ##     ##-- scoring and trimming parameters
 ##     eps     => $eps,           ##-- smoothing constant (default=0)
-##     score   => $func,          ##-- scoring function ("f"|"fm"|"mi"|"ld") : default="f"
+##     score   => $func,          ##-- scoring function ("f"|"lf"|"fm"|"lfm"|"mi"|"ld"|"ll") : default="f"
 ##     kbest   => $k,             ##-- return only $k best collocates per date (slice) : default=-1:all
 ##     cutoff  => $cutoff,        ##-- minimum score
 ##     global  => $bool,          ##-- trim profiles globally (vs. locally for each date-slice?) (default=0)

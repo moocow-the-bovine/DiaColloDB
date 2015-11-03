@@ -34,7 +34,7 @@ use strict;
 ##==============================================================================
 ## Globals & Constants
 
-our $VERSION = "0.07.013";
+our $VERSION = "0.07.014";
 our @ISA = qw(DiaColloDB::Client);
 
 ## $PGOOD_DEFAULT
@@ -1772,7 +1772,7 @@ sub profile {
   $coldb->vlog($coldb->{logRequest},
 	       "profile("
 	       .join(', ',
-		     map {"$_->[0]='".quotemeta($_->[1]//'')}
+		     map {"$_->[0]='".quotemeta($_->[1]//'')."'"}
 		     ([rel=>$rel],
 		      [query=>$opts{query}],
 		      [groupby=>UNIVERSAL::isa($opts{groupby},'ARRAY') ? join(',', @{$opts{groupby}}) : $opts{groupby}],
