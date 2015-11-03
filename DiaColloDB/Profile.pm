@@ -299,7 +299,7 @@ sub compile {
   return $prf->compile_lf(@_)  if ($func =~ m{^(?:l(?:og)?-?f(?:req(?:uency)?)?(?:12)?)$}i);
   return $prf->compile_lfm(@_) if ($func =~ m{^(?:l(?:og)?-?f(?:req(?:uency)?)?(?:-?p(?:er)?)?(?:-?m(?:(?:ill)?ion)?)(?:12)?)$}i);
   return $prf->compile_ld(@_)  if ($func =~ m{^(?:ld|log-?dice)}i);
-  return $prf->compile_ll(@_)  if ($func =~ m{^(?:ll|log-?likelihood)}i);
+  return $prf->compile_ll(@_)  if ($func =~ m{^(?:ll|log-?l(?:ikelihood)?)}i);
   return $prf->compile_mi(@_)  if ($func =~ m{^(?:l?f?mi|mutual-?information)$}i);
   $prf->logwarn("compile(): unknown score function '$func'");
   return $prf->compile_f(@_);
@@ -423,8 +423,10 @@ sub compile_ld {
   return $prf;
 }
 
+sub log0 { return $_[0]==0 ? 0 : log($_[0]) }
+
 ## $prf = $prf->compile_ll(%opts)
-##  + computes 1-sided log-likelihood ration in $prf->{ll} a la Evert (2008)
+##  + computes 1-sided log-log-likelihood ratio in $prf->{ll} a la Evert (2008)
 ##  + sets $pf->{score}='ll'
 ##  + %opts:
 ##     eps => $eps  #-- clobber $prf->{eps}
@@ -435,22 +437,24 @@ sub compile_ll {
   my ($N,$f1,$pf2,$pf12) = @$prf{qw(N f1 f2 f12)};
   $N  += 2*$eps;
   $f1 += $eps;
-  my ($i2,$f2,$f12);
+  my ($i2,$f2,$f12,$logl);
   while (($i2,$f2)=each(%$pf2)) {
-    $f12 = ($pf12->{$i2} // 0) + $eps;
-    $ll->{$i2} = (
-		  ($f12 < ($f1*$f2/$N) ? -1 : 1) ##-- one-sided log-likelihood a la Evert (2008): negative for dis-associations
-		  * (
-		     $f12*log($f12/($f1*$f2/$N))
-		     +($f1-$f12)*log(($f1-$f12)/(($f1*($N-$f2)/$N)))
-		     +($f2-$f12)*log(($f2-$f12)/(($N-$f1)*$f2/$N))
-		     +($N-$f1-$f2+$f12)*log(($N-$f1-$f2+$f12)/(($N-$f1)*($N-$f2)/$N))
-		    )
+    $f12  = ($pf12->{$i2} // 0) + $eps;
+    $logl = (##-- raw log-lambda
+	     $f12*log0($f12/($f1*$f2/$N))
+	     +($f1-$f12)*log0(($f1-$f12)/(($f1*($N-$f2)/$N)))
+	     +($f2-$f12)*log0(($f2-$f12)/(($N-$f1)*$f2/$N))
+	     +($N-$f1-$f2+$f12)*log0(($N-$f1-$f2+$f12)/(($N-$f1)*($N-$f2)/$N))
+	    );
+    $ll->{$i2} = (($f12 < ($f1*$f2/$N) ? -1 : 1) ##-- one-sided log-likelihood a la Evert (2008): negative for dis-associations
+		  #* $logl			 ##-- raw log-lambda values over-emphasize strong collocates
+		  * log0(1+$logl) 		 ##-- extra log() is better for scaling
 		 );
   }
   $prf->{score} = 'll';
   return $prf;
 }
+
 
 ##==============================================================================
 ## Trimming
