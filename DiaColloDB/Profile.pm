@@ -449,6 +449,8 @@ sub compile_ll {
     $ll->{$i2} = (($f12 < ($f1*$f2/$N) ? -1 : 1) ##-- one-sided log-likelihood a la Evert (2008): negative for dis-associations
 		  #* $logl			 ##-- raw log-lambda values over-emphasize strong collocates
 		  * log0(1+$logl) 		 ##-- extra log() is better for scaling
+		  #* sqrt($logl)                 ##-- extra sqrt() for scaling
+		  #* ($logl**(1/3))              ##-- extra cube-root for scaling
 		 );
   }
   $prf->{score} = 'll';
