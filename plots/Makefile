@@ -1,7 +1,7 @@
 ##-*- Mode: GNUmakefile -*-
 
 diffs  ?= diff adiff min max sum avg havg gavg lavg
-scores ?= f fm lf lfm mi ld
+scores ?= f fm lf lfm mi ld ll
 src    ?= $(patsubst %,diff-%,$(diffs)) $(patsubst %,score-%,$(scores))
 #src    ?= $(patsubst %,score-%,$(scores))
 
