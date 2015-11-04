@@ -8,6 +8,7 @@ fm(f2,f12) = 1000000 * f12/N;
 lf(f2,f12) = log2(f12);
 lfm(f2,f12) = log2(fm(f2,f12));
 mi(f2,f12) = f2 < f12 ? 1/0 : log2(f12+eps) * log2( ((f12+eps)*(N+eps)) / ((f1+eps)*(f2+eps)) );
+mi3(f2,f12)= f2 < f12 ? 1/0 : log2(f12+eps)**3 * log2( ((f12+eps)*(N+eps)) / ((f1+eps)*(f2+eps)) );
 ld(f2,f12) = f2 < f12 ? 1/0 : 14 + log2( (2*(f12+eps)) / ((f1+eps)+(f2+eps)) );
 ll(f2,f12) = (((f12+eps) < ((f1+eps)*(f2+eps)/N) ? -1 : 1) \
 	      * log( \
