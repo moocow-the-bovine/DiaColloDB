@@ -62,6 +62,7 @@ our @ISA = qw(DiaColloDB::Persistent);
 ##    eps => $eps,       ##-- smoothing constant (default=0.5)
 ##    score => $func,    ##-- selected scoring function qw(f fm lf lfm mi ld ll)
 ##    mi => \%mi12,      ##-- score: mutual information * logFreq a la Wortprofil; requires compile_mi()
+##    mi3 => \%mi312,    ##-- score: mutual information^3 a la Rychly (2008); requires compile_mi3()
 ##    ld => \%ld12,      ##-- score: log-dice a la Wortprofil; requires compile_ld()
 ##    ll => \%ll12,      ##-- score: 1-sided log-likelihood a la Evert (2008); requires compile_ll()
 ##    fm => \%fm12,      ##-- frequency per million score; requires compile_fm()
@@ -138,7 +139,7 @@ sub titles {
 ## @keys = $prf->scoreKeys()
 ##  + returns known score function keys
 sub scoreKeys {
-  return qw(mi ld ll fm lf lfm);
+  return qw(mi mi3 ld ll fm lf lfm);
 }
 
 ## $bool = $prf->empty()
@@ -290,7 +291,7 @@ sub saveHtmlFile {
 ## Compilation
 
 ## $prf = $prf->compile($func,%opts)
-##  + compile for score-function $func, one of qw(f fm mi ld); default='f'
+##  + compile for score-function $func, one of qw(f fm lf lfm mi mi3 ld ll); default='f'
 sub compile {
   my $prf = shift;
   my $func = shift;
@@ -300,7 +301,8 @@ sub compile {
   return $prf->compile_lfm(@_) if ($func =~ m{^(?:l(?:og)?-?f(?:req(?:uency)?)?(?:-?p(?:er)?)?(?:-?m(?:(?:ill)?ion)?)(?:12)?)$}i);
   return $prf->compile_ld(@_)  if ($func =~ m{^(?:ld|log-?dice)}i);
   return $prf->compile_ll(@_)  if ($func =~ m{^(?:ll|log-?l(?:ikelihood)?)}i);
-  return $prf->compile_mi(@_)  if ($func =~ m{^(?:l?f?mi|mutual-?information)$}i);
+  return $prf->compile_mi(@_)  if ($func =~ m{^(?:(?:lf)?mi(?:-?lf)?|mutual-?information-?(?:l(?:og)?)?-?f(?:req(?:uency)?)?)?$}i);
+  return $prf->compile_mi3(@_) if ($func =~ m{^(?:mi3|mutual-?information-?3)$}i);
   $prf->logwarn("compile(): unknown score function '$func'");
   return $prf->compile_f(@_);
 }
@@ -397,6 +399,31 @@ sub compile_mi {
 
   }
   $prf->{score} = 'mi';
+  return $prf;
+}
+
+## $prf = $prf->compile_mi3(%opts)
+##  + computes MI^3 profile in $prf->{mi} a la Rychly (2008)
+##  + sets $prf->{score}='mi3'
+##  + %opts:
+##     eps => $eps  #-- clobber $prf->{eps}
+sub compile_mi3 {
+  my ($prf,%opts) = @_;
+  my ($N,$f1,$pf2,$pf12) = @$prf{qw(N f1 f2 f12)};
+  my $mi3 = $prf->{mi3} = {};
+  my $eps = $opts{eps} // $prf->{eps} // 0; #0.5;
+  my ($i2,$f2,$f12);
+  while (($i2,$f2)=each(%$pf2)) {
+    $f12 = $pf12->{$i2} // 0;
+    $mi3->{$i2} = (
+		   log2(
+			(($f12+$eps)**3 * ($N+$eps))
+			/
+			(($f1+$eps)*($f2+$eps))
+		       )
+		  );
+  }
+  $prf->{score} = 'mi3';
   return $prf;
 }
 

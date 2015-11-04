@@ -64,7 +64,7 @@ GetOptions(##-- general
 	   'version|V' => \$version,
 
 	   ##-- general
-	   'log-level|level|ll=s' => sub { $log{level} = uc($_[1]); },
+	   'log-level|level|log=s' => sub { $log{level} = uc($_[1]); },
 	   'client-option|db-option|do|O=s%' => \$cli{opts},
 
 	   ##-- query options
@@ -82,6 +82,7 @@ GetOptions(##-- general
 	   'difference|diff|D|compare|comp|cmp=s' => \$query{diff},
 	   'epsilon|eps|e=f'  => \$query{eps},
 	   'mutual-information|mi'    => sub {$query{score}='mi'},
+	   'mutual-information-3|mi3' => sub {$query{score}='mi3'},
 	   'log-dice|logdice|ld|dice' => sub {$query{score}='ld'},
 	   'log-likelihood|loglik|logl|ll' => sub {$query{score}='ll'},
 	   'frequency|freq|f'         => sub {$query{score}='f'},
@@ -228,7 +229,7 @@ dcdb-query.perl - query a DiaColloDB
    -cutoff CUTOFF        # set minimum score for returned items (default=none)
    -nocutoff             # disable cutoff pruning
    -eps EPS              # smoothing constant (default=0.5)
-   -diff DIFFOP          # diff operation (default=adiff)
+   -diff DIFFOP          # diff operation (adiff|diff|sum|min|max|avg|havg|gavg; default=adiff)
    -[no]global           # do/don't trim profiles globally (vs. locally by date-slice; default=don't)
    -[no]strings          # debug: do/don't stringify returned profile (default=do)
 
@@ -238,6 +239,7 @@ dcdb-query.perl - query a DiaColloDB
    -fm                   # score by frequency per million tokens
    -lfm                  # score by log-frequency per million tokens
    -mi                   # score by pointwise mutual information x log-frequency product
+   -mi3                  # score by pointwise mutual information^3 (Rychlý 2008)
    -ld                   # score by scaled log-Dice coefficient (Rychlý 2008)
    -ll                   # score by 1-sided log-likelihood ratio (Evert 2008)
 

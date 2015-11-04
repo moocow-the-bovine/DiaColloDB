@@ -2,6 +2,11 @@
 ##
 ## Change log for perl distribution DiaColloDB
 
+v0.07.015 Wed, 04 Nov 2015 14:18:20 +0100 moocow
+	* added mi3 profiles a la Rychlý (2008)
+	* report log-log-likelihood scores (extra log() for better scaling)
+	* singularity checking for log-likelihood computations
+
 v0.07.014 Tue, 03 Nov 2015 11:42:26 +0100 moocow
 	* added 1-sided log-likelihood ratio profiles a la Evert (2008)
 
