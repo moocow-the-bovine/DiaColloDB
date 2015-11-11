@@ -2,8 +2,6 @@ Makefile.PL
 
 MANIFEST
 MANIFEST.SKIP
-MYMETA.yml
-MYMETA.json
 
 perlpod.css
 README.rpod
