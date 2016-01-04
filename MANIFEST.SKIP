@@ -1,4 +1,5 @@
 ~$
+^MYMETA\.
 ^plots\b
 ^footer\.rpod$
 ^Makefile$

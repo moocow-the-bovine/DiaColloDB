@@ -2,8 +2,6 @@ Makefile.PL
 
 MANIFEST
 MANIFEST.SKIP
-MYMETA.yml
-MYMETA.json
 
 perlpod.css
 README.rpod
@@ -69,10 +67,11 @@ DiaColloDB/Timer.pm
 DiaColloDB/Timer.pod
 DiaColloDB/Utils.pm
 DiaColloDB/Utils.pod
+
 dcdb-create.perl
 dcdb-export.perl
 dcdb-info.perl
 dcdb-query.perl
 dcdb-dump.perl
+
 t/00_basic.t
-t/common.plt
