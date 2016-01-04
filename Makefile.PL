@@ -19,6 +19,7 @@ WriteMakefile
 		    'JSON'          => undef,  # 2.53
 		    'IPC::Run'      => undef,  # 0.94
 		    'Log::Log4perl' => 1.07,   # 1.29
+		    'File::Temp'    => 0,
 		    ##
 		    ##-- for vector-semantic models (Vsem)
 		    'DocClassify' => '0.15',

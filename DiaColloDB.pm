@@ -89,26 +89,12 @@ our $XECLASS = 'DiaColloDB::EnumFile::FixedLen::MMap';
 our $MMCLASS = 'DiaColloDB::MultiMapFile';
 #our $MMCLASS = 'DiaColloDB::MultiMapFile::MMap'; ##-- TODO
 
-## %VSOPTS : vsem: default options for DocClassify::Mapper->new()
+## %VSOPTS : vsem: default options for DiaColloDB::Relation::Vsem->new()
 our %VSOPTS = (
-	       class=>'LSI',
-	       verbose=>2,
-	       lzClass=>'Raw',
-	       minDocFreq=>5,
-	       minFreq=>10,
-	       smoothf=>1.001,
-	       mapccs=>1,
-	       nullCat=>undef,
-	       termWeight=>'max-entropy-quotient',
-	       twRaw=>1,
-	       twCooked=>1,
-	       svdr=>64,
-	       catProfile=>'average',
-	       weightByCat=>0,
-	       nullCat=>undef,
-	       clearCache=>0,
-	       trainExclusive=>0, ##-- we don't need this and it's a bit more expensive
-	       saveMem=>1, 	  ##-- slower but memory-friendlier compilation
+	       minFreq=>10,       ##-- minimum total term-frequency for model inclusion
+	       minDocFreq=>5,     ##-- minimim "doc-frequency" (#/docs per term) for model inclusion
+	       smoothf=>1,        ##-- smoothing constant
+	       #saveMem=>1, 	  ##-- slower but memory-friendlier compilation
 	       vtype=>'float',    ##-- store compiled values as 32-bit floats
 	       itype=>'long',     ##-- store compiled indices as 32-bit integers
 	      );
@@ -385,7 +371,8 @@ sub open {
     $coldb->{vsopts}     //= {};
     $coldb->{vsopts}{$_} //= $VSOPTS{$_} foreach (keys %VSOPTS); ##-- vsem: default options
     $coldb->{vsem} = DiaColloDB::Relation::Vsem->new((-r "$dbdir/vsem.hdr" ? (base=>"$dbdir/vsem") : qw()),
-						     vsopts => ($coldb->{vsopts}//{}));
+						     %{$coldb->{vsopts}}
+						    );
   }
 
   ##-- all done
@@ -1315,7 +1302,7 @@ sub relname {
   elsif ($rel =~ m/^(?:c|f?1?2$)/) {
     return 'cof';
   }
-  elsif ($rel =~ m/^(?:v|sem|lsi)/) {
+  elsif ($rel =~ m/^(?:v|sem|tdm|tfidf)/) {
     return 'vsem';
   }
   return $rel;

@@ -1,7 +1,7 @@
 ## -*- Mode: CPerl -*-
 ## File: DiaColloDB::Relation::Vsem.pm
 ## Author: Bryan Jurish <moocow@cpan.org>
-## Description: collocation db, profiling relation: vector-space semantic model (via DocClassify)
+## Description: collocation db, profiling relation: vector-space semantic model (native)
 
 package DiaColloDB::Relation::Vsem;
 use DiaColloDB::Relation;
@@ -9,10 +9,10 @@ use DiaColloDB::Relation::Vsem::Query;
 use DiaColloDB::Profile::Pdl;
 use DiaColloDB::Profile::PdlDiff;
 use DiaColloDB::Utils qw(:fcntl :file :math :json :list :pdl);
-use DocClassify;
-use DocClassify::Mapper::Train;
 use File::Path qw(make_path remove_tree);
 use PDL;
+use PDL::CCS;
+use PDL::CCS::IO::FastRaw;
 use strict;
 
 ##==============================================================================
@@ -33,11 +33,19 @@ BEGIN {
 ##   ##-- user options
 ##   base   => $basename,   ##-- relation basename
 ##   flags  => $flags,      ##-- i/o flags (default: 'r')
-##   dcopts => \%dcopts,    ##-- options for DocClassify::Mapper->new()
-##   dcio   => \%dcio,      ##-- options for DocClassify::Mapper->saveDir()
+##   #dcopts => \%dcopts,    ##-- options for DocClassify::Mapper->new()
+##   #dcio   => \%dcio,      ##-- options for DocClassify::Mapper->saveDir()
 ##   mgood  => $regex,      ##-- positive filter regex for metadata attributes
 ##   mbad   => $regex,      ##-- negative filter regex for metadata attributes
 ##   logvprofile => $level, ##-- log-level for vprofile() and vpslice() (default=undef:none)
+##   logio => $level,       ##-- log-level for low-level I/O operations (default=undef:none)
+##   ##
+##   ##-- modelling options (formerly via DocClassify)
+##   minFreq    => $fmin,   ##-- minimum total term-frequency for model inclusion (default=10)
+##   minDocFreq => $dfmin,  ##-- minimim "doc-frequency" (#/docs per term) for model inclusion (default=
+##   smoothf    => $f0,     ##-- smoothing constant to avoid log(0)
+##   vtype      => $vtype,  ##-- PDL::Type for storing compiled values (default=float)
+##   itype      => $itype,  ##-- PDL::Type for storing compiled integers (default=long)
 ##   ##
 ##   ##-- guts: aux: info
 ##   N => $tdm0Total,       ##-- total number of (doc,term) frequencies counted
@@ -55,8 +63,10 @@ BEGIN {
 ##   msorti => $msorti,       ##-- pdl($NC,$NM) : [,($mpos)]  => $mvals->slice("($mpos),")->qsorti
 ##   mpos  => \%m2pos,        ##-- meta-attribute positions: $mpos=$m2pos{$mattr}
 ##   ##
-##   ##-- guts: mapper
-##   dcmap  => $dcmap,      ##-- underlying DocClassify::Mapper object
+##   ##-- guts: model (formerly via DocClassify dcmap=>$dcmap)
+##   tdm => $tdm,             ##-- term-doc matrix: PDL::CCS::Nd ($NT,$ND): [$ti,$di] -> log(f($ti,$di)+$f0)*w($ti)
+##   tw  => $tw_pdl,          ##-- term-weight pdl: dense:       ($NT)    : [$ti]     -> ($wRaw=0) + ($wCooked=1)*w($ti)
+##                            ##   + where w($t) = 1 - H(Doc|T=$t) / H_max(Doc) ~ DocClassify termWeight=>'max-entropy-quotient'
 ##   #...
 ##   )
 sub new {
@@ -65,13 +75,16 @@ sub new {
 			       flags => 'r',
 			       mgood => $DiaColloDB::VSMGOOD_DEFAULT,
 			       mbad  => $DiaColloDB::VSMBAD_DEFAULT,
-			       dcopts => {}, ##-- inherited from $coldb->{vsopts}
-			       dcio   => {verboseIO=>0,saveSvdUS=>1,mmap=>1}, ##-- I/O opts for DocClassify
+			       minFreq => 10,
+			       minDocFreq => 5,
+			       smoothf => 1,
+			       vtype => 'float',
+			       itype => 'long',
 			       meta  => [],
 			       attrs => [],
-			       dcmap => undef,
 			       ##
 			       logvprofile  => 'trace',
+			       logio => 'trace',
 			       ##
 			       @_
 			      );
@@ -80,7 +93,26 @@ sub new {
 }
 
 ##==============================================================================
-## API: disk usage
+## Vsem API: Utils
+
+## $vtype = $vs->vtype()
+##  + get PDL::Type for storing compiled values
+sub vtype {
+  return $_[0]{vtype} if (UNIVERSAL::isa($_[0]{vtype},'PDL::Type'));
+  return $_[0]{vtype} = (PDL->can($_[0]{vtype}//'double') // PDL->can('double'))->();
+}
+
+## $itype = $vs->itype()
+##  + get PDL::Type for storing indices
+sub vtype {
+  return $_[0]{itype} if (UNIVERSAL::isa($_[0]{vtype},'PDL::Type'));
+  foreach ($_[0]{itype}, 'indx', 'long') {
+    return $_[0]{itype} = PDL->can($_)->() if (defined($_) && PDL->can($_));
+  }
+}
+
+##==============================================================================
+## Persistent API: disk usage
 
 ## @files = $obj->diskFiles()
 ##  + returns disk storage files, used by du() and timestamp()
@@ -95,12 +127,23 @@ sub diskFiles {
 ##  + keys to save as header; default implementation returns all keys of all non-references
 sub headerKeys {
   my $obj = shift;
-  return (qw(dcopts meta attrs), grep {$_ !~ m/(?:flags|perms|base|log)/} $obj->SUPER::headerKeys);
+  return (qw(meta attrs vtype itype), grep {$_ !~ m/(?:flags|perms|base|log)/} $obj->SUPER::headerKeys);
+}
+
+## $hdr = $obj->headerData()
+##  + returns reference to object header data; default returns anonymous HASH-ref for $obj->headerKeys()
+##  + override stringifies {vtype}, {itype}
+sub headerData {
+  my $obj = shift;
+  my $hdr = $obj->SUPER::headerData(@_);
+  $hdr->{vtype} = "$hdr->{vtype}" if (ref($hdr->{vtype}));
+  $hdr->{itype} = "$hdr->{itype}" if (ref($hdr->{itype}));
+  return $hdr;
 }
 
 
 ##==============================================================================
-## API: open/close
+## Relation API: open/close
 
 ## $vs_or_undef = $vs->open($base)
 ## $vs_or_undef = $vs->open($base,$flags)
@@ -126,14 +169,16 @@ sub open {
       or $vs->logconfess("open(): could not create relation directory '$vsdir': $!");
   }
 
-  ##-- load: mapper
-  my %ioopts = %{$vs->{dcio}//{}};
-  my $map = $vs->{dcmap} = DocClassify::Mapper->loadDir("$vsdir/map.d", %ioopts)
-    or $vs->logconfess("open(): failed to load mapper data from $vsdir/map.d: $!");
+  ##-- load: model data
+  my %ioopts = (ReadOnly=>!fcwrite(flags), mmap=>1, log=>$vs->{logIO});
+  defined($vs->{tdm} = readPdlFile("$vsdir/tdm", class=>'PDL::CCS::Nd', %ioopts))
+    or $vs->logconfess("open(): failed to load term-document matrix from $vsdir/tdm.*: $!");
+  defined($vs->{tw}  = readPdlFile("$vsdir/tw.pdl", %ioopts))
+    or $vs->logconfess("open(): failed to load term-weights from $vsdir/tw.pdl: $!");
 
   ##-- load: aux data: piddles
   foreach (qw(tvals tsorti mvals msorti d2c c2d c2date)) {
-    defined($vs->{$_}=$map->readPdlFile("$vsdir/$_.pdl", %ioopts))
+    defined($vs->{$_}=readPdlFile("$vsdir/$_.pdl", %ioopts))
       or $vs->logconfess("open(): failed to load piddle data from $vsdir/$_.pdl: $!");
   }
 
@@ -155,15 +200,14 @@ sub close {
 #   $vs->{dcmap}->saveDir("$vs->{base}_map.d", %{$vs->{dcio}//{}})
 #     or $vs->logconfess("close(): failed to save mapper data to $vs->{base}_map.d: $!");
   }
-  undef $vs->{base};
-  undef $vs->{dcmap};
+  delete @$vs{qw(base N tdm tw attrs tvals tsorti tpos meta mvals msorti mpos tdm tw)};
   return $vs;
 }
 
 ## $bool = $obj->opened()
 sub opened {
   my $vs = shift;
-  return defined($vs->{dcmap}) && $vs->{dcmap}->compiled();
+  return UNIVERSAL::isa($vs->{tdm},'PDL::CCS::Nd');
 }
 
 ##==============================================================================
@@ -181,13 +225,15 @@ sub create {
 
   ##-- create/clobber
   $vs = $vs->new() if (!ref($vs));
-  @$vs{keys %opts} = values %opts;
   $vs->{$_} = $coldb->{"vs$_"} foreach (grep {exists $coldb->{"vs$_"}} qw(mgood mbad));
+  @$vs{keys %{$coldb->{vsopts}//{}}} = values %{$coldb->{vsopts}//{}};
+  @$vs{keys %opts} = values %opts;
 
   ##-- sanity check(s)
   my $doctmpd = "$coldb->{dbdir}/doctmp.d";
   my $doctmpf = "$coldb->{dbdir}/doctmp.files";
   my $base   = $vs->{base};
+  my $logCreate = $vs->{logCreate} // $coldb->{logCreate} // 'trace';
   $vs->logconfess("create(): no source document array in parent DB") if (!UNIVERSAL::isa($coldb->{doctmpa},'ARRAY'));
   $vs->logconfess("create(): no 'base' key defined") if (!$base);
 
@@ -199,14 +245,6 @@ sub create {
       or $vs->logconfess("create(): could not remove stale $vsdir: $!");
   make_path($vsdir)
     or $vs->logconfess("create(): could not create Vsem directory $vsdir: $!");
-
-  ##-- create dcmap
-  $vs->{dcopts} //= {};
-  @{$vs->{dcopts}}{keys %{$coldb->{vsopts}//{}}} = values %{$coldb->{vsopts}//{}};
-  my $map = $vs->{dcmap} = DocClassify::Mapper->new( %{$vs->{dcopts}} )
-    or $vs->logconfess("create(): failed to create DocClassify::Mapper object");
-  my $mverbose = $map->{verbose};
-  $map->{verbose} = min2($mverbose,1);
 
   ##-- initialize: temporary doc-array
   my $doctmpa = $coldb->{doctmpa};
@@ -221,22 +259,39 @@ sub create {
   my $mgood = $vs->{mgood} ? qr{$vs->{mgood}} : undef;
   my $mbad  = $vs->{mbad}  ? qr{$vs->{mbad}}  : undef;
 
-  ##-- simulate $map->trainCorpus()
+  ##-- create temp files tdm0.ix.tmp, tdm0.nz.tmp
+  my $itype = $vs->itype;
+  my $vtype = $vs->vtype;
+  my $pack_ix = $PDL::Types::pack[ $itype->enum ];
+  my $pack_nz = $PDL::Types::pack[ $vtype->enum ];
+  my $ix0file = "$vsdir/tdm0.ix.tmp"; # pdl: ($nnz0,2):  [$nzi,*] => [$ti0,$di]
+  my $nz0file = "$vsdir/tdm0.nz.tmp"; # pdl: ($nnz0+1):  [$nzi]   => $f_td
+  my $t0file  = "$vsdir/t0.tmp";      # pdl: ($NA,$NT0): [*,$ti0] => [$ai0,$ai1,...,$aiN] # not sorted
+  CORE::open(my $ix0fh, ">$ix0file")
+      or $vs->logconfess("create(): failed to create tempfile $ix0file: $!");
+  CORE::open(my $nz0fh, ">$nz0file")
+      or $vs->logconfess("create(): failed to create tempfile $nz0file: $!");
+  CORE::open(my $t0fh, ">$t0file")
+      or $vs->logconfess("create(): failed to create tempfile $t0file: $!");
+
+  ##-- simulate DocClassify::Mapper::trainCorpus(): populate tdm0.*
   $vs->vlog($logCreate, "create(): simulating trainCorpus() [NC=$nfiles, saveMem=".($map->{saveMem}//0)."]");
   $map->trainInit();
   my $NC     = $nfiles;
-  my $c2date = $vs->{c2date} = zeroes(ushort, $NC);
+  my $c2date = $vs->{c2date} = mmzeroes("vsdir/c2date.pdl", ushort, $NC);
   my $json   = DiaColloDB::Utils->jsonxs();
   my ($doc,$filei,$doclabel,$docid);
   my ($mattr,$mval,$mdata,$mvali,$mvals);
-  my ($sig,$sigi,$dcdoc);
+  my ($sig,$ts,$ti,$f);
+  my $ts2i = {''=>0};
+  my $NT0  = 0;
+  my $sigi = 0;
   foreach $doc (@$doctmpa) {
     $doclabel = $doc->{meta}{basename} // $doc->{meta}{file_} // $doc->{label};
     $vs->vlog($coldb->{logCorpusFile}, sprintf("create(): processing signatures [%3.0f%%]: %s", 100*($filei-1)/$nfiles, $doclabel))
       if ($logFileN && ($filei++ % $logFileN)==0);
 
-    $docid    = $doc->{id} // ++$docid;
-    $sigi     = 0;
+    $docid = $doc->{id} // ++$docid;
 
     #$vs->debug("c2date: id=$docid/$NC ; doc=$doclabel");
     $c2date->set($docid,$doc->{date});
@@ -253,16 +308,103 @@ sub create {
     ##-- create temporary DocClassify::Document objects for each embedded signature
     #$vs->debug("sigs: id=$docid/$NC ; doc=$doclabel");
     foreach $sig (@{$doc->{sigs}}) {
-      $dcdoc = bless({
-		      label=>$doclabel."#".($sigi++),
-		      cats=>[{id=>$docid,deg=>0,name=>$doclabel}],
-		      sig =>bless({tf=>$sig},'DocClassify::Signature'),
-		     }, 'DocClassify::Document');
-      $map->trainDocument($dcdoc);
+      while (($ts,$f) = each %$sig) {
+	if (!defined($ti=$ts2i->{$ts})) {
+	  $ti = $ts2i->{$ts} = ++$NT0;
+	  $t0fh->print(pack($pack_ix, split(' ',$ts)));
+	}
+	$ix0fh->print(pack($pack_ix, $ti, $sigi));
+	$nz0fh->print(pack($pack_nz, $f));
+      }
+      ++$sigi;
     }
   }
+  ##-- tdm0: add missing value
+  $nz0fh->print(pack($pack_nz, 0));
+  $ix0fh->close() or $vs->logconfess("create(): close failed for temp-file $ix0file: $!");
+  $nz0fh->close() or $vs->logconfess("create(): close failed for temp-file $nz0file: $!");
 
-  ##-- compile mapper
+  ##-- tdm0: map to piddles
+  my $ND  = $sigi;
+  my $nnz0 = (-s $nz0file) / length(pack($pack_nz,0)) - 1;
+  my $density = $nnz0 / ($ND*$NT0);
+  $vs->vlog($logCreate, "create(): mapping tdm0 data from tempfiles (ND=$ND, NT0=$NT0; density=", sprintf("%.2g%%", 100*$density), ")");
+  defined(my $ix0 = mapfraw($ix0file,{ReadOnly=>1,Creat=>0,Trunc=>0,Dims=>[2,$nnz0],Datatype=>$itype}))
+    or $vs->logconfess("create(): mapfraw() failed for $ix0file: $!");
+  defined(my $nz0 = mapfraw($nz0file,{ReadOnly=>1,Creat=>0,Trunc=>0,Dims=>[$nnz0+1],Datatype=>$vtype}))
+    or $vs->logconfess("create(): mapfraw() failed for $nz0file: $!");
+  defined(my $t0 = mapfraw($t0file,{ReadOnly=>1,Creat=>0,Trunc=>0,Dims=>[$NA,$NT0],Datatype=>$itype}))
+    or $vs->logconfess("create(): mapfraw() failed for $t0file: $!");
+
+  ##-- tdm0: filter: by term-frequency
+  my $t_mask = mmzeroes("$vsdir/t_mask.tmp", byte, $NT0, {temp=>1});
+  $vs->{minFreq} //= 0;
+  $vs->vlog($logCreate, "create(): filter: by term-frequency (minFreq=$vs->{minFreq})");
+  if ($vs->{minFreq} > 0) {
+    $nz0->indadd($ix0->slice("(0),"), my $tf0=mmzeroes("$vsdir/tf0.tmp", $vtype, $NT0, {temp=>1}));
+    $tf->ge($vs->{minFreq}, $t_mask, 0);
+    undef $tf0;
+    mmunlink("$vsdir/$tf0.tmp");
+  } else {
+    $t_mask .= 1;
+  }
+
+  ##-- tdm0: filter: by doc-frequency
+  $vs->{minDocFreq} //= 0;
+  $vs->vlog($logCreate, "create(): filter: by term-frequency (minFreq=$vs->{minFreq})");
+  if ($vs->{minFreq} > 0) {
+    (my $df1 = mmzeroes("$vsdir/df1.tmp", $itype, $NT0, {temp=>1})) .= 1;
+    $df1->indadd($ix0->slice("(0),"), my $df=mmzeroes("$vsdir/df.tmp", $itype, $NT0, {temp=>1}));
+    $df->ge($vs->{minDocFreq}, (my $df_mask=mmzeroes("$vsdir/df_mask.tmp", byte, $NT0, {temp=>1})), 0);
+    $tf_mask &= $df_mask;
+    undef $df_mask;
+    undef $df;
+    undef $df1;
+    mmunlink("$vsdir/$_.tmp") foreach (qw(df_mask df df1));
+  }
+
+  ##-- tdm0: filter: prune
+  my $NA    = scalar(@{$coldb->{attrs}});
+  my $NT    = $t_mask->dsumover;
+  my $pkeep = $NT0/$NT;
+  $vs->vlog($logCreate,
+	    sprintf("create(): filter: keeping NT=$NT (%.2f%%) of $NT0 original terms (%.2f%% pruned)", 100*$pkeep, 100*(1-$pkeep)));
+  $t_mask->which(my $t1x=mmzeroes("$csdir/t1x.tmp", $itype, $NT, {temp=>1}));  ##-- $t1x: pdl ($NT): [$ti] => $t0i
+  my $tvals = $vs->{tvals} = mmzeroes("$vsdir/tvals.pdl", $itype, $NA,$NT);
+  $tvals   .= $t0->dice_axis(1, $t1x); ##-- output param -> error
+  undef $t0;
+  CORE::unlink $t0file;
+
+  ##-- tdm0: convert to nz-mask : in-memory
+  # ERROR: Usage:  PDL::index(a,ind,c) (you may leave temporaries or output variables out of list) at ...[/usr/share/perl/5.20/perl5db.pl:732] line 2.
+  # ... even though that's how we're calling it; maybe this has something to do with the [a] qualifier on the index() output piddle?
+  #$t_mask->index($ix0->slice("(0),"), my $nzi_mask=mmzeroes("$vsdir/nzi_mask.tmp", byte, $nnz0, {temp=>1})); ##-- output param -> error
+  my $nzi_mask = $t_mask->index($ix0->slice("(0),"));
+  my $nnz1     = $nzi_mask->dsumover;
+  my $pkeep    = $nnz1/$nnz0;
+  vmsg(sprintf("create(): filter: keeping %.2f%% of original nz-values (%.2f%% pruned)", 100*$pkeep, 100*(1-$pkeep)));
+  $nzi_mask->which((my $nzi_which=zeroes("$vsdir/nzi_which.tmp", ccs_indx, $nnz1+1, {temp=>1}))->slice("0:-2"));
+  $nzi_which->set($nnz1, $nnz1);
+  undef $nzi_mask;
+
+  ##-- create filtered $ix, $nz
+  (my $nz = mmzeroes($vtype, 2,$nnz1+1)) .= $nz0->index($nzi_which);
+  undef $nz0;
+  CORE::unlink $nz0file;
+  ##
+  (my $ix = mmzeroes($itype, 2,$nnz1))   .= $ix0->dice_axis(1,$nzi_which->slice("0:-2"));
+  undef $ix0;
+  undef $nzi_which;
+  CORE::unlink $ix0file;
+  CORE::unlink "$vsdir/nzi_which.tmp";
+  ##
+  ($tmp=$ix->slice("(1),")) .= $ix->slice("(1),")->vsearch($t1x);
+  undef $t1x;
+  CORE::unlink "$vsdir/t1x.tmp";
+
+  ##-- CONTINUE HERE: tdm ccs, term-weights, tfidf, tsorti, ...
+
+  ##-- OLD: compile mapper
   $vs->vlog($logCreate, "create(): compiling ", ref($map), " object");
   $map->compile()
     or $vs->logconfess("create(): failed to compile ", ref($map), " object");
@@ -360,7 +502,7 @@ sub create {
     or $vs->logconfess("create(): failed to save mapper data to ${vsdir}/map.d: $!");
 
   ##-- save: aux data: piddles
-  foreach (qw(tvals tsorti mvals msorti d2c c2d c2date)) {
+  foreach (qw(tvals tsorti mvals msorti d2c c2d )) { #tvals, c2date: populated in-place via mmzeroes()
     $map->writePdlFile($vs->{$_}, "$vsdir/$_.pdl", %ioopts)
       or $vs->logconfess("create(): failed to save auxilliary piddle $vsdir/$_.pdl: $!");
   }
