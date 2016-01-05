@@ -9,8 +9,10 @@ use DiaColloDB::Relation::Vsem::Query;
 use DiaColloDB::Profile::Pdl;
 use DiaColloDB::Profile::PdlDiff;
 use DiaColloDB::Utils qw(:fcntl :file :math :json :list :pdl);
+use DiaColloDB::PDL::MM;
 use File::Path qw(make_path remove_tree);
 use PDL;
+use PDL::IO::FastRaw;
 use PDL::CCS;
 use PDL::CCS::IO::FastRaw;
 use strict;
@@ -43,7 +45,7 @@ BEGIN {
 ##   ##-- modelling options (formerly via DocClassify)
 ##   minFreq    => $fmin,   ##-- minimum total term-frequency for model inclusion (default=10)
 ##   minDocFreq => $dfmin,  ##-- minimim "doc-frequency" (#/docs per term) for model inclusion (default=
-##   smoothf    => $f0,     ##-- smoothing constant to avoid log(0)
+##   smoothf    => $f0,     ##-- smoothing constant to avoid log(0); default=1
 ##   vtype      => $vtype,  ##-- PDL::Type for storing compiled values (default=float)
 ##   itype      => $itype,  ##-- PDL::Type for storing compiled integers (default=long)
 ##   ##
@@ -65,8 +67,12 @@ BEGIN {
 ##   ##
 ##   ##-- guts: model (formerly via DocClassify dcmap=>$dcmap)
 ##   tdm => $tdm,             ##-- term-doc matrix: PDL::CCS::Nd ($NT,$ND): [$ti,$di] -> log(f($ti,$di)+$f0)*w($ti)
+##   tf  => $tf_pdl,          ##-- term-freq pdl:   dense:       ($NT)    : [$ti]     -> f($ti)
 ##   tw  => $tw_pdl,          ##-- term-weight pdl: dense:       ($NT)    : [$ti]     -> ($wRaw=0) + ($wCooked=1)*w($ti)
 ##                            ##   + where w($t) = 1 - H(Doc|T=$t) / H_max(Doc) ~ DocClassify termWeight=>'max-entropy-quotient'
+##   c2date => $c2date,       ##-- cat-dates   : dense ($NC)   : [$ci]   -> $date
+##   c2d    => $c2d,          ##-- cat->doc map: dense (2,$NC) : [*,$ci] -> [$di_off,$di_len]
+##   d2c    => $d2c,          ##-- doc->cat map: dense ($ND)   : [$di]   -> $ci
 ##   #...
 ##   )
 sub new {
@@ -104,7 +110,7 @@ sub vtype {
 
 ## $itype = $vs->itype()
 ##  + get PDL::Type for storing indices
-sub vtype {
+sub itype {
   return $_[0]{itype} if (UNIVERSAL::isa($_[0]{vtype},'PDL::Type'));
   foreach ($_[0]{itype}, 'indx', 'long') {
     return $_[0]{itype} = PDL->can($_)->() if (defined($_) && PDL->can($_));
@@ -170,9 +176,11 @@ sub open {
   }
 
   ##-- load: model data
-  my %ioopts = (ReadOnly=>!fcwrite(flags), mmap=>1, log=>$vs->{logIO});
+  my %ioopts = (ReadOnly=>!fcwrite($flags), mmap=>1, log=>$vs->{logIO});
   defined($vs->{tdm} = readPdlFile("$vsdir/tdm", class=>'PDL::CCS::Nd', %ioopts))
     or $vs->logconfess("open(): failed to load term-document matrix from $vsdir/tdm.*: $!");
+  defined($vs->{tf}  = readPdlFile("$vsdir/tf.pdl", %ioopts))
+    or $vs->logconfess("open(): failed to load term-frequencies from $vsdir/tf.pdl: $!");
   defined($vs->{tw}  = readPdlFile("$vsdir/tw.pdl", %ioopts))
     or $vs->logconfess("open(): failed to load term-weights from $vsdir/tw.pdl: $!");
 
@@ -230,9 +238,8 @@ sub create {
   @$vs{keys %opts} = values %opts;
 
   ##-- sanity check(s)
-  my $doctmpd = "$coldb->{dbdir}/doctmp.d";
-  my $doctmpf = "$coldb->{dbdir}/doctmp.files";
-  my $base   = $vs->{base};
+  my $doctmpa = $coldb->{doctmpa};
+  my $base    = $vs->{base};
   my $logCreate = $vs->{logCreate} // $coldb->{logCreate} // 'trace';
   $vs->logconfess("create(): no source document array in parent DB") if (!UNIVERSAL::isa($coldb->{doctmpa},'ARRAY'));
   $vs->logconfess("create(): no 'base' key defined") if (!$base);
@@ -246,11 +253,7 @@ sub create {
   make_path($vsdir)
     or $vs->logconfess("create(): could not create Vsem directory $vsdir: $!");
 
-  ##-- initialize: temporary doc-array
-  my $doctmpa = $coldb->{doctmpa};
-
   ##-- initialize: logging
-  my $logCreate = 'trace';
   my $nfiles    = scalar(@$doctmpa);
   my $logFileN  = $coldb->{logCorpusFileN} // max2(1,int($nfiles/10));
 
@@ -274,15 +277,17 @@ sub create {
   CORE::open(my $t0fh, ">$t0file")
       or $vs->logconfess("create(): failed to create tempfile $t0file: $!");
 
-  ##-- simulate DocClassify::Mapper::trainCorpus(): populate tdm0.*
-  $vs->vlog($logCreate, "create(): simulating trainCorpus() [NC=$nfiles, saveMem=".($map->{saveMem}//0)."]");
-  $map->trainInit();
+  ##-- create: simulate DocClassify::Mapper::trainCorpus(): populate tdm0.*
+  $vs->vlog($logCreate, "create(): processing input documents [NC=$nfiles]");
+  my $NA     = scalar(@{$coldb->{attrs}});
   my $NC     = $nfiles;
-  my $c2date = $vs->{c2date} = mmzeroes("vsdir/c2date.pdl", ushort, $NC);
+  my $c2date = $vs->{c2date} = mmzeroes("$vsdir/c2date.pdl", ushort, $NC);  ##-- c2date ($NC): [$ci]   -> $date
+  my $c2d    = $vs->{c2d}    = mmzeroes("$vsdir/c2d.pdl", $itype, 2,$NC);   ##-- c2d  (2,$NC): [0,$ci] => $di_off, [1,$ci] => $di_len
   my $json   = DiaColloDB::Utils->jsonxs();
   my ($doc,$filei,$doclabel,$docid);
   my ($mattr,$mval,$mdata,$mvali,$mvals);
   my ($sig,$ts,$ti,$f);
+  my ($tmp);
   my $ts2i = {''=>0};
   my $NT0  = 0;
   my $sigi = 0;
@@ -295,12 +300,13 @@ sub create {
 
     #$vs->debug("c2date: id=$docid/$NC ; doc=$doclabel");
     $c2date->set($docid,$doc->{date});
+    $c2d->set(0,$docid => $sigi);
 
     ##-- parse metadata
     #$vs->debug("meta: id=$docid/$NC ; doc=$doclabel");
     while (($mattr,$mval) = each %{$doc->{meta}//{}}) {
       next if ((defined($mgood) && $mattr !~ $mgood) || (defined($mbad) && $mattr =~ $mbad));
-      $mdata = $meta{$mattr} = {n=>1, s2i=>{''=>0}, vals=>zeroes($map->itype,$NC)} if (!defined($mdata=$meta{$mattr}));
+      $mdata = $meta{$mattr} = {n=>1, s2i=>{''=>0}, vals=>mmtemp("$vsdir/mvals_$mattr.tmp",$itype,$NC)} if (!defined($mdata=$meta{$mattr}));
       $mvali = ($mdata->{s2i}{$mval} //= $mdata->{n}++);
       $mdata->{vals}->set($docid,$mvali);
     }
@@ -318,13 +324,17 @@ sub create {
       }
       ++$sigi;
     }
+
+    ##-- update c2d (length)
+    $c2d->set(1,$docid => $sigi - $c2d->at(0,$docid));
   }
-  ##-- tdm0: add missing value
+  ##-- create: tdm0: add missing value
   $nz0fh->print(pack($pack_nz, 0));
   $ix0fh->close() or $vs->logconfess("create(): close failed for temp-file $ix0file: $!");
   $nz0fh->close() or $vs->logconfess("create(): close failed for temp-file $nz0file: $!");
 
-  ##-- tdm0: map to piddles
+  ##-- create: tdm0: map to piddles
+  ++$NT0;
   my $ND  = $sigi;
   my $nnz0 = (-s $nz0file) / length(pack($pack_nz,0)) - 1;
   my $density = $nnz0 / ($ND*$NT0);
@@ -336,97 +346,116 @@ sub create {
   defined(my $t0 = mapfraw($t0file,{ReadOnly=>1,Creat=>0,Trunc=>0,Dims=>[$NA,$NT0],Datatype=>$itype}))
     or $vs->logconfess("create(): mapfraw() failed for $t0file: $!");
 
-  ##-- tdm0: filter: by term-frequency
+  ##-- create: tdm0: filter: by term-frequency
   my $t_mask = mmzeroes("$vsdir/t_mask.tmp", byte, $NT0, {temp=>1});
   $vs->{minFreq} //= 0;
   $vs->vlog($logCreate, "create(): filter: by term-frequency (minFreq=$vs->{minFreq})");
   if ($vs->{minFreq} > 0) {
-    $nz0->indadd($ix0->slice("(0),"), my $tf0=mmzeroes("$vsdir/tf0.tmp", $vtype, $NT0, {temp=>1}));
-    $tf->ge($vs->{minFreq}, $t_mask, 0);
-    undef $tf0;
-    mmunlink("$vsdir/$tf0.tmp");
+    $nz0->slice("0:-2")->indadd($ix0->slice("(0),"), my $tf0=mmtemp("$vsdir/tf0.tmp", $vtype, $NT0));
+    $tf0->ge($vs->{minFreq}, $t_mask, 0);
   } else {
     $t_mask .= 1;
   }
 
-  ##-- tdm0: filter: by doc-frequency
+  ##-- create: tdm0: filter: by doc-frequency
   $vs->{minDocFreq} //= 0;
-  $vs->vlog($logCreate, "create(): filter: by term-frequency (minFreq=$vs->{minFreq})");
-  if ($vs->{minFreq} > 0) {
-    (my $df1 = mmzeroes("$vsdir/df1.tmp", $itype, $NT0, {temp=>1})) .= 1;
-    $df1->indadd($ix0->slice("(0),"), my $df=mmzeroes("$vsdir/df.tmp", $itype, $NT0, {temp=>1}));
-    $df->ge($vs->{minDocFreq}, (my $df_mask=mmzeroes("$vsdir/df_mask.tmp", byte, $NT0, {temp=>1})), 0);
-    $tf_mask &= $df_mask;
-    undef $df_mask;
-    undef $df;
-    undef $df1;
-    mmunlink("$vsdir/$_.tmp") foreach (qw(df_mask df df1));
+  $vs->vlog($logCreate, "create(): filter: by doc-frequency (minDocFreq=$vs->{minDocFreq})");
+  if ($vs->{minDocFreq} > 0) {
+    pdl($itype,1)->indadd($ix0->slice("(0),"), my $df=mmtemp("$vsdir/df.tmp", $itype, $NT0));
+    $df->ge($vs->{minDocFreq}, (my $df_mask=mmtemp("$vsdir/df_mask.tmp", byte, $NT0)), 0);
+    $t_mask &= $df_mask;
   }
 
-  ##-- tdm0: filter: prune
-  my $NA    = scalar(@{$coldb->{attrs}});
-  my $NT    = $t_mask->dsumover;
-  my $pkeep = $NT0/$NT;
+  ##-- create: tdm0: filter: prune
+  $t_mask->set(0=>1); ##-- always keep "null" term
+  my $NT     = $t_mask->dsumover;
+  my $pkeept = $NT/$NT0;
   $vs->vlog($logCreate,
-	    sprintf("create(): filter: keeping NT=$NT (%.2f%%) of $NT0 original terms (%.2f%% pruned)", 100*$pkeep, 100*(1-$pkeep)));
-  $t_mask->which(my $t1x=mmzeroes("$csdir/t1x.tmp", $itype, $NT, {temp=>1}));  ##-- $t1x: pdl ($NT): [$ti] => $t0i
-  my $tvals = $vs->{tvals} = mmzeroes("$vsdir/tvals.pdl", $itype, $NA,$NT);
+	    sprintf("create(): filter: keeping %.2f%% original term types (%.2f%% pruned)", 100*$pkeept, 100*(1-$pkeept)));
+  $t_mask->which(my $t1x=mmtemp("$vsdir/t1x.tmp", $itype, $NT));  	    ##-- $t1x  : pdl ($NT): [$ti] => $t0i
+  my $tvals = $vs->{tvals} = mmzeroes("$vsdir/tvals.pdl", $itype, $NA,$NT); ##-- $tvals: pdl ($NA,$NT): [$ai,$ti] => $avali_for_term_ti : keep
   $tvals   .= $t0->dice_axis(1, $t1x); ##-- output param -> error
   undef $t0;
   CORE::unlink $t0file;
 
-  ##-- tdm0: convert to nz-mask : in-memory
+  ##-- create: tdm0: convert to nz-mask : in-memory
   # ERROR: Usage:  PDL::index(a,ind,c) (you may leave temporaries or output variables out of list) at ...[/usr/share/perl/5.20/perl5db.pl:732] line 2.
   # ... even though that's how we're calling it; maybe this has something to do with the [a] qualifier on the index() output piddle?
   #$t_mask->index($ix0->slice("(0),"), my $nzi_mask=mmzeroes("$vsdir/nzi_mask.tmp", byte, $nnz0, {temp=>1})); ##-- output param -> error
   my $nzi_mask = $t_mask->index($ix0->slice("(0),"));
-  my $nnz1     = $nzi_mask->dsumover;
-  my $pkeep    = $nnz1/$nnz0;
-  vmsg(sprintf("create(): filter: keeping %.2f%% of original nz-values (%.2f%% pruned)", 100*$pkeep, 100*(1-$pkeep)));
-  $nzi_mask->which((my $nzi_which=zeroes("$vsdir/nzi_which.tmp", ccs_indx, $nnz1+1, {temp=>1}))->slice("0:-2"));
-  $nzi_which->set($nnz1, $nnz1);
+  my $nnz     = $nzi_mask->dsumover;
+  my $pkeepv  = $nnz/$nnz0;
+  $vs->vlog($logCreate, sprintf("create(): filter: keeping %.2f%% of original nz-values (%.2f%% pruned)", 100*$pkeepv, 100*(1-$pkeepv)));
+  $nzi_mask->which( (my $nzi_which=mmtemp("$vsdir/nzi_which.tmp", PDL::CCS::ccs_indx(), $nnz+1))->slice("0:-2") );
+  $nzi_which->set($nnz=>$nnz0);
   undef $nzi_mask;
+  undef $t_mask;
 
-  ##-- create filtered $ix, $nz
-  (my $nz = mmzeroes($vtype, 2,$nnz1+1)) .= $nz0->index($nzi_which);
+  ##-- create: filter: create filtered $ix, $nz (still unsorted)
+  (my $nz = mmtemp("$vsdir/tdm.nz.tmp", $vtype, $nnz+1)) .= $nz0->index($nzi_which);
   undef $nz0;
   CORE::unlink $nz0file;
   ##
-  (my $ix = mmzeroes($itype, 2,$nnz1))   .= $ix0->dice_axis(1,$nzi_which->slice("0:-2"));
-  undef $ix0;
+  (my $ix = mmtemp("$vsdir/tdm.ix.tmp", $itype, 2,$nnz)) .= $ix0->dice_axis(1,$nzi_which->slice("0:-2"));
   undef $nzi_which;
+  undef $ix0;
   CORE::unlink $ix0file;
-  CORE::unlink "$vsdir/nzi_which.tmp";
   ##
-  ($tmp=$ix->slice("(1),")) .= $ix->slice("(1),")->vsearch($t1x);
+  ##-- create: filter: map unfiltered to filtered term-ids
+  $ix->slice("(0),")->vsearch($t1x, $ix->slice("(0),"));
   undef $t1x;
-  CORE::unlink "$vsdir/t1x.tmp";
 
-  ##-- CONTINUE HERE: tdm ccs, term-weights, tfidf, tsorti, ...
+  ##-- create: tw (term-weights): max-entropy-quotient: see e.g. Berry(1995); Nakov, Popova, & Mateev (2001)
+  $vs->vlog($logCreate, "create(): computing term weights");
+  $nz->slice("0:-2")->indadd($ix->slice("(0),"),			##-- tf  :  pdl: [$ti] -> f($ti) : keep
+			     my $tf=$vs->{tf}=mmzeroes("$vsdir/tf.pdl", $vtype, $NT));
+  $nz->slice("0:-2")->divide($tf->index($ix->slice("(0),")),		##-- twp :  pdl: $nzi~[$ti,$di] ->     p($di|$ti)
+			     my $twp=mmtemp("$vsdir/twp.tmp", $vtype, $nnz), 0);
+  $twp->log(my $twh=mmtemp("$vsdir/twh.tmp", $vtype, $nnz));		##-- twh :  pdl: $nzi~[$ti,$di] ->  ln p($di|$ti)
+  $twh /= log(2);							##                              -> log p($di|$ti)
+  $twh *= $twp;								##                              ->    -h($di|$ti) = p($di|$ti) * log p($di|$ti)
+  undef $twp;
+  $twh->indadd($ix->slice("(0),"),
+	       my $tw=mmzeroes("$vsdir/tw.pdl", $vtype, $NT));		##-- tw  : pdl: [$ti] ->  -H(Doc|T=$ti) : keep
+  undef $twh;
+  $tw  /= log($ND)/log(2);						##                    ->  -H(DOc|T=$ti)/Hmax(Doc)
+  $tw  += 1;								##                    -> 1-H(DOc|T=$ti)/Hmax(Doc)
+  $vs->{tw} = $tw;
 
-  ##-- OLD: compile mapper
-  $vs->vlog($logCreate, "create(): compiling ", ref($map), " object");
-  $map->compile()
-    or $vs->logconfess("create(): failed to compile ", ref($map), " object");
+  ##-- create: construct final tfidf matrix
+  my %ioopts = (mmap=>1, log=>$vs->{logIO});
+  $vs->{smoothf} //= 1;
+  $vs->vlog($logCreate, "create(): constructing final tfidf matrix (NT=$NT, ND=$ND, Nnz=$nnz; smoothf=$vs->{smoothf})");
 
-  ##-- create: aux: common variables
-  my ($tmp);
-  my %ioopts = %{$vs->{dcio}//{}};
+  ##-- create: tfidf: setup $nz values: 		   $nzi~[$ti,$di] ->      f($ti,$di)
+  $nz += $vs->{smoothf};						# ->      f($ti,$di)+$eps
+  $nz->inplace->log;							# ->   ln(f($ti,$di)+$eps)
+  $nz /= log(2);							# -> log2(f($ti,$di)+$eps)
+  ($tmp=$nz->slice("0:-2")) *= $tw->index($ix->slice("(0),"));		# -> log2(f($ti,$di)+$eps) * tw($ti)
+  $nz->set($nnz=>0) if (!$vs->{smoothf});				# : avoid missing() = -inf
+  $ix->qsortveci( (my $qsi = mmtemp("$vsdir/tdm_qsi.tmp", $itype, $nnz+1))->slice("0:-2") );	##-- get sort-indices
+  $qsi->set($nnz=>$nnz);
 
-  ##-- create: aux: tenum
-  my $NT = $map->{tenum}->size;
-  my $NA = scalar(@{$coldb->{attrs}});
-  $vs->vlog($logCreate, "create(): creating term-attribute pseudo-enum (NA=$NA x NT=$NT)");
-  #my $pack_t = $coldb->{pack_w};
-  my $ti2s   = $map->{tenum}{id2sym};
-  my $itype  = $map->itype;
-  my $tvals  = $vs->{tvals} = zeroes($itype, $NA,$NT); ##-- [$apos,$ti] => $avali_at_term_ti
-  foreach (0..$#$ti2s) {
-    ($tmp=$tvals->slice(",($_)")) .= pdl($itype, [split(' ',$ti2s->[$_])]) if (defined($_));
-  }
-  ##
-  #$vs->vlog($logCreate, "create(): creating term-attribute sort-indices (NA=$NA x NT=$NT)");
-  my $tsorti = $vs->{tsorti} = zeroes($map->itype, $NT,$NA); ##-- [,($apos)] => $tvals->slice("($apos),")->qsorti
+  ##-- create: tfidf: ccs matrix
+  defined(my $tdm = $vs->{tdm} = PDL::CCS::Nd->newFromWhich($ix->dice_axis(1,$qsi->slice("0:-2")),
+							    $nz->index($qsi),
+							    sorted=>1,
+							    steal=>1,
+							    pdims=>[$NT,$ND]))
+    or $vs->logconfess("create(): failed to create PDL::CCS::Nd tfidf matrix: $!");
+
+  ##-- create: tfidf: save
+  writePdlFile($tdm, "$vsdir/tdm", %ioopts)
+    or $vs->logconfess("creeate(): failed to store tfidf matrix data to $vsdir/tdm.*: $!");
+
+  ##-- create: tfidf: cleanup
+  undef $qsi;
+  undef $ix;
+  undef $nz;
+
+  ##-- create: aux: tsorti
+  $vs->vlog($logCreate, "create(): creating term-attribute sort-indices (NA=$NA x NT=$NT)");
+  my $tsorti = $vs->{tsorti} = mmzeroes("$vsdir/tsorti.pdl", $itype, $NT,$NA); ##-- [,($apos)] => $tvals->slice("($apos),")->qsorti
   foreach (0..($NA-1)) {
     $tvals->slice("($_),")->qsorti($tsorti->slice(",($_)"));
   }
@@ -434,32 +463,15 @@ sub create {
   $vs->{attrs} = $coldb->{attrs}; ##-- save local copy of attributes
 
   ##-- create: aux: d2c: [$di] => $ci
-  my $ND  = $map->{denum}->size();
   $vs->vlog($logCreate, "create(): creating doc<->category translation piddles (ND=$ND, NC=$NC)");
-  my $d2c = $vs->{d2c} = zeroes($map->itype, $ND);
-  ($tmp=$d2c->index($map->{dcm}->_whichND->slice("(0),"))) .= $map->{dcm}->_whichND->slice("(1),");
-
-  ##-- create: aux: c2d (2,$NC): [0,$ci] => $di_off, [1,$ci] => $di_len
-  my ($c2d_n,$c2d_vals) = $d2c->rle();
-  my $c2d_which = $c2d_n->which;
-  $c2d_n    = $c2d_n->index($c2d_which);
-  $c2d_vals = $c2d_vals->index($c2d_which);
-  my $c2d_off = $c2d_n->append(0)->rotate(1)->slice("0:-2")->cumusumover;
-  my $c2d     = $vs->{c2d} = zeroes($map->itype,2,$NC);
-  ($tmp=$c2d->slice("(0),")->index($c2d_vals)) .= $c2d_off;
-  ($tmp=$c2d->slice("(1),")->index($c2d_vals)) .= $c2d_n;
-  ##--
-  ##-- create: aux: c2d : CCS ($ND,$NC): [$ci,$di] => 1 iff $di \in $ci
-  #my $c2d = $vs->{c2d} = PDL::CCS::Nd->newFromWhich($d2c->cat($d2c->xvals)->xchg(0,1), ones(byte,$ND));
-
-
-  ##-- create: aux: c2date: [$ci] => $date -- NOTHING TO DO HERE: populated in training loop above
+  $c2d->slice("(1),")->rld(sequence($itype,$NC), my $d2c=$vs->{d2c}=mmzeroes("$vsdir/d2c.pdl",$itype,$ND));
+  # $c2d: already created in main doc-processing loop, above
 
   ##-- create: aux: metadata attributes
   @{$vs->{meta}} = sort keys %meta;
   my %efopts     = (flags=>$vs->{flags}, pack_i=>$coldb->{pack_id}, pack_o=>$coldb->{pack_off}, pack_l=>$coldb->{pack_len});
   my $NM         = scalar @{$vs->{meta}};
-  $mvals         = $vs->{mvals} = zeroes($map->itype,$NM,$NC); ##-- [$mpos,$ci] => $mvali_at_ci
+  $mvals         = $vs->{mvals} = mmzeroes("$vsdir/mvals.pdl", $itype,$NM,$NC); ##-- [$mpos,$ci] => $mvali_at_ci : keep
   my ($menum);
   foreach (0..($NM-1)) {
     $vs->vlog($logCreate, "create(): creating metadata enum for attribute '$vs->{meta}[$_]'");
@@ -467,6 +479,7 @@ sub create {
     $mdata = $meta{$mattr};
     $menum = $vs->{"meta_e_$mattr"} = $DiaColloDB::ECLASS->new(%efopts);
     ($tmp=$mvals->slice("($_),")) .= $mdata->{vals};
+    delete $mdata->{vals};
     $menum->fromHash($mdata->{s2i})
       or $vs->logconfess("create(): failed to create metadata enum for attribute '$mattr': $!");
     $menum->save("$vsdir/meta_e_$mattr")
@@ -474,39 +487,18 @@ sub create {
   }
   ##
   $vs->vlog($logCreate, "create(): creating metadata sort-indices (NM=$NM x NC=$NC)");
-  my $msorti = $vs->{msorti} = zeroes($map->itype, $NC,$NM); ##-- [,($mi)] => $mvals->slice("($mi),")->qsorti
+  my $msorti = $vs->{msorti} = mmzeroes("$vsdir/msorti.pdl", $itype, $NC,$NM); ##-- [,($mi)] => $mvals->slice("($mi),")->qsorti
   foreach (0..($NM-1)) {
     $mvals->slice("($_),")->qsorti($msorti->slice(",($_)"));
   }
 
   ##-- create: aux: info
-  $vs->{N} = $map->{tdm0}->_vals->sum;
-
-  ##-- tweak mapper piddles
-  $vs->vlog($logCreate, "create(): tweaking mapper piddles");
-  $map->{dcm}->inplace->convert(byte) if (defined($map->{dcm}));
-
-  ##-- tweak mapper enums
-  $vs->vlog($logCreate, "create(): creating dummy mapper identity-enums");
-  $map->{$_} = $vs->idEnum($map->{$_}) foreach (qw(gcenum lcenum tenum denum));
-
-  ##-- save
-  $vs->vlog($logCreate, "create(): saving to $base*");
+  $vs->{N} = $tf->sum;
 
   ##-- save: header
+  $vs->vlog($logCreate, "create(): saving to $base*");
   $vs->saveHeader()
     or $vs->logconfess("create(): failed to save header data: $!");
-
-  ##-- save: mapper
-  $map->saveDir("$vsdir/map.d", %ioopts)
-    or $vs->logconfess("create(): failed to save mapper data to ${vsdir}/map.d: $!");
-
-  ##-- save: aux data: piddles
-  foreach (qw(tvals tsorti mvals msorti d2c c2d )) { #tvals, c2date: populated in-place via mmzeroes()
-    $map->writePdlFile($vs->{$_}, "$vsdir/$_.pdl", %ioopts)
-      or $vs->logconfess("create(): failed to save auxilliary piddle $vsdir/$_.pdl: $!");
-  }
-
 
   ##-- return
   return $vs;

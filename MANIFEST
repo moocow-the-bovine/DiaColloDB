@@ -38,6 +38,7 @@ DiaColloDB/Logger.pm
 DiaColloDB/Logger.pod
 DiaColloDB/MultiMapFile.pm
 DiaColloDB/MultiMapFile.pod
+DiaColloDB/PDL/MM.pm
 DiaColloDB/PackedFile.pm
 DiaColloDB/PackedFile.pod
 DiaColloDB/Persistent.pm
