@@ -707,6 +707,18 @@ sub mmunlink {
   return DiaColloDB::PDL::MM::unlink(@_);
 }
 
+## ($vals,$counts) = $pdl->valcounts()
+##  + wrapper for $pdl->flat->qsort->rle() with masking lifted from MUDL::PDL::Smooth
+sub valcounts {
+  my $pdl = shift;
+  my ($counts,$vals) = $pdl->flat->qsort->rle;
+  my $mask = ($counts > 0);
+  return ($vals->where($mask), $counts->where($mask));
+}
+BEGIN {
+  *PDL::valcounts = \&valcounts;
+}
+
 ##==============================================================================
 ## Footer
 1; ##-- be happy

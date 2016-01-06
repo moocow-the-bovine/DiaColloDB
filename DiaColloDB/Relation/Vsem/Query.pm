@@ -123,7 +123,7 @@ sub compileSlice {
   if ($opts{slice}==1) {
     $cslice = $cdate;
   } else {
-    $cslice  = ($cdate/$slice);
+    $cdate->divide($slice, $cslice=zeroes($cdate->type,$cdate->dims), 0);
     $cslice *= $slice;
   }
   $vq->{cslice} = $cslice;
@@ -137,6 +137,7 @@ sub compileSlice {
     ##-- no-fill mode: find non-empty slices
     my ($cslicen,$cslicev) = $cslice->qsort->rle;
     $vq->{slices} = $cslicev->where($cslicen>0);
+    $vq->{slices}->sever;
   }
 
   return $vq;

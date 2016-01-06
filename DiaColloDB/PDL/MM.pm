@@ -14,7 +14,8 @@ use File::Temp;
 ## Globals & Constants
 
 our @ISA = qw(PDL DiaColloDB::Logger);
-our %MMTMP = qw(); ##-- all tempfiles created, for END block
+our %MMTMP = qw();		##-- all tempfiles created, for END block
+our $LOG_DEFAULT = undef;	##-- default log-level (undef: off)
 
 ##==============================================================================
 ## Constructors etc.
@@ -25,7 +26,7 @@ our %MMTMP = qw(); ##-- all tempfiles created, for END block
 ##    (
 ##     file => $template,   ##-- file basename or File::Temp template; default='pdlXXXX'
 ##     suffix => $suffix,   ##-- File::Temp::tempfile() suffix (default='.pdl')
-##     log  => $level,      ##-- logging verbosity (default=undef: off)
+##     log  => $level,      ##-- logging verbosity (default=$LOG_DEFAULT)
 ##     temp => $bool,       ##-- delete on END (default: $file =~ /X{4}/)
 ##     PDL  => $pdl,        ##-- guts: real underlying mmap()ed piddle (must be key 'PDL' for PDL inheritance to work)
 ##    )
@@ -38,7 +39,7 @@ sub new {
   my @dims = defined($src) ? $src->dims : @_;
   my $suffix = $opts->{suffix} // '.pdl';
   my $temp   = $opts->{temp};
-  my $log    = $opts->{log};
+  my $log    = $opts->{log} // $LOG_DEFAULT;
   $file    //= $opts->{file} // 'pdlXXXXX';
 
   ##-- maybe use File::Temp to get filename

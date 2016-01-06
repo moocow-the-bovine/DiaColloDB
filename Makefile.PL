@@ -22,8 +22,8 @@ WriteMakefile
 		    'File::Temp'    => 0,
 		    ##
 		    ##-- for vector-semantic models (Vsem)
-		    'DocClassify' => '0.15',
-		    'PDL::VectorValued::Version' => '1.0.1',
+		    'PDL::CCS' => '1.23.1',
+		    'PDL::VectorValued' => '1.0.5',
 		    'Tie::File::Indexed' => '0.04',
 		   },
 

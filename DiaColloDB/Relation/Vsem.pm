@@ -39,7 +39,11 @@ BEGIN {
 ##   #dcio   => \%dcio,      ##-- options for DocClassify::Mapper->saveDir()
 ##   mgood  => $regex,      ##-- positive filter regex for metadata attributes
 ##   mbad   => $regex,      ##-- negative filter regex for metadata attributes
-##   logvprofile => $level, ##-- log-level for vprofile() and vpslice() (default=undef:none)
+##   submax => $submax,     ##-- choke on requested tdm cross-subsets if dense subset size ($NT_sub * $ND_sub) > $submax; default=2**29 (512M)
+##   ##
+##   ##-- logging options
+##   logvprofile => $level, ##-- log-level for vprofile() (default=undef:none)
+##   logvpslice => $level,  ##-- log-level for vpslice() (default=undef:none)
 ##   logio => $level,       ##-- log-level for low-level I/O operations (default=undef:none)
 ##   ##
 ##   ##-- modelling options (formerly via DocClassify)
@@ -81,6 +85,7 @@ sub new {
 			       flags => 'r',
 			       mgood => $DiaColloDB::VSMGOOD_DEFAULT,
 			       mbad  => $DiaColloDB::VSMBAD_DEFAULT,
+			       submax => 2**29,
 			       minFreq => 10,
 			       minDocFreq => 5,
 			       smoothf => 1,
@@ -90,6 +95,7 @@ sub new {
 			       attrs => [],
 			       ##
 			       logvprofile  => 'trace',
+			       logvpslice => 'trace',
 			       logio => 'trace',
 			       ##
 			       @_
@@ -288,8 +294,10 @@ sub create {
   my ($mattr,$mval,$mdata,$mvali,$mvals);
   my ($sig,$ts,$ti,$f);
   my ($tmp);
-  my $ts2i = {''=>0};
-  my $NT0  = 0;
+  my $tnull = join(' ',map {0} (1..$NA)); ##-- "null" term
+  my $ts2i = {''=>0, $tnull=>0};
+  $t0fh->print(pack($pack_ix, split(' ',$tnull)));
+  my $NT0  = 1;
   my $sigi = 0;
   foreach $doc (@$doctmpa) {
     $doclabel = $doc->{meta}{basename} // $doc->{meta}{file_} // $doc->{label};
@@ -316,7 +324,7 @@ sub create {
     foreach $sig (@{$doc->{sigs}}) {
       while (($ts,$f) = each %$sig) {
 	if (!defined($ti=$ts2i->{$ts})) {
-	  $ti = $ts2i->{$ts} = ++$NT0;
+	  $ti = $ts2i->{$ts} = $NT0++;
 	  $t0fh->print(pack($pack_ix, split(' ',$ts)));
 	}
 	$ix0fh->print(pack($pack_ix, $ti, $sigi));
@@ -330,11 +338,11 @@ sub create {
   }
   ##-- create: tdm0: add missing value
   $nz0fh->print(pack($pack_nz, 0));
-  $ix0fh->close() or $vs->logconfess("create(): close failed for temp-file $ix0file: $!");
-  $nz0fh->close() or $vs->logconfess("create(): close failed for temp-file $nz0file: $!");
+  $ix0fh->close() or $vs->logconfess("create(): close failed for tempfile $ix0file: $!");
+  $nz0fh->close() or $vs->logconfess("create(): close failed for tempfile $nz0file: $!");
+  $t0fh->close() or $vs->logconfess("create(): close failed for tempfile $t0file: $!");
 
   ##-- create: tdm0: map to piddles
-  ++$NT0;
   my $ND  = $sigi;
   my $nnz0 = (-s $nz0file) / length(pack($pack_nz,0)) - 1;
   my $density = $nnz0 / ($ND*$NT0);
@@ -347,7 +355,7 @@ sub create {
     or $vs->logconfess("create(): mapfraw() failed for $t0file: $!");
 
   ##-- create: tdm0: filter: by term-frequency
-  my $t_mask = mmzeroes("$vsdir/t_mask.tmp", byte, $NT0, {temp=>1});
+  my $t_mask = mmtemp("$vsdir/t_mask.tmp", byte, $NT0);
   $vs->{minFreq} //= 0;
   $vs->vlog($logCreate, "create(): filter: by term-frequency (minFreq=$vs->{minFreq})");
   if ($vs->{minFreq} > 0) {
@@ -373,8 +381,12 @@ sub create {
   $vs->vlog($logCreate,
 	    sprintf("create(): filter: keeping %.2f%% original term types (%.2f%% pruned)", 100*$pkeept, 100*(1-$pkeept)));
   $t_mask->which(my $t1x=mmtemp("$vsdir/t1x.tmp", $itype, $NT));  	    ##-- $t1x  : pdl ($NT): [$ti] => $t0i
+  $vs->debug("t1x->dims = ", join(' ', $t1x->dims));
+  $vs->debug("tvals:create");
   my $tvals = $vs->{tvals} = mmzeroes("$vsdir/tvals.pdl", $itype, $NA,$NT); ##-- $tvals: pdl ($NA,$NT): [$ai,$ti] => $avali_for_term_ti : keep
+  $vs->debug("tvals:dice_axis");
   $tvals   .= $t0->dice_axis(1, $t1x); ##-- output param -> error
+  $vs->debug("tvals:undef t0");
   undef $t0;
   CORE::unlink $t0file;
 
@@ -382,6 +394,7 @@ sub create {
   # ERROR: Usage:  PDL::index(a,ind,c) (you may leave temporaries or output variables out of list) at ...[/usr/share/perl/5.20/perl5db.pl:732] line 2.
   # ... even though that's how we're calling it; maybe this has something to do with the [a] qualifier on the index() output piddle?
   #$t_mask->index($ix0->slice("(0),"), my $nzi_mask=mmzeroes("$vsdir/nzi_mask.tmp", byte, $nnz0, {temp=>1})); ##-- output param -> error
+  $vs->debug("nzi_mask");
   my $nzi_mask = $t_mask->index($ix0->slice("(0),"));
   my $nnz     = $nzi_mask->dsumover;
   my $pkeepv  = $nnz/$nnz0;
@@ -507,25 +520,8 @@ sub create {
 ##----------------------------------------------------------------------
 ## create: utils
 
-##--------------------------------------------------------------
-## $idEnum = PACKAGE->idEnum($mudlEnum)
-## $idEnum = PACKAGE->idEnum($size)
-##  + creates a shadow identity MUDL::Enum for $mudlEnum
-sub idEnum {
-  shift if (UNIVERSAL::isa($_[0],__PACKAGE__));
-  my ($size);
-  if (!ref($_[0])) {
-    $size = shift;
-  } else {
-    my $menum = shift;
-    $size = $menum->size;
-  }
-  my ($i2s,$s2i) = DiaColloDB::EnumFile::Identity->tiepair(size=>$size,dirty=>1);
-  return MUDL::Enum->new(id2sym=>$i2s,sym2id=>$s2i);
-}
-
 ##==============================================================================
-## Relation API: union
+## Relation API: union : TODO
 
 ## $vs = CLASS_OR_OBJECT->union($coldb, \@dbargs, %opts)
 ##  + merge multiple co-frequency indices into new object
@@ -534,6 +530,7 @@ sub idEnum {
 ##  + implicitly flushes the new index
 sub union {
   my ($vs,$coldb,$dbargs,%opts) = @_;
+  $vs->logconfess("union(): native index mode not yet implemented");
 
   ##-- union: create/clobber
   $vs = $vs->new() if (!ref($vs));
@@ -867,9 +864,9 @@ sub compare {
 ## \@pprfs = $vs->vprofile($coldb, \%opts)
 ## + get a relation profile for selected items as an ARRAY of DiaColloDB::Profile::Pdl objects
 ## + %opts: as for DiaColloDB::Relation::profile()
-## + altered %opts:
+## + new/altered %opts:
 ##   (
-##    vq      => $vq,        ##-- parsed query
+##    vq      => $vq,        ##-- parsed query, DiaColloDB::Relation::Vsem::Query object
 ##    groubpy => \%groupby,  ##-- as returned by $vs->groupby($coldb, \%opts)
 ##    dlo     => $dlo,       ##-- as returned by $coldb->parseDateRequest(@opts{qw(date slice fill)},1);
 ##    dhi     => $dhi,       ##-- as returned by $coldb->parseDateRequest(@opts{qw(date slice fill)},1);
@@ -943,68 +940,121 @@ sub vpslice {
   ##-- common variables
   my $logLocal = $vs->{logvprofile};
   my ($groupby,$vq) = @$opts{qw(groupby vq)};
-  my $map    = $vs->{dcmap};
   my %vqopts = (%$opts,vsem=>$vs,coldb=>$coldb);
 
   ##-- construct query: common
   my ($qvec); ##-- query-vector: ($svdR,1) : [$ri] => $x
-  my $pprf  = DiaColloDB::Profile::Pdl->new(label=>$sliceVal);
+  my $pprf  = DiaColloDB::Profile::Pdl->new(label=>$sliceVal,
+					    N    =>$vs->{N});
   my $ti  = $vq->{ti};
   my $ci  = $vq->sliceCats($sliceVal,%vqopts);
+  my $tdm = $vs->{tdm};
 
   ##-- construct query: sanity checks: null vectors --> null profile
   return $pprf if ((defined($ti) && !$ti->nelem) || (defined($ci) && !$ci->nelem));
 
   ##-- construct query: dispatch
+  my ($f1); ##-- for profile construction
   if (defined($ti) && defined($ci)) {
     ##-- both term- and document-conditions
     $vs->vlog($logLocal, "vpslice($sliceVal): query vector: xsubset");
     my $q_c2d     = $vs->{c2d}->dice_axis(1,$ci);
     my $di        = $q_c2d->slice("(1),")->rldseq($q_c2d->slice("(0),"))->qsort;
-    my $q_tdm     = $map->{tdm}->xsubset2d($ti,$di);
+    my $subsize   = $ti->nelem * $di->nelem;
+    $vs->vlog($logLocal, "requested subset size = $subsize (NT=".$ti->nelem." x Nd=".$ci->nelem.")");
+    if (defined($vs->{submax}) &&  $subsize > $vs->{submax}) {
+      $vs->logconfess($coldb->{error}="requested subset size $subsize (NT=".$ti->nelem." x Nd=".$ci->nelem.") too large; max=$vs->{submax}");
+    }
+
+    my $q_tdm     = $tdm->xsubset2d($ti,$di);
     return $pprf if ($q_tdm->allmissing); ##-- empty subset --> null profile
-    $q_tdm = $q_tdm->sumover->dummy(0,1)->make_physically_indexed;
-    $vs->vlog($logLocal, "profile(): query vector: xsubset: svdapply");
-    $qvec = $map->{svd}->apply1($q_tdm)->xchg(0,1);
+
+    $vs->vlog($logLocal, "vpslice($sliceVal): query vector: decode");
+    $q_tdm->_nzvals->indadd($q_tdm->_whichND->slice("(1),"),
+			    $qvec=zeroes($q_tdm->type, $vs->nDocs));
+
+    ##-- get f1
+    $f1 = $q_tdm->_nzvals / $vs->{tw}->index($q_tdm->_whichND->slice("(0),"));
+    $f1 *= log(2);
+    $f1->inplace->exp;
+    $f1 -= $vs->{smoothf};
+    $f1  = $f1->sumover->rint;
+
+    ##-- old
+    #$q_tdm = $q_tdm->sumover->dummy(0,1)->make_physically_indexed;
+    #$vs->vlog($logLocal, "profile(): query vector: xsubset: svdapply");
+    #$qvec = $map->{svd}->apply1($q_tdm)->xchg(0,1);
   }
   elsif (defined($ti)) {
-    ##-- term-conditions only: slice from $svd->{v}
+    ##-- term-conditions only: extract from $vs->{tdm}
     $vs->vlog($logLocal, "vpslice($sliceVal): query vector: terms");
-    my $xtm = $map->{svd}{v};
-    $qvec   = $xtm->dice_axis(1,$ti);
-    if ($ti->nelem > 1) {
-      $qvec = $qvec->xchg(0,1)->sumover->dummy(1,1) / $ti->nelem;
+    my $tdm_t = $tdm->_whichND->slice("(0),");
+    my $nzi0  = vsearch($ti,   $tdm_t);
+    my $nzi1  = vsearch($ti+1, $tdm_t);
+    $nzi1->where(($nzi1==$tdm->_nnz-1) & ($tdm_t->index($nzi1)==$ti))++;       ##-- special case for final nz-value
+    $nzi1    -= $nzi0;							       ##-- convert to lengths
+    my $nzi = $nzi1->rldseq($nzi0);					       ##-- decode to nz-indices
+    if (!$nzi->isempty) {
+      $tdm->_nzvals->index($nzi)->indadd($tdm->_whichND->slice("(1),")->index($nzi),
+					 $qvec=zeroes($tdm->type, $vs->nDocs));
+
+      ##-- get f1
+      $f1 = $tdm->_nzvals->index($nzi) / $vs->{tw}->index($tdm_t->index($nzi));
+      $f1 *= log(2);
+      $f1->inplace->exp;
+      $f1 -= $vs->{smoothf};
+      $f1  = $f1->sumover->rint;
     }
   }
   elsif (defined($ci)) {
     ##-- doc-conditions only: slice from $map->{xcm}
     $vs->vlog($logLocal, "vpslice($sliceVal): query vector: cats");
-    my $xcm = $map->{xcm};
-    $qvec   = $xcm->dice_axis(1,$ci);
-    if ($ci->nelem > 1) {
-      $qvec = $qvec->xchg(0,1)->sumover->dummy(1,1) / $ci->nelem;
+    my $q_c2d   = $vs->{c2d}->dice_axis(1,$ci);
+    my $di      = $q_c2d->slice("(1),")->rldseq($q_c2d->slice("(0),"))->qsort;
+    #my $nz_qsi  = $tdm->_whichND->slice("(1),")->qsorti();
+    ##
+    my $nz_ci  = $vs->{d2c}->index($tdm->_whichND->slice("(1),"));
+    my $nz_qsi = $nz_ci->qsorti;
+    my $nz_cix = $nz_ci->index($nz_qsi);
+    my $nzi0   = $ci->vsearch($nz_cix);
+    my $nzi1   = ($ci+1)->vsearch($nz_cix);
+    $nzi1->where(($nzi1==$tdm->_nnz-1) & ($nz_cix->index($nzi1)==$ci))++; ##-- special case for final nz-value
+    ##
+    $nzi1 -= $nzi0;							  ##-- convert to lengths
+    my $nzi = $nz_qsi->index($nzi1->rldseq($nzi0));			  ##-- decode & translate to original nz-indices
+    ##
+    if (!$nzi->isempty) {
+      $tdm->_nzvals->index($nzi)->indadd($tdm->_whichND->slice("(1),")->index($nzi),
+					 $qvec=zeroes($tdm->type, $vs->nDocs));
+
+      ##-- get f1
+      $f1 = $tdm->_nzvals->index($nzi) / $vs->{tw}->index($tdm->_whichND->slice("(0),")->index($nzi));
+      $f1 *= log(2);
+      $f1->inplace->exp;
+      $f1 -= $vs->{smoothf};
+      $f1  = $f1->sumover->rint;
     }
   }
 
-  ##-- map to & extract k-best terms (TODO: maybe map to cats by querying {xcm} instead of {xtm}~{svd}{v} ?)
+  ##-- sanity check: ensure we've got a query vector
+  $vs->logconfess($coldb->{error}="empty query vector for user query \`$opts->{query}'") if (!defined($qvec) || !$qvec->nelem);
+
+  ##-- map to & extract k-best terms
   $vs->vlog($logLocal, "vpslice($sliceVal): extracting k-nearest neighbors (terms)");
-  my $dist = $map->qdistance($qvec,
-			     (defined($groupby->{ghaving})
-			      ? $map->{svd}{v}->dice_axis(1,$groupby->{ghaving})
-			      : $map->{svd}{v}));
+  my $sim = $tdm->vcos_zdd($qvec);						##-- cosine sim : [-1:1]
+  $sim->inplace->setnantobad->inplace->setbadtoval(-1);				##-- ... map NaN=>$sim_min=2
+  #(my $tmp=$sim->index($ti)) .= -1 if (defined($ti));				##-- ... eliminate target term(s)?  -->goofy for diff
+  $sim = $sim->index($groupby->{ghaving}) if (defined($groupby->{ghaving}));	##-- ... apply group-restriction
 
   ##-- groupby: aggregate
-  my ($g_keys,$g_dist) = $groupby->{gaggr}->($dist);
+  my ($g_keys,$g_sim) = $groupby->{gaggr}->($sim);
 
-  ##-- convert distance to similarity (simple linear method; range=[-1:1]) & return
-  my $g_sim = (1-$g_dist);
-  #$g_sim   /= 2; ##-- map to range [0:1]
-  ##
   ##-- convert distance to similarity: gaussian (distribution *does* look quite normal modulo long tail of "good" (latent) matches)
-  #my $g_sim = (2-$g_dist)->gausscdf(1,0.25);
-  #$g_sim->inplace->minus(1,$g_sim,1);
+  #my $g_sim = ($g_sim)->gausscdf(0,0.25);
+  ##$g_sim->inplace->minus(1,$g_sim,1);
   ##
-  @$pprf{qw(gkeys gvals)} = ($g_keys,$g_sim);
+  (my $noval = zeroes(float,$g_sim->nelem)) .= 'nan';
+  @$pprf{qw(gkeys gvals f1 f2 f12)} = ($g_keys,$g_sim,$f1,$noval,$noval);
   return $pprf;
 }
 
@@ -1014,21 +1064,21 @@ sub vpslice {
 ## $NT = $vs->nTerms()
 ##  + gets number of terms
 sub nTerms {
-  return $_[0]{dcmap}{tenum}->size;
+  return $_[0]{tdm}->dim(0);
 }
 
 ## $ND = $vs->nDocs()
 ##  + returns number of documents (breaks)
 BEGIN { *nBreaks = \&nDocs; }
 sub nDocs {
-  return $_[0]{dcmap}{denum}->size;
+  return $_[0]{tdm}->dim(1);
 }
 
 ## $NC = $vs->nFiles()
 ##  + returns number of categories (original source files)
 BEGIN { *nCategories = *nCats = \&nFiles; }
 sub nFiles {
-  return $_[0]{dcmap}{lcenum}->size;
+  return $_[0]{c2date}->nelem;
 }
 
 ##==============================================================================
@@ -1130,10 +1180,11 @@ sub metaEnum {
 ## $cats = $vs->catSubset($terms)
 ## $cats = $vs->catSubset($terms,$cats)
 ##  + gets (sorted) cat-subset for (sorted) term-set $terms
+##  + too expensive, since it uses $tdm->dice_axis(0,$terms)
 sub catSubset {
   my ($vs,$terms,$cats) = @_;
   return $cats if (!defined($terms));
-  return DiaColloDB::Utils::_intersect_p($cats, $vs->{d2c}->index($vs->{dcmap}{tdm}->dice_axis(0,$terms)->_whichND->slice("(1),"))->uniq);
+  return DiaColloDB::Utils::_intersect_p($cats, $vs->{d2c}->index($vs->{tdm}->dice_axis(0,$terms)->_whichND->slice("(1),"))->uniq);
 }
 
 

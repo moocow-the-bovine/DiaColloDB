@@ -32,6 +32,10 @@ our $MISSING = -1;
 ##    ##-- NEW for DiaColloDB::Profile::Pdl
 ##    gkeys => $gkeys,       ##-- pdl ($NGKeys) : group-keys (+sorted)
 ##    gvals => $gvals,       ##-- pdl ($NGKeys) : group-similarities [-1:1]
+##    gN    => $gN,          ##-- pdl (1)       : token total
+##    gf1   => $gf1,         ##-- pdl (1)       : item1 frequency
+##    gf2   => $gf2,         ##-- pdl ($NGKeys) : item2 frequencies
+##    gf12  => $gf12,        ##-- pdl ($NGKeys) : (item1,item2) joint frequencies (undef->ignored)
 ##    missing => $missing,   ##-- missing value (default=$VAL_NONE)
 ##    ##
 ##   )
@@ -50,7 +54,7 @@ sub new {
 
 
 ## $pprf2 = $pprf->shadow()
-##  + shadows profile with identical keys but all-missing values
+##  + shadows profile with identical keys but all-missing score-values
 sub shadow {
   my $pprf = shift;
   return ref($pprf)->new(%$pprf) if ($pprf->empty);
@@ -92,7 +96,37 @@ sub toProfile {
   my $score = $opts{score} // $pprf->{score} // 'vsim';
   my $vals  = {};
   %$vals = (map {($gkeys->at($_)=>$gvals->at($_)) } (0..($gkeys->nelem-1))) if (!$pprf->empty);
-  return DiaColloDB::Profile->new(N=>0, label=>$pprf->{label}, %opts, score=>$score, $score=>$vals);
+  return DiaColloDB::Profile->new(label=>$pprf->{label},
+				  N=>0,
+				  %opts,
+				  $pprf->profileScalar('N',$pprf->{N}),
+				  $pprf->profileScalar('f1',$pprf->{f1}),
+				  $pprf->profileHash('f2',$pprf->{f2}),
+				  $pprf->profileHash('f12',$pprf->{f12}),
+				  score=>$score,
+				  $pprf->profileHash($score,$gvals),
+				 );
+}
+
+## ($label=>$val_sclr) = $pprf->profileScalar($pdl_or_scalar)
+##  + gets a profile scalar e.g. for N~$N, f1~$gf1
+##  + just returns empty list if $gvals is undefined
+sub profileScalar {
+  my ($pprf,$label,$val) = @_;
+  return qw() if (!defined($val));
+  return ($label=>(UNIVERSAL::isa($val,'PDL') ? $val->sclr : $val));
+}
+
+## ($label=>\%profileHash) = $pprf->profileHash($label,$gvals)
+##  + gets a $gkeys-labelled profile hash e.g. for score~$gvals, f2~$gf2, g12~$gf12
+##  + just returns empty list if $gvals is undefined
+sub profileHash {
+  my ($pprf,$label,$gvals) = @_;
+  return qw() if (!defined($gvals));
+  my $gkeys = $pprf->{gkeys};
+  my $vals  = {};
+  %$vals = (map {($gkeys->at($_)=>$gvals->at($_)) } (0..($gkeys->nelem-1))) if (!$pprf->empty);
+  return ($label=>$vals);
 }
 
 ##==============================================================================
