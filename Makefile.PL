@@ -12,12 +12,12 @@ WriteMakefile
    LICENSE      => 'perl',
 
    PREREQ_PM    => {
-		    'DDC'           => 0.16,
+		    'DDC::Concordance' => '0.20',
 		    'DDC::XS'       => 0.05,
-		    'File::Path'    => undef,  ##-- make_tree, remove_path; 2.08_01
-		    'File::Map'     => undef,  # 0.63
-		    'JSON'          => undef,  # 2.53
-		    'IPC::Run'      => undef,  # 0.94
+		    'File::Path'    => 0,  ##-- make_tree, remove_path; 2.08_01
+		    'File::Map'     => 0,  # 0.63
+		    'JSON'          => 0,  # 2.53
+		    'IPC::Run'      => 0,  # 0.94
 		    'Log::Log4perl' => 1.07,   # 1.29
 		    'File::Temp'    => 0,
 		    ##
