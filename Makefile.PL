@@ -12,7 +12,7 @@ WriteMakefile
    LICENSE      => 'perl',
 
    PREREQ_PM    => {
-		    'DDC::Concordance' => '0.20',
+		    'DDC::Concordance' => 0.18, ##-- no functional changes from v0.18 to v0.20
 		    'DDC::XS'       => 0.05,
 		    'File::Path'    => 0,  ##-- make_tree, remove_path; 2.08_01
 		    'File::Map'     => 0,  # 0.63
