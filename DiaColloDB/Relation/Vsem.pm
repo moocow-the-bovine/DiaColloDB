@@ -190,6 +190,17 @@ sub open {
   defined($vs->{tw}  = readPdlFile("$vsdir/tw.pdl", %ioopts))
     or $vs->logconfess("open(): failed to load term-weights from $vsdir/tw.pdl: $!");
 
+  defined(my $ptr0 = $vs->{ptr0} = readPdlFile("$vsdir/tdm.ptr0.pdl", %ioopts))
+    or $vs->logwarn("open(): failed to load Harwell-Boeing pointer from $vsdir/tdm.ptr0.pdl: $!");
+  defined(my $ptr1 = $vs->{ptr1} = readPdlFile("$vsdir/tdm.ptr1.pdl", %ioopts))
+    or $vs->logwarn("open(): failed to load Harwell-Boeing pointer from $vsdir/tdm.ptr1.pdl: $!");
+  defined(my $pix1 = $vs->{pix1} = readPdlFile("$vsdir/tdm.pix1.pdl", %ioopts))
+    or $vs->logwarn("open(): failed to load Harwell-Boeing indices from $vsdir/tdm.pix1.pdl: $!");
+  defined($vs->{vnorm0} = readPdlFile("$vsdir/tdm.vnorm0.pdl", %ioopts))
+    or $vs->logwarn("open(): failed to load term-vector magnitudes from $vsdir/tdm.vnorm0.pdl: $!");
+  $vs->{tdm}->setptr(0, $ptr0)        if (defined($ptr0));
+  $vs->{tdm}->setptr(1, $ptr1,$pix1)  if (defined($ptr1) && defined($pix1));
+
   ##-- load: aux data: piddles
   foreach (qw(tvals tsorti mvals msorti d2c c2d c2date)) {
     defined($vs->{$_}=readPdlFile("$vsdir/$_.pdl", %ioopts))
@@ -465,6 +476,27 @@ sub create {
   undef $qsi;
   undef $ix;
   undef $nz;
+
+  ##-- create: tfidf: pointers & norms
+  $vs->vlog("create(): creating tdidf matrix Harwell-Boeing pointers");
+  my ($ptr0) = $tdm->getptr(0);
+  $ptr0      = $ptr0->convert($itype) if ($ptr0->type != $itype);
+  $ptr0->writefraw("$vsdir/tdm.ptr0.pdl")
+    or $vs->logconfess("create(): failed to write $vsdir/tdm.ptr0.pdl: $!");
+
+  my ($ptr1,$pix1) = $tdm->getptr(1);
+  $ptr1 = $ptr1->convert($itype) if ($ptr1->type != $itype);
+  $pix1 = $pix1->convert($itype) if ($pix1->type != $itype && pdl($itype,$pix1->nelem)->sclr >= 0); ##-- check for overflow
+  $ptr1->writefraw("$vsdir/tdm.ptr1.pdl")
+    or $vs->logconfess("create(): failed to write $vsdir/tdm.ptr1.pdl: $!");
+  $pix1->writefraw("$vsdir/tdm.pix1.pdl")
+    or $vs->logconfess("create(): failed to write $vsdir/tdm.pix1.pdl: $!");
+
+  my $vnorm0 = $tdm->vnorm(0);
+  $vnorm0    = $vnorm0->convert($vtype) if ($vnorm0->type != $vtype);
+  $vnorm0->writefraw("$vsdir/tdm.vnorm0.pdl")
+    or $vs->confess("create(): failed to write $vsdir/tdm.vnorm0.pdl: $!");
+
 
   ##-- create: aux: tsorti
   $vs->vlog($logCreate, "create(): creating term-attribute sort-indices (NA=$NA x NT=$NT)");
@@ -961,7 +993,7 @@ sub vpslice {
     my $q_c2d     = $vs->{c2d}->dice_axis(1,$ci);
     my $di        = $q_c2d->slice("(1),")->rldseq($q_c2d->slice("(0),"))->qsort;
     my $subsize   = $ti->nelem * $di->nelem;
-    $vs->vlog($logLocal, "requested subset size = $subsize (NT=".$ti->nelem." x Nd=".$ci->nelem.")");
+    $vs->vlog($logLocal, "vpslice($sliceVal): requested subset size = $subsize (NT=".$ti->nelem." x Nd=".$ci->nelem.")");
     if (defined($vs->{submax}) &&  $subsize > $vs->{submax}) {
       $vs->logconfess($coldb->{error}="requested subset size $subsize (NT=".$ti->nelem." x Nd=".$ci->nelem.") too large; max=$vs->{submax}");
     }
@@ -970,8 +1002,10 @@ sub vpslice {
     return $pprf if ($q_tdm->allmissing); ##-- empty subset --> null profile
 
     $vs->vlog($logLocal, "vpslice($sliceVal): query vector: decode");
-    $q_tdm->_nzvals->indadd($q_tdm->_whichND->slice("(1),"),
-			    $qvec=zeroes($q_tdm->type, $vs->nDocs));
+    ##<<QPZD
+    #$q_tdm->_vals->indadd($q_tdm->_whichND->slice("(1),"), $qvec=zeroes($q_tdm->type, $vs->nDocs));
+    $qvec = $q_tdm->sumover;
+    ##>>QPZD
 
     ##-- get f1
     $f1 = $q_tdm->_nzvals / $vs->{tw}->index($q_tdm->_whichND->slice("(0),"));
@@ -988,41 +1022,64 @@ sub vpslice {
   elsif (defined($ti)) {
     ##-- term-conditions only: extract from $vs->{tdm}
     $vs->vlog($logLocal, "vpslice($sliceVal): query vector: terms");
-    my $tdm_t = $tdm->_whichND->slice("(0),");
-    my $nzi0  = vsearch($ti,   $tdm_t);
-    my $nzi1  = vsearch($ti+1, $tdm_t);
-    $nzi1->where(($nzi1==$tdm->_nnz-1) & ($tdm_t->index($nzi1)==$ti))++;       ##-- special case for final nz-value
-    $nzi1    -= $nzi0;							       ##-- convert to lengths
-    my $nzi = $nzi1->rldseq($nzi0);					       ##-- decode to nz-indices
-    if (!$nzi->isempty) {
-      $tdm->_nzvals->index($nzi)->indadd($tdm->_whichND->slice("(1),")->index($nzi),
-					 $qvec=zeroes($tdm->type, $vs->nDocs));
+    ##<<
+    ##-- find matching nz-indices WITHOUT ptr(0)
+    #my $tdm_t   = $tdm->_whichND->slice("(0),");
+    #my $nzi0  = vsearch($ti,   $tdm_t);
+    #my $nzi1  = vsearch($ti+1, $tdm_t);
+    #$nzi1->where(($nzi1==$tdm->_nnz-1) & ($tdm_t->index($nzi1)==$ti))++;       ##-- special case for final nz-value
+    #$nzi1    -= $nzi0;							 ##-- convert to lengths
+    #my $nzi   = $nzi1->rldseq($nzi0);					         ##-- decode to nz-indices
+    ##
+    ##-- find matching nz-indices WITH ptr(0) [direct ccs construction is still too slow]
+    my $ptr0    = $vs->{ptr0};
+    my $nzi_off = $ptr0->index($ti);
+    my $nzi_len = $ptr0->index($ti+1)-$nzi_off;
+    my $nzi     = $nzi_len->rldseq($nzi_off);
+    ##>>
 
-      ##-- get f1
-      $f1 = $tdm->_nzvals->index($nzi) / $vs->{tw}->index($tdm_t->index($nzi));
-      $f1 *= log(2);
-      $f1->inplace->exp;
-      $f1 -= $vs->{smoothf};
-      $f1  = $f1->sumover->rint;
+    if (!$nzi->isempty) {
+      $tdm->_vals->index($nzi)->indadd(#$tdm->_whichND->slice("(1),")->index($nzi),
+				       $tdm->_whichND->index2d(1,$nzi),
+				       $qvec=zeroes($tdm->type, $vs->nDocs));
     }
+
+    ##-- get f1
+    $f1 = $tdm->_vals->index($nzi) / $vs->{tw}->index($tdm->_whichND->index2d(0,$nzi));
+    $f1 *= log(2);
+    $f1->inplace->exp;
+    $f1 -= $vs->{smoothf};
+    $f1  = $f1->sumover->rint;
   }
   elsif (defined($ci)) {
     ##-- doc-conditions only: slice from $map->{xcm}
     $vs->vlog($logLocal, "vpslice($sliceVal): query vector: cats");
     my $q_c2d   = $vs->{c2d}->dice_axis(1,$ci);
-    my $di      = $q_c2d->slice("(1),")->rldseq($q_c2d->slice("(0),"))->qsort;
-    #my $nz_qsi  = $tdm->_whichND->slice("(1),")->qsorti();
+    my $di      = $q_c2d->slice("(1),")->rldseq($q_c2d->slice("(0),")); #->qsort;
+
+    ##-- sanity check
+    $vs->logconfess("vpslice($sliceVal): unsorted doc-list when decoding cat conditions") ##-- sanity check
+      if ($di->nelem > 1 && !all($di->slice("0:-2") <= $di->slice("1:-1")));
+
+    ##<<
+    ##-- find matching nz-indices WITHOUT ptr(1) [direct ccs construction still too slow
+    #my $nz_ci  = $vs->{d2c}->index($tdm->_whichND->slice("(1),"));
+    #my $nz_qsi = $nz_ci->qsorti;
+    #my $nz_cix = $nz_ci->index($nz_qsi);
+    #my $nzi0   = $ci->vsearch($nz_cix);
+    #my $nzi1   = ($ci+1)->vsearch($nz_cix);
+    #$nzi1->where(($nzi1==$tdm->_nnz-1) & ($nz_cix->index($nzi1)==$ci))++; ##-- special case for final nz-value
     ##
-    my $nz_ci  = $vs->{d2c}->index($tdm->_whichND->slice("(1),"));
-    my $nz_qsi = $nz_ci->qsorti;
-    my $nz_cix = $nz_ci->index($nz_qsi);
-    my $nzi0   = $ci->vsearch($nz_cix);
-    my $nzi1   = ($ci+1)->vsearch($nz_cix);
-    $nzi1->where(($nzi1==$tdm->_nnz-1) & ($nz_cix->index($nzi1)==$ci))++; ##-- special case for final nz-value
+    #$nzi1 -= $nzi0;							  ##-- convert to lengths
+    #my $nzi = $nz_qsi->index($nzi1->rldseq($nzi0));			  ##-- decode & translate to original nz-indices
     ##
-    $nzi1 -= $nzi0;							  ##-- convert to lengths
-    my $nzi = $nz_qsi->index($nzi1->rldseq($nzi0));			  ##-- decode & translate to original nz-indices
-    ##
+    ##-- find matching nz-indices WITH ptr(1)
+    my ($ptr1,$pix1) = @$vs{qw(ptr1 pix1)};
+    my $nzi_off = $ptr1->index($di);
+    my $nzi_len = $ptr1->index($di+1)-$nzi_off;
+    my $nzi     = $nzi_len->rldseq($nzi_off)->qsort;
+    ##>>
+
     if (!$nzi->isempty) {
       $tdm->_nzvals->index($nzi)->indadd($tdm->_whichND->slice("(1),")->index($nzi),
 					 $qvec=zeroes($tdm->type, $vs->nDocs));
@@ -1035,18 +1092,20 @@ sub vpslice {
       $f1  = $f1->sumover->rint;
     }
   }
+  ##>>
 
   ##-- sanity check: ensure we've got a query vector
   $vs->logconfess($coldb->{error}="empty query vector for user query \`$opts->{query}'") if (!defined($qvec) || !$qvec->nelem);
 
   ##-- map to & extract k-best terms
   $vs->vlog($logLocal, "vpslice($sliceVal): extracting k-nearest neighbors (terms)");
-  my $sim = $tdm->vcos_zdd($qvec);						##-- cosine sim : [-1:1]
+  my $sim = $vs->qsim($qvec);                                                   ##-- cosine sim : [-1:1]
   $sim->inplace->setnantobad->inplace->setbadtoval(-1);				##-- ... map NaN=>$sim_min=2
   #(my $tmp=$sim->index($ti)) .= -1 if (defined($ti));				##-- ... eliminate target term(s)?  -->goofy for diff
   $sim = $sim->index($groupby->{ghaving}) if (defined($groupby->{ghaving}));	##-- ... apply group-restriction
 
   ##-- groupby: aggregate
+  $vs->vlog($logLocal, "vpslice($sliceVal): groupby");
   my ($g_keys,$g_sim) = $groupby->{gaggr}->($sim);
 
   ##-- convert distance to similarity: gaussian (distribution *does* look quite normal modulo long tail of "good" (latent) matches)
@@ -1056,6 +1115,22 @@ sub vpslice {
   (my $noval = zeroes(float,$g_sim->nelem)) .= 'nan';
   @$pprf{qw(gkeys gvals f1 f2 f12)} = ($g_keys,$g_sim,$f1,$noval,$noval);
   return $pprf;
+}
+
+##----------------------------------------------------------------------
+## $sim = $vs->qsim($qvec)
+##   + return $sim(NT) in range [-1:1], NAN indicates bad norm
+sub qsim {
+  my ($vs,$qvec) = @_;
+  ##<<PZD
+  #return $vs->{tdm}->vcos_pzd($qvec, $vs->{vnorm0});
+  $qvec = $qvec->toccs if (!UNIVERSAL::isa($qvec,'PDL::CCS::Nd'));
+  $vs->{rows1} //= $vs->{tdm}->_whichND->index2d(0,$vs->{pix1});
+  $vs->{vals1} //= $vs->{tdm}->_vals->index($vs->{pix1});
+  return $vs->{ptr1}->ccs_vcos_pzd(@$vs{qw(rows1 vals1)}, $qvec->_whichND->flat,$qvec->_nzvals, $vs->{vnorm0});
+  ##--!PZD
+  #return $vs->{tdm}->vcos_zdd($qvec);						##-- cosine sim : [-1:1]
+  ##>>PZD
 }
 
 ##==============================================================================
