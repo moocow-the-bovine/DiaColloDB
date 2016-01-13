@@ -1,9 +1,0 @@
-#slice[1] Mann
-#slice[1] Mann #has[textClass,/Kinder/]
-#slice[1] $p=NN
-#slice[1] $p=NN #has[textClass,/Kinder/]
-
-#slice[10] Mann
-#slice[10] Mann #has[textClass,/Kinder/]
-#slice[10] $p=NN
-#slice[10] $p=NN #has[textClass,/Kinder/]
