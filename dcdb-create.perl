@@ -34,6 +34,8 @@ our %coldb    = (
 		 pack_len=>'n',
 		 dmax=>5,
 		 cfmin=>2,
+		 tfmin=>2,
+		 fmin_l=>0,
 		 keeptmp=>0,
 		 vsopts=>{},
 		 vbreak=>'#file',
@@ -69,6 +71,8 @@ GetOptions(##-- general
 	   'index-attributes|attributes|attrs|a=s' => \$coldb{attrs},
 	   'max-distance|maxd|dmax|n=i' => \$coldb{dmax},
 	   'min-cofrequency|min-cf|mincf|cfmin=i' => \$coldb{cfmin},
+	   'min-term-frequency|min-tf|mintf|tfmin|min-frequency|min-f|minf|fmin=i' => \$coldb{tfmin},
+	   'min-lemma-frequency|min-lf|minlf|lfmin=i' => \$coldb{fmin_l},
 	   'index-vsem|vsem|vs!' => \$coldb{index_vsem},
 	   'vsem-break|vbreak|vb=s' => \$coldb{vbreak},
 	   'vsem-break-min-size|vsem-break-min|vsem-nmin|vbnmin|vbmin' => \$coldb{vbnmin},
@@ -172,6 +176,8 @@ dcdb-create.perl - create a DiaColloDB collocation database from a corpus dump
    -64bit               ##-- use 64-bit quads where available
    -32bit               ##-- use 32-bit integers where available
    -dmax DIST           ##-- maximum distance for collocation-frequencies (default=5)
+   -tfmin TFMIN         ##-- minimum global term frequency (default=5)
+   -lfmin TFMIN         ##-- minimum global lemma frequency (default=0:no minimum)
    -cfmin CFMIN         ##-- minimum relation co-occurrence frequency (default=2)
    -[no]vsem            ##-- do/don't create vector-semantic index relation (default=if available)
    -vsem-break BREAK    ##-- set vector-model "document" granularity (e.g. s,p,page,file; default=file)
@@ -188,8 +194,6 @@ dcdb-create.perl - create a DiaColloDB collocation database from a corpus dump
                         ##   pack_id=PACKFMT       # pack-format for IDs
                         ##   pack_f=PACKFMT        # pack-format for frequencies
                         ##   pack_date=PACKFMT     # pack-format for dates
-                        ##   bos=STR               # bos string
-                        ##   eos=STR               # eos string
                         ##   (p|w|l|vsm)good=REGEX # positive regex for (postags|words|lemmata|vsem-metadata)
                         ##   (p|w|l|vsm)bad=REGEX  # negative regex for (postags|words|lemmata|vsem-metadata)
                         ##   ddcServer=HOST:PORT   # server for ddc relations
