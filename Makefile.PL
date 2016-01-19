@@ -1,3 +1,4 @@
+##-*- Mode: CPerl -*-
 use ExtUtils::MakeMaker;
 
 ##----------------------------------------------------------------------
@@ -20,6 +21,7 @@ WriteMakefile
 		    'IPC::Run'      => 0,  # 0.94
 		    'Log::Log4perl' => 1.07,   # 1.29
 		    'File::Temp'    => 0,
+		    'File::Map'     => 0,
 		    ##
 		    ##-- for vector-semantic models (Vsem)
 		    'PDL::CCS' => '1.23.1',

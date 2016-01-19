@@ -168,6 +168,7 @@ sub setFilters {
 
 ## $nrecords = $pf->size()
 ##  + returns number of records
+##  + doesn't handle recent writes correctly (probably due to perl i/o buffering)
 sub size {
   return undef if (!$_[0]{fh});
   return (-s $_[0]{fh}) / $_[0]{reclen};
@@ -501,10 +502,20 @@ sub TIEARRAY {
 BEGIN {
   *FETCH = \&fetch;
   *STORE = \&store;
-  *FETCHSIZE = \&size;
   *STORESIZE = \&setsize;
   *EXTEND    = \&setsize;
   *CLEAR     = \&truncate;
+}
+
+## $count = $tied->FETCHSIZE()
+##  + like scalar(@array)
+##  + re-positions $tied->{fh} to eof
+sub FETCHSIZE {
+  return undef if (!$_[0]{fh});
+  #return ((-s $_[0]{fh}) / $_[0]{reclen}); ##-- doesn't handle recent writes correctly (probably due to perl i/o buffering)
+  ##
+  CORE::seek($_[0]{fh},0,SEEK_END) or return undef;
+  return CORE::tell($_[0]{fh}) / $_[0]{reclen};
 }
 
 ## $bool = $tied->EXISTS($index)

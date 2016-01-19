@@ -26,6 +26,7 @@ use DiaColloDB::Corpus;
 use DiaColloDB::Persistent;
 use DiaColloDB::Utils qw(:math :fcntl :json :sort :pack :regex :file :si :run :env);
 use DiaColloDB::Timer;
+use DiaColloDB::Vec::MM;
 use DDC::XS; ##-- for query parsing
 use Tie::File::Indexed::JSON; ##-- for vsem training
 use Fcntl;
@@ -87,12 +88,15 @@ our $XECLASS = 'DiaColloDB::EnumFile::FixedLen::MMap';
 ## $MMCLASS
 ##  + multimap class
 our $MMCLASS = 'DiaColloDB::MultiMapFile';
-#our $MMCLASS = 'DiaColloDB::MultiMapFile::MMap'; ##-- TODO
+#our $MMCLASS = 'DiaColloDB::MultiMapFile::MMap'; ##-- TODO?
 
 ## %VSOPTS : vsem: default options for DiaColloDB::Relation::Vsem->new()
 our %VSOPTS = (
-	       minFreq=>10,       ##-- minimum total term-frequency for model inclusion
-	       minDocFreq=>5,     ##-- minimim "doc-frequency" (#/docs per term) for model inclusion
+	       minFreq=>undef,    ##-- minimum total term-frequency for model inclusion (default=from $coldb->{tfmin})
+	       minDocFreq=>4,     ##-- minimim "doc-frequency" (#/docs per term) for model inclusion
+	       minDocSize=>4,     ##-- minimum doc size (#/tokens per doc) for model inclusion (default=8; formerly $coldb->{vbnmin})
+	                          ##   + for kern[page?] (n:%sigs,%toks): 1:0%,0%, 2:5.1%,0.5%, 4:18%,1.6%, 5:22%,2.3%, 8:34%,4.6%, 10:40%,6.5%, 16:54%,12.8%
+	       maxDocSize=>'inf', ##-- maximum doc size (#/tokens per doc) for model inclusion (default=inf; formerly $coldb->{vbnmax})
 	       smoothf=>1,        ##-- smoothing constant
 	       #saveMem=>1, 	  ##-- slower but memory-friendlier compilation
 	       vtype=>'float',    ##-- store compiled values as 32-bit floats
@@ -122,15 +126,12 @@ our %VSOPTS = (
 ##    dmax  => $dmax,     ##-- maximum distance for collocation-frequencies and implicit ddc near() queries (default=5)
 ##    cfmin => $cfmin,    ##-- minimum co-occurrence frequency for Cofreqs and ddc queries (default=2)
 ##    tfmin => $tfmin,    ##-- minimum global term-frequency WITHOUT date component (default=2)
-##    fmin_${a} => $fmin, ##-- minimum independent frequency for value of attribute ${a} (default=undef:no-min)
+##    fmin_${a} => $fmin, ##-- minimum independent frequency for value of attribute ${a} (default=undef:from $tfmin)
 ##    keeptmp => $bool,   ##-- keep temporary files? (default=0)
 ##    index_vsem => $bool,##-- vsem: create/use vector-semantic index? (default=undef: if available)
 ##    index_cof  => $bool,##-- cof: create/use co-frequency index (default=1)
 ##    vbreak => $vbreak,  ##-- vsem: use break-type $break for vsem index (default=undef: files)
 ##    vsopts => \%vsopts, ##-- vsem: options for DocClassify::Mapper->new(); default={} (all inherited from %VSOPTS)
-##    vbnmin => $vbnmin,  ##-- vsem: minimum number of content-tokens in signature-blocks (default=8)
-##                        ##   + for kern (n:%sigs,%toks): 1:0%,0%, 2:5.1%,0.5%, 4:18%,1.6%, 5:22%,2.3%, 8:34%,4.6%, 10:40%,6.5%, 16:54%,12.8%
-##    vbnmax => $vbnmax,  ##-- vsem: maximum number of content-tokens in signature-blocks (default=1024)
 ##    ##
 ##    ##-- runtime ddc relation options
 ##    ddcServer => "$host:$port", ##-- server for ddc relation
@@ -199,8 +200,6 @@ sub new {
 		      index_cof => 1,
 		      vbreak => undef,
 		      vsopts => {},
-		      vbnmin => 8,
-		      vbnmax => 'inf',
 
 		      ##-- filters
 		      pgood => $PGOOD_DEFAULT,
@@ -614,7 +613,7 @@ sub create {
   my %mmopts = (%efopts, pack_l=>$coldb->{pack_id});
 
   ##-- initialize: attribute enums
-  my $aconf = [];  ##-- [{a=>$attr, i=>$i, enum=>$aenum, pack_x=>$pack_xa, s2i=>\%s2i, ns=>$nstrings, ?i2j=>$vec, ...}, ]
+  my $aconf = [];  ##-- [{a=>$attr, i=>$i, enum=>$aenum, pack_x=>$pack_xa, s2i=>\%s2i, ns=>$nstrings, ?i2j=>$mmvec, ...}, ]
   my $axpos = 0;
   my ($attr,$ac);
   foreach (0..$#$attrs) {
@@ -636,20 +635,21 @@ sub create {
   ##-- initialize: corpus token-list (temporary)
   ##  + 1 token/line, blank lines ~ EOS, token lines ~ "$a0i $a1i ... $aNi $date"
   my $atokfile =  "$dbdir/atokens.dat";
-  CORE::open(my $atokfh, ">$atokfile")
+  CORE::open(my $atokfh, ">:raw", $atokfile)
     or $coldb->logconfess("$0: open failed for $atokfile: $!");
 
   ##-- initialize: vsem: doc-data array (temporary)
-  my ($doctmpa);
-  my $doctmpn = 0; ##-- current size of @$doctmpa
+  my ($docmeta,$docoff);
+  my $ndocs = 0; ##-- current size of @$docmeta, @$docoff
   my $index_vsem = $coldb->{index_vsem};
   if ($index_vsem) {
-    $doctmpa = $coldb->{doctmpa} = [];
-    tie(@$doctmpa, 'Tie::File::Indexed::JSON', "$dbdir/doctmp.a", mode=>'rw', temp=>!$coldb->{keeptmp}, pack_o=>'J', pack_l=>'J')
-      or $coldb->logconfess("create(): could not tie temporary doc-data array to $dbdir/doctmp.a: $!");
+    $docmeta = $coldb->{docmeta} = [];
+    tie(@$docmeta, 'Tie::File::Indexed::JSON', "$dbdir/docmeta.tmp", mode=>'rw', temp=>!$coldb->{keeptmp}, pack_o=>'J', pack_l=>'J')
+      or $coldb->logconfess("create(): could not tie temporary doc-data array to $dbdir/docmeta.tmp: $!");
+    $docoff = $coldb->{docoff} = [];
+    tie(@$docoff,  'DiaColloDB::PackedFile', "$dbdir/docoff.tmp", 'rw', packas=>'J')
+      or $coldb->logconfess("create(): couldl not tie temporary doc-offset array to $dbdir/docoff.tmp: $!");
   }
-  my $vbnmin = $coldb->{vbnmin} = max2(($coldb->{vbnmin}//0),1);
-  my $vbnmax = $coldb->{vbnmax} = min2(($coldb->{vbnmax}//'inf'),'inf');
   my $vbreak = ($coldb->{vbreak} // '#file');
   $vbreak    = "#$vbreak" if ($vbreak !~ /^#/);
   $coldb->{vbreak} = $vbreak;
@@ -669,17 +669,18 @@ sub create {
   ##-- initialize: enums, date-range
   $coldb->vlog($coldb->{logCreate},"create(): processing $nfiles corpus file(s)");
   my ($xdmin,$xdmax) = ('inf','-inf');
-  my ($doc, $date,$tok,$w,$p,$l,@ais,$aistr,$x,$xi, $wx,@sigs,$sig,$sign, $filei, $last_was_eos);
+  my ($doc, $date,$tok,$w,$p,$l,@ais,$aistr,$x,$xi, $nsigs, $filei, $last_was_eos);
+  my $docoff_cur = -1;
+  my $toki       = 0;
   for ($corpus->ibegin(); $corpus->iok; $corpus->inext) {
     $coldb->vlog($coldb->{logCorpusFile}, sprintf("create(): processing files [%3.0f%%]: %s", 100*($filei-1)/$nfiles, $corpus->ifile))
       if ($logFileN && ($filei++ % $logFileN)==0);
     $doc  = $corpus->idocument();
     $date = $doc->{date};
 
-    ##-- initalize vsem signatures
-    @sigs = qw();
-    $sig  = {}; ##-- ($wi => $count, ...)
-    $sign = 0;
+    ##-- initalize vsem data (#/sigs)
+    $nsigs = 0;
+    $docoff_cur=$toki;
 
     ##-- get date-range
     $xdmin = $date if ($date < $xdmin);
@@ -708,42 +709,43 @@ sub create {
 	$ais[$_->{i}] = ($_->{s2i}{$tok->{$_->{a}//''}} //= ++$_->{ns}) foreach (@aconfw);
 	$aistr        = join(' ',@ais);
 
-	#$x  = pack($pack_x,@ais,$date);
-	#$xi = $xs2i->{$x} = ++$nx if (!defined($xi=$xs2i->{$x}));
-
 	$atokfh->print("$aistr $date\n");
 	$last_was_eos = 0;
-
-	##-- extract signature for vsem
-	if ($index_vsem) {
-	  ++$sig->{$aistr};
-	  ++$sign;
-	}
+	++$toki;
       }
       elsif (!defined($tok) && !$last_was_eos) {
 	##-- eos
 	$atokfh->print("\n");
 	$last_was_eos = 1;
       }
-      elsif (defined($tok) && $tok eq $vbreak && $sign >= $vbnmin && $sign <= $vbnmax) {
+      elsif (defined($tok) && $tok eq $vbreak && $docoff && $docoff_cur < $toki) { ##-- TODO: honor vbnmin,vbnmax in Vsem
 	##-- break:vsem
-	push(@sigs,$sig);
-	$sig  = {};
-	$sign = 0;
+	++$nsigs;
+	push(@$docoff, $docoff_cur);
+	$docoff_cur = $toki;
       }
     }
 
+    ##-- store final doc-break (for vsem)
+    if ($docoff && $docoff_cur < $toki) {
+      ++$nsigs;
+      push(@$docoff, $docoff_cur);
+      $docoff_cur = $toki;
+    }
+
     ##-- store doc-data (for vsem)
-    if ($doctmpa) {
-      push(@sigs,$sig) if ($sign >= $vbnmin && $sign <= $vbnmax);
-      push(@$doctmpa, {
-		       sigs => \@sigs,
-		       id   => $doctmpn++,
+    if ($docmeta) {
+      push(@$docmeta, {
+		       id    => $ndocs++,
+		       nsigs => $nsigs,
+		       file  => $corpus->ifile,
 		       (map {($_=>$doc->{$_})} qw(meta date label)),
 		      })
-	if (@sigs);
     }
   }
+  ##-- store final pseudo-doc offset (total #/tokens)
+  push(@$docoff, $toki);
+
   ##-- store date-range
   @$coldb{qw(xdmin xdmax)} = ($xdmin,$xdmax);
 
@@ -755,14 +757,13 @@ sub create {
   my $ibits = packsize($pack_id)*8;
   my $ibad  = unpack($pack_id,pack($pack_id,-1));
   foreach $ac (@$aconf) {
-    my $afmin = $coldb->{"fmin_".$ac->{a}} // 0;
+    my $afmin = $coldb->{"fmin_".$ac->{a}} // $coldb->{tfmin} // 0;
     next if ($afmin <= 0);
     $coldb->vlog($coldb->{logCreate}, "create(): building attribute frequency filter (fmin_$ac->{a}=$afmin)");
 
     ##-- filter: by attribute frequency: setup re-numbering map $ac->{i2j}
-    $ac->{i2j} = '';
-    my $i2j    = \$ac->{i2j};
-    vec($$i2j, $ac->{ns}, $ibits) = $ibad;
+    $ac->{i2j} = DiaColloDB::Vec::MM->new($ac->{ns}, $ibits);
+    my $i2j    = $ac->{i2j}->bufr;
 
     ##-- filter: by attribute frequency: populate $ac->{i2j} and update $ac->{s2i}
     env_push(LC_ALL=>'C');
@@ -827,39 +828,71 @@ sub create {
 
   ##-- compile: apply filters & assign term-ids
   $coldb->vlog($coldb->{logCreate}, "create(): filtering corpus tokens & assigning term-IDs");
-  my $tokfile =  "$dbdir/tokens.dat";
-  CORE::open(my $tokfh, ">$tokfile")
+  my $tokfile = "$dbdir/tokens.dat";
+  CORE::open(my $tokfh, ">:raw", $tokfile)
       or $coldb->logconfess("$0: open failed for $tokfile: $!");
-  CORE::open($atokfh, "<$atokfile")
+  my $vtokfile = "$dbdir/vtokens.bin";
+  CORE::open(my $vtokfh, ">:raw", $vtokfile)
+      or $coldb->logconfess("$0: open failed for $vtokfile: $!");
+  CORE::open($atokfh, "<:raw", $atokfile)
       or $coldb->logconfess("$0: re-open failed for $atokfile: $!");
-  my $len_w = packsize($pack_w);
   $nx       = 0;
-  my ($ntok_in,$ntok_out) = (0,0);
+  my $len_w = packsize($pack_w);
+  my $ntok_in = $toki;
+  my ($toki_in,$toki_out) = (0,0);
+  my $doci_cur   = 0;
+  tied(@$docoff)->flush();
+  my $docoff_in  = $docoff->[$doci_cur];
   while (defined($_=<$atokfh>)) {
     chomp;
     if ($_) {
-      ++$ntok_in;
-      if (defined($ws2w)) {
-	$date = $1 if (s/ ([0-9]+)$//);
-	next if (!defined($w=$ws2w->{$_}));
-	$x = $w.pack($pack_date,$date);
-      } else {
-	$x = pack($pack_x,split(' ',$_));
+      if ($toki_in == $docoff_in) {
+	##-- update break-indices for vsem
+	$docoff->[$doci_cur] = $toki_out;
+	$docoff_in = $docoff->[++$doci_cur];
       }
+      ++$toki_in;
+      $date = $1 if (s/ ([0-9]+)$//);
+      if (defined($ws2w)) {
+	next if (!defined($w=$ws2w->{$_}));
+      } else {
+	$w = pack($pack_w, split(' ',$_));
+      }
+      $x  = $w.pack($pack_date,$date);
       $xi = $xs2i->{$x} = ++$nx if (!defined($xi=$xs2i->{$x}));
       $tokfh->print($xi,"\n");
-      ++$ntok_out;
+      $vtokfh->print($w);
+      ++$toki_out;
     }
     else {
       $tokfh->print("\n");
     }
   }
+  ##-- update any trailing vsem break indices
+  $ndocs = $#$docoff;
+  for (; $doci_cur <= $ndocs; ++$doci_cur) {
+    $docoff->[$doci_cur] = $toki_out;
+  }
+  tied(@$docoff)->flush();
+
   CORE::close($atokfh)
       or $coldb->logconfess("create(): failed to temporary attribute-token-file $atokfile: $!");
   CORE::close($tokfh)
       or $coldb->logconfess("create(): failed to temporary token-file $tokfile: $!");
+  CORE::close($vtokfh)
+      or $coldb->logconfess("create(): failed to temporary vsem-token-file $vtokfile: $!");
+  my $ntok_out = $toki_out;
   my $ptokbad = $ntok_in ? sprintf("%.2f%%",100*($ntok_in-$ntok_out)/$ntok_in) : 'nan%';
   $coldb->vlog($coldb->{logCreate}, "create(): assigned $nx term+date tuple-IDs to $ntok_out of $ntok_in tokens (pruned $ptokbad)");
+
+  ##-- cleanup: drop $aconf->[$ai]{i2j} now that we've used it
+  delete($_->{i2j}) foreach (@$aconf);
+
+  ##-- CONTINUE HERE: TODO
+  ## x+ re-map $docmeta or similar if required
+  ## x+ adjust $docmeta: read vsem data from re-mapped token file (tokfile? atokfile? something else?)
+  ## x+ free up $aconf->[$ai]{i2j} when it's no longer needed (save memory)
+  ## x+ maybe save more memory by using PackedFile for {i2j}?
 
   ##-- compile: xenum
   $coldb->vlog($coldb->{logCreate}, "create(): creating tuple-enum $dbdir/xenum.*");
@@ -929,17 +962,25 @@ sub create {
   $coldb->vlog($coldb->{logCreate}, "create(): DB $dbdir created.");
 
   ##-- cleanup
+  !$docmeta
+    or !tied(@$docmeta)
+    or untie(@$docmeta)
+    or $coldb->logwarn("create(): could untie temporary doc-data array $dbdir/docmeta.tmp: $!");
+  delete $coldb->{docmeta};
+
+  my @docoff_files = $docoff && tied($docoff) ? $docoff->diskFiles : qw();
+  !$docoff
+    or !tied(@$docoff)
+    or untie(@$docoff)
+    or $coldb->logwarn("create(): could untie temporary doc-offset array $dbdir/docoff.tmp: $!");
+  delete $coldb->{docoff};
+
   if (!$coldb->{keeptmp}) {
-    CORE::unlink($tokfile)
-	or $coldb->logwarn("create(): clould not remove temporary file '$tokfile': $!");
-    CORE::unlink($atokfile)
-	or $coldb->logwarn("create(): clould not remove temporary file '$atokfile': $!");
+    foreach ($vtokfile,$tokfile,$atokfile,@docoff_files) {
+      CORE::unlink($_)
+	  or $coldb->logwarn("creat(): could not remove temporary file '$_': $!");
+    }
   }
-  !$doctmpa
-    or !tied(@$doctmpa)
-    or untie(@$doctmpa)
-    or $coldb->logwarn("create(): could untie temporary doc-data array $dbdir/doctmp.a: $!");
-  delete $coldb->{doctmpa};
 
   return $coldb;
 }

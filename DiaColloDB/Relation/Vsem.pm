@@ -8,7 +8,7 @@ use DiaColloDB::Relation;
 use DiaColloDB::Relation::Vsem::Query;
 use DiaColloDB::Profile::Pdl;
 use DiaColloDB::Profile::PdlDiff;
-use DiaColloDB::Utils qw(:fcntl :file :math :json :list :pdl);
+use DiaColloDB::Utils qw(:pack :fcntl :file :math :json :list :pdl);
 use DiaColloDB::PDL::MM;
 use File::Path qw(make_path remove_tree);
 use PDL;
@@ -47,8 +47,10 @@ BEGIN {
 ##   logio => $level,       ##-- log-level for low-level I/O operations (default=undef:none)
 ##   ##
 ##   ##-- modelling options (formerly via DocClassify)
-##   minFreq    => $fmin,   ##-- minimum total term-frequency for model inclusion (default=10)
-##   minDocFreq => $dfmin,  ##-- minimim "doc-frequency" (#/docs per term) for model inclusion (default=
+##   minFreq    => $fmin,   ##-- minimum total term-frequency for model inclusion (default=undef:use $coldb->{tfmin})
+##   minDocFreq => $dfmin,  ##-- minimim "doc-frequency" (#/docs per term) for model inclusion (default=4)
+##   minDocSize => $dnmin,  ##-- minimum doc size (#/tokens per doc) for model inclusion (default=4; formerly $coldb->{vbnmin})
+##   maxDocSize => $dnmax,  ##-- maximum doc size (#/tokens per doc) for model inclusion (default=inf; formerly $coldb->{vbnmax})
 ##   smoothf    => $f0,     ##-- smoothing constant to avoid log(0); default=1
 ##   vtype      => $vtype,  ##-- PDL::Type for storing compiled values (default=float)
 ##   itype      => $itype,  ##-- PDL::Type for storing compiled integers (default=long)
@@ -86,8 +88,10 @@ sub new {
 			       mgood => $DiaColloDB::VSMGOOD_DEFAULT,
 			       mbad  => $DiaColloDB::VSMBAD_DEFAULT,
 			       submax => 2**29,
-			       minFreq => 10,
-			       minDocFreq => 5,
+			       minFreq => undef,
+			       minDocFreq => 4,
+			       minDocSize => 4,
+			       maxDocSize => 'inf',
 			       smoothf => 1,
 			       vtype => 'float',
 			       itype => 'long',
@@ -240,7 +244,7 @@ sub opened {
 
 ## $vs = $CLASS_OR_OBJECT->create($coldb,$tokdat_file,%opts)
 ##  + populates current database for $coldb
-##  + implementation used (temporary, tied) doc-array $coldb->{doctmpa}
+##  + implementation used (temporary, tied) doc-arrays @$coldb{qw(docmeta docoff)}
 ##  + %opts: clobber %$vs, also:
 ##    (
 ##     size=>$size,  ##-- set initial size
@@ -255,11 +259,18 @@ sub create {
   @$vs{keys %opts} = values %opts;
 
   ##-- sanity check(s)
-  my $doctmpa = $coldb->{doctmpa};
+  my $docmeta = $coldb->{docmeta};
+  my $docoff  = $coldb->{docoff};
   my $base    = $vs->{base};
   my $logCreate = $vs->{logCreate} // $coldb->{logCreate} // 'trace';
-  $vs->logconfess("create(): no source document array in parent DB") if (!UNIVERSAL::isa($coldb->{doctmpa},'ARRAY'));
+  $vs->logconfess("create(): no source document array {docmeta} in parent DB") if (!UNIVERSAL::isa($coldb->{docmeta},'ARRAY'));
+  $vs->logconfess("create(): no source document offsets {docoff} in parent DB") if (!UNIVERSAL::isa($coldb->{docoff},'ARRAY'));
   $vs->logconfess("create(): no 'base' key defined") if (!$base);
+
+  ##-- open packed token-attribute file
+  my $vtokfile = "$coldb->{dbdir}/vtokens.bin";
+  CORE::open(my $vtokfh, "<:raw", $vtokfile)
+      or $vs->logconfess("create(): could not open temporary token file $vtokfile: $!");
 
   ##-- initialize: output directory
   my $vsdir = "$base.d";
@@ -271,7 +282,7 @@ sub create {
     or $vs->logconfess("create(): could not create Vsem directory $vsdir: $!");
 
   ##-- initialize: logging
-  my $nfiles    = scalar(@$doctmpa);
+  my $nfiles    = scalar(@$docmeta);
   my $logFileN  = $coldb->{logCorpusFileN} // max2(1,int($nfiles/10));
 
   ##-- initialize: metadata
@@ -282,6 +293,8 @@ sub create {
   ##-- create temp files tdm0.ix.tmp, tdm0.nz.tmp
   my $itype = $vs->itype;
   my $vtype = $vs->vtype;
+  my $pack_w  = $coldb->{pack_w};
+  my $len_w   = packsize($pack_w);
   my $pack_ix = $PDL::Types::pack[ $itype->enum ];
   my $pack_nz = $PDL::Types::pack[ $vtype->enum ];
   my $ix0file = "$vsdir/tdm0.ix.tmp"; # pdl: ($nnz0,2):  [$nzi,*] => [$ti0,$di]
@@ -301,17 +314,19 @@ sub create {
   my $c2date = $vs->{c2date} = mmzeroes("$vsdir/c2date.pdl", ushort, $NC);  ##-- c2date ($NC): [$ci]   -> $date
   my $c2d    = $vs->{c2d}    = mmzeroes("$vsdir/c2d.pdl", $itype, 2,$NC);   ##-- c2d  (2,$NC): [0,$ci] => $di_off, [1,$ci] => $di_len
   my $json   = DiaColloDB::Utils->jsonxs();
+  my $minDocSize = $vs->{minDocSize} = max2(($vs->{minDocSize}//0),1);
+  my $maxDocSize = $vs->{maxDocSize} = min2(($vs->{maxDocSize}//'inf'),'inf');
   my ($doc,$filei,$doclabel,$docid);
   my ($mattr,$mval,$mdata,$mvali,$mvals);
-  my ($sig,$ts,$ti,$f);
+  my ($ts,$ti,$f, $sigi_in,$sigj_in,$sigi_out, $toki,$tokj,%sig,$sign,$buf);
   my ($tmp);
   my $tnull = join(' ',map {0} (1..$NA)); ##-- "null" term
   my $ts2i = {''=>0, $tnull=>0};
   $t0fh->print(pack($pack_ix, split(' ',$tnull)));
   my $NT0  = 1;
-  my $sigi = 0;
-  foreach $doc (@$doctmpa) {
-    $doclabel = $doc->{meta}{basename} // $doc->{meta}{file_} // $doc->{label};
+  $sigi_in = $sigi_out = (0,0);
+  foreach $doc (@$docmeta) {
+    $doclabel = $doc->{file} // $doc->{meta}{basename} // $doc->{meta}{file_} // $doc->{label};
     $vs->vlog($coldb->{logCorpusFile}, sprintf("create(): processing signatures [%3.0f%%]: %s", 100*($filei-1)/$nfiles, $doclabel))
       if ($logFileN && ($filei++ % $logFileN)==0);
 
@@ -319,7 +334,7 @@ sub create {
 
     #$vs->debug("c2date: id=$docid/$NC ; doc=$doclabel");
     $c2date->set($docid,$doc->{date});
-    $c2d->set(0,$docid => $sigi);
+    $c2d->set(0,$docid => $sigi_out);
 
     ##-- parse metadata
     #$vs->debug("meta: id=$docid/$NC ; doc=$doclabel");
@@ -330,31 +345,52 @@ sub create {
       $mdata->{vals}->set($docid,$mvali);
     }
 
-    ##-- create temporary DocClassify::Document objects for each embedded signature
+    ##-- parse document signatures into $ix0file, $nz0file, $t0file
     #$vs->debug("sigs: id=$docid/$NC ; doc=$doclabel");
-    foreach $sig (@{$doc->{sigs}}) {
-      while (($ts,$f) = each %$sig) {
+    $sigj_in = $sigi_in + $doc->{nsigs};
+    for ( ; $sigi_in < $sigj_in; ++$sigi_in) {
+      $toki = $docoff->[$sigi_in];
+      $tokj = $docoff->[$sigi_in+1];
+
+      $vs->logconfess("create(): bad offset in $vtokfile") if ($vtokfh->tell != $toki*$len_w); ##-- DEBUG
+
+      ##-- parse signature
+      %sig  = qw();
+      $sign = $tokj - $toki;
+      for ( ; $toki < $tokj; ++$toki) {
+	CORE::read($vtokfh, $buf, $len_w)
+	    or $vs->logconfess("create(): read() failed on $vtokfile: $!");
+	++$sig{$buf};
+      }
+      next if ($sign <= $minDocSize || $sign >= $maxDocSize);
+
+      ##-- populate tempfiles
+      while (($ts,$f) = each %sig) {
 	if (!defined($ti=$ts2i->{$ts})) {
 	  $ti = $ts2i->{$ts} = $NT0++;
-	  $t0fh->print(pack($pack_ix, split(' ',$ts)));
+	  $t0fh->print(pack($pack_ix, unpack($pack_w,$ts)));
 	}
-	$ix0fh->print(pack($pack_ix, $ti, $sigi));
+	$ix0fh->print(pack($pack_ix, $ti, $sigi_out));
 	$nz0fh->print(pack($pack_nz, $f));
       }
-      ++$sigi;
+      ++$sigi_out;
     }
 
     ##-- update c2d (length)
-    $c2d->set(1,$docid => $sigi - $c2d->at(0,$docid));
+    $c2d->set(1,$docid => $sigi_out - $c2d->at(0,$docid));
   }
   ##-- create: tdm0: add missing value
   $nz0fh->print(pack($pack_nz, 0));
+
+  ##-- cleanup
   $ix0fh->close() or $vs->logconfess("create(): close failed for tempfile $ix0file: $!");
   $nz0fh->close() or $vs->logconfess("create(): close failed for tempfile $nz0file: $!");
   $t0fh->close() or $vs->logconfess("create(): close failed for tempfile $t0file: $!");
+  $vtokfh->close() or $vs->logconfess("create(): close failed for tempfile $vtokfile: $!");
+  undef $ts2i;
 
   ##-- create: tdm0: map to piddles
-  my $ND  = $sigi;
+  my $ND  = $sigi_out;
   my $nnz0 = (-s $nz0file) / length(pack($pack_nz,0)) - 1;
   my $density = $nnz0 / ($ND*$NT0);
   $vs->vlog($logCreate, "create(): mapping tdm0 data from tempfiles (ND=$ND, NT0=$NT0; density=", sprintf("%.2g%%", 100*$density), ")");
@@ -367,7 +403,7 @@ sub create {
 
   ##-- create: tdm0: filter: by term-frequency
   my $t_mask = mmtemp("$vsdir/t_mask.tmp", byte, $NT0);
-  $vs->{minFreq} //= 0;
+  $vs->{minFreq}  = ($coldb->{tfmin}//0) if (!defined($vs->{minFreq}));
   $vs->vlog($logCreate, "create(): filter: by term-frequency (minFreq=$vs->{minFreq})");
   if ($vs->{minFreq} > 0) {
     $nz0->slice("0:-2")->indadd($ix0->slice("(0),"), my $tf0=mmtemp("$vsdir/tf0.tmp", $vtype, $NT0));
@@ -392,12 +428,8 @@ sub create {
   $vs->vlog($logCreate,
 	    sprintf("create(): filter: keeping %.2f%% original term types (%.2f%% pruned)", 100*$pkeept, 100*(1-$pkeept)));
   $t_mask->which(my $t1x=mmtemp("$vsdir/t1x.tmp", $itype, $NT));  	    ##-- $t1x  : pdl ($NT): [$ti] => $t0i
-  $vs->debug("t1x->dims = ", join(' ', $t1x->dims));
-  $vs->debug("tvals:create");
   my $tvals = $vs->{tvals} = mmzeroes("$vsdir/tvals.pdl", $itype, $NA,$NT); ##-- $tvals: pdl ($NA,$NT): [$ai,$ti] => $avali_for_term_ti : keep
-  $vs->debug("tvals:dice_axis");
   $tvals   .= $t0->dice_axis(1, $t1x); ##-- output param -> error
-  $vs->debug("tvals:undef t0");
   undef $t0;
   CORE::unlink $t0file;
 
@@ -405,7 +437,6 @@ sub create {
   # ERROR: Usage:  PDL::index(a,ind,c) (you may leave temporaries or output variables out of list) at ...[/usr/share/perl/5.20/perl5db.pl:732] line 2.
   # ... even though that's how we're calling it; maybe this has something to do with the [a] qualifier on the index() output piddle?
   #$t_mask->index($ix0->slice("(0),"), my $nzi_mask=mmzeroes("$vsdir/nzi_mask.tmp", byte, $nnz0, {temp=>1})); ##-- output param -> error
-  $vs->debug("nzi_mask");
   my $nzi_mask = $t_mask->index($ix0->slice("(0),"));
   my $nnz     = $nzi_mask->dsumover;
   my $pkeepv  = $nnz/$nnz0;
@@ -478,11 +509,12 @@ sub create {
   undef $nz;
 
   ##-- create: tfidf: pointers & norms
-  $vs->vlog("create(): creating tdidf matrix Harwell-Boeing pointers");
+  $vs->vlog($logCreate, "create(): creating tfidf matrix Harwell-Boeing pointers");
   my ($ptr0) = $tdm->getptr(0);
   $ptr0      = $ptr0->convert($itype) if ($ptr0->type != $itype);
   $ptr0->writefraw("$vsdir/tdm.ptr0.pdl")
     or $vs->logconfess("create(): failed to write $vsdir/tdm.ptr0.pdl: $!");
+  undef $ptr0;
 
   my ($ptr1,$pix1) = $tdm->getptr(1);
   $ptr1 = $ptr1->convert($itype) if ($ptr1->type != $itype);
@@ -491,12 +523,14 @@ sub create {
     or $vs->logconfess("create(): failed to write $vsdir/tdm.ptr1.pdl: $!");
   $pix1->writefraw("$vsdir/tdm.pix1.pdl")
     or $vs->logconfess("create(): failed to write $vsdir/tdm.pix1.pdl: $!");
+  undef $ptr1;
+  undef $pix1;
 
   my $vnorm0 = $tdm->vnorm(0);
   $vnorm0    = $vnorm0->convert($vtype) if ($vnorm0->type != $vtype);
   $vnorm0->writefraw("$vsdir/tdm.vnorm0.pdl")
     or $vs->confess("create(): failed to write $vsdir/tdm.vnorm0.pdl: $!");
-
+  undef $vnorm0;
 
   ##-- create: aux: tsorti
   $vs->vlog($logCreate, "create(): creating term-attribute sort-indices (NA=$NA x NT=$NT)");

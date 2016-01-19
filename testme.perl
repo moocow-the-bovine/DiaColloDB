@@ -1392,7 +1392,7 @@ sub test_svd_union {
 
   exit 0;
 }
-test_svd_union();
+#test_svd_union();
 
 
 ##--------------------------------------------------------------
@@ -1556,7 +1556,7 @@ sub test_vsem_reindex {
 
   exit 0;
 }
-test_vsem_reindex(@ARGV);
+#test_vsem_reindex(@ARGV);
 
 sub test_vsem {
   my $dbdir = shift || 'dta_phil.d';
@@ -1599,6 +1599,67 @@ sub test_vsem_diff {
 }
 #test_vsem_diff(@ARGV);
 
+##--------------------------------------------------------------
+## bench: attribute-token lists
+
+sub read_atoks_txt {
+  my $atokfile = shift;
+  open(my $atokfh, "<:raw", $atokfile)
+    or die("$0: open failed for $atokfile: $!");
+  my (@vals);
+  while (defined($_=<$atokfh>)) {
+    chomp;
+    next if (/^\s*$/);
+    @vals = split(' ',$_);
+  }
+  close($atokfh);
+  return;
+}
+
+sub read_atoks_bin {
+  my $atokfile = shift;
+  open(my $atokfh, "<:raw", $atokfile)
+    or die("$0: open failed for $atokfile: $!");
+  my ($buf,@vals);
+  my $pack_w = 'N2';
+  my $pack_l = 8;
+  while (!$atokfh->eof) {
+    CORE::read($atokfh, $buf, $pack_l)
+	or die("$0: read failed for $atokfh: $!");
+    @vals = unpack($pack_w,$buf);
+  }
+  return;
+}
+
+sub bench_atok_file {
+  my $dbdir = shift // 'out.d';
+
+  ##-- prepare: write binfile
+  print STDERR "$0: bench_atok_file(): prepare\n";
+  my $atokfile = "$dbdir/atokens.dat";
+  open(my $atokfh, "<:raw", $atokfile)
+    or die("$0: open failed for $atokfile: $!");
+  my $pack_w = 'N2';
+  open(my $binfh, ">:raw", "$atokfile.bin")
+    or die("$0: open failed for $atokfile.bin: $!");
+  my (@vals);
+  while (defined($_=<$atokfh>)) {
+    chomp;
+    next if (/^\s*$/);
+    @vals = split(' ',$_);
+    pop(@vals);
+    $binfh->print(pack($pack_w,@vals));
+  }
+  close($binfh);
+  close($atokfh);
+
+  ##-- bench
+  cmpthese(1, {
+	       'txt' => sub { read_atoks_txt($atokfile) },
+	       'bin' => sub { read_atoks_bin("$atokfile.bin") },
+	      });
+}
+bench_atok_file(@ARGV);
 
 
 

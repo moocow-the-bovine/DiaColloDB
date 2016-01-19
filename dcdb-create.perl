@@ -37,10 +37,12 @@ our %coldb    = (
 		 tfmin=>2,
 		 fmin_l=>0,
 		 keeptmp=>0,
-		 vsopts=>{},
+		 vsopts=>{
+			  minDocFreq => 4,
+			  minDocSize => 8,
+#			  maxDocSize => 'inf',
+			 },
 		 vbreak=>'#file',
-		 vbnmin=>8,
-		 vbnmax=>'inf',
 		);
 
 ##----------------------------------------------------------------------
@@ -75,8 +77,8 @@ GetOptions(##-- general
 	   'min-lemma-frequency|min-lf|minlf|lfmin=i' => \$coldb{fmin_l},
 	   'index-vsem|vsem|vs!' => \$coldb{index_vsem},
 	   'vsem-break|vbreak|vb=s' => \$coldb{vbreak},
-	   'vsem-break-min-size|vsem-break-min|vsem-nmin|vbnmin|vbmin' => \$coldb{vbnmin},
-	   'vsem-break-max-size|vsem-break-max|vsem-nmax|vbnmax|vbmax' => \$coldb{bvnmax},
+	   'vsem-break-min-size|vsem-break-min|vsem-nmin|vbnmin|vbmin=s' => \$coldb{vsopts}{minDocSize},
+	   'vsem-break-max-size|vsem-break-max|vsem-nmax|vbnmax|vbmax=s' => \$coldb{vsopts}{maxDocSize},
 	   'vsem-option|vsopt|vso|vopt|vo|vO=s%' => \$coldb{vsopts},
 	   'keeptmp|keep' => \$coldb{keeptmp},
 	   'nofilters|F' => sub { $coldb{$_}=undef foreach (qw(pgood pbad wgood wbad lgood lbad vsmgood vsmbad)); },
@@ -185,8 +187,10 @@ dcdb-create.perl - create a DiaColloDB collocation database from a corpus dump
    -vsem-nmax VNMAX     ##-- set maximum number of content tokens per vector-model "document (default=inf)
    -vsem-option OPT=VAL ##-- set arbitrary vector-model option, e.g.
                         ##   smoothf=FLOAT         # frequency smoothing constant (default=1)
-                        ##   minFreq=INT           # minimum term frequency (default=10)
-                        ##   minDocFreq=INT        # minimum term document-"frequency" (default=5)
+                        ##   minFreq=INT           # minimum term frequency (default=undef: use TFMIN)
+                        ##   minDocFreq=INT        # minimum term document-"frequency" (default=4)
+                        ##   minDocSize=INT        # minimum document size (#/terms) (default=4)
+                        ##   maxDocSize=INT        # maximum document size (#/terms) (default=inf)
                         ##   #verbose=LEVEL         # verbosity level (default=2)
                         ##   #svdr=INT              # target model rank (default=64)
                         ##   #saveMem=BOOL          # use less memory when compiling (default=1)

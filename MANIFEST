@@ -71,6 +71,7 @@ DiaColloDB/Timer.pm
 DiaColloDB/Timer.pod
 DiaColloDB/Utils.pm
 DiaColloDB/Utils.pod
+DiaColloDB/Vec/MM.pm
 
 dcdb-create.perl
 dcdb-export.perl
