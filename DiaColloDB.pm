@@ -26,7 +26,7 @@ use DiaColloDB::Corpus;
 use DiaColloDB::Persistent;
 use DiaColloDB::Utils qw(:math :fcntl :json :sort :pack :regex :file :si :run :env);
 use DiaColloDB::Timer;
-use DiaColloDB::Vec::MM;
+#use DiaColloDB::Vec::MM;
 use DDC::XS; ##-- for query parsing
 use Tie::File::Indexed::JSON; ##-- for vsem training
 use Fcntl;
@@ -613,7 +613,7 @@ sub create {
   my %mmopts = (%efopts, pack_l=>$coldb->{pack_id});
 
   ##-- initialize: attribute enums
-  my $aconf = [];  ##-- [{a=>$attr, i=>$i, enum=>$aenum, pack_x=>$pack_xa, s2i=>\%s2i, ns=>$nstrings, ?i2j=>$mmvec, ...}, ]
+  my $aconf = [];  ##-- [{a=>$attr, i=>$i, enum=>$aenum, pack_x=>$pack_xa, s2i=>\%s2i, ns=>$nstrings, ?i2j=>$pftmp, ...}, ]
   my $axpos = 0;
   my ($attr,$ac);
   foreach (0..$#$attrs) {
@@ -647,7 +647,7 @@ sub create {
     tie(@$docmeta, 'Tie::File::Indexed::JSON', "$dbdir/docmeta.tmp", mode=>'rw', temp=>!$coldb->{keeptmp}, pack_o=>'J', pack_l=>'J')
       or $coldb->logconfess("create(): could not tie temporary doc-data array to $dbdir/docmeta.tmp: $!");
     $docoff = $coldb->{docoff} = [];
-    tie(@$docoff,  'DiaColloDB::PackedFile', "$dbdir/docoff.tmp", 'rw', packas=>'J')
+    tie(@$docoff,  'DiaColloDB::PackedFile', "$dbdir/docoff.tmp", 'rw', packas=>'J', temp=>!$coldb->{keeptmp})
       or $coldb->logconfess("create(): couldl not tie temporary doc-offset array to $dbdir/docoff.tmp: $!");
   }
   my $vbreak = ($coldb->{vbreak} // '#file');
@@ -754,16 +754,16 @@ sub create {
       or $corpus->logconfess("create(): failed to close temporary token storage file '$atokfile': $!");
 
   ##-- filter: by attribute frequency
-  my $ibits = packsize($pack_id)*8;
   my $ibad  = unpack($pack_id,pack($pack_id,-1));
   foreach $ac (@$aconf) {
-    my $afmin = $coldb->{"fmin_".$ac->{a}} // $coldb->{tfmin} // 0;
+    my $afmin = $coldb->{"fmin_".$ac->{a}} // '';
+    $afmin    = $coldb->{tfmin} // 0 if (($afmin//'') eq '');
     next if ($afmin <= 0);
     $coldb->vlog($coldb->{logCreate}, "create(): building attribute frequency filter (fmin_$ac->{a}=$afmin)");
 
     ##-- filter: by attribute frequency: setup re-numbering map $ac->{i2j}
-    $ac->{i2j} = DiaColloDB::Vec::MM->new($ac->{ns}, $ibits);
-    my $i2j    = $ac->{i2j}->bufr;
+    my $i2j = $ac->{i2j} = [];
+    tie(@$i2j, 'DiaColloDB::PackedFile', "$dbdir/i2j_$ac->{a}.tmp", "rw", packas=>'J', temp=>!$coldb->{keeptmp});
 
     ##-- filter: by attribute frequency: populate $ac->{i2j} and update $ac->{s2i}
     env_push(LC_ALL=>'C');
@@ -774,8 +774,8 @@ sub create {
     my $nj   = 0;
     while (defined($_=<$cmdfh>)) {
       chomp;
-      ($f,$i) = split(' ',$_,2);
-      vec($$i2j, $i, $ibits) = ($f >= $afmin ? ++$nj : $ibad) if ($i);
+      ($f,$i)    = split(' ',$_,2);
+      $i2j->[$i] = ($f >= $afmin ? ++$nj : $ibad) if ($i)
     }
     $cmdfh->close();
     env_pop();
@@ -784,10 +784,18 @@ sub create {
     my $pabad = $ac->{ns} ? sprintf("%.2f%%", 100*$nabad/$ac->{ns}) : 'nan%';
     $coldb->vlog($coldb->{logCreate}, "create(): filter (fmin_$ac->{a}=$afmin) pruning $nabad of $ac->{ns} attribute value type(s) ($pabad)");
 
-    my $s2i  = $ac->{s2i};
-    delete @$s2i{grep {vec($$i2j, $s2i->{$_}, $ibits)==$ibad} keys %$s2i};
-    $s2i->{$_} = vec($$i2j, $s2i->{$_}, $ibits) foreach (keys %$s2i);
+    tied(@$i2j)->flush;
+    my $s2i = $ac->{s2i};
+    my ($s,$j,@badkeys);
+    while (($s,$i)=each %$s2i) {
+      if (($j=$i2j->[$i])==$ibad) {
+	delete $s2i->{$s};
+      } else {
+	$s2i->{$s} = $j;
+      }
+    }
     $ac->{ns} = $nj;
+    tied(@$i2j)->flush;
   }
 
   ##-- filter: terms: populate $ws2w (map IDs)
@@ -795,7 +803,7 @@ sub create {
   my $ws2w  = undef; ##-- join(' ',@ais) => pack($pack_w,i2j(@ais)) : includes attribute-id re-mappings
   if ($tfmin > 0 || grep {defined($_->{i2j})} @$aconf) {
     $coldb->vlog($coldb->{logCreate}, "create(): populating global term enum (tfmin=$tfmin)");
-    my @ai2j  = map {defined($_->{i2j}) ? \$_->{i2j} : undef} @$aconf;
+    my @ai2j  = map {defined($_->{i2j}) ? $_->{i2j} : undef} @$aconf;
     my @ai2ji = grep {defined($ai2j[$_])} (0..$#ai2j);
     my $na        = scalar(@$attrs);
     my ($nw0,$nw) = (0,0);
@@ -812,7 +820,7 @@ sub create {
       @ais = split(' ',$aistr,$na);
       foreach (@ai2ji) {
 	##-- apply attribute-wise re-mappings
-	$ais[$_] = vec(${$ai2j[$_]}, ($ais[$_]//0), $ibits);
+	$ais[$_] = $ai2j[$_][$ais[$_]//0];
 	next FILTER_WTUPLES if ($ais[$_] == $ibad);
       }
       $ws2w->{$aistr} = pack($pack_w,@ais);
@@ -968,7 +976,6 @@ sub create {
     or $coldb->logwarn("create(): could untie temporary doc-data array $dbdir/docmeta.tmp: $!");
   delete $coldb->{docmeta};
 
-  my @docoff_files = $docoff && tied($docoff) ? $docoff->diskFiles : qw();
   !$docoff
     or !tied(@$docoff)
     or untie(@$docoff)
@@ -976,9 +983,9 @@ sub create {
   delete $coldb->{docoff};
 
   if (!$coldb->{keeptmp}) {
-    foreach ($vtokfile,$tokfile,$atokfile,@docoff_files) {
+    foreach ($vtokfile,$tokfile,$atokfile) {
       CORE::unlink($_)
-	  or $coldb->logwarn("creat(): could not remove temporary file '$_': $!");
+	  or $coldb->logwarne("creat(): could not remove temporary file '$_': $!");
     }
   }
 

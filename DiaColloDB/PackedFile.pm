@@ -29,6 +29,7 @@ our @ISA = qw(DiaColloDB::Persistent Tie::Array);
 ##   perms    => $perms,      ##-- creation permissions (default=(0666 &~umask))
 ##   reclen   => $reclen,     ##-- record-length in bytes: (default: guess from pack format if available)
 ##   packas   => $packas,     ##-- pack-format or array; see DiaColloDB::Utils::packFilterStore();
+##   temp     => $bool,       ##-- if true, data file(s) will be unlinked on DESTROY
 ##   ##
 ##   ##-- filters
 ##   filter_fetch => $filter, ##-- DB_File-style filter for fetch
@@ -43,6 +44,7 @@ sub new {
 		  flags  => 'r',
 		  perms  => (0666 & ~umask),
 		  reclen => undef,
+		  temp   => 0,
 		  #packas => undef,
 
 		  ##-- filters
@@ -58,6 +60,11 @@ sub new {
   $pf->{class} = ref($pf);
   return $pf->open() if (defined($pf->{file}));
   return $pf;
+}
+
+sub DESTROY {
+  my $obj = $_[0];
+  $obj->unlink() if ($obj->{temp});
 }
 
 ##==============================================================================
