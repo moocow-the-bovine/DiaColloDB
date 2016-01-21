@@ -21,7 +21,9 @@ WriteMakefile
 		    'IPC::Run'      => 0,  # 0.94
 		    'Log::Log4perl' => 1.07,   # 1.29
 		    'File::Temp'    => 0,
+		    'File::Spec'    => 0,
 		    'File::Map'     => 0,
+		    'DB_File' => 0,  ##-- for temporary hashes; 1.831
 		    ##
 		    ##-- for vector-semantic models (Vsem)
 		    'PDL::CCS' => '1.23.1',

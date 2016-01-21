@@ -11,6 +11,8 @@ use JSON;
 use IO::Handle;
 use IO::File;
 use IPC::Run;
+use File::Spec qw(); ##-- for tmpdir()
+use File::Temp qw(); ##-- for tempdir(), tempfile()
 use Fcntl qw(:DEFAULT SEEK_SET SEEK_CUR SEEK_END);
 use Time::HiRes qw(gettimeofday tv_interval);
 use POSIX qw(strftime);
@@ -38,8 +40,9 @@ our %EXPORT_TAGS =
      file  => [qw(file_mtime file_timestamp du_file du_glob)],
      si    => [qw(si_str)],
      pdl   => [qw(_intersect_p _union_p _complement_p _setdiff_p),
-	       qw(readPdlFile writePdlFile mmzeroes mmtemp)
+	       qw(readPdlFile writePdlFile writePdlHeader writeCcsHeader mmzeroes mmtemp)
 	      ],
+     temp  => [qw($TMPDIR tmpdir tmpfh tmpfile tmparray tmparrayp tmphash)],
     );
 our @EXPORT_OK = map {@$_} values(%EXPORT_TAGS);
 $EXPORT_TAGS{all} = [@EXPORT_OK];
@@ -547,7 +550,6 @@ sub si_str {
 ##==============================================================================
 ## Functions: pdl
 
-
 ## $pi = CLASS::_intersect_p($p1,$p2)
 ## $pi = CLASS->_intersect_p($p1,$p2)
 ##  + intersection of 2 piddles; undef is treated as the universal set
@@ -678,6 +680,47 @@ sub writePdlFile {
   return 1;
 }
 
+## $bool = CLASS->writePdlHeader($filename, $type, $ndims, @dims)
+##  + writes a PDL::IO::FastRaw-style header $filename (e.g. "pdl.hdr")
+##  + adapted from PDL::IO::FastRaw::_writefrawhdr()
+##  + arguments
+##     $type   ##-- PDL::Type or integer
+##     $ndims  ##-- number of piddle dimensions
+##     @dims   ##-- dimension size list, piddle, or ARRAY-ref
+sub writePdlHeader {
+  my $that  = UNIVERSAL::isa($_[0],__PACKAGE__) ? shift : __PACKAGE__;
+  my ($file,$type,$ndims,@dims) = @_;
+  $that->logconfess("writePdlHeader(): missing required parameter (FILE,TYPE,NDIMS,DIMS...)") if (@_ < 3);
+  $type = $type->enum if (UNIVERSAL::isa($type,'PDL::Type'));
+  @dims = map {UNIVERSAL::isa($_,'PDL') ? $_->list : (UNIVERSAL::isa($_,'ARRAY') ? @$_ : $_)} @dims;
+  open(my $fh, ">$file")
+    or return undef;
+    #$that->logconfess("writePdlHeader(): open failed for '$file': $!");
+  print $fh join("\n", $type, $ndims, join(' ', @dims), '');
+  close($fh);
+}
+
+## $bool = CLASS->writeCcsHeader($filename, $itype, $vtype, $pdims, %opts)
+##  + writes a PDL::CCS::IO::FastRaw-style header $filename (e.g. "pdl.hdr")
+##  + arguments:
+##     $itype,          ##-- PDL::Type for index (default: PDL::CCS::Utils::ccs_indx())
+##     $vtype,          ##-- PDL::Type for values (default: $PDL::IO::Misc::deftype)
+##     $pdims,          ##-- dimension piddle or ARRAY-ref
+##  + %opts:            ##-- passed to PDL::CCS::Nd->newFromWich
+sub writeCcsHeader {
+  my $that  = UNIVERSAL::isa($_[0],__PACKAGE__) ? shift : __PACKAGE__;
+  $that->logconfess("writeCcsFile(): missing required parameter (FILE,ITYPE,VTYPE,DIMS...)") if (@_ < 3);
+  my ($file,$itype,$vtype,$pdims,%opts) = @_;
+  $itype = PDL::CCS::Utils::ccs_indx() if (!defined($itype));
+  $vtype = $PDL::IO::Misc::deftype  if (!defined($vtype));
+  $pdims = PDL->pdl($itype, $pdims) if (!UNIVERSAL::isa($pdims,'PDL'));
+  my $ccs = PDL::CCS::Nd->newFromWhich(PDL->zeroes($itype,$pdims->nelem,1),
+				       PDL->zeroes($vtype,2),
+				       pdims=>$pdims, sorted=>1, steal=>1, %opts);
+  return PDL::CCS::IO::Common::_ccsio_write_header($ccs, $file);
+}
+
+
 ## $pdl = mmzeroes($file?, $type?, @dims, \%opts?)
 ## $pdl = $pdl->mmzeroes($file?, $type?, \%opts?)
 ##  + create a temporary mmap()ed pdl using DiaColloDB::PDL::MM; %opts:
@@ -717,6 +760,135 @@ sub valcounts {
 }
 BEGIN {
   *PDL::valcounts = \&valcounts;
+}
+
+##==============================================================================
+## Functions: temporaries
+
+## $TMPDIR : global temp directory to use
+our $TMPDIR = undef;
+
+## TMPFILES : temporary files to be unlinked on END
+our @TMPFILES = qw();
+END {
+  foreach (@TMPFILES) {
+    !-e $_
+      or CORE::unlink($_)
+      or __PACKAGE__->logwarn("failed to unlink temporary file $_ in final cleanup");
+  }
+}
+
+## $tmpdir = CLASS->tmpdir()
+## $tmpdir = CLASS_>tmpdir($template, %opts)
+##  + in first form, get name of global tempdir ($TMPDIR || File::Spec::tmpdir())
+##  + in second form, create and return a new temporary directory via File::Temp::tempdir()
+sub tmpdir {
+  my $that = UNIVERSAL::isa($_[0],__PACKAGE__) ? shift : __PACKAGE__;
+  my $tmpdir = $TMPDIR || File::Spec->tmpdir();
+  return @_ ? File::Temp::tempdir($_[0], DIR=>$tmpdir, @_[1..$#_]) : $tmpdir;
+}
+
+## $fh = CLASS->tmpfh()
+## $fh = CLASS->tmpfh($template_or_filename, %opts)
+##  + get a new temporary filehandle or undef on error
+##  + in list context, returns ($fh,$filename) or empty list on error
+sub tmpfh {
+  my $that = UNIVERSAL::isa($_[0],__PACKAGE__) ? shift : __PACKAGE__;
+  my $template = shift // 'tmpXXXXX';
+  my ($fh,$filename);
+  if ($template =~ /X{4}/) {
+    ##-- use File::Temp::tempfile()
+    ($fh,$filename) = File::Temp::tempfile($template, DIR=>$that->tmpdir(), @_) or return qw();
+  } else {
+    ##-- use literal filename, honoring DIR, TMPDIR, and SUFFIX options
+    my %opts  = @_;
+    $filename = $template;
+    do { $opts{DIR} =~ s{/$}{}; $filename  = "$opts{DIR}/$filename"; } if ($filename !~ m{^/} && defined($opts{DIR}));
+    $filename  = $that->tmpdir."/".$filename if ($filename !~ m{^/} && $opts{TMPDIR});
+    $filename .= $opts{SUFFIX} if (defined($opts{SUFFIX}));
+    CORE::open($fh, "+>", $filename)
+	or $that->logconfess("tmpfh(): open failed for file '$filename': $!");
+    push(@TMPFILES, $filename) if ($opts{UNLINK});
+  }
+  return wantarray ? ($fh,$filename) : $fh;
+}
+
+## $filename = CLASS->tmpfile()
+## $filename = CLASS->tmpfile($template, %opts)
+sub tmpfile {
+  my $that = UNIVERSAL::isa($_[0],__PACKAGE__) ? shift : __PACKAGE__;
+  my ($fh,$filename) = $that->tmpfh(@_) or return undef;
+  $fh->close();
+  return $filename;
+}
+
+## \@tmparray = CLASS->tmparray($template, %opts)
+##  + ties a new temporary array via $class (default='Tie::File::Indexed::JSON')
+##  + calls tie(my @tmparray, 'DiaColloDB::Temp::Array', $tmpfilename, %opts)
+sub tmparray {
+  my $that  = UNIVERSAL::isa($_[0],__PACKAGE__) ? shift : __PACKAGE__;
+  my ($template,%opts) = @_;
+
+  ##-- load target module
+  eval { require "DiaColloDB/Temp/Array.pm" }
+    or $that->logconfess("tmparray(): failed to load class DiaColloDB::Temp::Array: $@");
+
+  ##-- default options
+  $template     //= 'dcdbXXXXXX';
+  $opts{SUFFIX} //= '.tmpa';
+  $opts{UNLINK}   = 1 if (!exists($opts{UNLINK}));
+
+  ##-- tie it up
+  my $tmpfile = $that->tmpfile($template, %opts);
+  tie(my @tmparray, 'DiaColloDB::Temp::Array', $tmpfile, %opts)
+    or $that->logconfess("tmparray(): failed to tie file '$tmpfile' via DiaColloDB::Temp::Array: $@");
+  return \@tmparray;
+}
+
+## \@tmparrayp = CLASS->tmparrayp($template, $packas, %opts)
+##  + ties a new temporary integer-array via DiaColloDB::PackedFile)
+##  + calls tie(my @tmparray, 'DiaColloDB::PackedFile', $tmpfilename, %opts)
+sub tmparrayp {
+  my $that  = UNIVERSAL::isa($_[0],__PACKAGE__) ? shift : __PACKAGE__;
+  my ($template,$packas,%opts) = @_;
+
+  ##-- load target module
+  eval { require "DiaColloDB/PackedFile.pm" }
+    or $that->logconfess("tmparrayp(): failed to load class DiaColloDB::PackedFile: $@");
+
+  ##-- default options
+  $template     //= 'dcdbXXXXXX';
+  $opts{SUFFIX} //= '.pf';
+  $opts{UNLINK}   = 1 if (!exists($opts{UNLINK}));
+
+  ##-- tie it up
+  my $tmpfile = $that->tmpfile($template, %opts);
+  tie(my @tmparray, 'DiaColloDB::PackedFile', $tmpfile, 'rw', packas=>$packas, temp=>$opts{UNLINK}, %opts)
+    or $that->logconfess("tmparrayp(): failed to tie file '$tmpfile' via DiaColloDB::PackedFile: $@");
+  return \@tmparray;
+}
+
+## \%tmphash = CLASS->tmphash($class, $template, %opts)
+##  + ties a new temporary hash via $class (default='DB_File')
+##  + calls tie(my @tmparray, $class, $tmpfilename, temp=>1, %opts)
+sub tmphash {
+  my $that  = UNIVERSAL::isa($_[0],__PACKAGE__) ? shift : __PACKAGE__;
+  my ($template,%opts) = @_;
+
+  ##-- load target module
+  eval { require "DiaColloDB/Temp/Hash.pm" }
+    or $that->logconfess("tmparray(): failed to load class DiaColloDB::Temp::Hash: $@");
+
+  ##-- default options
+  $template     //= 'dcdbXXXXXX';
+  $opts{SUFFIX} //= '.tmph';
+  $opts{UNLINK}   = 1 if (!exists($opts{UNLINK}));
+
+  ##-- tie it up
+  my $tmpfile = $that->tmpfile($template, %opts);
+  tie(my %tmphash, 'DiaColloDB::Temp::Hash', $tmpfile, %opts)
+    or $that->logconfess("tmphash(): failed to tie file '$tmpfile' via DiaColloDB::Temp::Hash: $@");
+  return \%tmphash;
 }
 
 ##==============================================================================

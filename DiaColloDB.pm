@@ -24,9 +24,9 @@ use DiaColloDB::Profile::Multi;
 use DiaColloDB::Profile::MultiDiff;
 use DiaColloDB::Corpus;
 use DiaColloDB::Persistent;
-use DiaColloDB::Utils qw(:math :fcntl :json :sort :pack :regex :file :si :run :env);
+use DiaColloDB::Utils qw(:math :fcntl :json :sort :pack :regex :file :si :run :env :temp);
+#use DiaColloDB::Temp::Vec;
 use DiaColloDB::Timer;
-#use DiaColloDB::Vec::MM;
 use DDC::XS; ##-- for query parsing
 use Tie::File::Indexed::JSON; ##-- for vsem training
 use Fcntl;
@@ -643,12 +643,10 @@ sub create {
   my $ndocs = 0; ##-- current size of @$docmeta, @$docoff
   my $index_vsem = $coldb->{index_vsem};
   if ($index_vsem) {
-    $docmeta = $coldb->{docmeta} = [];
-    tie(@$docmeta, 'Tie::File::Indexed::JSON', "$dbdir/docmeta.tmp", mode=>'rw', temp=>!$coldb->{keeptmp}, pack_o=>'J', pack_l=>'J')
-      or $coldb->logconfess("create(): could not tie temporary doc-data array to $dbdir/docmeta.tmp: $!");
-    $docoff = $coldb->{docoff} = [];
-    tie(@$docoff,  'DiaColloDB::PackedFile', "$dbdir/docoff.tmp", 'rw', packas=>'J', temp=>!$coldb->{keeptmp})
-      or $coldb->logconfess("create(): couldl not tie temporary doc-offset array to $dbdir/docoff.tmp: $!");
+    $docmeta = $coldb->{docmeta} = tmparray("$dbdir/docmeta", UNLINK=>!$coldb->{keeptmp}, pack_o=>'J', pack_l=>'J')
+      or $coldb->logconfess("create(): could not tie temporary doc-data array to $dbdir/docmeta.*: $!");
+    $docoff = $coldb->{docoff} = tmparrayp("$dbdir/docoff", 'J', UNLINK=>!$coldb->{keeptmp})
+      or $coldb->logconfess("create(): couldl not tie temporary doc-offset array to $dbdir/docoff.*: $!");
   }
   my $vbreak = ($coldb->{vbreak} // '#file');
   $vbreak    = "#$vbreak" if ($vbreak !~ /^#/);
@@ -744,7 +742,7 @@ sub create {
     }
   }
   ##-- store final pseudo-doc offset (total #/tokens)
-  push(@$docoff, $toki);
+  push(@$docoff, $toki) if ($docoff);
 
   ##-- store date-range
   @$coldb{qw(xdmin xdmax)} = ($xdmin,$xdmax);
@@ -762,8 +760,7 @@ sub create {
     $coldb->vlog($coldb->{logCreate}, "create(): building attribute frequency filter (fmin_$ac->{a}=$afmin)");
 
     ##-- filter: by attribute frequency: setup re-numbering map $ac->{i2j}
-    my $i2j = $ac->{i2j} = [];
-    tie(@$i2j, 'DiaColloDB::PackedFile', "$dbdir/i2j_$ac->{a}.tmp", "rw", packas=>'J', temp=>!$coldb->{keeptmp});
+    my $i2j = $ac->{i2j} = tmparrayp("$dbdir/i2j_$ac->{a}.tmp", 'J', UNLINK=>!$coldb->{keeptmp});
 
     ##-- filter: by attribute frequency: populate $ac->{i2j} and update $ac->{s2i}
     env_push(LC_ALL=>'C');
@@ -849,8 +846,8 @@ sub create {
   my $ntok_in = $toki;
   my ($toki_in,$toki_out) = (0,0);
   my $doci_cur   = 0;
-  tied(@$docoff)->flush();
-  my $docoff_in  = $docoff->[$doci_cur];
+  tied(@$docoff)->flush() if ($docoff);
+  my $docoff_in  = $docoff ? $docoff->[$doci_cur] : -1;
   while (defined($_=<$atokfh>)) {
     chomp;
     if ($_) {
@@ -877,11 +874,13 @@ sub create {
     }
   }
   ##-- update any trailing vsem break indices
-  $ndocs = $#$docoff;
-  for (; $doci_cur <= $ndocs; ++$doci_cur) {
-    $docoff->[$doci_cur] = $toki_out;
+  if ($docoff) {
+    $ndocs = $#$docoff;
+    for (; $doci_cur <= $ndocs; ++$doci_cur) {
+      $docoff->[$doci_cur] = $toki_out;
+    }
+    tied(@$docoff)->flush();
   }
-  tied(@$docoff)->flush();
 
   CORE::close($atokfh)
       or $coldb->logconfess("create(): failed to temporary attribute-token-file $atokfile: $!");
@@ -973,13 +972,13 @@ sub create {
   !$docmeta
     or !tied(@$docmeta)
     or untie(@$docmeta)
-    or $coldb->logwarn("create(): could untie temporary doc-data array $dbdir/docmeta.tmp: $!");
+    or $coldb->logwarn("create(): could untie temporary doc-data array $dbdir/docmeta.*: $!");
   delete $coldb->{docmeta};
 
   !$docoff
     or !tied(@$docoff)
     or untie(@$docoff)
-    or $coldb->logwarn("create(): could untie temporary doc-offset array $dbdir/docoff.tmp: $!");
+    or $coldb->logwarn("create(): could untie temporary doc-offset array $dbdir/docoff.*: $!");
   delete $coldb->{docoff};
 
   if (!$coldb->{keeptmp}) {

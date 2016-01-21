@@ -1,25 +1,26 @@
 ## -*- Mode: CPerl -*-
 ##
-## File: DiaColloDB::Vec::MM.pm
+## File: DiaColloDB::Temp::Vec.pm
 ## Author: Bryan Jurish <moocow@cpan.org>
 ## Description: DiaColloDB utilities: (temporary) mmaped vec() buffers
 
-package DiaColloDB::Vec::MM;
-use DiaColloDB::Logger;
+package DiaColloDB::Temp::Vec;
+use DiaColloDB::Temp;
 use File::Map;
 use File::Temp;
+use strict;
 
 ##==============================================================================
 ## Globals & Constants
 
-our @ISA = qw(DiaColloDB::Logger);
+our @ISA = qw(DiaColloDB::Temp);
 our $LOG_DEFAULT = undef;	##-- default log-level (undef: off)
 
 ##==============================================================================
 ## Constructors etc.
 
-## $mmvec = CLASS->new($size, $bits)
-##  + %opts, %$mmvec:
+## $tmpvec = CLASS->new($size, $bits)
+##  + %opts, %$tmpvec:
 ##    (
 ##     log  => $level,      ##-- logging verbosity (default=$LOG_DEFAULT)
 ##     buf  => $buf,        ##-- guts: real underlying mmap()ed buffer data
@@ -35,31 +36,29 @@ sub new {
   $file    //= $opts->{file} // 'vecXXXXX';
 
   ##-- guts
-  $that->vlog($log, "CREATE (anonymous): $size elements, $bits bits/element (".($temp ? "TEMP" : "KEEP").")");
-  my $mmv = bless({
-		   file=>$file,
-		   temp=>($temp||0),
-		   log =>$log,
-		  }, ref($that)||$that);
-  my $bufr = \$mmv->{buf};
+  $that->vlog($log, "CREATE (anonymous): $size elements, $bits bits/element (TEMP)");
+  my $tmpv = bless({
+		    log =>$log,
+		   }, ref($that)||$that);
+  my $bufr = \$tmpv->{buf};
   File::Map::map_anonymous($$bufr, $size*$bits, 'shared');
   $that->logconfess("new(): map_anonymous failed for ", ($size*$bits), " byte(s): $!") if (!defined($$bufr));
-  return $mmv;
+  return $tmpv;
 }
 
 ##==============================================================================
 ## Accessors
 
-## \$buf = $mmv->bufr()
+## \$buf = $tmpv->bufr()
 sub bufr {
   return undef if (!UNIVERSAL::isa($_[0],'HASH'));
   return \$_[0]{buf};
 }
 
-## $bits = $mmv->bits()
+## $bits = $tmpv->bits()
 sub bits { return $_[0]{bits}; }
 
-## $size = $mmv->size()
+## $size = $tmpv->size()
 sub size { return $_[0]{size}; }
 
 ##==============================================================================

@@ -67,11 +67,14 @@ DiaColloDB/Relation/Unigrams.pm
 DiaColloDB/Relation/Unigrams.pod
 DiaColloDB/Relation/Vsem.pm
 DiaColloDB/Relation/Vsem/Query.pm
+DiaColloDB/Temp.pm
+DiaColloDB/Temp/Array.pm
+DiaColloDB/Temp/Hash.pm
+DiaColloDB/Temp/Vec.pm
 DiaColloDB/Timer.pm
 DiaColloDB/Timer.pod
 DiaColloDB/Utils.pm
 DiaColloDB/Utils.pod
-DiaColloDB/Vec/MM.pm
 
 dcdb-create.perl
 dcdb-export.perl
