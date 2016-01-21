@@ -75,7 +75,7 @@ GetOptions(##-- general
 	   'collocations|collocs|collo|col|cofreqs|cof|co|f12|f2|12|2' => sub { $rel='cof' },
 	   'unigrams|ug|u|f1|1' => sub { $rel='xf' },
 	   'ddc' => sub { $rel='ddc' },
-	   'vector-space|vec|vector-semantics|vsem|vs|semantics|sem|lsi' => sub { $rel='vsem' },
+	   'vector-space|vec|vector-semantics|vsem|vs|semantics|sem|lsi|tfidf|tdm' => sub { $rel='vsem' },
 	   ##
 	   (map {("${_}date|${_}d=s"=>\$query{"${_}date"})} ('',qw(a b))), 				  ##-- date,adate,bdate
 	   (map {("${_}date-slice|${_}ds|${_}slice|${_}sl|${_}s=s"=>\$query{"${_}slice"})} ('',qw(a b))), ##-- slice,aslice,bslice
@@ -159,7 +159,8 @@ $query{query}  = shift;
 $query{bquery} = @ARGV ? shift : $query{query};
 $rel  = "d$rel" if ($isDiff);
 
-$query{query} = '$p=NN !#has[textClass,/politik/i]' if ($query{query} eq 'debug'); ##-- DEBUG
+#$query{query} = '$p=NN !#has[textClass,/politik/i]' if ($query{query} eq 'debug'); ##-- DEBUG
+$query{query} = 'Mann #has[textClass,/zeitung/i]' if ($query{query} eq 'debug'); ##-- DEBUG
 
 if ($niters != 1) {
   $cli->info("performing $niters query iterations");

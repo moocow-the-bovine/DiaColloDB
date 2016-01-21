@@ -280,6 +280,11 @@ sub subprofile {
 ##     qreqs => \@areqs,      ##-- as returned by $coldb->parseRequest($opts{query})
 ##     gbreq => \%groupby,    ##-- as returned by $coldb->groupby($opts{groupby})
 ##    )
+##  + returned hash \%qinfo should have keys:
+##    (
+##     fcoef => $fcoef,         ##-- frequency coefficient (2*$coldb->{dmax} for CoFreqs)
+##     qtemplate => $qtemplate, ##-- query template with __W1.I1__ rsp __W2.I2__ replacing groupby fields
+##    )
 sub qinfo {
   my ($rel,$coldb,%opts) = @_;
   $rel->logconfess("qinfo(): abstract method called");

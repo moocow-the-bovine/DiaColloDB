@@ -19,7 +19,7 @@ use PDL::IO::FastRaw;
 use PDL::CCS;
 use PDL::CCS::IO::FastRaw;
 use Fcntl qw(:DEFAULT SEEK_SET SEEK_CUR SEEK_END);
-#use strict;
+use strict;
 
 ##==============================================================================
 ## Globals & Constants
@@ -302,6 +302,7 @@ sub create {
   my $pack_w  = $coldb->{pack_w};
   my $len_w   = packsize($pack_w);
   my $pack_ix = $PDL::Types::pack[ $itype->enum ];
+  (my $pack_ix1 = $pack_ix) =~ s/\*$//;
   my $len_ix  = packsize($pack_ix,0);
   my $pack_nz = $PDL::Types::pack[ $vtype->enum ];
   my $pack_date = $PDL::Types::pack[ ushort->enum ];
@@ -345,7 +346,7 @@ sub create {
     $c2datefh->print(pack($pack_date, $doc->{date}));
 
     $c2dfh->seek($docid*$len_ix*2, SEEK_SET);
-    $c2dfh->print(pack($pack_ix, $sigi_out0=$sigi_out));
+    $c2dfh->print(pack($pack_ix1, $sigi_out0=$sigi_out));
 
     ##-- parse metadata
     #$vs->debug("meta: id=$docid/$NC ; doc=$doclabel");
@@ -356,7 +357,7 @@ sub create {
 	$mdata = $meta{$mattr} = {
 				  n=>1,
 				  s2i=>tmphash("$vsdir/ms2i_${mattr}", utf8keys=>1, %tmpargs),
-				  vals=>tmparrayp("$vsdir/mvals_$mattr", $pack_ix, %tmpargs),
+				  vals=>tmparrayp("$vsdir/mvals_$mattr", $pack_ix1, %tmpargs),
 				 };
 	$mdata->{s2i}{''} = 0;
       }
@@ -391,7 +392,7 @@ sub create {
     }
 
     ##-- update c2d (length)
-    $c2dfh->print(pack($pack_ix, $sigi_out - $sigi_out0));
+    $c2dfh->print(pack($pack_ix1, $sigi_out - $sigi_out0));
   }
 
   ##-- cleanup
@@ -522,6 +523,7 @@ sub create {
   my ($di);
   my $nnz0 = 0;
   my $nnz  = 0;
+  my ($w);
   while (defined($_=<$tdm0fh>)) {
     ++$nnz0;
     ($w,$di,$f) = m{^(.*) ([0-9]+) ([0-9]+)$};
@@ -631,7 +633,7 @@ sub create {
 
   ##-- create: aux: d2c: [$di] => $ci
   $vs->vlog($logCreate, "create(): creating doc<->category translation piddles (ND=$ND, NC=$NC)");
-  defined($c2d = readPdlFile("$vsdir/c2d.pdl"))
+  defined(my $c2d = readPdlFile("$vsdir/c2d.pdl"))
     or $vs->logconfess("create(): failed to mmap $vsdir/c2d.pdl");
   $c2d->slice("(1),")->rld(sequence($itype,$NC), my $d2c=mmzeroes("$vsdir/d2c.pdl",$itype,$ND));
   undef $c2d;
@@ -649,7 +651,7 @@ sub create {
     $mdata = $meta{$mattr};
     $menum = $vs->{"meta_e_$mattr"} = $DiaColloDB::ECLASS->new(%efopts);
     tied(@{$mdata->{vals}})->flush if ($mdata->{vals});
-    defined(my $mmvals = readPdlFile("$vsdir/mvals_$mattr.pf", ReadOnly=>1,Dims=>$NC,Datatype=>$itype))
+    defined(my $mmvals = readPdlFile("$vsdir/mvals_$mattr.pf", ReadOnly=>1,Dims=>[$NC],Datatype=>$itype))
       or $vs->logconfess("create(): failed to mmap $vsdir/mvals_$mattr.pf");
     ($tmp=$mvals->slice("($_),")) .= $mmvals;
     undef $mmvals;
@@ -971,7 +973,10 @@ sub profile {
 
   ##-- construct multi-profile
   $vs->vlog($vs->{logvprofile}, "profile(): constructing output profile [strings=".($opts{strings} ? 1 : 0)."]");
-  my $mp = DiaColloDB::Profile::Multi->new(profiles=>[map {$_->toProfile} @$pprfs], titles=>$groupby->{titles}, qinfo=>'TODO');
+  my $mp = DiaColloDB::Profile::Multi->new(profiles=>[map {$_->toProfile} @$pprfs],
+					   titles=>$groupby->{titles},
+					   qinfo=>$vs->qinfo($coldb, %opts),
+					  );
   $mp->stringify($groupby->{g2s}) if ($opts{strings});
 
   return $mp;
@@ -1049,10 +1054,11 @@ sub vprofile {
   ##-- parse query
   my $groupby = $opts->{groupby} = $vs->groupby($coldb, $opts->{groupby}, relax=>0); ##-- TODO: allow metadata restrictions (but not group-keys)
   ##
-  my $q = $coldb->parseQuery($opts->{query}, logas=>'query', default=>'', ddcmode=>1);
+  my $q = $opts->{qobj} // $coldb->parseQuery($opts->{query}, logas=>'query', default=>'', ddcmode=>1);
   my ($qo);
   $q->setOptions($qo=DDC::XS::CQueryOptions->new) if (!defined($qo=$q->getOptions));
   #$qo->setFilters([@{$qo->getFilters}, @$gbfilters]) if (@$gbfilters);
+  $opts->{qobj} //= $q;
 
   ##-- parse date-request
   my ($dfilter,$dslo,$dshi,$dlo,$dhi) = $coldb->parseDateRequest(@$opts{qw(date slice fill)},1);
@@ -1232,7 +1238,7 @@ sub vpslice {
   ##-- map to & extract k-best terms
   $vs->vlog($logLocal, "vpslice($sliceVal): extracting k-nearest neighbors (terms)");
   my $sim = $vs->qsim($qvec);                                                   ##-- cosine sim : [-1:1]
-  $sim->inplace->setnantobad->inplace->setbadtoval(-1);				##-- ... map NaN=>$sim_min=2
+  $sim->inplace->setnantobad->inplace->setbadtoval(-1);				##-- ... map NaN=>$sim_min=-1
   #(my $tmp=$sim->index($ti)) .= -1 if (defined($ti));				##-- ... eliminate target term(s)?  -->goofy for diff
   $sim = $sim->index($groupby->{ghaving}) if (defined($groupby->{ghaving}));	##-- ... apply group-restriction
 
@@ -1244,7 +1250,7 @@ sub vpslice {
   #my $g_sim = ($g_sim)->gausscdf(0,0.25);
   ##$g_sim->inplace->minus(1,$g_sim,1);
   ##
-  (my $noval = zeroes(float,$g_sim->nelem)) .= 'nan';
+  (my $noval = zeroes(float,$g_sim->nelem)) .= 'nan'; ##-- jQuery json parser chokes on unquoted "nan" values: argh
   @$pprf{qw(gkeys gvals f1 f2 f12)} = ($g_keys,$g_sim,$f1,$noval,$noval);
   return $pprf;
 }
@@ -1528,10 +1534,54 @@ sub groupby {
 ##  + get query-info hash for profile administrivia (ddc hit links)
 ##  + %opts: as for profile(), additionally:
 ##    (
-##     qreqs => \@qreqs,      ##-- as returned by $coldb->parseRequest($opts{query})
-##     gbreq => \%groupby,    ##-- as returned by $coldb->groupby($opts{groupby})
+##     #qreqs => \@qreqs,      ##-- as returned by $coldb->parseRequest($opts{query})
+##     #gbreq => \%groupby,    ##-- as returned by $coldb->groupby($opts{groupby})
 ##    )
-##  + TODO
+##  + returned hash \%qinfo should have keys:
+##    (
+##     fcoef => $fcoef,         ##-- frequency coefficient (2*$coldb->{dmax} for CoFreqs)
+##     qtemplate => $qtemplate, ##-- query template with __W1.I1__ rsp __W2.I2__ replacing groupby fields
+##    )
+sub qinfo {
+  my ($vs,$coldb,%opts) = @_;
+
+  ##-- parse item1 query & options
+  my $q1 = $opts{qobj} ? $opts{qobj}->clone : $coldb->parseQuery($opts{query}, logas=>'qinfo', default=>'', ddcmode=>1);
+  my ($qo);
+  $q1->setOptions($qo=DDC::XS::CQueryOptions->new) if (!defined($qo=$q1->getOptions));
+  my $q1str = $q1->toString.' =1';
+
+  ##-- item2 query (via groupby, lifted from Relation::qinfoData())
+  my $xi = 1;
+  my $qf = $qo->getFilters // [];
+  my $q2str = '';
+  foreach (@{$opts{groupby}{areqs}}) {
+    if ($_->[0] =~ /^doc\.(.*)/) {
+      push(@$qf, DDC::XS::CQFHasField->new($1,"__W2.${xi}__"));
+    }
+    else {
+      $q2str .= ' WITH ' if ($q2str);
+      $q2str .= DDC::XS::CQTokExact->new($_->[0],"__W2.${xi}__")->toString;
+    }
+    ++$xi;
+  }
+  $q2str ||= '*';
+  $q2str .= ' =2';
+
+  ##-- options: set filters, WITHIN
+  $qo->setFilters($qf);
+  (my $inbreak = $coldb->{vbreak}) =~ s/^#//;
+
+  ##-- construct query
+  my $qtemplate = ("$q1str && $q2str "
+		   .$qo->toString
+		   ." #IN $inbreak"
+		  );
+  return {
+	  fcoef => 1,
+	  qtemplate => $qtemplate,
+	 };
+}
 
 ##==============================================================================
 ## Footer

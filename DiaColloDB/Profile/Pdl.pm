@@ -96,14 +96,14 @@ sub toProfile {
   my $score = $opts{score} // $pprf->{score} // 'vsim';
   my $vals  = {};
   %$vals = (map {($gkeys->at($_)=>$gvals->at($_)) } (0..($gkeys->nelem-1))) if (!$pprf->empty);
-  return DiaColloDB::Profile->new(label=>$pprf->{label},
+  return DiaColloDB::Profile->new(label=>"$pprf->{label}",
 				  N=>0,
 				  %opts,
 				  $pprf->profileScalar('N',$pprf->{N}),
 				  $pprf->profileScalar('f1',$pprf->{f1}),
 				  $pprf->profileHash('f2',$pprf->{f2}),
 				  $pprf->profileHash('f12',$pprf->{f12}),
-				  score=>$score,
+				  score=>"$score",
 				  $pprf->profileHash($score,$gvals),
 				 );
 }
@@ -126,6 +126,7 @@ sub profileHash {
   my $gkeys = $pprf->{gkeys};
   my $vals  = {};
   %$vals = (map {($gkeys->at($_)=>$gvals->at($_)) } (0..($gkeys->nelem-1))) if (!$pprf->empty);
+  $_ = "NA" foreach (grep {$_!=$_} values %$vals); ##-- tweak "nan" values for jQuery-parseability
   return ($label=>$vals);
 }
 
