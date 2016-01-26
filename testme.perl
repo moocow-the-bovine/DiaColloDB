@@ -14,6 +14,10 @@ use Benchmark qw(timethese cmpthese);
 use utf8;
 
 use DiaColloDB::Relation::Vsem; ##-- DEBUG
+BEGIN {
+  select STDERR; $|=1; select STDOUT; $|=1;
+  $, = ' ';
+}
 
 ##==============================================================================
 ## test: enum
@@ -1659,8 +1663,37 @@ sub bench_atok_file {
 	       'bin' => sub { read_atoks_bin("$atokfile.bin") },
 	      });
 }
-bench_atok_file(@ARGV);
+#bench_atok_file(@ARGV);
 
+##==============================================================================
+## vsem: convert tdm to tcm
+
+sub tdm_to_tcm {
+  my $dbdir = shift // 'kern.d-p';
+  DiaColloDB->ensureLog();
+
+  DiaColloDB->info("tdm_to_tcm($dbdir)");
+  my $coldb = DiaColloDB->new(dbdir=>$dbdir) or die("$0: failed to open DiaColloDB directory '$dbdir': $_");
+  my $vs    = $coldb->{vsem};
+  my $tdm   = $vs->{tdm};
+  my $d2c   = $vs->{d2c};
+
+  my $wnd0  = $tdm->_whichND->pdl;
+  $wnd0->slice("(1),") .= $d2c->index($tdm->_whichND->slice("(1),"));
+  $wnd0->_ccs_accum_sum_int($tdm->_nzvals, 0,0,
+			    (my $wnd1=zeroes($wnd0->type, $tdm->ndims, $tdm->_nnz+1)),
+			    (my $vals1=zeroes($tdm->type, $tdm->_nnz+1)),
+			    (my $nout=pdl($wnd0->type, 0)));
+  $nout  = $nout->sclr;
+  $wnd1  = $wnd1->slice(",0:".($nout-1));
+  $vals1 = $vals1->slice("0:$nout");
+  $vals1->set($nout => 0);
+  my $tcm = PDL::CCS::Nd->newFromWhich($wnd1, $vals1, dims=>[$vs->nTerms,$vs->nCats], sorted=>1, steal=>1);
+  $tcm->writefraw("$vs->{base}.d/tcm")
+    or die("$0: failed to write $vs->{base}/tcm*: $!");
+  exit 0;
+}
+tdm_to_tcm(@ARGV);
 
 
 ##==============================================================================
