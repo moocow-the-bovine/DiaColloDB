@@ -13,6 +13,7 @@ use DiaColloDB::PackedFile;
 use DiaColloDB::Temp::Hash;
 #use DiaColloDB::Temp::Array;
 use DiaColloDB::PDL::MM;
+use DiaColloDB::PDL::Utils;
 use File::Path qw(make_path remove_tree);
 use PDL;
 use PDL::IO::FastRaw;
@@ -963,7 +964,7 @@ sub dbinfo {
 ## $mprf = $rel->profile($coldb, %opts)
 ## + get a relation profile for selected items as a DiaColloDB::Profile::Multi object
 ## + %opts: as for DiaColloDB::Relation::profile()
-## + really just wraps $rel->vprofile(), DiaColloDB::Profile::Pdl::toProfile(), and DiaColloDB::Profile::Multi::stringify()
+## + really just wraps $rel->pprofile(), DiaColloDB::Profile::Pdl::toProfile(), and DiaColloDB::Profile::Multi::stringify()
 sub profile {
   my ($vs,$coldb,%opts) = @_;
 
@@ -1028,10 +1029,10 @@ sub compare {
 
 
 ##==============================================================================
-## Profile: Utils: Vector-based profiling
+## Profile: Utils: PDL-based profiling
 
 ## \@pprfs = $vs->vprofile($coldb, \%opts)
-## + get a relation profile for selected items as an ARRAY of DiaColloDB::Profile::Pdl objects
+## + get a relation profile for selected items as an ARRAY of DiaColloDB::Profile objects
 ## + %opts: as for DiaColloDB::Relation::profile()
 ## + new/altered %opts:
 ##   (
@@ -1076,8 +1077,125 @@ sub vprofile {
     $vs->logconfess($coldb->{error}="no index document(s) matched user query \`$opts->{query}'");
   }
 
-  ##-- evaluate query by slice
-  $vs->vlog($logLocal, "vprofile(): evaluating query by target slice");
+  ##-- get query-vector
+  my $tdm     = $vs->{tdm};
+  my $sliceby = $opts->{slice} || 0;
+  my ($qwhich,$qvals);
+  if (defined($ti) && defined($ci)) {
+    ##-- both term- and document-conditions
+    $vs->vlog($logLocal, "vprofile($sliceby): query vector: xsubset");
+    my $q_c2d     = $vs->{c2d}->dice_axis(1,$ci);
+    my $di        = $q_c2d->slice("(1),")->rldseq($q_c2d->slice("(0),"))->qsort;
+    my $subsize   = $ti->nelem * $di->nelem;
+    $vs->vlog($logLocal, "vprofile($sliceby): requested subset size = $subsize (NT=".$ti->nelem." x Nd=".$ci->nelem.")");
+    if (defined($vs->{submax}) &&  $subsize > $vs->{submax}) {
+      $vs->logconfess($coldb->{error}="requested subset size $subsize (NT=".$ti->nelem." x Nd=".$ci->nelem.") too large; max=$vs->{submax}");
+    }
+
+    my $q_tdm  = $tdm->xsubset2d($ti,$di);
+
+    $vs->vlog($logLocal, "vprofile($sliceby): query vector: decode");
+    ##<<QPZD
+    #$q_tdm->_vals->indadd($q_tdm->_whichND->slice("(1),"), $qvec=zeroes($q_tdm->type, $vs->nDocs));
+    $q_tdm  = $q_tdm->sumover;
+    $qwhich = $q_tdm->_whichND->flat;
+    $qvals  = $q_tdm->_nzvals;
+    ##>>QPZD
+  }
+  elsif (defined($ti)) {
+    ##-- term-conditions only: extract from $vs->{tdm}
+    $vs->vlog($logLocal, "vprofile($sliceby): query vector: terms");
+    ##-- find matching nz-indices WITH ptr(0) [direct ccs construction is still too slow]
+    my $ptr0    = $vs->{ptr0};
+    my $nzi_off = $ptr0->index($ti);
+    my $nzi_len = $ptr0->index($ti+1)-$nzi_off;
+    my $nzi     = $nzi_len->rldseq($nzi_off);
+
+    if (!$nzi->isempty) {
+      $tdm->_vals->index($nzi)->indadd($tdm->_whichND->index2d(1,$nzi),
+				       my $qvec=zeroes($tdm->type, $vs->nDocs));
+      $qwhich = $qvec->which;
+      $qvals  = $qvec->index($qwhich);
+    }
+  }
+  elsif (defined($ci)) {
+    ##-- doc-conditions only: slice from $map->{xcm}
+    $vs->vlog($logLocal, "vpslice($sliceby): query vector: cats");
+    my $q_c2d   = $vs->{c2d}->dice_axis(1,$ci);
+    my $di      = $q_c2d->slice("(1),")->rldseq($q_c2d->slice("(0),")); #->qsort;
+
+    ##-- sanity check
+    $vs->logconfess("vpslice($sliceby): unsorted doc-list when decoding cat conditions") ##-- sanity check
+      if ($di->nelem > 1 && !all($di->slice("0:-2") <= $di->slice("1:-1")));
+
+    ##-- find matching nz-indices WITH ptr(1)
+    my ($ptr1,$pix1) = @$vs{qw(ptr1 pix1)};
+    my $nzi_off = $ptr1->index($di);
+    my $nzi_len = $ptr1->index($di+1)-$nzi_off;
+    my $nzi     = $nzi_len->rldseq($nzi_off)->qsort;
+
+    if (!$nzi->isempty) {
+      $tdm->_nzvals->index($nzi)->indadd($tdm->_whichND->slice("(1),")->index($nzi),
+					 my $qvec=zeroes($tdm->type, $vs->nDocs));
+      $qwhich = $qvec->which;
+      $qvals  = $qvec->index($qwhich);
+    }
+  }
+
+  ##-- evaluate query: get co-occurrence frequencies (groupby terms only)
+  $vs->vlog($logLocal, "vprofile(): evaluating query: f12p");
+  my $cofsub = PDL->can('diacollo_tdm_cof_t_'.$vs->itype) || \&PDL::diacollo_tdm_cof_t_long;
+  my $gbpdl  = pdl($vs->itype, [map {$vs->tpos($_)} @{$groupby->{attrs}}]);
+  $cofsub->($tdm->_whichND, @$vs{qw(ptr1 pix1)}, $tdm->_vals,
+	    @$vs{qw(tvals d2c c2date)},
+	    $sliceby,
+	    $qwhich, $qvals,
+	    $gbpdl,
+	    my $f12p={});
+  $vs->debug("found ", scalar(keys %$f12p), " item2 tuple(s)");
+
+  ##-- get item2 keys (groupby terms only)
+  $vs->vlog($logLocal, "vprofile(): evaluating query: f2p");
+  my $pack_ix = $PDL::Types::pack[ $vs->itype->enum ];
+  (my $pack_gkey = $pack_ix) =~ s/\*$/"[".scalar(@{$groupby->{attrs}})."]"/e;
+  my $gkeys2  = pdl($vs->itype, map {unpack($pack_gkey,$_)} keys %$f12p);
+  $gkeys2->reshape(scalar(@{$groupby->{attrs}}), $gkeys2->nelem/scalar(@{$groupby->{attrs}}));
+  my $gti2    = undef;
+  foreach (0..($gkeys2->dim(0)-1)) {
+    my $gtia = $vs->termIds($groupby->{attrs}[$_], $gkeys2->slice("($_),"))->uniq;
+    $gti2    = defined($gti2) ? $gti2->v_intersect($gtia) : $gtia;
+  }
+  my $gfsub = PDL->can('diacollo_tdm_gf_t_'.$vs->itype) || \&PDL::diacollo_tdm_gf_t_long;
+  $gfsub->($tdm->_whichND, $vs->{ptr0}, $tdm->_vals,
+	   @$vs{qw(tvals d2c c2date)},
+	   $sliceby,
+	   ($gti2//null->convert($vs->itype)),
+	   $gbpdl,
+	   $f12p,
+	   my $f2p={});
+  $vs->debug("got ", scalar(keys %$f2p), " independent item2 tuple-frequencies");
+  $vs->logdie("what now?");
+
+
+  ##-- DEBUG: dump f12p
+  if (0) {
+    my @tenums = map {$coldb->{"${_}enum"}} @{$vs->{attrs}};
+    my (@avals,@astrs,$slice);
+    binmode(STDOUT,':utf8');
+    foreach my $key (sort {$f12p->{$b}<=>$f12p->{$a}} keys %$f12p) {
+      @avals = unpack($pack_ix, $key);
+      $slice = pop(@avals);
+      @astrs = map {$tenums[$_]->i2s($avals[$_])} (0..$#avals);
+      print "DEBUG: ", join("\t", $f12p->{$key}, $slice, @astrs), "\n";
+    }
+    $vs->logdie("what now?"); ##-- DEBUG
+  }
+
+  ##-- evaluate query: get independent item2 frequencies
+  $vs->vlog($logLocal, "vprofile(): evalating query: f2p");
+    $vs->logdie("what now?"); ##-- DEBUG
+
+    ##-- OLD
   my (@pprfs,$pprf);
   foreach my $sliceVal ($opts->{slice} ? ($vq->{slices}->list) : 0) {
     $pprf = $vs->vpslice($coldb,$sliceVal,$opts);
@@ -1294,6 +1412,18 @@ sub nFiles {
   return $_[0]{c2date}->nelem;
 }
 
+## $NA = $vs->nAttrs()
+##  + returns number of term-attributes
+sub nAttrs {
+  return $_[0]{tvals}->dim(0);
+}
+
+## $NM = $vs->nMeta()
+##  + returns number of meta-attributes
+sub nMeta {
+  return $_[0]{mvals}->dim(0);
+}
+
 ##==============================================================================
 ## Profile: Utils: attribute positioning
 
@@ -1337,7 +1467,7 @@ sub tupleIds {
 
   ##-- check for empty value-set
   if ($valids->nelem == 0) {
-    return null->long;
+    return null->convert($vs->itype);
   }
 
   ##-- non-empty: get base data

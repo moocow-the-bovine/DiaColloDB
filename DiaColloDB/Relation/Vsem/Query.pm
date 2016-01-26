@@ -28,9 +28,9 @@ our @ISA = qw(DiaColloDB::Logger);
 ##    ci => $ci_pdl,      ##-- pdl ($NCi) : selected cat-indices (undef: all)
 ##    ##
 ##    ##-- slice guts
-##    cdate   => $cdate ,   ##-- pdl ($NCi)
-##    cslice  => $cslice ,  ##-- pdl ($NCi)     : [$cii]    => $c_slice_label
-##    slices  => $slices,   ##-- pdl ($NSlices) : [$slicei] => $slice_label    (all slices)
+##    #cdate   => $cdate ,   ##-- pdl ($NCi)
+##    #cslice  => $cslice ,  ##-- pdl ($NCi)     : [$cii]    => $c_slice_label
+##    #slices  => $slices,   ##-- pdl ($NSlices) : [$slicei] => $slice_label    (all slices)
 ##   )
 sub new {
   my $that = shift;
@@ -47,7 +47,7 @@ sub new {
 ## API: compilation
 
 ## $vq_or_undef = $vq->compile(%opts)
-##  + wraps $vq->compileLocal()->compileDate()->compileSlice()
+##  + wraps $vq->compileLocal() #->compileDate() #->compileSlice()
 ##  + %opts: as for DiaColloDB::profile(), also
 ##    (
 ##     coldb => $coldb,   ##-- DiaColloDB context (for enums)
@@ -58,7 +58,7 @@ sub new {
 sub compile {
   my $vq = shift;
   return undef if (!defined($vq->compileLocal(@_)));
-  return $vq->compileOptions(@_)->compileDate(@_)->compileSlice(@_);
+  return $vq->compileOptions(@_); #->compileDate(@_); #->compileSlice(@_);
 }
 
 ## $vq_or_undef = $vq->compileLocal(%opts)
@@ -89,6 +89,7 @@ sub compileOptions {
 ## $vq = $vq->compileDate(%opts)
 ##  + %opts: as for DiaColloDB::Relation::Vsem::Query::compile()
 ##  + populates $vq->{cdate}, restricts $vq->{ci} if appropriate
+##  + OBSOLETE (?)
 sub compileDate {
   my ($vq,%opts) = @_;
   my ($dlo,$dhi) = map {($_//'')} @opts{qw(dlo dhi)};
@@ -112,6 +113,7 @@ sub compileDate {
 ##  + creates slice-indices over $vq->{ci} according to @opts{qw(vsem slice)}
 ##  + populates @$vq{qw(cslice slices)}
 ##  + requires $vq->{cdate}
+##  + OBSOLETE?
 sub compileSlice {
   my ($vq,%opts) = @_;
   $vq->compileDate(%opts) if (!defined($vq->{cdate}));
@@ -146,6 +148,7 @@ sub compileSlice {
 ## $ci_or_undef = $vq->sliceCats($sliceVal,%opts)
 ##  + returns selected category-indices for slice $slicei
 ##  + requires $vq->compileSlice()
+##  + OBSOLETE?
 sub sliceCats {
   my ($vq,$sliceVal,%opts) = @_;
   return $vq->{ci} if (!$opts{slice}); ##-- may be undef

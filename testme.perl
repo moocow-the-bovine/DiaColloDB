@@ -1,6 +1,6 @@
 #!/usr/bin/perl -w
 
-use lib qw(. dclib);
+use lib qw(. dclib ./blib/lib ./blib/arch);
 use DiaColloDB;
 use DiaColloDB::Utils qw(:sort :regex);
 use PDL;
@@ -1693,7 +1693,51 @@ sub tdm_to_tcm {
     or die("$0: failed to write $vs->{base}/tcm*: $!");
   exit 0;
 }
-tdm_to_tcm(@ARGV);
+#tdm_to_tcm(@ARGV);
+
+##==============================================================================
+## convert tdm tfidf to frequency matrix
+
+sub tfidf_to_tdm {
+  my $vsdir = shift;
+  $vsdir =~ s{/$}{};
+  $vsdir = "$vsdir/vsem.d" if (!-e "$vsdir/tdm.ix");
+  DiaColloDB->ensureLog();
+
+  ##-- open
+  my $vs = DiaColloDB;
+  $vs->info("open($vsdir)");
+  my %ioopts = (ReadOnly=>0, mmap=>1);
+  defined(my $tdm = DiaColloDB::Utils::readPdlFile("$vsdir/tdm", class=>'PDL::CCS::Nd', %ioopts, mmap=>0))
+    or $vs->logconfess("open(): failed to load term-document matrix from $vsdir/tdm.*: $!");
+  defined(my $tw  = DiaColloDB::Utils::readPdlFile("$vsdir/tw.pdl", %ioopts))
+    or $vs->logconfess("open(): failed to load term-weights from $vsdir/tw.pdl: $!");
+
+  ##-- common variables
+  my $ix = $tdm->_whichND;
+  my $nz = $tdm->_nzvals;
+
+  if (all($nz==$nz->rint)) {
+    die("$0: $vsdir/tdm.nz already contains only integer values; aborting");
+  }
+
+  $vs->info("converting tfidf to raw frequency matrix");
+  $nz /= $tw->index($ix->slice("(0),"));
+  $nz *= log(2);
+  $nz->inplace->exp;
+  $nz -= 1;
+  $nz->inplace->rint;
+  $nz = $nz->append(0);
+
+  $vs->info("saving altered $vsdir/tdm.nz");
+  DiaColloDB::Utils::writePdlFile($nz, "$vsdir/tdm.nz")
+      or die("$0: failed to save $vsdir/tdm.nz: $!");
+
+  $vs->info("converted $vsdir/tdm.nz");
+  exit 0;
+}
+tfidf_to_tdm(@ARGV);
+
 
 
 ##==============================================================================

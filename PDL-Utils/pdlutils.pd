@@ -3,16 +3,21 @@
 ##======================================================================
 ## Header Administrivia
 ##======================================================================
+use PDL::VectorValued::Dev;
+use PDL::CCS::Config;
+use PDL;
+use strict;
 
 our $VERSION = '0.08.001';
 pp_setversion($VERSION);
 
-use PDL::VectorValued::Dev;
-use PDL::CCS::Config;
 my %ccsConfig = %PDL::CCS::Config::ccsConfig;
 my $INDX      = $ccsConfig{INDX_SIG};
 my @INT_TYPES = @{$ccsConfig{INT_TYPE_CHRS}};
 my $INT_TYPES = join('',@INT_TYPES);
+
+my $CDEBUG = 1;
+pp_addhdr(($CDEBUG ? '' : "/*")."#define DIACOLLO_DEBUG 1".($CDEBUG ? '': "*/")."\n");
 
 ##------------------------------------------------------
 ## pm additions
@@ -46,10 +51,17 @@ EOPM
 
 ##------------------------------------------------------
 ## Includes / defines
-pp_addhdr("\n$ccsConfig{INDEX_TYPEDEF}\n");
+pp_addhdr("\n$ccsConfig{INDX_TYPEDEF}\n");
 pp_addhdr(<<'EOH');
 
 #include <stdio.h>  /*-- for debugging --*/
+#include <string.h> /*-- for memcpy() --*/
+
+#ifdef DIACOLLO_DEBUG
+# define DCDEBUG(x) x
+#else
+# define DCDEBUG(x)
+#endif
 
 EOH
 
@@ -62,10 +74,210 @@ EOH
 ##======================================================================
 ## PDL::PP Wrappers
 ##======================================================================
-pp_def('dcp_hello',
-       Pars => '',
-       Code => 'fprintf(stderr, "Hello, PDL\n"); fflush(stderr);',
-      );
+
+##--------------------------------------------------------------
+## tdm_cof_t_TYPE : coo+ptr(1)-matrix vs. ptr-vector, output=HASH-ref (using index-piddle for grouping (extendible via indexing to tvals, mvals))
+##  + from lda/ftdm-kbest.perl inline test _cof3d_pzh()
+##  + term-conditions only
+##  + variants tdm_cof_t_indx(), tdm_cof_t_long()
+
+sub tdm_cof_t_def {
+  my $itype = shift;
+  my $ihash = (ref($itype)
+	       ? $PDL::Types::typehash[ $itype->enum ]
+	       : (grep {$_->{ioname} eq $itype} values %PDL::Types::typehash)[0]);
+  my $iname = $ihash->{ioname};
+  my $ctype = $ihash->{ctype};
+  my $stype = $ihash->{ppforcetype};
+
+  ##~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+  ## tdm_cof_t : code
+  my $code = qq{
+  $ctype qd,qd1,qc,qval, adnzlo,adnzhi,adnzi,anzi, at,ga, sliceby;
+  I32 keylen = (\$SIZE(NG)+1)*sizeof($ctype);
+  $ctype *keybuf = (${ctype}*)malloc(keylen);
+  HV *f12hv = INT2PTR(HV*, \$COMP(f12Hash));
+  SV **svpp;
+  UV f12val0, f12val;
+
+  DCDEBUG(fprintf(stderr,"tdm_cof_t_${iname}(): NnzA=%d, NnzQ=%d, NA=%d, ND=%d, NC=%d, NG=%d, slice=%d, keylen=%d\\n", \$SIZE(NnzA), \$SIZE(NnzQ), \$SIZE(NA), \$SIZE(ND), \$SIZE(NC), \$SIZE(NG), \$dslice(), keylen); fflush(stderr);)
+}.q{
+  hv_clear(f12hv);
+
+  threadloop %{
+    sliceby           = $dslice();
+    keybuf[$SIZE(NG)] = sliceby;
+
+    /*-- guts: compute co-frequencies cofreq(w,v|d) = min{f(w,d),f(v,d)} in f12hv --*/
+    //DCDEBUG(fprintf(stderr,"tdm_cof_t(): loop\n"); fflush(stderr);)
+    loop (NnzQ) %{
+      qval = $qvals();
+      qd   = $qdocs();
+      qd1  = qd+1;
+
+      //-- setup output date component
+      if (sliceby != 0) {
+        qc = $d2c(ND=>qd);
+        keybuf[$SIZE(NG)] = sliceby * ($c2date(NC=>qc)/sliceby);
+      }
+
+      adnzlo = $aptr1(NDplus1=>qd);
+      adnzhi = $aptr1(NDplus1=>qd1);
+
+      for (adnzi=adnzlo; adnzi < adnzhi; ++adnzi) {
+        anzi   = $apix1(NnzA=>adnzi);
+ 	at     = $awhich(Ndims=>0,NnzA=>anzi);
+        f12val = (UV)(qval < $avals(NnzA1=>anzi) ? qval : $avals(NnzA1=>anzi));
+
+	//-- setup output output hash key
+	loop (NG) %{
+	  ga = $groupby();
+	  keybuf[NG] = $tattrs(NA=>ga,NT=>at);
+	%}
+
+        //-- set or update output hash value
+	svpp = hv_fetch(f12hv, (char*)keybuf, keylen, TRUE);
+        if (SvOK(*svpp)) {
+	  f12val0 = SvUV(*svpp);
+	  sv_setuv(*svpp, f12val0+f12val);
+        } else {
+          sv_setuv(*svpp, f12val);
+        }
+      }
+    %}
+  %}
+  if (keybuf) free(keybuf);
+};
+
+  ##~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+  ## tdm_cof_t : ppdef
+  my $INDX = $stype;
+  pp_def("diacollo_tdm_cof_t_${iname}",
+	 Pars => join("\n    ",
+		      '',
+		      "$INDX awhich(Ndims,NnzA);",	##-- a() ~ tdm: logical (T,D) with ptr(1) : $vs->{tdm}->_whichND
+		      "$INDX aptr1(NDplus1);",		##-- a(): ptr(1) : $vs->{ptr1}
+		      "$INDX apix1(NnzA);",		##-- a(): sort-indices over NNzA for ptr(1) : $vs->{pix1}
+		      "      avals(NnzA1);",		##-- a(): nonzeroes : $vs->{tdm}->_vals
+		      ##
+		      "$INDX tattrs(NA,NT);",		##-- tattrs() ~ term attributes
+		      "$INDX d2c(ND);",               	##-- d2c(): doc->cat map : $vs->{d2c}
+		      "ushort c2date(NC);",             	##-- c2d(): cat->date map : $vs->{c2date}
+		      "$INDX dslice();",                	##-- slice value
+		      ##
+		      "$INDX qdocs(NnzQ);",		##-- query vector: nz doc-indices (item1)
+		      "      qvals(NnzQ);",		##-- query vector: nz doc-frequencies (item1)
+		      ##
+		      "$INDX groupby(NG);",		##-- attribute indices over NA for groupby()
+		      ''
+		     ),
+	 OtherPars => 'IV f12Hash;',			##-- output hash, ( pack($pack_ix, $tvals($groupby(),($ti2)), $slice) => $f12, ... )
+	 Code => $code,
+	);
+}
+tdm_cof_t_def('long');
+tdm_cof_t_def('indx') if (PDL->can('indx'));
+
+
+##--------------------------------------------------------------
+## tdm_gf_t_TYPE : item2 freqs, tdm=ptr0, output=HASH-ref (groupby terms only)
+##  + from lda/ftdm-kbest.perl inline test _f2_scan()
+##  + variants tdm_gf_t_indx(), tdm_gf_t_long()
+
+sub tdm_gf_t_def {
+  my $itype = shift;
+  my $ihash = (ref($itype)
+	       ? $PDL::Types::typehash[ $itype->enum ]
+	       : (grep {$_->{ioname} eq $itype} values %PDL::Types::typehash)[0]);
+  my $iname = $ihash->{ioname};
+  my $ctype = $ihash->{ctype};
+  my $stype = $ihash->{ppforcetype};
+
+  ##~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+  ## tdm_tf : code
+  my $code = qq{
+  $ctype t2,t2nxt, anzlo,anzhi,anzi, at,ad,ac, ga,sliceby;
+  I32 keylen = (\$SIZE(NG)+1)*sizeof($ctype);
+  $ctype *keybuf = (${ctype}*)malloc(keylen);
+  HV *f12hv = \$COMP(f12Hash) ? INT2PTR(HV*, \$COMP(f12Hash)) : NULL;
+  HV *f2hv  = INT2PTR(HV*, \$COMP(f2Hash));
+  SV **svpp;
+  UV f2val0, f2val;
+
+  DCDEBUG(fprintf(stderr,"tdm_gf_t_${iname}(): NnzA=%d, NT2=%d, NA=%d, ND=%d, NC=%d, NG=%d, slice=%d, keylen=%d, f12hv=%p, f2hv=%p\\n", \$SIZE(NnzA), \$SIZE(NT2), \$SIZE(NA), \$SIZE(ND), \$SIZE(NC), \$SIZE(NG), \$dslice(), keylen, f12hv, f2hv); fflush(stderr);)
+}.q{
+  hv_clear(f2hv);
+
+  sliceby           = $dslice();
+  keybuf[$SIZE(NG)] = sliceby;
+
+  /*-- guts: compute independent item2 frequencies in f2hv --*/
+  DCDEBUG(fprintf(stderr,"tdm_gf_t(): loop(NT2)\n"); fflush(stderr);)
+  loop (NT2) %{
+    t2    = $terms2();
+    t2nxt = t2+1;
+
+    //-- setup output hash key
+    loop (NG) %{
+      ga = $groupby();
+      keybuf[NG] = $tattrs(NA=>ga,NT=>t2);
+    %}
+
+    anzlo  = $aptr(NTplus1=>t2);
+    anzhi  = $aptr(NTplus1=>t2nxt);
+    for (anzi=anzlo; anzi < anzhi; ++anzi) {
+
+      //-- setup output date component
+      if (sliceby != 0) {
+        ad = $awhich(Ndims=>1,NnzA=>anzi);
+        ac = $d2c(ND=>ad);
+        keybuf[$SIZE(NG)] = sliceby * ($c2date(NC=>ac)/sliceby);
+      }
+
+      //-- ignore possible keys not in f12hv
+      if (f12hv && !hv_exists(f12hv, (char*)keybuf, keylen))
+        continue;
+
+      //-- set or update output hash value
+      f2val = $avals(NnzA1=>anzi);
+      svpp  = hv_fetch(f2hv, (char*)keybuf, keylen, TRUE);
+      if (SvOK(*svpp)) {
+        f2val0 = SvUV(*svpp);
+	sv_setuv(*svpp, f2val0+f2val);
+      }
+      else {
+        sv_setuv(*svpp, f2val);
+      }
+    }
+  %}
+  if (keybuf) free(keybuf);
+};
+
+  ##~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+  ## tdm_gf_t : ppdef
+  my $INDX = $stype;
+  pp_def("diacollo_tdm_gf_t_${iname}",
+	 Pars => join("\n    ",
+		      '',
+		      "$INDX awhich(Ndims,NnzA);",	##-- a() ~ tdm: logical (T,D) with ptr(0) : $vs->{tdm}->_whichND
+		      "$INDX aptr(NTplus1);",		##-- a(): ptr: $vs->{tdm}->ptr(0)
+		      "      avals(NnzA1);",		##-- a(): nonzeroes : $vs->{tdm}->_vals
+		      ##
+		      "$INDX tattrs(NA,NT);",		##-- tattrs() ~ term attributes
+		      "$INDX d2c(ND);",               	##-- d2c(): doc->cat map : $vs->{d2c}
+		      "ushort c2date(NC);",            	##-- c2d(): cat->date map : $vs->{c2date}
+		      "$INDX dslice();",               	##-- slice value
+		      ##
+		      "$INDX terms2(NT2);",		##-- item2 keys: term IDs
+		      "$INDX groupby(NG);",		##-- attribute indices over NA for groupby()
+		      ''
+		     ),
+	 OtherPars => 'IV f12Hash; IV f2Hash;',		##-- in,out hashes, ( pack($pack_ix, $tvals($groupby(),($ti2)), $slice) => $f12, ... )
+	 Code => $code,
+	);
+}
+tdm_gf_t_def('long');
+tdm_gf_t_def('indx') if (PDL->can('indx'));
 
 ##======================================================================
 ## Footer Administrivia
