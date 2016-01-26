@@ -1,0 +1,126 @@
+##-*- Mode: CPerl -*-
+
+##======================================================================
+## Header Administrivia
+##======================================================================
+
+our $VERSION = '0.08.001';
+pp_setversion($VERSION);
+
+use PDL::VectorValued::Dev;
+use PDL::CCS::Config;
+my %ccsConfig = %PDL::CCS::Config::ccsConfig;
+my $INDX      = $ccsConfig{INDX_SIG};
+my @INT_TYPES = @{$ccsConfig{INT_TYPE_CHRS}};
+my $INT_TYPES = join('',@INT_TYPES);
+
+##------------------------------------------------------
+## pm additions
+pp_addpm({At=>'Top'},<<'EOPM');
+
+use strict;
+
+=pod
+
+=head1 NAME
+
+DiaColloDB::PDL::Utils - low-level PDL utilities for DiaColloDB
+
+=head1 SYNOPSIS
+
+ use PDL;
+ use DiaColloDB::PDL::Utils;
+
+ ##---------------------------------------------------------------------
+ ## ... stuff happens
+
+=cut
+
+EOPM
+## /pm additions
+##------------------------------------------------------
+
+##------------------------------------------------------
+## Exports: None
+#pp_export_nothing();
+
+##------------------------------------------------------
+## Includes / defines
+pp_addhdr("\n$ccsConfig{INDEX_TYPEDEF}\n");
+pp_addhdr(<<'EOH');
+
+#include <stdio.h>  /*-- for debugging --*/
+
+EOH
+
+
+##======================================================================
+## C Utilities
+##======================================================================
+# (none)
+
+##======================================================================
+## PDL::PP Wrappers
+##======================================================================
+pp_def('dcp_hello',
+       Pars => '',
+       Code => 'fprintf(stderr, "Hello, PDL\n"); fflush(stderr);',
+      );
+
+##======================================================================
+## Footer Administrivia
+##======================================================================
+
+##------------------------------------------------------
+## pm additions: footer
+pp_addpm(<<'EOPM');
+
+##---------------------------------------------------------------------
+=pod
+
+=head1 ACKNOWLEDGEMENTS
+
+Perl by Larry Wall.
+
+PDL by Karl Glazebrook, Tuomas J. Lukka, Christian Soeller, and others.
+
+=cut
+
+##----------------------------------------------------------------------
+=pod
+
+=head1 KNOWN BUGS
+
+Probably many.
+
+=cut
+
+
+##---------------------------------------------------------------------
+=pod
+
+=head1 AUTHOR
+
+Bryan Jurish E<lt>moocow@cpan.orgE<gt>
+
+=head2 Copyright Policy
+
+Copyright (C) 2016, Bryan Jurish. All rights reserved.
+
+This package is free software, and entirely without warranty.
+You may redistribute it and/or modify it under the same terms
+as Perl itself.
+
+=head1 SEE ALSO
+
+perl(1), PDL(3perl)
+
+=cut
+
+EOPM
+
+
+# Always make sure that you finish your PP declarations with
+# pp_done
+pp_done();
+##----------------------------------------------------------------------

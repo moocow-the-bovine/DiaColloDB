@@ -32,8 +32,9 @@ WriteMakefile
 		   },
 
 
-   EXE_FILES   => [ glob('dcdb-*.perl'), ],
-   NORECURS => 1, ##-- don't recurse into local 'MUDL' mirror dir
+   EXE_FILES => [ glob('dcdb-*.perl'), ],
+   #NORECURS  => 1, ##-- don't recurse into local 'MUDL' mirror dir
+   DIR => [ 'PDL-Utils' ],
   );
 
 ##-----------------------------------------------------------------------
@@ -242,9 +243,8 @@ $(INST_PODDIR)$(DFSEP).exists :: Makefile.PL
 sub MY::distdir {
   package MY;
   my $inherited = shift->SUPER::distdir(@_);
-  my $local =
-'
-##-- distdir_am: hacked create_distdir for superordinate automake
+  my $local_dont = '
+  ##-- distdir_am: hacked create_distdir for superordinate automake
 DISTDIR_AM ?= $(DISTNAME).am
 distdir_am:
 	$(RM_RF) $(DISTDIR_AM)
@@ -256,7 +256,7 @@ pm_list: $(PMLIST_AM)
 $(PMLIST_AM): $(TO_INST_PM)
 	echo "$(TO_INST_PM)" | xargs -n 1 echo | grep -v "\.in$$" > $@
 ';
-  return $inherited.$local;
+  return $inherited; #.$local;
 }
 
 ##---------------------------------------------------------------
