@@ -94,11 +94,13 @@ sub tdm_cof_t_def {
   ## tdm_cof_t : code
   my $code = qq{
   $ctype qd,qd1,qc,qval, adnzlo,adnzhi,adnzi,anzi, at,ga, sliceby;
-  I32 keylen = (\$SIZE(NG)+1)*sizeof($ctype);
+  I32 keylen1 = sizeof($ctype);
+  I32 keylen  = (\$SIZE(NG)+1)*sizeof($ctype);
   $ctype *keybuf = (${ctype}*)malloc(keylen);
+  HV *f1hv  = INT2PTR(HV*, \$COMP(f1Hash));
   HV *f12hv = INT2PTR(HV*, \$COMP(f12Hash));
   SV **svpp;
-  UV f12val0, f12val;
+  UV fval0,fval;
 
   DCDEBUG(fprintf(stderr,"tdm_cof_t_${iname}(): NnzA=%d, NnzQ=%d, NA=%d, ND=%d, NC=%d, NG=%d, slice=%d, keylen=%d\\n", \$SIZE(NnzA), \$SIZE(NnzQ), \$SIZE(NA), \$SIZE(ND), \$SIZE(NC), \$SIZE(NG), \$dslice(), keylen); fflush(stderr);)
 }.q{
@@ -121,13 +123,22 @@ sub tdm_cof_t_def {
         keybuf[$SIZE(NG)] = sliceby * ($c2date(NC=>qc)/sliceby);
       }
 
+      //-- track f1 frequency (by slice)
+      svpp = hv_fetch(f1hv, (char*)(keybuf+$SIZE(NG)), keylen1, TRUE);
+      if (SvOK(*svpp)) {
+        fval0 = SvUV(*svpp);
+	sv_setuv(*svpp, fval0+(UV)qval);
+      } else {
+        sv_setuv(*svpp, (UV)qval);
+      }
+
+      //-- collect co-occurence frequencies by document
       adnzlo = $aptr1(NDplus1=>qd);
       adnzhi = $aptr1(NDplus1=>qd1);
-
       for (adnzi=adnzlo; adnzi < adnzhi; ++adnzi) {
         anzi   = $apix1(NnzA=>adnzi);
  	at     = $awhich(Ndims=>0,NnzA=>anzi);
-        f12val = (UV)(qval < $avals(NnzA1=>anzi) ? qval : $avals(NnzA1=>anzi));
+        fval   = (UV)(qval < $avals(NnzA1=>anzi) ? qval : $avals(NnzA1=>anzi));
 
 	//-- setup output output hash key
 	loop (NG) %{
@@ -135,13 +146,13 @@ sub tdm_cof_t_def {
 	  keybuf[NG] = $tattrs(NA=>ga,NT=>at);
 	%}
 
-        //-- set or update output hash value
+        //-- set or update f12 hash value
 	svpp = hv_fetch(f12hv, (char*)keybuf, keylen, TRUE);
         if (SvOK(*svpp)) {
-	  f12val0 = SvUV(*svpp);
-	  sv_setuv(*svpp, f12val0+f12val);
+	  fval0 = SvUV(*svpp);
+	  sv_setuv(*svpp, fval0+fval);
         } else {
-          sv_setuv(*svpp, f12val);
+          sv_setuv(*svpp, fval);
         }
       }
     %}
@@ -171,7 +182,10 @@ sub tdm_cof_t_def {
 		      "$INDX groupby(NG);",		##-- attribute indices over NA for groupby()
 		      ''
 		     ),
-	 OtherPars => 'IV f12Hash;',			##-- output hash, ( pack($pack_ix, $tvals($groupby(),($ti2)), $slice) => $f12, ... )
+	 OtherPars => join("\n    ",
+			   'IV f1Hash;',		##-- output hash, ( pack($pack_ix, $slice) => $f1, ... )
+			   'IV f12Hash;',		##-- output hash, ( pack($pack_ix, $tvals($groupby(),($ti2)), $slice) => $f12, ... )
+			  ),
 	 Code => $code,
 	);
 }
@@ -194,10 +208,10 @@ sub tdm_gf_t_def {
   my $stype = $ihash->{ppforcetype};
 
   ##~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-  ## tdm_tf : code
+  ## tdm_gf_t : code
   my $code = qq{
   $ctype t2,t2nxt, anzlo,anzhi,anzi, at,ad,ac, ga,sliceby;
-  I32 keylen = (\$SIZE(NG)+1)*sizeof($ctype);
+  I32 keylen  = (\$SIZE(NG)+1)*sizeof($ctype);
   $ctype *keybuf = (${ctype}*)malloc(keylen);
   HV *f12hv = \$COMP(f12Hash) ? INT2PTR(HV*, \$COMP(f12Hash)) : NULL;
   HV *f2hv  = INT2PTR(HV*, \$COMP(f2Hash));
@@ -238,7 +252,7 @@ sub tdm_gf_t_def {
       if (f12hv && !hv_exists(f12hv, (char*)keybuf, keylen))
         continue;
 
-      //-- set or update output hash value
+      //-- set or update f2 hash value
       f2val = $avals(NnzA1=>anzi);
       svpp  = hv_fetch(f2hv, (char*)keybuf, keylen, TRUE);
       if (SvOK(*svpp)) {
@@ -278,6 +292,102 @@ sub tdm_gf_t_def {
 }
 tdm_gf_t_def('long');
 tdm_gf_t_def('indx') if (PDL->can('indx'));
+
+
+##--------------------------------------------------------------
+## tym_gf_t_TYPE : item2 freqs, tym=coo, output=HASH-ref (groupby terms only)
+##  + from lda/ftdm-kbest.perl inline test _f2_scan()
+##  + variants tdm_gf_ty_indx(), tdm_gf_ty_long()
+
+sub tym_gf_t_def {
+  my $itype = shift;
+  my $ihash = (ref($itype)
+	       ? $PDL::Types::typehash[ $itype->enum ]
+	       : (grep {$_->{ioname} eq $itype} values %PDL::Types::typehash)[0]);
+  my $iname = $ihash->{ioname};
+  my $ctype = $ihash->{ctype};
+  my $stype = $ihash->{ppforcetype};
+
+  ##~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+  ## tym_gf_t : code
+  my $code = qq{
+  $ctype t2,t2nxt, anzi_min=0,anzi_max=\$SIZE(NnzA),anzi, ga,sliceby;
+  I32 keylen = (\$SIZE(NG)+1)*sizeof($ctype);
+  $ctype *keybuf = (${ctype}*)malloc(keylen);
+  HV *f12hv = \$COMP(f12Hash) ? INT2PTR(HV*, \$COMP(f12Hash)) : NULL;
+  HV *f2hv  = INT2PTR(HV*, \$COMP(f2Hash));
+  SV **svpp;
+  UV f2val0, f2val;
+
+  DCDEBUG(fprintf(stderr,"tym_gf_${iname}(): NnzA=%d, NT2=%d, NA=%d, NG=%d, slice=%d, keylen=%d, f12hv=%p, f2hv=%p\\n", \$SIZE(NnzA), \$SIZE(NT2), \$SIZE(NA), \$SIZE(NG), \$dslice(), keylen, f12hv, f2hv); fflush(stderr);)
+}.q{
+  hv_clear(f2hv);
+
+  sliceby           = $dslice();
+  keybuf[$SIZE(NG)] = sliceby;
+
+  /*-- guts: compute independent item2 frequencies in f2hv --*/
+  DCDEBUG(fprintf(stderr,"tym_gf(): loop(NT2)\n"); fflush(stderr);)
+  loop (NT2) %{
+    t2    = $terms2();
+    t2nxt = t2+1;
+
+    //-- setup output hash key
+    loop (NG) %{
+      ga = $groupby();
+      keybuf[NG] = $tattrs(NA=>ga,NT=>t2);
+    %}
+
+    $LB('t2', '$awhich(Ndims=>0,NnzA=>$_)', 'anzi_min','anzi_max', 'anzi');
+    for ( ; anzi < $SIZE(NnzA) && $awhich(Ndims=>0,NnzA=>anzi) == t2; ++anzi) {
+
+      //-- setup output date component
+      if (sliceby != 0) {
+        keybuf[$SIZE(NG)] = sliceby * ($awhich(Ndims=>1,NnzA=>anzi)/sliceby);
+      }
+
+      //-- ignore possible keys not in f12hv
+      if (f12hv && !hv_exists(f12hv, (char*)keybuf, keylen))
+        continue;
+
+      //-- set or update output hash value
+      f2val = $avals(NnzA1=>anzi);
+      svpp  = hv_fetch(f2hv, (char*)keybuf, keylen, TRUE);
+      if (SvOK(*svpp)) {
+        f2val0 = SvUV(*svpp);
+	sv_setuv(*svpp, f2val0+f2val);
+      }
+      else {
+        sv_setuv(*svpp, f2val);
+      }
+    }
+    anzi_min = anzi;
+  %}
+  if (keybuf) free(keybuf);
+};
+
+  ##~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+  ## tym_gf : ppdef
+  my $INDX = $stype;
+  vvpp_def("diacollo_tym_gf_t_${iname}",
+	   Pars => join("\n    ",
+		      '',
+			"$INDX awhich(Ndims,NnzA);",	##-- a() ~ tym: logical (T,Y) with ptr(0) : $vs->{tym}->_whichND
+			"      avals(NnzA1);",		##-- a(): nonzeroes : $vs->{tym}->_vals
+			##
+			"$INDX tattrs(NA,NT);",		##-- tattrs() ~ term attributes
+			"$INDX dslice();",		##-- slice value
+			##
+			"$INDX terms2(NT2);",		##-- item2 keys: term IDs (sorted)
+			"$INDX groupby(NG);",		##-- attribute indices over NA for groupby()
+			''
+		       ),
+	   OtherPars => 'IV f12Hash; IV f2Hash;',	##-- in,out hashes, ( pack($pack_ix, $tvals($groupby(),($ti2)), $slice) => $f12, ... )
+	   Code => $code,
+	);
+}
+tym_gf_t_def('long');
+tym_gf_t_def('indx') if (PDL->can('indx'));
 
 ##======================================================================
 ## Footer Administrivia

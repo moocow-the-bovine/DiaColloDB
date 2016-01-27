@@ -180,11 +180,9 @@ sub profile {
   $mp->trim(%opts, empty=>!$opts{fill});
   $mp->stringify($groupby->{g2s}) if ($opts{strings});
 
-  ##-- finalize: multi-profile
-  return DiaColloDB::Profile::Multi->new(profiles=>\@dprfs,
-					 titles=>$groupby->{titles},
-					 qinfo =>$reldb->qinfo($coldb, %opts, qreqs=>$areqs, gbreq=>$groupby),
-					);}
+  ##-- return
+  return $mp;
+}
 
 
 ##--------------------------------------------------------------

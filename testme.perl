@@ -1696,6 +1696,39 @@ sub tdm_to_tcm {
 #tdm_to_tcm(@ARGV);
 
 ##==============================================================================
+## vsem: convert tdm to tym
+
+sub tdm_to_tym {
+  my $dbdir = shift // 'kern.d-p';
+  DiaColloDB->ensureLog();
+
+  DiaColloDB->info("tdm_to_tym($dbdir)");
+  my $coldb = DiaColloDB->new(dbdir=>$dbdir) or die("$0: failed to open DiaColloDB directory '$dbdir': $_");
+  my $vs    = $coldb->{vsem};
+  my $tdm   = $vs->{tdm};
+  my $d2c   = $vs->{d2c};
+  my $c2date = $vs->{c2date};
+
+  DiaColloDB->info("converting");
+  my $wnd0  = $tdm->_whichND->pdl;
+  $wnd0->slice("(1),") .= $c2date->index( $d2c->index($tdm->_whichND->slice("(1),")) );
+  $wnd0->_ccs_accum_sum_int($tdm->_nzvals, 0,0,
+			    (my $wnd1=zeroes($wnd0->type, $tdm->ndims, $tdm->_nnz+1)),
+			    (my $vals1=zeroes($tdm->type, $tdm->_nnz+1)),
+			    (my $nout=pdl($wnd0->type, 0)));
+  $nout  = $nout->sclr;
+  $wnd1  = $wnd1->slice(",0:".($nout-1));
+  $vals1 = $vals1->slice("0:$nout");
+  $vals1->set($nout => 0);
+  my $ymax = $wnd0->slice("(1),")->max;
+  my $tym = PDL::CCS::Nd->newFromWhich($wnd1, $vals1, dims=>[$vs->nTerms,$ymax+1], sorted=>0, steal=>1);
+  $tym->writefraw("$vs->{base}.d/tym")
+    or die("$0: failed to write $vs->{base}/tym*: $!");
+  exit 0;
+}
+tdm_to_tym(@ARGV);
+
+##==============================================================================
 ## convert tdm tfidf to frequency matrix
 
 sub tfidf_to_tdm {
@@ -1736,7 +1769,7 @@ sub tfidf_to_tdm {
   $vs->info("converted $vsdir/tdm.nz");
   exit 0;
 }
-tfidf_to_tdm(@ARGV);
+#tfidf_to_tdm(@ARGV);
 
 
 

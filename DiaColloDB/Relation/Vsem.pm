@@ -968,19 +968,22 @@ sub dbinfo {
 sub profile {
   my ($vs,$coldb,%opts) = @_;
 
-  ##-- vector-based profile
-  my $pprfs     = $vs->vprofile($coldb,\%opts);
-  my $groupby = $opts{groupby};
+  if (0) {
+    ##-- vector-based profile
+    my $pprfs   = $vs->vprofile($coldb,\%opts);
+    my $groupby = $opts{groupby};
 
-  ##-- construct multi-profile
-  $vs->vlog($vs->{logvprofile}, "profile(): constructing output profile [strings=".($opts{strings} ? 1 : 0)."]");
-  my $mp = DiaColloDB::Profile::Multi->new(profiles=>[map {$_->toProfile} @$pprfs],
-					   titles=>$groupby->{titles},
-					   qinfo=>$vs->qinfo($coldb, %opts),
-					  );
-  $mp->stringify($groupby->{g2s}) if ($opts{strings});
+    ##-- construct multi-profile
+    $vs->vlog($vs->{logvprofile}, "profile(): constructing output profile [strings=".($opts{strings} ? 1 : 0)."]");
+    my $mp = DiaColloDB::Profile::Multi->new(profiles=>[map {$_->toProfile} @$pprfs],
+					     titles=>$groupby->{titles},
+					     qinfo=>$vs->qinfo($coldb, %opts),
+					    );
+    $mp->stringify($groupby->{g2s}) if ($opts{strings});
+    return $mp;
+  }
 
-  return $mp;
+  return $vs->vprofile($coldb,\%opts);
 }
 
 ##--------------------------------------------------------------
@@ -1151,8 +1154,9 @@ sub vprofile {
 	    $sliceby,
 	    $qwhich, $qvals,
 	    $gbpdl,
+	    my $f1p={},
 	    my $f12p={});
-  $vs->debug("found ", scalar(keys %$f12p), " item2 tuple(s)");
+  $vs->debug("found ", scalar(keys %$f12p), " item2 tuple(s) in ", scalar(keys %$f1p), " slice(s)");
 
   ##-- get item2 keys (groupby terms only)
   $vs->vlog($logLocal, "vprofile(): evaluating query: f2p");
@@ -1162,231 +1166,113 @@ sub vprofile {
   $gkeys2->reshape(scalar(@{$groupby->{attrs}}), $gkeys2->nelem/scalar(@{$groupby->{attrs}}));
   my $gti2    = undef;
   foreach (0..($gkeys2->dim(0)-1)) {
-    my $gtia = $vs->termIds($groupby->{attrs}[$_], $gkeys2->slice("($_),"))->uniq;
-    $gti2    = defined($gti2) ? $gti2->v_intersect($gtia) : $gtia;
+    #$vs->vlog($logLocal, "vprofile(): evaluating query: f2p: terms[$_]");
+    my $gtia = $vs->termIds($groupby->{attrs}[$_], $gkeys2->slice("($_),")->uniq);
+    $gti2    = _intersect_p($gti2,$gtia);
   }
-  my $gfsub = PDL->can('diacollo_tdm_gf_t_'.$vs->itype) || \&PDL::diacollo_tdm_gf_t_long;
-  $gfsub->($tdm->_whichND, $vs->{ptr0}, $tdm->_vals,
-	   @$vs{qw(tvals d2c c2date)},
-	   $sliceby,
-	   ($gti2//null->convert($vs->itype)),
-	   $gbpdl,
-	   $f12p,
-	   my $f2p={});
-  $vs->debug("got ", scalar(keys %$f2p), " independent item2 tuple-frequencies");
-  $vs->logdie("what now?");
 
-
-  ##-- DEBUG: dump f12p
+  #$vs->vlog($logLocal, "vprofile(): evaluating query: f2p: guts");
+  my ($f2p);
   if (0) {
+    ##-- group frequencies, via tdm
+    my $gfsub = PDL->can('diacollo_tdm_gf_t_'.$vs->itype) || \&PDL::diacollo_tdm_gf_t_long;
+    $gfsub->($tdm->_whichND, $vs->{ptr0}, $tdm->_vals,
+	     @$vs{qw(tvals d2c c2date)},
+	     $sliceby,
+	     ($gti2//null->convert($vs->itype)),
+	     $gbpdl,
+	     $f12p,
+	     $f2p={});
+    $vs->debug("got ", scalar(keys %$f2p), " independent item2 tuple-frequencies via tdm");
+  } else {
+    ##-- group frequencies, via tym
+    my $tym = $vs->{tym};
+    if (!defined($tym)) {
+      if (-e "$vs->{base}.d/tym.hdr") {
+	##-- tym: load
+	defined($tym = $vs->{tym} = readPdlFile("$vs->{base}.d/tym", class=>'PDL::CCS::Nd', ReadOnly=>1,mmap=>1))
+	  or $vs->logconfess("open(): failed to load term-year matrix from $vs->{base}.d/tym.*: $!");
+      } else {
+	##-- tym: create
+	$vs->info("creating term-year matrix $vs->{base}.d/tym.*");
+	my $wnd0 = $tdm->_whichND->pdl;
+	$wnd0->slice("(1),") .= $vs->{c2date}->index( $vs->{d2c}->index($tdm->_whichND->slice("(1),")) );
+	$wnd0->_ccs_accum_sum_int($tdm->_nzvals, 0,0,
+				  (my $wnd1=zeroes($wnd0->type, $tdm->ndims, $tdm->_nnz+1)),
+				  (my $vals1=zeroes($tdm->type, $tdm->_nnz+1)),
+				  (my $nout=pdl($wnd0->type, 0)));
+	$nout  = $nout->sclr;
+	$wnd1  = $wnd1->slice(",0:".($nout-1));
+	$vals1 = $vals1->slice("0:$nout");
+	$vals1->set($nout => 0);
+	my $ymax = $wnd0->slice("(1),")->max;
+	my $tcm = PDL::CCS::Nd->newFromWhich($wnd1, $vals1, dims=>[$vs->nTerms,$ymax+1], sorted=>0, steal=>1);
+	$tcm->writefraw("$vs->{base}.d/tym")
+	  or $vs->logconfess("failed to write $vs->{base}.d/tym*: $!");
+      }
+    }
+    ##-- tym: extract
+    my $gfsub = PDL->can('diacollo_tym_gf_t_'.$vs->itype) || \&PDL::diacollo_tym_gf_t_long;
+    $gfsub->($tym->_whichND, $tym->_vals,
+	     $vs->{tvals},
+	     $sliceby,
+	     ($gti2//null->convert($vs->itype)),
+	     $gbpdl,
+	     $f12p,
+	     $f2p={});
+    $vs->debug("got ", scalar(keys %$f2p), " independent item2 tuple-frequencies via tym");
+  }
+
+  ##-- TODO: groupby "having" clause filtering
+  $vs->debug("TODO: groupby 'having' clause filtering");
+
+  ##-- convert packed to native-style profiles (by date-slice)
+  my @slices = sort {$a<=>$b} map {unpack($pack_ix,$_)} keys %$f1p;
+  my %dprfs  = map {($_=>DiaColloDB::Profile->new(label=>$_, titles=>$groupby->{titles}, N=>$vs->{N}, f1=>$f1p->{pack($pack_ix,$_)}))} @slices;
+  if (@slices > 1) {
+    $vs->vlog($logLocal, "vprofile(): partionining profile data into ", scalar(@slices), " slice(s)");
+    my $len_g  = packsize($pack_gkey);
+    my ($key2,$f12,$ds,$prf);
+    while (($key2,$f12) = each %$f12p) {
+      $ds  = unpack($pack_ix, substr($key2,$len_g));
+      $prf = $dprfs{$ds};
+      $prf->{f12}{$key2} = $f12;
+      $prf->{f2}{$key2}  = $f2p->{$key2};
+    }
+  } else {
+    $vs->vlog($logLocal, "vprofile(): creating single-slice profile");
+    @{$dprfs{$slices[0]}}{qw(f2 f12)} = ($f2p,$f12p);
+  }
+
+  ##-- compile sub-profiles
+  $vs->vlog($logLocal, "vprofile(): compile sub-profile(s)");
+  foreach my $prf (values %dprfs) {
+    $prf->compile($opts->{score}, eps=>$opts->{eps});
+  }
+
+  ##-- collect & trim multi-profile
+  $vs->vlog($logLocal, "profile(): trim and stringify");
+  my $mp = DiaColloDB::Profile::Multi->new(profiles=>[@dprfs{@slices}],
+					   titles=>$groupby->{titles},
+					   qinfo =>$vs->qinfo($coldb, %$opts),
+					  );
+  $mp->trim(%$opts, empty=>!$opts->{fill});
+
+  if ($opts->{strings}) {
+    ##-- stringify
     my @tenums = map {$coldb->{"${_}enum"}} @{$vs->{attrs}};
-    my (@avals,@astrs,$slice);
-    binmode(STDOUT,':utf8');
-    foreach my $key (sort {$f12p->{$b}<=>$f12p->{$a}} keys %$f12p) {
-      @avals = unpack($pack_ix, $key);
-      $slice = pop(@avals);
-      @astrs = map {$tenums[$_]->i2s($avals[$_])} (0..$#avals);
-      print "DEBUG: ", join("\t", $f12p->{$key}, $slice, @astrs), "\n";
-    }
-    $vs->logdie("what now?"); ##-- DEBUG
+    my (@avals,@astrs);
+    my $g2s = sub {
+      @avals = unpack($pack_ix,$_[0]);
+      return join("\t", map {$tenums[$_]->i2s($avals[$_])//''} (0..($#avals-1)));
+    };
+    $mp->stringify($g2s);
+  } else {
+    ##-- pseudo-stringify
+    $mp->stringify(sub { return join("\t", unpack($pack_gkey,$_[0])) });
   }
 
-  ##-- evaluate query: get independent item2 frequencies
-  $vs->vlog($logLocal, "vprofile(): evalating query: f2p");
-    $vs->logdie("what now?"); ##-- DEBUG
-
-    ##-- OLD
-  my (@pprfs,$pprf);
-  foreach my $sliceVal ($opts->{slice} ? ($vq->{slices}->list) : 0) {
-    $pprf = $vs->vpslice($coldb,$sliceVal,$opts);
-    push(@pprfs,$pprf);
-  }
-
-  ##-- trim results
-  if ($opts->{global} && @pprfs > 1) {
-    ##-- trim: global
-    my $pprfg  = DiaColloDB::Profile::Pdl->averageOver(\@pprfs);
-    my $keep = $pprfg->gwhich(%$opts);
-    $_->gtrim(keep=>$keep) foreach (@pprfs);
-  }
-  else {
-    ##-- trim: local
-    $_->gtrim(%$opts) foreach (@pprfs);
-  }
-
-  ##-- return
-  return \@pprfs;
-}
-
-##----------------------------------------------------------------------
-## $pprf_or_undef = $vs->vpslice($coldb, $sliceVal, \%opts)
-## + get a slice-local profile as a DiaColloDB::Profile::Pdl object
-## + %opts: as for vprofile()
-sub vpslice {
-  my ($vs,$coldb,$sliceVal,$opts) = @_;
-
-  ##-- common variables
-  my $logLocal = $vs->{logvprofile};
-  my ($groupby,$vq) = @$opts{qw(groupby vq)};
-  my %vqopts = (%$opts,vsem=>$vs,coldb=>$coldb);
-
-  ##-- construct query: common
-  my ($qvec); ##-- query-vector: ($svdR,1) : [$ri] => $x
-  my $pprf  = DiaColloDB::Profile::Pdl->new(label=>$sliceVal,
-					    N    =>$vs->{N});
-  my $ti  = $vq->{ti};
-  my $ci  = $vq->sliceCats($sliceVal,%vqopts);
-  my $tdm = $vs->{tdm};
-
-  ##-- construct query: sanity checks: null vectors --> null profile
-  return $pprf if ((defined($ti) && !$ti->nelem) || (defined($ci) && !$ci->nelem));
-
-  ##-- construct query: dispatch
-  my ($f1); ##-- for profile construction
-  if (defined($ti) && defined($ci)) {
-    ##-- both term- and document-conditions
-    $vs->vlog($logLocal, "vpslice($sliceVal): query vector: xsubset");
-    my $q_c2d     = $vs->{c2d}->dice_axis(1,$ci);
-    my $di        = $q_c2d->slice("(1),")->rldseq($q_c2d->slice("(0),"))->qsort;
-    my $subsize   = $ti->nelem * $di->nelem;
-    $vs->vlog($logLocal, "vpslice($sliceVal): requested subset size = $subsize (NT=".$ti->nelem." x Nd=".$ci->nelem.")");
-    if (defined($vs->{submax}) &&  $subsize > $vs->{submax}) {
-      $vs->logconfess($coldb->{error}="requested subset size $subsize (NT=".$ti->nelem." x Nd=".$ci->nelem.") too large; max=$vs->{submax}");
-    }
-
-    my $q_tdm     = $tdm->xsubset2d($ti,$di);
-    return $pprf if ($q_tdm->allmissing); ##-- empty subset --> null profile
-
-    $vs->vlog($logLocal, "vpslice($sliceVal): query vector: decode");
-    ##<<QPZD
-    #$q_tdm->_vals->indadd($q_tdm->_whichND->slice("(1),"), $qvec=zeroes($q_tdm->type, $vs->nDocs));
-    $qvec = $q_tdm->sumover;
-    ##>>QPZD
-
-    ##-- get f1
-    $f1 = $q_tdm->_nzvals / $vs->{tw}->index($q_tdm->_whichND->slice("(0),"));
-    $f1 *= log(2);
-    $f1->inplace->exp;
-    $f1 -= $vs->{smoothf};
-    $f1  = $f1->sumover->rint;
-
-    ##-- old
-    #$q_tdm = $q_tdm->sumover->dummy(0,1)->make_physically_indexed;
-    #$vs->vlog($logLocal, "profile(): query vector: xsubset: svdapply");
-    #$qvec = $map->{svd}->apply1($q_tdm)->xchg(0,1);
-  }
-  elsif (defined($ti)) {
-    ##-- term-conditions only: extract from $vs->{tdm}
-    $vs->vlog($logLocal, "vpslice($sliceVal): query vector: terms");
-    ##<<
-    ##-- find matching nz-indices WITHOUT ptr(0)
-    #my $tdm_t   = $tdm->_whichND->slice("(0),");
-    #my $nzi0  = vsearch($ti,   $tdm_t);
-    #my $nzi1  = vsearch($ti+1, $tdm_t);
-    #$nzi1->where(($nzi1==$tdm->_nnz-1) & ($tdm_t->index($nzi1)==$ti))++;       ##-- special case for final nz-value
-    #$nzi1    -= $nzi0;							 ##-- convert to lengths
-    #my $nzi   = $nzi1->rldseq($nzi0);					         ##-- decode to nz-indices
-    ##
-    ##-- find matching nz-indices WITH ptr(0) [direct ccs construction is still too slow]
-    my $ptr0    = $vs->{ptr0};
-    my $nzi_off = $ptr0->index($ti);
-    my $nzi_len = $ptr0->index($ti+1)-$nzi_off;
-    my $nzi     = $nzi_len->rldseq($nzi_off);
-    ##>>
-
-    if (!$nzi->isempty) {
-      $tdm->_vals->index($nzi)->indadd(#$tdm->_whichND->slice("(1),")->index($nzi),
-				       $tdm->_whichND->index2d(1,$nzi),
-				       $qvec=zeroes($tdm->type, $vs->nDocs));
-    }
-
-    ##-- get f1
-    $f1 = $tdm->_vals->index($nzi) / $vs->{tw}->index($tdm->_whichND->index2d(0,$nzi));
-    $f1 *= log(2);
-    $f1->inplace->exp;
-    $f1 -= $vs->{smoothf};
-    $f1  = $f1->sumover->rint;
-  }
-  elsif (defined($ci)) {
-    ##-- doc-conditions only: slice from $map->{xcm}
-    $vs->vlog($logLocal, "vpslice($sliceVal): query vector: cats");
-    my $q_c2d   = $vs->{c2d}->dice_axis(1,$ci);
-    my $di      = $q_c2d->slice("(1),")->rldseq($q_c2d->slice("(0),")); #->qsort;
-
-    ##-- sanity check
-    $vs->logconfess("vpslice($sliceVal): unsorted doc-list when decoding cat conditions") ##-- sanity check
-      if ($di->nelem > 1 && !all($di->slice("0:-2") <= $di->slice("1:-1")));
-
-    ##<<
-    ##-- find matching nz-indices WITHOUT ptr(1) [direct ccs construction still too slow
-    #my $nz_ci  = $vs->{d2c}->index($tdm->_whichND->slice("(1),"));
-    #my $nz_qsi = $nz_ci->qsorti;
-    #my $nz_cix = $nz_ci->index($nz_qsi);
-    #my $nzi0   = $ci->vsearch($nz_cix);
-    #my $nzi1   = ($ci+1)->vsearch($nz_cix);
-    #$nzi1->where(($nzi1==$tdm->_nnz-1) & ($nz_cix->index($nzi1)==$ci))++; ##-- special case for final nz-value
-    ##
-    #$nzi1 -= $nzi0;							  ##-- convert to lengths
-    #my $nzi = $nz_qsi->index($nzi1->rldseq($nzi0));			  ##-- decode & translate to original nz-indices
-    ##
-    ##-- find matching nz-indices WITH ptr(1)
-    my ($ptr1,$pix1) = @$vs{qw(ptr1 pix1)};
-    my $nzi_off = $ptr1->index($di);
-    my $nzi_len = $ptr1->index($di+1)-$nzi_off;
-    my $nzi     = $nzi_len->rldseq($nzi_off)->qsort;
-    ##>>
-
-    if (!$nzi->isempty) {
-      $tdm->_nzvals->index($nzi)->indadd($tdm->_whichND->slice("(1),")->index($nzi),
-					 $qvec=zeroes($tdm->type, $vs->nDocs));
-
-      ##-- get f1
-      $f1 = $tdm->_nzvals->index($nzi) / $vs->{tw}->index($tdm->_whichND->slice("(0),")->index($nzi));
-      $f1 *= log(2);
-      $f1->inplace->exp;
-      $f1 -= $vs->{smoothf};
-      $f1  = $f1->sumover->rint;
-    }
-  }
-  ##>>
-
-  ##-- sanity check: ensure we've got a query vector
-  $vs->logconfess($coldb->{error}="empty query vector for user query \`$opts->{query}'") if (!defined($qvec) || !$qvec->nelem);
-
-  ##-- map to & extract k-best terms
-  $vs->vlog($logLocal, "vpslice($sliceVal): extracting k-nearest neighbors (terms)");
-  my $sim = $vs->qsim($qvec);                                                   ##-- cosine sim : [-1:1]
-  $sim->inplace->setnantobad->inplace->setbadtoval(-1);				##-- ... map NaN=>$sim_min=-1
-  #(my $tmp=$sim->index($ti)) .= -1 if (defined($ti));				##-- ... eliminate target term(s)?  -->goofy for diff
-  $sim = $sim->index($groupby->{ghaving}) if (defined($groupby->{ghaving}));	##-- ... apply group-restriction
-
-  ##-- groupby: aggregate
-  $vs->vlog($logLocal, "vpslice($sliceVal): groupby");
-  my ($g_keys,$g_sim) = $groupby->{gaggr}->($sim);
-
-  ##-- convert distance to similarity: gaussian (distribution *does* look quite normal modulo long tail of "good" (latent) matches)
-  #my $g_sim = ($g_sim)->gausscdf(0,0.25);
-  ##$g_sim->inplace->minus(1,$g_sim,1);
-  ##
-  (my $noval = zeroes(float,$g_sim->nelem)) .= 'nan'; ##-- jQuery json parser chokes on unquoted "nan" values: argh
-  @$pprf{qw(gkeys gvals f1 f2 f12)} = ($g_keys,$g_sim,$f1,$noval,$noval);
-  return $pprf;
-}
-
-##----------------------------------------------------------------------
-## $sim = $vs->qsim($qvec)
-##   + return $sim(NT) in range [-1:1], NAN indicates bad norm
-sub qsim {
-  my ($vs,$qvec) = @_;
-  ##<<PZD
-  #return $vs->{tdm}->vcos_pzd($qvec, $vs->{vnorm0});
-  $qvec = $qvec->toccs if (!UNIVERSAL::isa($qvec,'PDL::CCS::Nd'));
-  $vs->{rows1} //= $vs->{tdm}->_whichND->index2d(0,$vs->{pix1});
-  $vs->{vals1} //= $vs->{tdm}->_vals->index($vs->{pix1});
-  return $vs->{ptr1}->ccs_vcos_pzd(@$vs{qw(rows1 vals1)}, $qvec->_whichND->flat,$qvec->_nzvals, $vs->{vnorm0});
-  ##--!PZD
-  #return $vs->{tdm}->vcos_zdd($qvec);						##-- cosine sim : [-1:1]
-  ##>>PZD
+  return $mp;
 }
 
 ##==============================================================================
