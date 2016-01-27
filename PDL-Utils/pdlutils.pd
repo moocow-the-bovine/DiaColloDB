@@ -93,7 +93,7 @@ sub tdm_cof_t_def {
   ##~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
   ## tdm_cof_t : code
   my $code = qq{
-  $ctype qd,qd1,qc,qval, adnzlo,adnzhi,adnzi,anzi, at,ga, sliceby;
+  $ctype qd,qd1,qc,qval, adnzlo,adnzhi,adnzi,anzi, at,ga,gh, sliceby;
   I32 keylen1 = sizeof($ctype);
   I32 keylen  = (\$SIZE(NG)+1)*sizeof($ctype);
   $ctype *keybuf = (${ctype}*)malloc(keylen);
@@ -102,7 +102,7 @@ sub tdm_cof_t_def {
   SV **svpp;
   UV fval0,fval;
 
-  DCDEBUG(fprintf(stderr,"tdm_cof_t_${iname}(): NnzA=%d, NnzQ=%d, NA=%d, ND=%d, NC=%d, NG=%d, slice=%d, keylen=%d\\n", \$SIZE(NnzA), \$SIZE(NnzQ), \$SIZE(NA), \$SIZE(ND), \$SIZE(NC), \$SIZE(NG), \$dslice(), keylen); fflush(stderr);)
+  DCDEBUG(fprintf(stderr,"tdm_cof_t_${iname}(): NnzA=%d, NnzQ=%d, NA=%d, ND=%d, NC=%d, NG=%d, NHaving=%d, slice=%d, keylen=%d\\n", \$SIZE(NnzA), \$SIZE(NnzQ), \$SIZE(NA), \$SIZE(ND), \$SIZE(NC), \$SIZE(NG), \$SIZE(NHaving), \$dslice(), keylen); fflush(stderr);)
 }.q{
   hv_clear(f12hv);
 
@@ -138,7 +138,12 @@ sub tdm_cof_t_def {
       for (adnzi=adnzlo; adnzi < adnzhi; ++adnzi) {
         anzi   = $apix1(NnzA=>adnzi);
  	at     = $awhich(Ndims=>0,NnzA=>anzi);
-        fval   = (UV)(qval < $avals(NnzA1=>anzi) ? qval : $avals(NnzA1=>anzi));
+
+        //-- check HAVING restrictions
+        if ($SIZE(NHaving) > 0) {
+	  $LB('at', '$ghaving(NHaving=>$_)', 0,'$SIZE(NHaving)', 'gh');
+          if (gh >= $SIZE(NHaving) || $ghaving(NHaving=>gh) != at) continue;
+        }
 
 	//-- setup output output hash key
 	loop (NG) %{
@@ -147,6 +152,7 @@ sub tdm_cof_t_def {
 	%}
 
         //-- set or update f12 hash value
+        fval = (UV)(qval < $avals(NnzA1=>anzi) ? qval : $avals(NnzA1=>anzi));
 	svpp = hv_fetch(f12hv, (char*)keybuf, keylen, TRUE);
         if (SvOK(*svpp)) {
 	  fval0 = SvUV(*svpp);
@@ -163,7 +169,7 @@ sub tdm_cof_t_def {
   ##~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
   ## tdm_cof_t : ppdef
   my $INDX = $stype;
-  pp_def("diacollo_tdm_cof_t_${iname}",
+  vvpp_def("diacollo_tdm_cof_t_${iname}",
 	 Pars => join("\n    ",
 		      '',
 		      "$INDX awhich(Ndims,NnzA);",	##-- a() ~ tdm: logical (T,D) with ptr(1) : $vs->{tdm}->_whichND
@@ -180,6 +186,7 @@ sub tdm_cof_t_def {
 		      "      qvals(NnzQ);",		##-- query vector: nz doc-frequencies (item1)
 		      ##
 		      "$INDX groupby(NG);",		##-- attribute indices over NA for groupby()
+		      "$INDX ghaving(NHaving);",	##-- admissible item2 term-ids or null
 		      ''
 		     ),
 	 OtherPars => join("\n    ",

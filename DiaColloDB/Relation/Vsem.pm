@@ -48,7 +48,6 @@ BEGIN {
 ##   ##
 ##   ##-- logging options
 ##   logvprofile => $level, ##-- log-level for vprofile() (default=undef:none)
-##   logvpslice => $level,  ##-- log-level for vpslice() (default=undef:none)
 ##   logio => $level,       ##-- log-level for low-level I/O operations (default=undef:none)
 ##   ##
 ##   ##-- modelling options (formerly via DocClassify)
@@ -104,7 +103,6 @@ sub new {
 			       attrs => [],
 			       ##
 			       logvprofile  => 'trace',
-			       logvpslice => 'trace',
 			       logio => 'trace',
 			       ##
 			       @_
@@ -967,22 +965,6 @@ sub dbinfo {
 ## + really just wraps $rel->pprofile(), DiaColloDB::Profile::Pdl::toProfile(), and DiaColloDB::Profile::Multi::stringify()
 sub profile {
   my ($vs,$coldb,%opts) = @_;
-
-  if (0) {
-    ##-- vector-based profile
-    my $pprfs   = $vs->vprofile($coldb,\%opts);
-    my $groupby = $opts{groupby};
-
-    ##-- construct multi-profile
-    $vs->vlog($vs->{logvprofile}, "profile(): constructing output profile [strings=".($opts{strings} ? 1 : 0)."]");
-    my $mp = DiaColloDB::Profile::Multi->new(profiles=>[map {$_->toProfile} @$pprfs],
-					     titles=>$groupby->{titles},
-					     qinfo=>$vs->qinfo($coldb, %opts),
-					    );
-    $mp->stringify($groupby->{g2s}) if ($opts{strings});
-    return $mp;
-  }
-
   return $vs->vprofile($coldb,\%opts);
 }
 
@@ -991,43 +973,10 @@ sub profile {
 
 ## $mpdiff = $rel->compare($coldb, %opts)
 ##  + get a relation comparison profile for selected items as a DiaColloDB::Profile::MultiDiff object
-##  + %opts as for DiaColloDB::Relation::compare(), of which this method is a modified version
+##  + %opts as for DiaColloDB::Relation::compare(), which this method calls
 sub compare {
   my ($vs,$coldb,%opts) = @_;
-
-  ##-- sanity checks / fixes
-  $vs->{attrs} = $coldb->{attrs} if (!@{$vs->{attrs}//[]});
-
-  ##-- common variables
-  my $logLocal   = $coldb->{logProfile};
-  my $groupby    = $opts{groupby} = $vs->groupby($coldb, $opts{groupby}, relax=>0);
-  my %aopts      = map {exists($opts{"a$_"}) ? ($_=>$opts{"a$_"}) : qw()} (qw(query date slice), @{$opts{_abkeys}//[]});
-  my %bopts      = map {exists($opts{"b$_"}) ? ($_=>$opts{"b$_"}) : qw()} (qw(query date slice), @{$opts{_abkeys}//[]});
-  my %popts      = (kbest=>-1,cutoff=>'',global=>0,strings=>0,fill=>1, groupby=>$groupby);
-
-  ##-- get profiles to compare
-  my $aprfs = $vs->vprofile($coldb,{%opts, %aopts,%popts}) or return undef;
-  my $bprfs = $vs->vprofile($coldb,{%opts, %bopts,%popts}) or return undef;
-
-  ##-- alignment and trimming
-  my $diffop = DiaColloDB::Profile::PdlDiff->diffop($opts{diff});
-  $vs->vlog($logLocal, "compare(): align and trim (".($opts{global} ? 'global' : 'local')."; diff=$diffop)");
-  my $ppairs = DiaColloDB::Profile::MultiDiff->align($aprfs,$bprfs);
-  DiaColloDB::Profile::PdlDiff->trimPairs($ppairs, %opts); ##-- vsem version
-  my $pdiffs = [map {DiaColloDB::Profile::PdlDiff->new(@$_, diff=>$opts{diff})} @$ppairs];
-  if (!$opts{global}) {
-    $_->gtrim( DiaColloDB::Profile::Diff->diffkbest($opts{diff})=>$opts{kbest} ) foreach (@$pdiffs);
-  }
-
-  ##-- convert to multi-diff and stringify
-  my $diffs = [map {$_->toProfile} @$pdiffs];
-  my $diff  = DiaColloDB::Profile::MultiDiff->new(profiles=>$diffs, titles=>$opts{groupby}{titles}, diff=>$opts{diff}, populate=>0);
-  if ($opts{strings}//1) {
-    $vs->vlog($logLocal, "compare(): stringify");
-    $diff->stringify($groupby->{g2s});
-  }
-
-  return $diff;
+  return $vs->SUPER::compare($coldb, %opts, groupby=>$vs->groupby($coldb, $opts{groupby}, relax=>0));
 }
 
 
@@ -1056,7 +1005,7 @@ sub vprofile {
   $vs->{attrs} = $coldb->{attrs} if (!@{$vs->{attrs}//[]});
 
   ##-- parse query
-  my $groupby = $opts->{groupby} = $vs->groupby($coldb, $opts->{groupby}, relax=>0); ##-- TODO: allow metadata restrictions (but not group-keys)
+  my $groupby = $opts->{groupby} = $vs->groupby($coldb, $opts->{groupby}, relax=>0); ##-- TODO: allow metadata group-keys
   ##
   my $q = $opts->{qobj} // $coldb->parseQuery($opts->{query}, logas=>'query', default=>'', ddcmode=>1);
   my ($qo);
@@ -1154,14 +1103,15 @@ sub vprofile {
 	    $sliceby,
 	    $qwhich, $qvals,
 	    $gbpdl,
+	    ($groupby->{ghaving}//null),
 	    my $f1p={},
 	    my $f12p={});
   $vs->debug("found ", scalar(keys %$f12p), " item2 tuple(s) in ", scalar(keys %$f1p), " slice(s)");
 
   ##-- get item2 keys (groupby terms only)
   $vs->vlog($logLocal, "vprofile(): evaluating query: f2p");
-  my $pack_ix = $PDL::Types::pack[ $vs->itype->enum ];
-  (my $pack_gkey = $pack_ix) =~ s/\*$/"[".scalar(@{$groupby->{attrs}})."]"/e;
+  my $pack_ix   = $PDL::Types::pack[ $vs->itype->enum ];
+  my $pack_gkey = $groupby->{gpack};
   my $gkeys2  = pdl($vs->itype, map {unpack($pack_gkey,$_)} keys %$f12p);
   $gkeys2->reshape(scalar(@{$groupby->{attrs}}), $gkeys2->nelem/scalar(@{$groupby->{attrs}}));
   my $gti2    = undef;
@@ -1223,18 +1173,15 @@ sub vprofile {
     $vs->debug("got ", scalar(keys %$f2p), " independent item2 tuple-frequencies via tym");
   }
 
-  ##-- TODO: groupby "having" clause filtering
-  $vs->debug("TODO: groupby 'having' clause filtering");
-
   ##-- convert packed to native-style profiles (by date-slice)
   my @slices = sort {$a<=>$b} map {unpack($pack_ix,$_)} keys %$f1p;
   my %dprfs  = map {($_=>DiaColloDB::Profile->new(label=>$_, titles=>$groupby->{titles}, N=>$vs->{N}, f1=>$f1p->{pack($pack_ix,$_)}))} @slices;
   if (@slices > 1) {
     $vs->vlog($logLocal, "vprofile(): partionining profile data into ", scalar(@slices), " slice(s)");
-    my $len_g  = packsize($pack_gkey);
+    (my $pack_ds = '@'.packsize($pack_gkey).$pack_ix) =~ s/\*$//;
     my ($key2,$f12,$ds,$prf);
     while (($key2,$f12) = each %$f12p) {
-      $ds  = unpack($pack_ix, substr($key2,$len_g));
+      $ds  = unpack($pack_ds, $key2);
       $prf = $dprfs{$ds};
       $prf->{f12}{$key2} = $f12;
       $prf->{f2}{$key2}  = $f2p->{$key2};
@@ -1257,20 +1204,7 @@ sub vprofile {
 					   qinfo =>$vs->qinfo($coldb, %$opts),
 					  );
   $mp->trim(%$opts, empty=>!$opts->{fill});
-
-  if ($opts->{strings}) {
-    ##-- stringify
-    my @tenums = map {$coldb->{"${_}enum"}} @{$vs->{attrs}};
-    my (@avals,@astrs);
-    my $g2s = sub {
-      @avals = unpack($pack_ix,$_[0]);
-      return join("\t", map {$tenums[$_]->i2s($avals[$_])//''} (0..($#avals-1)));
-    };
-    $mp->stringify($g2s);
-  } else {
-    ##-- pseudo-stringify
-    $mp->stringify(sub { return join("\t", unpack($pack_gkey,$_[0])) });
-  }
+  $mp->stringify($groupby->{g2s}) if ($opts->{strings});
 
   return $mp;
 }
@@ -1437,8 +1371,9 @@ sub catSubset {
 ##     ##
 ##     ##-- NEW: equivalent to DiaColloDB::groupby() return values
 ##     ghaving => $ghaving, ##-- pdl ($NHavingOk) : term indices $ti s.t. $ti matches groupby "having" requests
-##     gaggr   => \&gaggr,  ##-- code: ($gkeys,$gdist) = gaggr($dist) : where $dist is diced to $ghaving on dim(1) and $gkeys is sorted
+##     #gaggr   => \&gaggr,  ##-- code: ($gkeys,$gdist) = gaggr($dist) : where $dist is diced to $ghaving on dim(1) and $gkeys is sorted
 ##     g2s     => \&g2s,    ##-- stringification object suitable for DiaColloDB::Profile::stringify() [CODE,enum, or undef]
+##     gpack   => $packas,  ##-- pack template for groupby-keys
 ##     ##
 ##     ##-- NEW: pdl utilties
 ##     #gv    => $gv,       ##-- pdl ($NG): [$gvi] => $gi : group-id enumeration
@@ -1464,7 +1399,7 @@ sub groupby {
   ##-- get attribute titles
   $gb->{titles} = [map {$coldb->attrTitle($_)} @$gbattrs];
 
-  ##-- get "having"-clause matches
+  ##-- get "having"-clause matches (term-clauses only)
   my $ghaving = undef;
   foreach (grep {$_->[1] && !UNIVERSAL::isa($_->[1],'DDC::XS::CQTokAny')} @$gbareqs) {
     my $avalids = $coldb->enumIds($coldb->{"$_->[0]enum"}, $_->[1], logLevel=>$coldb->{logProfile}, logPrefix=>"groupby(): fetch filter ids: $_->[0]");
@@ -1473,71 +1408,23 @@ sub groupby {
   }
   $gb->{ghaving} = $ghaving;
 
-  ##-- get pdl-ized group-aggregation and -stringification objects
-  my ($g_keys); ##-- pdl ($NHavingOk): [$hvi] => $gi : term-ids for generic aggregation by $ghaving or raw term-id
-  if (@{luniq($gbattrs)} == @{luniq($coldb->{attrs})}) {
-    ##-- project all attributes: t2g: use native term-ids
-    #$gb->{t2g} = sub { return $_[0]; };
-
-    ##-- project all attribute: aggregate by term-identity; i.e. don't (+sorted)
-    $gb->{gaggr} = sub {
-      return (defined($ghaving)
-	      ? ($ghaving,$_[0])
-	      : (sequence(long,$_[0]->nelem),$_[0]));
-    };
-
-    ##-- project all attributes: g2s: stringification
-    my $tvals  = $vs->{tvals};
-    my @tenums = map {$coldb->{"${_}enum"}} @{$vs->{attrs}};
-    my @gbpos  = map {$vs->tpos($_)} @$gbattrs;
+  ##-- get stringification object (term-clauses only)
+  my $pack_ix = $PDL::Types::pack[ $vs->itype->enum ];
+  (my $gpack = $pack_ix) =~ s/\*$/"[".scalar(@$gbattrs)."]"/e;
+  $gb->{gpack} = $gpack;
+  if ($opts{strings}//1) {
+    ##-- stringify
+    my @aenums = map {$coldb->{"${_}enum"}} @$gbattrs;
+    my (@avals,@astrs);
     $gb->{g2s} = sub {
-      return join("\t", map {$tenums[$_]->i2s($tvals->at($_,$_[0]))//''} @gbpos);
+      @avals = unpack($gpack,$_[0]);
+      return join("\t", map {$aenums[$_]->i2s($avals[$_])//''} (0..$#avals));
     };
-  }
-  elsif (@$gbattrs == 1) {
-    ##-- project single attribute: t2g: use native attribute-ids
-    my $gpos   = $vs->tpos($gbattrs->[0]);
-    #$gb->{t2g} = sub { return $vs->{tvals}->slice("($gpos),")->index($_[0]); };
-
-    ##-- project single attribute: gaggr: aggregate by native attribute-ids (-sorted)
-    $g_keys = $vs->{tvals}->slice("($gpos),");
-
-    ##-- project single attribute: g2s: stringification
-    my $gbenum = $coldb->{$gbattrs->[0]."enum"};
-    $gb->{g2s} = sub { return $gbenum->i2s($_[0]); };
-  }
-  else {
-    ##-- project multiple attributes: t2g: create local vector-enum
-    my $gpos   = [map {$vs->tpos($_)} @$gbattrs];
-    my $gvecs  = $vs->{tvals}->dice_axis(0,$gpos);
-    my $gsorti = $gvecs->vv_qsortveci;
-    my $gvids  = zeroes(long, $gvecs->dim(1));
-    $gvecs->dice_axis(1,$gsorti)->enumvecg($gvids->index($gsorti));
-    #$gb->{t2g} = sub { return $gvids->index($_[0]); };
-
-    ##-- project multiple attributes: gaggr: aggregate by local vector-enum (-sorted)
-    $g_keys = $gvids;
-
-    ##-- project multiple attributes: g2s: stringification
-    my @tenums = map {$coldb->{"${_}enum"}} @{$vs->{attrs}};
-    $gb->{g2s} = sub {
-      return join("\t", map {$tenums[$gpos->[$_]]->i2s($gvecs->at($_,$_[0]))//''} (0..$#$gpos));
-    };
+  } else {
+    ##-- pseudo-stringify
+    $gb->{g2s} = sub { return join("\t", unpack($gpack,$_[0])); };
   }
 
-  ##-- aggregation: generic
-  if (!defined($gb->{gaggr})) {
-    $g_keys      = $g_keys->index($ghaving) if (defined($ghaving));
-    my ($gv,$gn) = $g_keys->valcounts;
-    my $g_vids   = $g_keys->vsearch($gv);
-    $gb->{gaggr} = sub {
-      my $dist = shift;
-      my $g_vdist = zeroes($dist->type,$gv->nelem);
-      $dist->indadd($g_vids, $g_vdist);
-      $g_vdist /= $gn;
-      return ($gv,$g_vdist);
-    };
-  }
 
   return $gb;
 }
