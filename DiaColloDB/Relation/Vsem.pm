@@ -55,7 +55,7 @@ BEGIN {
 ##   minDocFreq => $dfmin,  ##-- minimim "doc-frequency" (#/docs per term) for model inclusion (default=4)
 ##   minDocSize => $dnmin,  ##-- minimum doc size (#/tokens per doc) for model inclusion (default=4; formerly $coldb->{vbnmin})
 ##   maxDocSize => $dnmax,  ##-- maximum doc size (#/tokens per doc) for model inclusion (default=inf; formerly $coldb->{vbnmax})
-##   smoothf    => $f0,     ##-- smoothing constant to avoid log(0); default=1
+##   #smoothf    => $f0,     ##-- smoothing constant to avoid log(0); default=1
 ##   vtype      => $vtype,  ##-- PDL::Type for storing compiled values (default=float)
 ##   itype      => $itype,  ##-- PDL::Type for storing compiled integers (default=long)
 ##   ##
@@ -76,10 +76,11 @@ BEGIN {
 ##   mpos  => \%m2pos,        ##-- meta-attribute positions: $mpos=$m2pos{$mattr}
 ##   ##
 ##   ##-- guts: model (formerly via DocClassify dcmap=>$dcmap)
-##   tdm => $tdm,             ##-- term-doc matrix: PDL::CCS::Nd ($NT,$ND): [$ti,$di] -> log(f($ti,$di)+$f0)*w($ti)
-##   tf  => $tf_pdl,          ##-- term-freq pdl:   dense:       ($NT)    : [$ti]     -> f($ti)
-##   tw  => $tw_pdl,          ##-- term-weight pdl: dense:       ($NT)    : [$ti]     -> ($wRaw=0) + ($wCooked=1)*w($ti)
-##                            ##   + where w($t) = 1 - H(Doc|T=$t) / H_max(Doc) ~ DocClassify termWeight=>'max-entropy-quotient'
+##   tdm => $tdm,             ##-- term-doc matrix : PDL::CCS::Nd ($NT,$ND): [$ti,$di] -> f($ti,$di)
+##   tym => $tym,             ##-- term-year matrix: PDL::CCS::Nd ($NT,$NY): [$ti,$yi] -> f($ti,$yi)
+##   #tf  => $tf_pdl,          ##-- term-freq pdl:   dense:       ($NT)    : [$ti]     -> f($ti)
+##   #tw  => $tw_pdl,          ##-- term-weight pdl: dense:       ($NT)    : [$ti]     -> ($wRaw=0) + ($wCooked=1)*w($ti)
+##                             ##   + where w($t) = 1 - H(Doc|T=$t) / H_max(Doc) ~ DocClassify termWeight=>'max-entropy-quotient'
 ##   c2date => $c2date,       ##-- cat-dates   : dense ($NC)   : [$ci]   -> $date
 ##   c2d    => $c2d,          ##-- cat->doc map: dense (2,$NC) : [*,$ci] -> [$di_off,$di_len]
 ##   d2c    => $d2c,          ##-- doc->cat map: dense ($ND)   : [$di]   -> $ci
@@ -192,10 +193,6 @@ sub open {
   my %ioopts = (ReadOnly=>!fcwrite($flags), mmap=>1, log=>$vs->{logIO});
   defined($vs->{tdm} = readPdlFile("$vsdir/tdm", class=>'PDL::CCS::Nd', %ioopts))
     or $vs->logconfess("open(): failed to load term-document matrix from $vsdir/tdm.*: $!");
-  defined($vs->{tf}  = readPdlFile("$vsdir/tf.pdl", %ioopts))
-    or $vs->logconfess("open(): failed to load term-frequencies from $vsdir/tf.pdl: $!");
-  defined($vs->{tw}  = readPdlFile("$vsdir/tw.pdl", %ioopts))
-    or $vs->logconfess("open(): failed to load term-weights from $vsdir/tw.pdl: $!");
 
   defined(my $ptr0 = $vs->{ptr0} = readPdlFile("$vsdir/tdm.ptr0.pdl", %ioopts))
     or $vs->logwarn("open(): failed to load Harwell-Boeing pointer from $vsdir/tdm.ptr0.pdl: $!");
@@ -364,7 +361,7 @@ sub create {
       $mdata->{vals}[$docid] = $mvali;
     }
 
-    ##-- parse document signatures into $ix0file, $nz0file, $t0file
+    ##-- parse document signatures into $tdm0file
     #$vs->debug("sigs: id=$docid/$NC ; doc=$doclabel");
     $sigj_in = $sigi_in + $doc->{nsigs};
     for ( ; $sigi_in < $sigj_in; ++$sigi_in) {
@@ -488,7 +485,7 @@ sub create {
     $tvalsfh->print(pack($pack_ix, @tnull));
   }
 
-  ##-- create: enumerate "normal" terms
+  ##-- create: enumerate "normal" terms in $tvalsfile
   while (defined($_=<$ttxtfh>)) {
     chomp;
     ++$NT0;
@@ -551,52 +548,50 @@ sub create {
   defined(my $tdm = readPdlFile("$vsdir/tdm", class=>'PDL::CCS::Nd'))
     or $vs->logconfess("create(): failed to map CCS term-document matrix from $vsdir/tdm.*");
 
-  ##-- create: tw (term-weights): max-entropy-quotient: see e.g. Berry(1995); Nakov, Popova, & Mateev (2001)
-  $vs->vlog($logCreate, "create(): computing term weights");
-  my $ix = $tdm->_whichND;
-  my $nz = $tdm->_vals;
-  $nz->slice("0:-2")->indadd($ix->slice("(0),"),			##-- tf  :  pdl: [$ti] -> f($ti) : keep
-			     my $tf=mmzeroes("$vsdir/tf.pdl", $vtype, $NT));
-  $nz->slice("0:-2")->divide($tf->index($ix->slice("(0),")),		##-- twp :  pdl: $nzi~[$ti,$di] ->     p($di|$ti)
-			     my $twp=mmtemp("$vsdir/twp.tmp", $vtype, $nnz), 0);
-  $twp->log(my $twh=mmtemp("$vsdir/twh.tmp", $vtype, $nnz));		##-- twh :  pdl: $nzi~[$ti,$di] ->  ln p($di|$ti)
-  $twh /= log(2);							##                              -> log p($di|$ti)
-  $twh *= $twp;								##                              ->    -h($di|$ti) = p($di|$ti) * log p($di|$ti)
-  undef $twp;
-  $twh->indadd($ix->slice("(0),"),
-	       my $tw=mmzeroes("$vsdir/tw.pdl", $vtype, $NT));		##-- tw  : pdl: [$ti] ->  -H(Doc|T=$ti) : keep
-  undef $twh;
-  $tw  /= log($ND)/log(2);						##                    ->  -H(DOc|T=$ti)/Hmax(Doc)
-  $tw  += 1;								##                    -> 1-H(DOc|T=$ti)/Hmax(Doc)
-  #$vs->{tw} = $tw;
-  #$vs->{tf} = $tf;
-  $vs->{N} = $tf->sum;
+  ##-- create: N
+  $vs->{N} = $tdm->_vals->sum;
+  $vs->vlog($logCreate, "create(): computed total corpus size = $vs->{N}");
 
-  ##-- tw: cleanup
-  #undef $tw;
-  undef $twh;
-  undef $twp;
-  undef $tf;
+  ##-- create: aux: d2c: [$di] => $ci
+  $vs->vlog($logCreate, "create(): creating doc<->category translation piddles (ND=$ND, NC=$NC)");
+  defined(my $c2d = readPdlFile("$vsdir/c2d.pdl"))
+    or $vs->logconfess("create(): failed to mmap $vsdir/c2d.pdl");
+  $c2d->slice("(1),")->rld(sequence($itype,$NC), my $d2c=mmzeroes("$vsdir/d2c.pdl",$itype,$ND));
+  undef $c2d;
 
-  ##-- create: construct final tfidf matrix
-  my %ioopts = (mmap=>1, log=>$vs->{logIO});
-  $vs->{smoothf} //= 1;
-  $vs->vlog($logCreate, "create(): constructing final tfidf matrix (NT=$NT, ND=$ND, Nnz=$nnz; smoothf=$vs->{smoothf})");
+  ##-- create: tym: ($NT,$NY): [$ti,$yi] -> f($ti,$yi)
+  $vs->vlog($logCreate, "create(): creating term-year matrix $vsdir/tym.*");
+  defined(my $c2date = readPdlFile("$c2datefile"))
+    or $vs->logconfess("create(): failed to mmap $c2datefile");
+  my $ymax       = $c2date->max;
+  my $tym_which0 = $tdm->_whichND->pdl;
+  $tym_which0->slice("(1),") .= $c2date->index( $d2c->index($tdm->_whichND->slice("(1),")) );
+  undef $c2date;
+  undef $d2c;
+  $tym_which0->qsortveci(my $tym_qsorti=mmtemp("$vsdir/tym_qsi.tmp", $itype,$tym_which0->dim(1)));
+  $tym_which0->dice_axis(1,$tym_qsorti)->_ccs_accum_sum_int($tdm->_nzvals->index($tym_qsorti), 0,0,
+							    (my $tym_which=zeroes($itype, $tdm->ndims, $tdm->_nnz+1)),
+							    (my $tym_vals=zeroes($vtype, $tdm->_nnz+1)),
+							    (my $tym_nout=pdl($itype, 0)));
+  undef $tym_qsorti;
+  undef $tym_which0;
+  $tym_nout  = $tym_nout->sclr;
+  $tym_which = $tym_which->slice(",0:".($tym_nout-1));
+  $tym_vals  = $tym_vals->slice("0:$tym_nout");
+  $tym_vals->set($tym_nout => 0);
+  my $tym = PDL::CCS::Nd->newFromWhich($tym_which, $tym_vals, dims=>[$tdm->dim(0),$ymax+1], sorted=>1, steal=>1);
+  writePdlFile($tym, "$vsdir/tym")
+    or $vs->logconfess("failed to write term-year matrix $vs->{base}.d/tym.*: $!");
 
-  ##-- create: tfidf: setup $nz values: 		   $nzi~[$ti,$di] ->      f($ti,$di)
-  $nz += $vs->{smoothf};						# ->      f($ti,$di)+$eps
-  $nz->inplace->log;							# ->   ln(f($ti,$di)+$eps)
-  $nz /= log(2);							# -> log2(f($ti,$di)+$eps)
-  ($tmp=$nz->slice("0:-2")) *= $tw->index($ix->slice("(0),"));		# -> log2(f($ti,$di)+$eps) * tw($ti)
-  $nz->set($nnz=>0) if (!$vs->{smoothf});				# : avoid missing() = -inf
+  ##-- create: tym: cleanup
+  undef $tym;
+  undef $tym_which;
+  undef $tym_vals;
+  undef $c2d;
+  undef $d2c;
 
-  ##-- create: tfidf: cleanup
-  undef $tw;
-  undef $nz;
-  undef $ix;
-
-  ##-- create: tfidf: pointers & norms
-  $vs->vlog($logCreate, "create(): creating tfidf matrix Harwell-Boeing pointers");
+  ##-- create: tdm: pointers
+  $vs->vlog($logCreate, "create(): creating tdm matrix Harwell-Boeing pointers");
   my ($ptr0) = $tdm->getptr(0);
   $ptr0      = $ptr0->convert($itype) if ($ptr0->type != $itype);
   $ptr0->writefraw("$vsdir/tdm.ptr0.pdl")
@@ -612,12 +607,6 @@ sub create {
     or $vs->logconfess("create(): failed to write $vsdir/tdm.pix1.pdl: $!");
   undef $ptr1;
   undef $pix1;
-
-  my $vnorm0 = $tdm->vnorm(0);
-  $vnorm0    = $vnorm0->convert($vtype) if ($vnorm0->type != $vtype);
-  $vnorm0->writefraw("$vsdir/tdm.vnorm0.pdl")
-    or $vs->confess("create(): failed to write $vsdir/tdm.vnorm0.pdl: $!");
-  undef $vnorm0;
   undef $tdm;
 
   ##-- create: aux: tsorti
@@ -629,14 +618,6 @@ sub create {
   undef $tsorti;
   ##
   $vs->{attrs} = $coldb->{attrs}; ##-- save local copy of attributes
-
-  ##-- create: aux: d2c: [$di] => $ci
-  $vs->vlog($logCreate, "create(): creating doc<->category translation piddles (ND=$ND, NC=$NC)");
-  defined(my $c2d = readPdlFile("$vsdir/c2d.pdl"))
-    or $vs->logconfess("create(): failed to mmap $vsdir/c2d.pdl");
-  $c2d->slice("(1),")->rld(sequence($itype,$NC), my $d2c=mmzeroes("$vsdir/d2c.pdl",$itype,$ND));
-  undef $c2d;
-  undef $d2c;
 
   ##-- create: aux: metadata attributes
   @{$vs->{meta}} = sort keys %meta;
