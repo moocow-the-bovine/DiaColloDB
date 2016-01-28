@@ -1785,6 +1785,7 @@ sub parseQuery {
 ##     warn  => $level,       ##-- log-level for unknown attributes (default: 'warn')
 ##     logas => $reqtype,     ##-- request type for warnings
 ##     default => $attr,      ##-- default attribute (for query requests)
+##     allowExtra => \@attrs, ##-- allow extra attributes @attrs (may also be HASH-ref)
 ##     allowUnknown => $bool, ##-- allow unknown attributes? (default: 0)
 sub queryAttributes {
   my ($coldb,$cquery,%opts) = @_;
@@ -1852,10 +1853,12 @@ sub queryAttributes {
   }
 
   ##-- check for unsupported attributes & normalize attribute names
+  my $allowExtra = $opts{allowExtra};
+  $allowExtra    = { map {($_=>undef)} @$allowExtra } if (!UNIVERSAL::isa($allowExtra,'HASH'));
   @$areqs = grep {
     $attr = $coldb->attrName($_->[0]);
-    if (!$opts{allowUnknown} && !$coldb->hasAttr($attr)) {
-      $warnsub->("unsupported attribute '".($_->[0]//'(undef)')."' in native $logas request");
+    if ( !$opts{allowUnknown} && !$coldb->hasAttr($attr) && !($allowExtra && exists($allowExtra->{$attr})) ) {
+      $warnsub->("unsupported attribute '".($_->[0]//'(undef)')."' in $logas request");
       0
     } else {
       $_->[0] = $attr;

@@ -132,6 +132,19 @@ sub itype {
   }
 }
 
+## $packas = $vs->vpack()
+##  + pack-template for $vs->vtype e.g. "f*"
+sub vpack {
+  return $PDL::Types::pack[ $_[0]->vtype->enum ];
+}
+
+## $packas = $vs->ipack()
+##  + pack-template for $vs->itype e.g. "l*"
+sub ipack {
+  return $PDL::Types::pack[ $_[0]->itype->enum ];
+}
+
+
 ##==============================================================================
 ## Persistent API: disk usage
 
@@ -1027,8 +1040,8 @@ sub vprofile {
   my $sliceby = $opts->{slice} || 0;
   my ($qwhich,$qvals);
   if (defined($ti) && defined($ci)) {
-    ##-- both term- and document-conditions
-    $vs->vlog($logLocal, "vprofile(): query vector: xsubset");
+    ##-- query-vector: both term- and document-conditions
+    $vs->vlog($logLocal, "vprofile(): query vector: term+cat conditions (xsubset2d)");
     my $q_c2d     = $vs->{c2d}->dice_axis(1,$ci);
     my $di        = $q_c2d->slice("(1),")->rldseq($q_c2d->slice("(0),"))->qsort;
     my $subsize   = $ti->nelem * $di->nelem;
@@ -1042,84 +1055,113 @@ sub vprofile {
     $qvals  = $q_tdm->_nzvals;
   }
   elsif (defined($ti)) {
-    ##-- term-conditions only
-    $vs->vlog($logLocal, "vprofile(): query vector: terms");
+    ##-- query-vector: term-conditions only
+    $vs->vlog($logLocal, "vprofile(): query vector: term conditions only (pxsubset1d)");
     my $q_tdm = $tdm->pxsubset1d(0,$ti)->sumover;
     $qwhich = $q_tdm->_whichND->flat;
     $qvals  = $q_tdm->_nzvals;
   }
   elsif (defined($ci)) {
-    ##-- doc-(cat-)conditions only
-    $vs->vlog($logLocal, "vprofile(): query vector: cats");
+    ##-- query-vector: doc-(cat-)conditions only
+    $vs->vlog($logLocal, "vprofile(): query vector: cat conditions only (pxindex1d+indadd)");
     my $q_c2d   = $vs->{c2d}->dice_axis(1,$ci);
     my $di      = $q_c2d->slice("(1),")->rldseq($q_c2d->slice("(0),")); #->qsort;
 
     ##-- sanity check
-    $vs->logconfess("vprofile(): unsorted doc-list when decoding cat conditions") ##-- sanity check
-      if ($di->nelem > 1 && !all($di->slice("0:-2") <= $di->slice("1:-1")));
+    #$vs->logconfess("vprofile(): unsorted doc-list when decoding cat conditions") ##-- sanity check
+    #  if ($di->nelem > 1 && !all($di->slice("0:-2") <= $di->slice("1:-1")));
 
-    if (1) {
-      ##-- find matching nz-indices WITH ptr(1): manual
-      $vs->debug("vprofile(): query vector: cats: manual");
-      my ($ptr1,$pix1) = @$vs{qw(ptr1 pix1)};
-      my $nzi_off = $ptr1->index($di);
-      my $nzi_len = $ptr1->index($di+1)-$nzi_off;
-      my $nzi     = $nzi_len->rldseq($nzi_off)->qsort;
+    ##-- find matching nz-indices WITH ptr(1): pxindex1d+indadd
+    my $nzi = $tdm->pxindex1d(1,$di);
+    $tdm->_vals->index($nzi)->indadd($tdm->_whichND->slice("(1),")->index($nzi),
+				     my $qvec=zeroes($tdm->type, $vs->nDocs));
+    $qwhich = $qvec->which;
+    $qvals  = $qvec->index($qwhich);
+  }
 
-      if (!$nzi->isempty) {
-	$tdm->_nzvals->index($nzi)->indadd($tdm->_whichND->slice("(1),")->index($nzi),
-					   my $qvec=zeroes($tdm->type, $vs->nDocs));
-	$qwhich = $qvec->which;
-	$qvals  = $qvec->index($qwhich);
-      }
-    } else {
-      ##-- find matching nz-indices WITH ptr(1): pxsubset1d
-      $vs->debug("vprofile(): query vector: cats: pxsubset1d");
-      my $q_tdm = $tdm->pxsubset1d(1,$di)->sumover;
-      $qwhich = $q_tdm->_whichND->flat;
-      $qvals  = $q_tdm->_nzvals;
+  ##-- evaluate query: get co-occurrence frequencies (dispatch depending on groupby-type (terms vs docs vs terms+docs)
+  my ($pack_ix,$pack_gkey) = ($vs->ipack,$groupby->{gpack});
+  my ($f1p,$f12p,$f2p);
+  if ($groupby->{how} eq 't') {
+    ##-- evaluate query: groupby term-attrs
+    $vs->vlog($logLocal, "vprofile(): evaluating query (groupby term-attributes only)");
+    my $cofsub = PDL->can('diacollo_tdm_cof_t_'.$vs->itype) || \&PDL::diacollo_tdm_cof_t_long;
+    $cofsub->($tdm->_whichND, @$vs{qw(ptr1 pix1)}, $tdm->_vals,
+	      @$vs{qw(tvals d2c c2date)},
+	      $sliceby,
+	      $dlo,$dhi,
+	      $qwhich, $qvals,
+	      $groupby->{gapos},
+	      ($groupby->{ghavingt}//null),
+	      $f1p={},
+	      $f12p={});
+    $vs->debug("found ", scalar(keys %$f12p), " item2 tuple(s) in ", scalar(keys %$f1p), " slice(s)");
+
+    ##-- get item2 keys (groupby term-attrs)
+    $vs->vlog($logLocal, "vprofile(): evaluating query: f2p");
+    my $gkeys2  = pdl($vs->itype, map {unpack($pack_gkey,$_)} keys %$f12p);
+    $gkeys2->reshape(scalar(@{$groupby->{attrs}}), $gkeys2->nelem/scalar(@{$groupby->{attrs}}));
+    my $gti2    = undef;
+    foreach (0..($gkeys2->dim(0)-1)) {
+      #$vs->vlog($logLocal, "vprofile(): evaluating query: f2p: terms[$_]");
+      my $gtia = $vs->termIds($groupby->{attrs}[$_], $gkeys2->slice("($_),")->uniq);
+      $gti2    = _intersect_p($gti2,$gtia);
     }
+
+    #$vs->vlog($logLocal, "vprofile(): evaluating query: f2p: guts");
+    my $tym = $vs->{tym};
+    my $gfsub = PDL->can('diacollo_tym_gf_t_'.$vs->itype) || \&PDL::diacollo_tym_gf_t_long;
+    $gfsub->($tym->_whichND, $tym->_vals,
+	     $vs->{tvals},
+	     $sliceby,$dlo,$dhi,
+	     ($gti2//null->convert($vs->itype)),
+	     $groupby->{gapos},
+	     $f12p,
+	     $f2p={});
+    $vs->debug("got ", scalar(keys %$f2p), " independent item2 tuple-frequencies via tym");
   }
+  elsif ($groupby->{how} eq 'c') {
+    #-- evaluate query: groupby doc-attrs
+    $vs->vlog($logLocal, "vprofile(): evaluating query (groupby metadata-attributes only)");
+    my $cofsub = PDL->can('diacollo_tdm_cof_c_'.$vs->itype) || \&PDL::diacollo_tdm_cof_c_long;
+    $cofsub->($tdm->_whichND, @$vs{qw(ptr1 pix1)}, $tdm->_vals,
+	      @$vs{qw(mvals d2c c2date)},
+	      $sliceby,
+	      $dlo,$dhi,
+	      $qwhich, $qvals,
+	      $groupby->{gapos},
+	      ($groupby->{ghavingc}//null),
+	      $f1p={},
+	      $f12p={});
+    $vs->debug("found ", scalar(keys %$f12p), " item2 tuple(s) in ", scalar(keys %$f1p), " slice(s)");
 
-  ##-- evaluate query: get co-occurrence frequencies (groupby terms only)
-  $vs->vlog($logLocal, "vprofile(): evaluating query: f12p");
-  my $cofsub = PDL->can('diacollo_tdm_cof_t_'.$vs->itype) || \&PDL::diacollo_tdm_cof_t_long;
-  my $gbpdl  = pdl($vs->itype, [map {$vs->tpos($_)} @{$groupby->{attrs}}]);
-  $cofsub->($tdm->_whichND, @$vs{qw(ptr1 pix1)}, $tdm->_vals,
-	    @$vs{qw(tvals d2c c2date)},
-	    $sliceby,
-	    $dlo,$dhi,
-	    $qwhich, $qvals,
-	    $gbpdl,
-	    ($groupby->{ghaving}//null),
-	    my $f1p={},
-	    my $f12p={});
-  $vs->debug("found ", scalar(keys %$f12p), " item2 tuple(s) in ", scalar(keys %$f1p), " slice(s)");
+    ##-- get item2 keys (groupby doc-attrs)
+    $vs->vlog($logLocal, "vprofile(): evaluating query: f2p");
+    my $gkeys2  = pdl($vs->itype, map {unpack($pack_gkey,$_)} keys %$f12p);
+    $gkeys2->reshape(scalar(@{$groupby->{attrs}}), $gkeys2->nelem/scalar(@{$groupby->{attrs}}));
+    my $gci2    = undef;
+    foreach (0..($gkeys2->dim(0)-1)) {
+      my $gcia = $vs->catIds($groupby->{areqs}[$_][2]{aname}, $gkeys2->slice("($_),")->uniq);
+      $gci2    = _intersect_p($gci2,$gcia);
+    }
 
-  ##-- get item2 keys (groupby terms only)
-  $vs->vlog($logLocal, "vprofile(): evaluating query: f2p");
-  my $pack_ix   = $PDL::Types::pack[ $vs->itype->enum ];
-  my $pack_gkey = $groupby->{gpack};
-  my $gkeys2  = pdl($vs->itype, map {unpack($pack_gkey,$_)} keys %$f12p);
-  $gkeys2->reshape(scalar(@{$groupby->{attrs}}), $gkeys2->nelem/scalar(@{$groupby->{attrs}}));
-  my $gti2    = undef;
-  foreach (0..($gkeys2->dim(0)-1)) {
-    #$vs->vlog($logLocal, "vprofile(): evaluating query: f2p: terms[$_]");
-    my $gtia = $vs->termIds($groupby->{attrs}[$_], $gkeys2->slice("($_),")->uniq);
-    $gti2    = _intersect_p($gti2,$gtia);
+    #$vs->vlog($logLocal, "vprofile(): evaluating query: f2p: guts");
+    my $gfsub = PDL->can('diacollo_gf_c_'.$vs->itype) || \&PDL::diacollo_gf_c_long;
+    $gfsub->(@$vs{qw(cf mvals c2date)},
+	     $sliceby,
+	     ($gci2//null->convert($vs->itype)),
+	     $groupby->{gapos},
+	     $f12p,
+	     $f2p={});
+    $vs->debug("got ", scalar(keys %$f2p), " independent item2 tuple-frequencies via cf");
   }
-
-  #$vs->vlog($logLocal, "vprofile(): evaluating query: f2p: guts");
-  my $tym = $vs->{tym};
-  my $gfsub = PDL->can('diacollo_tym_gf_t_'.$vs->itype) || \&PDL::diacollo_tym_gf_t_long;
-  $gfsub->($tym->_whichND, $tym->_vals,
-	   $vs->{tvals},
-	   $sliceby,$dlo,$dhi,
-	   ($gti2//null->convert($vs->itype)),
-	   $gbpdl,
-	   $f12p,
-	   my $f2p={});
-  $vs->debug("got ", scalar(keys %$f2p), " independent item2 tuple-frequencies via tym");
+  elsif ($groupby->{how} eq 'tc') {
+    #-- evaluate query: groupby (term+doc)-attrs
+    $vs->logconfess("cannot group by both term- and metadata-attributes (yet)");
+  }
+  else {
+    $vs->logconfess("unknown groupby mode '$groupby->{how}'");
+  }
 
   ##-- convert packed to native-style profiles (by date-slice)
   my @slices = $sliceby ? (map {$sliceby*$_} (($dslo/$sliceby)..($dshi/$sliceby))) : qw(0);
@@ -1309,7 +1351,8 @@ sub catSubset {
 ##    (
 ##     ##-- OLD: equivalent to DiaColloDB::groupby() return values
 ##     req => $request,    ##-- save request
-##     areqs => \@areqs,   ##-- parsed attribute requests ([$attr,$ahaving],...)
+##     areqs => \@areqs,   ##-- parsed attribute requests ([$attr,$ahaving, \%ainfo],...)
+##                         ##   + new: %ainfo = ( aname=>$enum_name, atype=>$t_or_m, apos=>$apos )
 ##     attrs => \@attrs,   ##-- like $coldb->attrs($groupby_request), modulo "having" parts
 ##     titles => \@titles, ##-- like map {$coldb->attrTitle($_)} @attrs
 ##     ##
@@ -1318,8 +1361,12 @@ sub catSubset {
 ##     #g2s => \&g2s,       ##-- stringification object suitable for DiaColloDB::Profile::stringify() [CODE,enum, or undef]
 ##     ##
 ##     ##-- NEW: equivalent to DiaColloDB::groupby() return values
-##     ghaving => $ghaving, ##-- pdl ($NHavingOk) : term indices $ti s.t. $ti matches groupby "having" requests
-##     #gaggr   => \&gaggr,  ##-- code: ($gkeys,$gdist) = gaggr($dist) : where $dist is diced to $ghaving on dim(1) and $gkeys is sorted
+##     how      => $ghow,     ##-- one of  't':groupby terms-only, 'c':groupby cats-only, 'tc':groupby terms+docs
+##     gatype   => $gatype,   ##-- pdl ($NG)         : attribute types $ai : 0 iff $areqs->[$ai] is a term attribute, 1 if meta-attribute
+##     gapos    => $gapos,    ##-- pdl ($NG)         : term- or meta-attribute position indices $ai : $vs->mpos($attrs[$ai]) or $vs->tpos($attrs[$ai])
+##     ghavingt => $ghavingt, ##-- pdl ($NHavingTOk) : term indices $ti s.t. $ti matches groupby "having" requests, or undef
+##     ghavingc => $ghavingc, ##-- pdl ($NHavingCOk) : cat  indices $ci s.t. $ci matches groupby "having" requests, or undef
+##     #gaggr   => \&gaggr,   ##-- code: ($gkeys,$gdist) = gaggr($dist) : where $dist is diced to $ghaving on dim(1) and $gkeys is sorted
 ##     g2s     => \&g2s,    ##-- stringification object suitable for DiaColloDB::Profile::stringify() [CODE,enum, or undef]
 ##     gpack   => $packas,  ##-- pack template for groupby-keys
 ##     ##
@@ -1339,7 +1386,7 @@ sub groupby {
   my $gb = { req=>$gbreq };
 
   ##-- get attribute requests
-  my $gbareqs = $gb->{areqs} = $coldb->parseRequest($gb->{req}, %opts,logas=>'groupby');
+  my $gbareqs = $gb->{areqs} = $coldb->parseRequest($gb->{req}, %opts, logas=>'vsem groupby', allowExtra=>[map {($_,"doc.$_")} @{$vs->{meta}}]);
 
   ##-- get attribute names (compat)
   my $gbattrs = $gb->{attrs} = [map {$_->[0]} @$gbareqs];
@@ -1347,26 +1394,59 @@ sub groupby {
   ##-- get attribute titles
   $gb->{titles} = [map {$coldb->attrTitle($_)} @$gbattrs];
 
-  ##-- get "having"-clause matches (term-clauses only)
-  my $ghaving = undef;
-  foreach (grep {$_->[1] && !UNIVERSAL::isa($_->[1],'DDC::XS::CQTokAny')} @$gbareqs) {
-    my $avalids = $coldb->enumIds($coldb->{"$_->[0]enum"}, $_->[1], logLevel=>$coldb->{logProfile}, logPrefix=>"groupby(): fetch filter ids: $_->[0]");
-    my $ahaving = $vs->termIds($_->[0], $avalids);
-    $ghaving    = DiaColloDB::Utils::_intersect_p($ghaving,$ahaving);
+  ##-- parse attribute requests into "having" id-sets and "info" hashes
+  my ($areq,$aname,$ashort,$apos,$ahaving,$ainfo);
+  my ($ghavingt,$ghavingc);
+  foreach my $areq (@$gbareqs) {
+    ($aname,$ahaving) = @$areq;
+    ($ashort = $aname) =~ s/^doc\.//;
+    my $ainfo = $areq->[2] = {};
+    foreach ($aname,$ashort) {
+      if (defined($apos=$vs->tpos($_))) {
+	##-- term-attribute request
+	@$ainfo{qw(atype apos aname)} = ('t',$apos,$_);
+	if ($ahaving && !UNIVERSAL::isa($ahaving,'DDC::XS::CQTokAny')) {
+	  my $avalids  = $coldb->enumIds($coldb->{"${_}enum"}, $ahaving, logLevel=>$coldb->{logProfile}, logPrefix=>"groupby(): fetch term-filter ids: $_");
+	  my $ahavingi = $vs->termIds($_, $avalids);
+	  $ghavingt    = DiaColloDB::Utils::_intersect_p($ghavingt,$ahavingi);
+	}
+	last;
+      }
+      elsif (defined($apos=$vs->mpos($_))) {
+	##-- meta-attribute request
+	@$ainfo{qw(atype apos aname)} = ('m',$apos,$_);
+	if ($ahaving && !UNIVERSAL::isa($ahaving,'DDC::XS::CQTokAny')) {
+	  my $avalids  = $coldb->enumIds($vs->{"meta_e_$_"}, $ahaving, logLevel=>$coldb->{logProfile}, logPrefix=>"groupby(): fetch meta-filter ids: $_");
+	  my $ahavingi = $vs->catIds($_, $avalids);
+	  $ghavingc    = DiaColloDB::Utils::_intersect_p($ghavingc,$ahavingi);
+	}
+	last;
+      }
+    }
+    $vs->logconfess("groupby(): could not parse attribute request for '$aname'") if (!%$ainfo);
   }
-  $gb->{ghaving} = $ghaving;
+  $vs->logconfess("groupby(): no target terms found matching 'having' conditions") if (defined($ghavingt) && $ghavingt->isempty);
+  $vs->logconfess("groupby(): no target documents found matching 'having' conditions") if (defined($ghavingc) && $ghavingc->isempty);
+  @$gb{qw(ghavingt ghavingc)} = ($ghavingt,$ghavingc);
+
+  ##-- get groupby attribute indices
+  my $gatype = $gb->{gatype} = pdl($vs->itype, [map {$_->[2]{atype} eq 't' ? 0 : 1} @$gbareqs]);
+  my $gapos  = $gb->{gapos}  = pdl($vs->itype, [map {$_->[2]{apos}}                 @$gbareqs]);
+
+  ##-- get groupby "how" for query optimization
+  $gb->{how} = ($gatype->min==0 ? 't' : '').($gatype->max==1 ? 'c' : '');
 
   ##-- get stringification object (term-clauses only)
-  my $pack_ix = $PDL::Types::pack[ $vs->itype->enum ];
+  my $pack_ix = $vs->ipack();
   (my $gpack = $pack_ix) =~ s/\*$/"[".scalar(@$gbattrs)."]"/e;
   $gb->{gpack} = $gpack;
   if ($opts{strings}//1) {
     ##-- stringify
-    my @aenums = map {$coldb->{"${_}enum"}} @$gbattrs;
-    my (@avals,@astrs);
+    my @genums = map { $_->[2]{atype} eq 't' ? $coldb->{$_->[0]."enum"} : $vs->{"meta_e_".$_->[2]{aname}} } @$gbareqs;
+    my (@gvals);
     $gb->{g2s} = sub {
-      @avals = unpack($gpack,$_[0]);
-      return join("\t", map {$aenums[$_]->i2s($avals[$_])//''} (0..$#avals));
+      @gvals = unpack($gpack,$_[0]);
+      return join("\t", map {$genums[$_]->i2s($gvals[$_])//''} (0..$#gvals));
     };
   } else {
     ##-- pseudo-stringify
