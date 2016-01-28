@@ -186,11 +186,11 @@ dcdb-create.perl - create a DiaColloDB collocation database from a corpus dump
    -vsem-nmin VNMIN     ##-- set minimum number of content tokens per vector-model "document" (default=8)
    -vsem-nmax VNMAX     ##-- set maximum number of content tokens per vector-model "document (default=inf)
    -vsem-option OPT=VAL ##-- set arbitrary vector-model option, e.g.
-                        ##   smoothf=FLOAT         # frequency smoothing constant (default=1)
                         ##   minFreq=INT           # minimum term frequency (default=undef: use TFMIN)
                         ##   minDocFreq=INT        # minimum term document-"frequency" (default=4)
                         ##   minDocSize=INT        # minimum document size (#/terms) (default=4)
                         ##   maxDocSize=INT        # maximum document size (#/terms) (default=inf)
+                        ##   #smoothf=FLOAT         # frequency smoothing constant (default=1)
                         ##   #verbose=LEVEL         # verbosity level (default=2)
                         ##   #svdr=INT              # target model rank (default=64)
                         ##   #saveMem=BOOL          # use less memory when compiling (default=1)

@@ -1726,7 +1726,37 @@ sub tdm_to_tym {
     or die("$0: failed to write $vs->{base}/tym*: $!");
   exit 0;
 }
-tdm_to_tym(@ARGV);
+#tdm_to_tym(@ARGV);
+
+##==============================================================================
+## vsem: convert tdm to cf
+
+sub tdm_to_cf {
+  my $dbdir = shift // 'kern.d-p';
+  DiaColloDB->ensureLog();
+
+  ##-- create dummy 'cf.pdl' if it doesn't exist
+  my $vsdir = "$dbdir/vsem.d";
+  my $cffile = "$vsdir/cf.pdl";
+  if (!-e $cffile) {
+    pdl(float,0)->writefraw($cffile)
+      or die("$0: failed to write dummy $cffile: $!");
+  }
+
+  DiaColloDB->info("tdm_to_cf($dbdir)");
+  my $coldb = DiaColloDB->new(dbdir=>$dbdir) or die("$0: failed to open DiaColloDB directory '$dbdir': $_");
+  my $vs    = $coldb->{vsem};
+  my $tdm   = $vs->{tdm};
+  my $d2c   = $vs->{d2c};
+  delete $vs->{cf};
+
+  DiaColloDB->info("converting");
+  $tdm->_nzvals->indadd( $d2c->index($tdm->_whichND->slice("(1),")), my $cf=zeroes($vs->vtype,$vs->nCats));
+  $cf->writefraw($cffile)
+    or die("$0: failed to write $cffile: $!");
+  exit 0;
+}
+tdm_to_cf(@ARGV);
 
 ##==============================================================================
 ## convert tdm tfidf to frequency matrix

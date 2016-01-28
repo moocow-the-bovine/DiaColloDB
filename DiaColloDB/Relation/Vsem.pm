@@ -78,9 +78,10 @@ BEGIN {
 ##   ##-- guts: model (formerly via DocClassify dcmap=>$dcmap)
 ##   tdm => $tdm,             ##-- term-doc matrix : PDL::CCS::Nd ($NT,$ND): [$ti,$di] -> f($ti,$di)
 ##   tym => $tym,             ##-- term-year matrix: PDL::CCS::Nd ($NT,$NY): [$ti,$yi] -> f($ti,$yi)
+##   cf  => $cf_pdl,          ##-- cat-freq pdl:     dense:       ($NC)    : [$ci]     -> f($ci)
 ##   #tf  => $tf_pdl,          ##-- term-freq pdl:   dense:       ($NT)    : [$ti]     -> f($ti)
 ##   #tw  => $tw_pdl,          ##-- term-weight pdl: dense:       ($NT)    : [$ti]     -> ($wRaw=0) + ($wCooked=1)*w($ti)
-##                             ##   + where w($t) = 1 - H(Doc|T=$t) / H_max(Doc) ~ DocClassify termWeight=>'max-entropy-quotient'
+##   #                         ##   + where w($t) = 1 - H(Doc|T=$t) / H_max(Doc) ~ DocClassify termWeight=>'max-entropy-quotient'
 ##   c2date => $c2date,       ##-- cat-dates   : dense ($NC)   : [$ci]   -> $date
 ##   c2d    => $c2d,          ##-- cat->doc map: dense (2,$NC) : [*,$ci] -> [$di_off,$di_len]
 ##   d2c    => $d2c,          ##-- doc->cat map: dense ($ND)   : [$di]   -> $ci
@@ -97,7 +98,7 @@ sub new {
 			       minDocFreq => 4,
 			       minDocSize => 4,
 			       maxDocSize => 'inf',
-			       smoothf => 1,
+			       #smoothf => 1,
 			       vtype => 'float',
 			       itype => 'long',
 			       meta  => [],
@@ -192,7 +193,11 @@ sub open {
   ##-- load: model data
   my %ioopts = (ReadOnly=>!fcwrite($flags), mmap=>1, log=>$vs->{logIO});
   defined($vs->{tdm} = readPdlFile("$vsdir/tdm", class=>'PDL::CCS::Nd', %ioopts))
-    or $vs->logconfess("open(): failed to load term-document matrix from $vsdir/tdm.*: $!");
+    or $vs->logconfess("open(): failed to load term-document frequency matrix from $vsdir/tdm.*: $!");
+  defined($vs->{tym} = readPdlFile("$vsdir/tym", class=>'PDL::CCS::Nd', %ioopts))
+    or $vs->logconfess("open(): failed to load term-year frequency matrix from $vsdir/tym.*: $!");
+  defined($vs->{cf}  = readPdlFile("$vsdir/cf.pdl", %ioopts))
+    or $vs->logconfess("open(): failed to load cat-frequencies from $vsdir/cf.pdl: $!");
 
   defined(my $ptr0 = $vs->{ptr0} = readPdlFile("$vsdir/tdm.ptr0.pdl", %ioopts))
     or $vs->logwarn("open(): failed to load Harwell-Boeing pointer from $vsdir/tdm.ptr0.pdl: $!");
@@ -558,6 +563,11 @@ sub create {
     or $vs->logconfess("create(): failed to mmap $vsdir/c2d.pdl");
   $c2d->slice("(1),")->rld(sequence($itype,$NC), my $d2c=mmzeroes("$vsdir/d2c.pdl",$itype,$ND));
   undef $c2d;
+
+  ##-- create: cf: ($NC): [$ci] -> f($ci)
+  $vs->vlog($logCreate, "create(): creating cat-frequency piddle $vsdir/cf.pdl (NC=$NC)");
+  $tdm->_nzvals->indadd( $d2c->index($tdm->_whichND->slice("(1),")), my $cf=mmzeroes("$vsdir/cf.pdl",$vtype,$NC));
+  undef $cf;
 
   ##-- create: tym: ($NT,$NY): [$ti,$yi] -> f($ti,$yi)
   $vs->vlog($logCreate, "create(): creating term-year matrix $vsdir/tym.*");
@@ -996,6 +1006,8 @@ sub vprofile {
 
   ##-- parse date-request
   my ($dfilter,$dslo,$dshi,$dlo,$dhi) = $coldb->parseDateRequest(@$opts{qw(date slice fill)},1);
+  $dlo //= $coldb->{xdmin};
+  $dhi //= $coldb->{xdmax};
   @$opts{qw(dslo dshi dlo dhi)} = ($dslo,$dshi,$dlo,$dhi);
 
   ##-- parse & compile query
@@ -1016,62 +1028,56 @@ sub vprofile {
   my ($qwhich,$qvals);
   if (defined($ti) && defined($ci)) {
     ##-- both term- and document-conditions
-    $vs->vlog($logLocal, "vprofile($sliceby): query vector: xsubset");
+    $vs->vlog($logLocal, "vprofile(): query vector: xsubset");
     my $q_c2d     = $vs->{c2d}->dice_axis(1,$ci);
     my $di        = $q_c2d->slice("(1),")->rldseq($q_c2d->slice("(0),"))->qsort;
     my $subsize   = $ti->nelem * $di->nelem;
-    $vs->vlog($logLocal, "vprofile($sliceby): requested subset size = $subsize (NT=".$ti->nelem." x Nd=".$ci->nelem.")");
+    $vs->vlog($logLocal, "vprofile(): requested subset size = $subsize (NT=".$ti->nelem." x Nd=".$ci->nelem.")");
     if (defined($vs->{submax}) &&  $subsize > $vs->{submax}) {
       $vs->logconfess($coldb->{error}="requested subset size $subsize (NT=".$ti->nelem." x Nd=".$ci->nelem.") too large; max=$vs->{submax}");
     }
 
-    my $q_tdm  = $tdm->xsubset2d($ti,$di);
-
-    $vs->vlog($logLocal, "vprofile($sliceby): query vector: decode");
-    ##<<QPZD
-    #$q_tdm->_vals->indadd($q_tdm->_whichND->slice("(1),"), $qvec=zeroes($q_tdm->type, $vs->nDocs));
-    $q_tdm  = $q_tdm->sumover;
+    my $q_tdm = $tdm->xsubset2d($ti,$di)->sumover;
     $qwhich = $q_tdm->_whichND->flat;
     $qvals  = $q_tdm->_nzvals;
-    ##>>QPZD
   }
   elsif (defined($ti)) {
-    ##-- term-conditions only: extract from $vs->{tdm}
-    $vs->vlog($logLocal, "vprofile($sliceby): query vector: terms");
-    ##-- find matching nz-indices WITH ptr(0) [direct ccs construction is still too slow]
-    my $ptr0    = $vs->{ptr0};
-    my $nzi_off = $ptr0->index($ti);
-    my $nzi_len = $ptr0->index($ti+1)-$nzi_off;
-    my $nzi     = $nzi_len->rldseq($nzi_off);
-
-    if (!$nzi->isempty) {
-      $tdm->_vals->index($nzi)->indadd($tdm->_whichND->index2d(1,$nzi),
-				       my $qvec=zeroes($tdm->type, $vs->nDocs));
-      $qwhich = $qvec->which;
-      $qvals  = $qvec->index($qwhich);
-    }
+    ##-- term-conditions only
+    $vs->vlog($logLocal, "vprofile(): query vector: terms");
+    my $q_tdm = $tdm->pxsubset1d(0,$ti)->sumover;
+    $qwhich = $q_tdm->_whichND->flat;
+    $qvals  = $q_tdm->_nzvals;
   }
   elsif (defined($ci)) {
-    ##-- doc-conditions only: slice from $map->{xcm}
-    $vs->vlog($logLocal, "vpslice($sliceby): query vector: cats");
+    ##-- doc-(cat-)conditions only
+    $vs->vlog($logLocal, "vprofile(): query vector: cats");
     my $q_c2d   = $vs->{c2d}->dice_axis(1,$ci);
     my $di      = $q_c2d->slice("(1),")->rldseq($q_c2d->slice("(0),")); #->qsort;
 
     ##-- sanity check
-    $vs->logconfess("vpslice($sliceby): unsorted doc-list when decoding cat conditions") ##-- sanity check
+    $vs->logconfess("vprofile(): unsorted doc-list when decoding cat conditions") ##-- sanity check
       if ($di->nelem > 1 && !all($di->slice("0:-2") <= $di->slice("1:-1")));
 
-    ##-- find matching nz-indices WITH ptr(1)
-    my ($ptr1,$pix1) = @$vs{qw(ptr1 pix1)};
-    my $nzi_off = $ptr1->index($di);
-    my $nzi_len = $ptr1->index($di+1)-$nzi_off;
-    my $nzi     = $nzi_len->rldseq($nzi_off)->qsort;
+    if (1) {
+      ##-- find matching nz-indices WITH ptr(1): manual
+      $vs->debug("vprofile(): query vector: cats: manual");
+      my ($ptr1,$pix1) = @$vs{qw(ptr1 pix1)};
+      my $nzi_off = $ptr1->index($di);
+      my $nzi_len = $ptr1->index($di+1)-$nzi_off;
+      my $nzi     = $nzi_len->rldseq($nzi_off)->qsort;
 
-    if (!$nzi->isempty) {
-      $tdm->_nzvals->index($nzi)->indadd($tdm->_whichND->slice("(1),")->index($nzi),
-					 my $qvec=zeroes($tdm->type, $vs->nDocs));
-      $qwhich = $qvec->which;
-      $qvals  = $qvec->index($qwhich);
+      if (!$nzi->isempty) {
+	$tdm->_nzvals->index($nzi)->indadd($tdm->_whichND->slice("(1),")->index($nzi),
+					   my $qvec=zeroes($tdm->type, $vs->nDocs));
+	$qwhich = $qvec->which;
+	$qvals  = $qvec->index($qwhich);
+      }
+    } else {
+      ##-- find matching nz-indices WITH ptr(1): pxsubset1d
+      $vs->debug("vprofile(): query vector: cats: pxsubset1d");
+      my $q_tdm = $tdm->pxsubset1d(1,$di)->sumover;
+      $qwhich = $q_tdm->_whichND->flat;
+      $qvals  = $q_tdm->_nzvals;
     }
   }
 
@@ -1082,6 +1088,7 @@ sub vprofile {
   $cofsub->($tdm->_whichND, @$vs{qw(ptr1 pix1)}, $tdm->_vals,
 	    @$vs{qw(tvals d2c c2date)},
 	    $sliceby,
+	    $dlo,$dhi,
 	    $qwhich, $qvals,
 	    $gbpdl,
 	    ($groupby->{ghaving}//null),
@@ -1103,60 +1110,20 @@ sub vprofile {
   }
 
   #$vs->vlog($logLocal, "vprofile(): evaluating query: f2p: guts");
-  my ($f2p);
-  if (0) {
-    ##-- group frequencies, via tdm
-    my $gfsub = PDL->can('diacollo_tdm_gf_t_'.$vs->itype) || \&PDL::diacollo_tdm_gf_t_long;
-    $gfsub->($tdm->_whichND, $vs->{ptr0}, $tdm->_vals,
-	     @$vs{qw(tvals d2c c2date)},
-	     $sliceby,
-	     ($gti2//null->convert($vs->itype)),
-	     $gbpdl,
-	     $f12p,
-	     $f2p={});
-    $vs->debug("got ", scalar(keys %$f2p), " independent item2 tuple-frequencies via tdm");
-  } else {
-    ##-- group frequencies, via tym
-    my $tym = $vs->{tym};
-    if (!defined($tym)) {
-      if (-e "$vs->{base}.d/tym.hdr") {
-	##-- tym: load
-	defined($tym = $vs->{tym} = readPdlFile("$vs->{base}.d/tym", class=>'PDL::CCS::Nd', ReadOnly=>1,mmap=>1))
-	  or $vs->logconfess("open(): failed to load term-year matrix from $vs->{base}.d/tym.*: $!");
-      } else {
-	##-- tym: create
-	$vs->info("creating term-year matrix $vs->{base}.d/tym.*");
-	my $wnd0 = $tdm->_whichND->pdl;
-	$wnd0->slice("(1),") .= $vs->{c2date}->index( $vs->{d2c}->index($tdm->_whichND->slice("(1),")) );
-	$wnd0->_ccs_accum_sum_int($tdm->_nzvals, 0,0,
-				  (my $wnd1=zeroes($wnd0->type, $tdm->ndims, $tdm->_nnz+1)),
-				  (my $vals1=zeroes($tdm->type, $tdm->_nnz+1)),
-				  (my $nout=pdl($wnd0->type, 0)));
-	$nout  = $nout->sclr;
-	$wnd1  = $wnd1->slice(",0:".($nout-1));
-	$vals1 = $vals1->slice("0:$nout");
-	$vals1->set($nout => 0);
-	my $ymax = $wnd0->slice("(1),")->max;
-	my $tcm = PDL::CCS::Nd->newFromWhich($wnd1, $vals1, dims=>[$vs->nTerms,$ymax+1], sorted=>0, steal=>1);
-	$tcm->writefraw("$vs->{base}.d/tym")
-	  or $vs->logconfess("failed to write $vs->{base}.d/tym*: $!");
-      }
-    }
-    ##-- tym: extract
-    my $gfsub = PDL->can('diacollo_tym_gf_t_'.$vs->itype) || \&PDL::diacollo_tym_gf_t_long;
-    $gfsub->($tym->_whichND, $tym->_vals,
-	     $vs->{tvals},
-	     $sliceby,
-	     ($gti2//null->convert($vs->itype)),
-	     $gbpdl,
-	     $f12p,
-	     $f2p={});
-    $vs->debug("got ", scalar(keys %$f2p), " independent item2 tuple-frequencies via tym");
-  }
+  my $tym = $vs->{tym};
+  my $gfsub = PDL->can('diacollo_tym_gf_t_'.$vs->itype) || \&PDL::diacollo_tym_gf_t_long;
+  $gfsub->($tym->_whichND, $tym->_vals,
+	   $vs->{tvals},
+	   $sliceby,$dlo,$dhi,
+	   ($gti2//null->convert($vs->itype)),
+	   $gbpdl,
+	   $f12p,
+	   my $f2p={});
+  $vs->debug("got ", scalar(keys %$f2p), " independent item2 tuple-frequencies via tym");
 
   ##-- convert packed to native-style profiles (by date-slice)
-  my @slices = sort {$a<=>$b} map {unpack($pack_ix,$_)} keys %$f1p;
-  my %dprfs  = map {($_=>DiaColloDB::Profile->new(label=>$_, titles=>$groupby->{titles}, N=>$vs->{N}, f1=>$f1p->{pack($pack_ix,$_)}))} @slices;
+  my @slices = $sliceby ? (map {$sliceby*$_} (($dslo/$sliceby)..($dshi/$sliceby))) : qw(0);
+  my %dprfs  = map {($_=>DiaColloDB::Profile->new(label=>$_, titles=>$groupby->{titles}, N=>$vs->{N}, f1=>($f1p->{pack($pack_ix,$_)}//0)))} @slices;
   if (@slices > 1) {
     $vs->vlog($logLocal, "vprofile(): partionining profile data into ", scalar(@slices), " slice(s)");
     (my $pack_ds = '@'.packsize($pack_gkey).$pack_ix) =~ s/\*$//;

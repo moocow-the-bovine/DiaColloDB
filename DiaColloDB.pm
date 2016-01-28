@@ -97,7 +97,7 @@ our %VSOPTS = (
 	       minDocSize=>4,     ##-- minimum doc size (#/tokens per doc) for model inclusion (default=8; formerly $coldb->{vbnmin})
 	                          ##   + for kern[page?] (n:%sigs,%toks): 1:0%,0%, 2:5.1%,0.5%, 4:18%,1.6%, 5:22%,2.3%, 8:34%,4.6%, 10:40%,6.5%, 16:54%,12.8%
 	       maxDocSize=>'inf', ##-- maximum doc size (#/tokens per doc) for model inclusion (default=inf; formerly $coldb->{vbnmax})
-	       smoothf=>1,        ##-- smoothing constant
+	       #smoothf=>1,        ##-- smoothing constant
 	       #saveMem=>1, 	  ##-- slower but memory-friendlier compilation
 	       vtype=>'float',    ##-- store compiled values as 32-bit floats
 	       itype=>'long',     ##-- store compiled indices as 32-bit integers
@@ -1534,23 +1534,32 @@ sub enumIds {
 sub parseDateRequest {
   my ($coldb,$date,$slice,$fill,$ddcmode) = @_;
   my ($dfilter,$slo,$shi,$dlo,$dhi);
-  if ($date && (UNIVERSAL::isa($date,'Regexp') || $date =~ /^\//)) {
+  $date //= '';
+  if ($date =~ /^\s*$/) {
+    ##-- empty date request: ignore
+    $dlo = $dhi = undef;
+  }
+  elsif (UNIVERSAL::isa($date,'Regexp') || $date =~ /^\//) {
     ##-- date request: regex string
     $coldb->logconfess("parseDateRequest(): can't handle date regex '$date' in ddc mode") if ($ddcmode);
     my $dre  = regex($date);
     $dfilter = sub { $_[0] =~ $dre };
   }
-  elsif ($date && $date =~ /^\s*([0-9]+)\s*[\-\:]+\s*([0-9]+)\s*$/) {
+  elsif ($date =~ /^\s*((?:[0-9]+|\*?))\s*[\-\:]+\s*((?:[0-9]+|\*?))\s*$/) {
     ##-- date request: range MIN:MAX (inclusive)
-    ($dlo,$dhi) = ($1+0,$2+0);
+    ($dlo,$dhi) = ($1,$2);
+    $dlo  = $coldb->{xdmin} if (($dlo//'') =~ /^\*?$/);
+    $dhi  = $coldb->{xdmax} if (($dhi//'') =~ /^\*?$/);
+    $dlo += 0;
+    $dhi += 0;
     $dfilter = sub { $_[0]>=$dlo && $_[0]<=$dhi };
   }
-  elsif ($date && $date =~ /[\s\,\|]/) {
+  elsif ($date =~ /[\s\,\|]+/) {
     ##-- date request: list
     my %dwant = map {($_=>undef)} grep {($_//'') ne ''} split(/[\s\,\|]+/,$date);
     $dfilter  = sub { exists($dwant{$_[0]}) };
   }
-  elsif ($date) {
+  else {
     ##-- date request: single value
     $dlo = $dhi = $date;
     $dfilter = sub { $_[0] == $date };

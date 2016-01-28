@@ -93,7 +93,8 @@ sub tdm_cof_t_def {
   ##~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
   ## tdm_cof_t : code
   my $code = qq{
-  $ctype qd,qd1,qc,qval, adnzlo,adnzhi,adnzi,anzi, at,ga,gh, sliceby;
+  $ctype qd,qd1,qc,qval, adnzlo,adnzhi,adnzi,anzi, at,ga,gh;
+  PDL_Ushort sliceby,qdate;
   I32 keylen1 = sizeof($ctype);
   I32 keylen  = (\$SIZE(NG)+1)*sizeof($ctype);
   $ctype *keybuf = (${ctype}*)malloc(keylen);
@@ -102,12 +103,12 @@ sub tdm_cof_t_def {
   SV **svpp;
   UV fval0,fval;
 
-  DCDEBUG(fprintf(stderr,"tdm_cof_t_${iname}(): NnzA=%d, NnzQ=%d, NA=%d, ND=%d, NC=%d, NG=%d, NHaving=%d, slice=%d, keylen=%d\\n", \$SIZE(NnzA), \$SIZE(NnzQ), \$SIZE(NA), \$SIZE(ND), \$SIZE(NC), \$SIZE(NG), \$SIZE(NHaving), \$dslice(), keylen); fflush(stderr);)
+  DCDEBUG(fprintf(stderr,"tdm_cof_t_${iname}(): NnzA=%d, NnzQ=%d, NA=%d, ND=%d, NC=%d, NG=%d, NHaving=%d, slice=%d, mindate=%d, maxdate=%d, keylen=%d\\n", \$SIZE(NnzA), \$SIZE(NnzQ), \$SIZE(NA), \$SIZE(ND), \$SIZE(NC), \$SIZE(NG), \$SIZE(NHaving), \$dateslice(), \$mindate(), \$maxdate(), keylen); fflush(stderr);)
 }.q{
   hv_clear(f12hv);
 
   threadloop %{
-    sliceby           = $dslice();
+    sliceby           = $dateslice();
     keybuf[$SIZE(NG)] = sliceby;
 
     /*-- guts: compute co-frequencies cofreq(w,v|d) = min{f(w,d),f(v,d)} in f12hv --*/
@@ -117,10 +118,12 @@ sub tdm_cof_t_def {
       qd   = $qdocs();
       qd1  = qd+1;
 
-      //-- setup output date component
+      //-- setup output date component, checking target range
+      qc    = $d2c(ND=>qd);
+      qdate = $c2date(NC=>qc);
+      if (qdate < $mindate() || qdate > $maxdate()) continue;
       if (sliceby != 0) {
-        qc = $d2c(ND=>qd);
-        keybuf[$SIZE(NG)] = sliceby * ($c2date(NC=>qc)/sliceby);
+        keybuf[$SIZE(NG)] = sliceby * (qdate/sliceby);
       }
 
       //-- track f1 frequency (by slice)
@@ -179,8 +182,11 @@ sub tdm_cof_t_def {
 		      ##
 		      "$INDX tattrs(NA,NT);",		##-- tattrs() ~ term attributes
 		      "$INDX d2c(ND);",               	##-- d2c(): doc->cat map : $vs->{d2c}
-		      "ushort c2date(NC);",             	##-- c2d(): cat->date map : $vs->{c2date}
-		      "$INDX dslice();",                	##-- slice value
+		      ##
+		      "ushort c2date(NC);",             ##-- c2d(): cat->date map : $vs->{c2date}
+		      "ushort dateslice();",            ##-- slice value
+		      "ushort mindate();",              ##-- minimum date (inlusive)
+		      "ushort maxdate();",		##-- maximum date (inclusive)
 		      ##
 		      "$INDX qdocs(NnzQ);",		##-- query vector: nz doc-indices (item1)
 		      "      qvals(NnzQ);",		##-- query vector: nz doc-frequencies (item1)
@@ -204,6 +210,7 @@ tdm_cof_t_def('indx') if (PDL->can('indx'));
 ## tdm_gf_t_TYPE : item2 freqs, tdm=ptr0, output=HASH-ref (groupby terms only)
 ##  + from lda/ftdm-kbest.perl inline test _f2_scan()
 ##  + variants tdm_gf_t_indx(), tdm_gf_t_long()
+##  + UNUSED
 
 sub tdm_gf_t_def {
   my $itype = shift;
@@ -217,7 +224,8 @@ sub tdm_gf_t_def {
   ##~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
   ## tdm_gf_t : code
   my $code = qq{
-  $ctype t2,t2nxt, anzlo,anzhi,anzi, at,ad,ac, ga,sliceby;
+  $ctype t2,t2nxt, anzlo,anzhi,anzi, at,ad,ac, ga;
+  PDL_Ushort sliceby,adate;
   I32 keylen  = (\$SIZE(NG)+1)*sizeof($ctype);
   $ctype *keybuf = (${ctype}*)malloc(keylen);
   HV *f12hv = \$COMP(f12Hash) ? INT2PTR(HV*, \$COMP(f12Hash)) : NULL;
@@ -225,11 +233,11 @@ sub tdm_gf_t_def {
   SV **svpp;
   UV f2val0, f2val;
 
-  DCDEBUG(fprintf(stderr,"tdm_gf_t_${iname}(): NnzA=%d, NT2=%d, NA=%d, ND=%d, NC=%d, NG=%d, slice=%d, keylen=%d, f12hv=%p, f2hv=%p\\n", \$SIZE(NnzA), \$SIZE(NT2), \$SIZE(NA), \$SIZE(ND), \$SIZE(NC), \$SIZE(NG), \$dslice(), keylen, f12hv, f2hv); fflush(stderr);)
+  DCDEBUG(fprintf(stderr,"tdm_gf_t_${iname}(): NnzA=%d, NT2=%d, NA=%d, ND=%d, NC=%d, NG=%d, slice=%d, keylen=%d, f12hv=%p, f2hv=%p\\n", \$SIZE(NnzA), \$SIZE(NT2), \$SIZE(NA), \$SIZE(ND), \$SIZE(NC), \$SIZE(NG), \$dateslice(), keylen, f12hv, f2hv); fflush(stderr);)
 }.q{
   hv_clear(f2hv);
 
-  sliceby           = $dslice();
+  sliceby           = $dateslice();
   keybuf[$SIZE(NG)] = sliceby;
 
   /*-- guts: compute independent item2 frequencies in f2hv --*/
@@ -247,6 +255,15 @@ sub tdm_gf_t_def {
     anzlo  = $aptr(NTplus1=>t2);
     anzhi  = $aptr(NTplus1=>t2nxt);
     for (anzi=anzlo; anzi < anzhi; ++anzi) {
+
+      //-- setup output date component, checking target range
+      ad = $awhich(Ndims=>1,NnzA=>anzi);
+      ac = $d2c(ND=>ad);
+      adate = $c2date(NC=>ac);
+      if (adate < $mindate() || adate > $maxdate()) continue;
+      if (sliceby != 0) {
+        keybuf[$SIZE(NG)] = sliceby * (adate/sliceby);
+      }
 
       //-- setup output date component
       if (sliceby != 0) {
@@ -286,8 +303,11 @@ sub tdm_gf_t_def {
 		      ##
 		      "$INDX tattrs(NA,NT);",		##-- tattrs() ~ term attributes
 		      "$INDX d2c(ND);",               	##-- d2c(): doc->cat map : $vs->{d2c}
-		      "ushort c2date(NC);",            	##-- c2d(): cat->date map : $vs->{c2date}
-		      "$INDX dslice();",               	##-- slice value
+		      ##
+		      "ushort c2date(NC);",             ##-- c2d(): cat->date map : $vs->{c2date}
+		      "ushort dateslice();",            ##-- slice value
+		      "ushort mindate();",              ##-- minimum date (inlusive)
+		      "ushort maxdate();",		##-- maximum date (inclusive)
 		      ##
 		      "$INDX terms2(NT2);",		##-- item2 keys: term IDs
 		      "$INDX groupby(NG);",		##-- attribute indices over NA for groupby()
@@ -297,9 +317,10 @@ sub tdm_gf_t_def {
 	 Code => $code,
 	);
 }
-tdm_gf_t_def('long');
-tdm_gf_t_def('indx') if (PDL->can('indx'));
-
+if (0) {
+  tdm_gf_t_def('long');
+  tdm_gf_t_def('indx') if (PDL->can('indx'));
+}
 
 ##--------------------------------------------------------------
 ## tym_gf_t_TYPE : item2 freqs, tym=coo, output=HASH-ref (groupby terms only)
@@ -318,7 +339,8 @@ sub tym_gf_t_def {
   ##~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
   ## tym_gf_t : code
   my $code = qq{
-  $ctype t2,t2nxt, anzi_min=0,anzi_max=\$SIZE(NnzA),anzi, ga,sliceby;
+  $ctype t2,t2nxt, anzi_min=0,anzi_max=\$SIZE(NnzA),anzi, ga;
+  PDL_Ushort sliceby,adate;
   I32 keylen = (\$SIZE(NG)+1)*sizeof($ctype);
   $ctype *keybuf = (${ctype}*)malloc(keylen);
   HV *f12hv = \$COMP(f12Hash) ? INT2PTR(HV*, \$COMP(f12Hash)) : NULL;
@@ -326,11 +348,11 @@ sub tym_gf_t_def {
   SV **svpp;
   UV f2val0, f2val;
 
-  DCDEBUG(fprintf(stderr,"tym_gf_${iname}(): NnzA=%d, NT2=%d, NA=%d, NG=%d, slice=%d, keylen=%d, f12hv=%p, f2hv=%p\\n", \$SIZE(NnzA), \$SIZE(NT2), \$SIZE(NA), \$SIZE(NG), \$dslice(), keylen, f12hv, f2hv); fflush(stderr);)
+  DCDEBUG(fprintf(stderr,"tym_gf_${iname}(): NnzA=%d, NT2=%d, NA=%d, NG=%d, slice=%d, mindate=%d, maxdate=%d, keylen=%d, f12hv=%p, f2hv=%p\\n", \$SIZE(NnzA), \$SIZE(NT2), \$SIZE(NA), \$SIZE(NG), \$dateslice(), \$mindate(), \$maxdate(), keylen, f12hv, f2hv); fflush(stderr);)
 }.q{
   hv_clear(f2hv);
 
-  sliceby           = $dslice();
+  sliceby           = $dateslice();
   keybuf[$SIZE(NG)] = sliceby;
 
   /*-- guts: compute independent item2 frequencies in f2hv --*/
@@ -348,9 +370,11 @@ sub tym_gf_t_def {
     $LB('t2', '$awhich(Ndims=>0,NnzA=>$_)', 'anzi_min','anzi_max', 'anzi');
     for ( ; anzi < $SIZE(NnzA) && $awhich(Ndims=>0,NnzA=>anzi) == t2; ++anzi) {
 
-      //-- setup output date component
+      //-- setup output date component, checking date-range
+      adate = $awhich(Ndims=>1,NnzA=>anzi);
+      if (adate < $mindate() || adate > $maxdate()) continue;
       if (sliceby != 0) {
-        keybuf[$SIZE(NG)] = sliceby * ($awhich(Ndims=>1,NnzA=>anzi)/sliceby);
+        keybuf[$SIZE(NG)] = sliceby * (adate/sliceby);
       }
 
       //-- ignore possible keys not in f12hv
@@ -383,7 +407,10 @@ sub tym_gf_t_def {
 			"      avals(NnzA1);",		##-- a(): nonzeroes : $vs->{tym}->_vals
 			##
 			"$INDX tattrs(NA,NT);",		##-- tattrs() ~ term attributes
-			"$INDX dslice();",		##-- slice value
+			##
+			"ushort dateslice();",		##-- slice value
+			"ushort mindate();",		##-- minimum date (inlusive)
+			"ushort maxdate();",		##-- maximum date (inclusive)
 			##
 			"$INDX terms2(NT2);",		##-- item2 keys: term IDs (sorted)
 			"$INDX groupby(NG);",		##-- attribute indices over NA for groupby()

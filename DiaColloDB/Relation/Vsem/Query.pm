@@ -172,8 +172,8 @@ sub DDC::XS::CQToken::__dcvs_compile_re {
 
 ##----------------------------------------------------------------------
 ## $vq = $CQTokExact->__dcvs_compile($vq,%opts)
-##  + un-sets $vq->{ci}
 ##  + cals DDC::XS::CQToken::__dcvs_compile_neg()
+##  + basically a no-op
 sub DDC::XS::CQTokAny::__dcvs_compile {
   my ($cq,$vq,%opts) = @_;
   $cq->__dcvs_init($vq,%opts);
