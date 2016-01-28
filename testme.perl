@@ -1666,6 +1666,49 @@ sub bench_atok_file {
 #bench_atok_file(@ARGV);
 
 ##==============================================================================
+## convert tdm tfidf to frequency matrix
+
+sub tfidf_to_tdm {
+  my $vsdir = shift;
+  $vsdir =~ s{/$}{};
+  $vsdir = "$vsdir/vsem.d" if (!-e "$vsdir/tdm.ix");
+  DiaColloDB->ensureLog();
+
+  ##-- open
+  my $vs = DiaColloDB;
+  $vs->info("open($vsdir)");
+  my %ioopts = (ReadOnly=>0, mmap=>1);
+  defined(my $tdm = DiaColloDB::Utils::readPdlFile("$vsdir/tdm", class=>'PDL::CCS::Nd', %ioopts, mmap=>0))
+    or $vs->logconfess("open(): failed to load term-document matrix from $vsdir/tdm.*: $!");
+  defined(my $tw  = DiaColloDB::Utils::readPdlFile("$vsdir/tw.pdl", %ioopts))
+    or $vs->logconfess("open(): failed to load term-weights from $vsdir/tw.pdl: $!");
+
+  ##-- common variables
+  my $ix = $tdm->_whichND;
+  my $nz = $tdm->_nzvals;
+
+  if (all($nz==$nz->rint)) {
+    die("$0: $vsdir/tdm.nz already contains only integer values; aborting");
+  }
+
+  $vs->info("converting tfidf to raw frequency matrix");
+  $nz /= $tw->index($ix->slice("(0),"));
+  $nz *= log(2);
+  $nz->inplace->exp;
+  $nz -= 1;
+  $nz->inplace->rint;
+  $nz = $nz->append(0);
+
+  $vs->info("saving altered $vsdir/tdm.nz");
+  DiaColloDB::Utils::writePdlFile($nz, "$vsdir/tdm.nz")
+      or die("$0: failed to save $vsdir/tdm.nz: $!");
+
+  $vs->info("converted $vsdir/tdm.nz");
+  exit 0;
+}
+#tfidf_to_tdm(@ARGV);
+
+##==============================================================================
 ## vsem: convert tdm to tcm
 
 sub tdm_to_tcm {
@@ -1756,51 +1799,78 @@ sub tdm_to_cf {
     or die("$0: failed to write $cffile: $!");
   exit 0;
 }
-tdm_to_cf(@ARGV);
+#tdm_to_cf(@ARGV);
 
 ##==============================================================================
-## convert tdm tfidf to frequency matrix
+## vsem: add "genre" field from "textClass"
 
-sub tfidf_to_tdm {
-  my $vsdir = shift;
-  $vsdir =~ s{/$}{};
-  $vsdir = "$vsdir/vsem.d" if (!-e "$vsdir/tdm.ix");
+sub vs_add_genre {
+  my $dbdir = shift // 'kern.d-p';
   DiaColloDB->ensureLog();
+  my $vsdir = "$dbdir/vsem.d";
+  my $that   = 'DiaColloDB';
 
-  ##-- open
-  my $vs = DiaColloDB;
-  $vs->info("open($vsdir)");
-  my %ioopts = (ReadOnly=>0, mmap=>1);
-  defined(my $tdm = DiaColloDB::Utils::readPdlFile("$vsdir/tdm", class=>'PDL::CCS::Nd', %ioopts, mmap=>0))
-    or $vs->logconfess("open(): failed to load term-document matrix from $vsdir/tdm.*: $!");
-  defined(my $tw  = DiaColloDB::Utils::readPdlFile("$vsdir/tw.pdl", %ioopts))
-    or $vs->logconfess("open(): failed to load term-weights from $vsdir/tw.pdl: $!");
+  ##-- open vsem header
+  (my $hfile=$vsdir) =~ s{\.d(?:/?)$}{\.hdr};
+  my $hdr = DiaColloDB::Utils::loadJsonFile($hfile)
+    or $that->logconfess("failed to load header from $hfile: $!");
+  die("$0: vsem index in $vsdir/ already contains a 'genre' field") if (grep {$_ eq 'genre'} @{$hdr->{meta}//[]});
 
-  ##-- common variables
-  my $ix = $tdm->_whichND;
-  my $nz = $tdm->_nzvals;
+  ##-- open "textClass" enum
+  my $tcenum = $DiaColloDB::ECLASS->new(base=>"$vsdir/meta_e_textClass")
+    or $that->logconfess("failed to open enum $vsdir/meta_e_textClass: $!");
 
-  if (all($nz==$nz->rint)) {
-    die("$0: $vsdir/tdm.nz already contains only integer values; aborting");
+  ##-- open 'mvals' and 'msorti' piddles
+  defined(my $mvals0 = DiaColloDB::Utils::readPdlFile("$vsdir/mvals.pdl", mmap=>0))
+    or $that->logconfess("failed to read $vsdir/mvals.pdl: $!");
+  defined(my $msorti0 = DiaColloDB::Utils::readPdlFile("$vsdir/msorti.pdl", mmap=>0))
+    or $that->logconfess("failed to read $vsdir/msorti.pdl: $!");
+
+  $that->info("creating genre enum");
+  my $g2i = {''=>0};
+  my $ng  = 0;
+  my ($tc,$g,$tci,$gi);
+  my $tci2gi = zeroes($mvals0->type, $tcenum->size);
+  my $ntc = $tcenum->size;
+  for ($tci=0; $tci < $ntc; ++$tci) {
+    $tc = $tcenum->i2s($tci);
+    ($g=$tc) =~ s/\:.*$//;
+    $gi = $g2i->{$g} = ++$ng if (!defined($gi=$g2i->{$g}));
+    $tci2gi->set($tci => $gi);
   }
+  my %efopts = map {($_=>$tcenum->{$_})} qw(pack_id pack_o pack_l utf8);
+  my $genum = ref($tcenum)->new(%efopts)->fromHash($g2i)
+    or $that->logconfess("failed to create genre enum: $!");
+  $genum->save("$vsdir/meta_e_genre")
+    or $that->logconfess("failed to save $vsdir/meta_e_genre: $!");
 
-  $vs->info("converting tfidf to raw frequency matrix");
-  $nz /= $tw->index($ix->slice("(0),"));
-  $nz *= log(2);
-  $nz->inplace->exp;
-  $nz -= 1;
-  $nz->inplace->rint;
-  $nz = $nz->append(0);
+  ##-- update $mvals, $msorti
+  $that->info("updating mvals, msorti");
+  my $tcpos  = (grep {$hdr->{meta}[$_] eq 'textClass'} (0..$#{$hdr->{meta}}))[0];
+  my $mvals1 = zeroes($mvals0->dim(0)+1, $mvals0->dim(1));
+  $mvals1->slice("0:-2,") .= $mvals0;
+  $mvals1->slice("(-1),") .= $tci2gi->index( $mvals0->slice("($tcpos),") );
+  undef $mvals0;
 
-  $vs->info("saving altered $vsdir/tdm.nz");
-  DiaColloDB::Utils::writePdlFile($nz, "$vsdir/tdm.nz")
-      or die("$0: failed to save $vsdir/tdm.nz: $!");
+  my $msorti1 = zeroes($msorti0->dim(0), $msorti0->dim(1)+1);
+  $msorti1->slice(",0:-2") .= $msorti0;
+  $msorti1->slice(",(-1)") .= $mvals1->slice("(-1),")->qsorti;
 
-  $vs->info("converted $vsdir/tdm.nz");
-  exit 0;
+  ##-- update header
+  $that->info("updating header");
+  push(@{$hdr->{meta}}, 'genre');
+  DiaColloDB::Utils::saveJsonFile($hdr, $hfile)
+      or die("$0: failed to save header $hfile: $!");
+
+  ##-- write output piddles
+  $mvals1->writefraw("$vsdir/mvals.pdl")
+    or die("$0: failed to write new $vsdir/mvals.pdl");
+  $msorti1->writefraw("$vsdir/msorti.pdl")
+    or die("$0: failed to write new $vsdir/msorti1.pdl");
+
+  $that->info("done");
 }
-#tfidf_to_tdm(@ARGV);
-
+vs_add_genre(@ARGV);
 
 
 ##==============================================================================

@@ -68,7 +68,7 @@ our $LBAD_DEFAULT   = undef;
 ## $VSMGOOD_DEFAULT
 ##  + default positive meta-field regex for document parsing (vsem only)
 ##  + don't use qr// here, since Storable doesn't like pre-compiled Regexps
-our $VSMGOOD_DEFAULT = q/^(?:author|title|basename|collection|flags|textClass)$/;
+our $VSMGOOD_DEFAULT = q/^(?:author|title|basename|collection|flags|textClass|genre)$/;
 
 ## $VSMBAD_DEFAULT
 ##  + default negative meta-field regex for document parsing (vsem only)
@@ -476,7 +476,8 @@ BEGIN {
 		  'p' => [map {(uc($_),ucfirst($_),$_)} qw(postag tag pt pos p)],
 		  ##
 		  'doc.collection' => [qw(doc.collection collection doc.corpus corpus)],
-		  'doc.textClass'  => [qw(doc.textClass textClass textclass tc doc.genre genre)],
+		  'doc.textClass'  => [qw(doc.textClass textClass textclass tc)], #doc.genre genre
+		  'doc.genre'      => [qw(doc.genre genre doc.textClass0 textClass0 textclass0 tc0)],
 		  'doc.title'      => [qw(doc.title title)],
 		  'doc.author'     => [qw(doc.author author)],
 		  'doc.basename'   => [qw(doc.basename basename)],

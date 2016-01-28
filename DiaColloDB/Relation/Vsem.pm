@@ -218,8 +218,6 @@ sub open {
     or $vs->logwarn("open(): failed to load Harwell-Boeing pointer from $vsdir/tdm.ptr1.pdl: $!");
   defined(my $pix1 = $vs->{pix1} = readPdlFile("$vsdir/tdm.pix1.pdl", %ioopts))
     or $vs->logwarn("open(): failed to load Harwell-Boeing indices from $vsdir/tdm.pix1.pdl: $!");
-  defined($vs->{vnorm0} = readPdlFile("$vsdir/tdm.vnorm0.pdl", %ioopts))
-    or $vs->logwarn("open(): failed to load term-vector magnitudes from $vsdir/tdm.vnorm0.pdl: $!");
   $vs->{tdm}->setptr(0, $ptr0)        if (defined($ptr0));
   $vs->{tdm}->setptr(1, $ptr1,$pix1)  if (defined($ptr1) && defined($pix1));
 
@@ -1004,6 +1002,7 @@ sub vprofile {
 
   ##-- common variables
   my $logLocal = $vs->{logvprofile};
+  my $logDebug = undef; #'trace';
 
   ##-- sanity checks / fixes
   $vs->{attrs} = $coldb->{attrs} if (!@{$vs->{attrs}//[]});
@@ -1085,20 +1084,19 @@ sub vprofile {
   if ($groupby->{how} eq 't') {
     ##-- evaluate query: groupby term-attrs
     $vs->vlog($logLocal, "vprofile(): evaluating query (groupby term-attributes only)");
-    my $cofsub = PDL->can('diacollo_tdm_cof_t_'.$vs->itype) || \&PDL::diacollo_tdm_cof_t_long;
+    my $cofsub = PDL->can('diacollo_cof_t_'.$vs->itype) || \&PDL::diacollo_cof_t_long;
     $cofsub->($tdm->_whichND, @$vs{qw(ptr1 pix1)}, $tdm->_vals,
 	      @$vs{qw(tvals d2c c2date)},
-	      $sliceby,
-	      $dlo,$dhi,
+	      $sliceby, $dlo,$dhi,
 	      $qwhich, $qvals,
 	      $groupby->{gapos},
 	      ($groupby->{ghavingt}//null),
 	      $f1p={},
 	      $f12p={});
-    $vs->debug("found ", scalar(keys %$f12p), " item2 tuple(s) in ", scalar(keys %$f1p), " slice(s)");
+    $vs->vlog($logDebug, "found ", scalar(keys %$f12p), " item2 tuple(s) in ", scalar(keys %$f1p), " slice(s)");
 
     ##-- get item2 keys (groupby term-attrs)
-    $vs->vlog($logLocal, "vprofile(): evaluating query: f2p");
+    $vs->vlog($logDebug, "vprofile(): evaluating query: f2p");
     my $gkeys2  = pdl($vs->itype, map {unpack($pack_gkey,$_)} keys %$f12p);
     $gkeys2->reshape(scalar(@{$groupby->{attrs}}), $gkeys2->nelem/scalar(@{$groupby->{attrs}}));
     my $gti2    = undef;
@@ -1113,30 +1111,27 @@ sub vprofile {
     my $gfsub = PDL->can('diacollo_tym_gf_t_'.$vs->itype) || \&PDL::diacollo_tym_gf_t_long;
     $gfsub->($tym->_whichND, $tym->_vals,
 	     $vs->{tvals},
-	     $sliceby,$dlo,$dhi,
+	     $sliceby, $dlo,$dhi,
 	     ($gti2//null->convert($vs->itype)),
 	     $groupby->{gapos},
-	     $f12p,
-	     $f2p={});
-    $vs->debug("got ", scalar(keys %$f2p), " independent item2 tuple-frequencies via tym");
+	     $f12p, $f2p={});
+    $vs->vlog($logDebug, "got ", scalar(keys %$f2p), " independent item2 tuple-frequencies via tym");
   }
   elsif ($groupby->{how} eq 'c') {
     #-- evaluate query: groupby doc-attrs
     $vs->vlog($logLocal, "vprofile(): evaluating query (groupby metadata-attributes only)");
-    my $cofsub = PDL->can('diacollo_tdm_cof_c_'.$vs->itype) || \&PDL::diacollo_tdm_cof_c_long;
+    my $cofsub = PDL->can('diacollo_cof_c_'.$vs->itype) || \&PDL::diacollo_cof_c_long;
     $cofsub->($tdm->_whichND, @$vs{qw(ptr1 pix1)}, $tdm->_vals,
 	      @$vs{qw(mvals d2c c2date)},
-	      $sliceby,
-	      $dlo,$dhi,
+	      $sliceby, $dlo,$dhi,
 	      $qwhich, $qvals,
 	      $groupby->{gapos},
 	      ($groupby->{ghavingc}//null),
-	      $f1p={},
-	      $f12p={});
-    $vs->debug("found ", scalar(keys %$f12p), " item2 tuple(s) in ", scalar(keys %$f1p), " slice(s)");
+	      $f1p={}, $f12p={});
+    $vs->vlog($logDebug, "found ", scalar(keys %$f12p), " item2 tuple(s) in ", scalar(keys %$f1p), " slice(s)");
 
     ##-- get item2 keys (groupby doc-attrs)
-    $vs->vlog($logLocal, "vprofile(): evaluating query: f2p");
+    $vs->vlog($logDebug, "vprofile(): evaluating query: f2p");
     my $gkeys2  = pdl($vs->itype, map {unpack($pack_gkey,$_)} keys %$f12p);
     $gkeys2->reshape(scalar(@{$groupby->{attrs}}), $gkeys2->nelem/scalar(@{$groupby->{attrs}}));
     my $gci2    = undef;
@@ -1151,13 +1146,31 @@ sub vprofile {
 	     $sliceby,
 	     ($gci2//null->convert($vs->itype)),
 	     $groupby->{gapos},
-	     $f12p,
-	     $f2p={});
-    $vs->debug("got ", scalar(keys %$f2p), " independent item2 tuple-frequencies via cf");
+	     $f12p, $f2p={});
+    $vs->vlog($logDebug, "got ", scalar(keys %$f2p), " independent item2 tuple-frequencies via cf");
   }
   elsif ($groupby->{how} eq 'tc') {
     #-- evaluate query: groupby (term+doc)-attrs
-    $vs->logconfess("cannot group by both term- and metadata-attributes (yet)");
+    $vs->vlog($logLocal, "vprofile(): evaluating query (groupby term- and metadata-attributes)");
+    my $cofsub = PDL->can('diacollo_cof_tc_'.$vs->itype) || \&PDL::diacollo_cof_tc_long;
+    $cofsub->($tdm->_whichND, @$vs{qw(ptr1 pix1)}, $tdm->_vals,
+	      @$vs{qw(tvals mvals d2c c2date)},
+	      $sliceby, $dlo,$dhi,
+	      $qwhich, $qvals,
+	      @$groupby{qw(gatype gapos)},
+	      (map {$_//null} @$groupby{qw(ghavingt ghavingc)}),
+	      $f1p={}, $f12p={});
+    $vs->vlog($logDebug, "found ", scalar(keys %$f12p), " item2 tuple(s) in ", scalar(keys %$f1p), " slice(s)");
+
+    ##-- get item2 keys (groupby (term+doc)-attrs)
+    $vs->vlog($logDebug, "vprofile(): evaluating query: f2p (scan)");
+    my $gfsub = PDL->can('diacollo_gf_tc_'.$vs->itype) || \&PDL::diacollo_gf_tc_long;
+    $gfsub->($tdm->_whichND, $tdm->_vals,
+	      @$vs{qw(tvals mvals d2c c2date)},
+	      $sliceby, $dlo,$dhi,
+	      @$groupby{qw(gatype gapos)},
+	      $f12p, $f2p={});
+    $vs->vlog($logDebug, "got ", scalar(keys %$f2p), " independent item2 tuple-frequencies via tdm");
   }
   else {
     $vs->logconfess("unknown groupby mode '$groupby->{how}'");
@@ -1167,7 +1180,7 @@ sub vprofile {
   my @slices = $sliceby ? (map {$sliceby*$_} (($dslo/$sliceby)..($dshi/$sliceby))) : qw(0);
   my %dprfs  = map {($_=>DiaColloDB::Profile->new(label=>$_, titles=>$groupby->{titles}, N=>$vs->{N}, f1=>($f1p->{pack($pack_ix,$_)}//0)))} @slices;
   if (@slices > 1) {
-    $vs->vlog($logLocal, "vprofile(): partionining profile data into ", scalar(@slices), " slice(s)");
+    $vs->vlog($logDebug, "vprofile(): partionining profile data into ", scalar(@slices), " slice(s)");
     (my $pack_ds = '@'.packsize($pack_gkey).$pack_ix) =~ s/\*$//;
     my ($key2,$f12,$ds,$prf);
     while (($key2,$f12) = each %$f12p) {
@@ -1177,7 +1190,7 @@ sub vprofile {
       $prf->{f2}{$key2}  = $f2p->{$key2};
     }
   } else {
-    $vs->vlog($logLocal, "vprofile(): creating single-slice profile");
+    $vs->vlog($logDebug, "vprofile(): creating single-slice profile");
     @{$dprfs{$slices[0]}}{qw(f2 f12)} = ($f2p,$f12p);
   }
 

@@ -31,6 +31,7 @@ our @ISA = qw(DiaColloDB::Document);
 ##    pagef  =>$ipage,    ##-- index-field for $page attribute (default=undef:none)
 ##    tokens =>\@tokens,  ##-- tokens, including undef for EOS
 ##    meta   =>\%meta,    ##-- document metadata (e.g. author, title, collection, ...)
+##                        ##   + also generates special $meta->{genre} as 1st component of $meta->{textClass} if available
 ##   )
 ## + each token in @tokens is a HASH-ref {w=>$word,p=>$pos,l=>$lemma,...}
 ## + default attribute positions ($iw,$ip,$il,$ipage) are overridden doc lines '%%$DDC:index[INDEX]=LONGNAME w' etc if present
@@ -129,6 +130,10 @@ sub fromFile {
     $last_was_eos = 0;
   }
   push(@$tokens,$eos) if (!$last_was_eos);
+
+  ##-- hack: compute top-level $meta->{genre} from $meta->{textClass} if required
+  ($meta->{genre} = $meta->{textClass}) =~ s/\:.*$//
+    if (defined($meta->{textClass}) && !defined($meta->{genre}));
 
   $fh->close() if (!ref($file));
   return $doc;
