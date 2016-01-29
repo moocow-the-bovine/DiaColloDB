@@ -318,9 +318,9 @@ sub qinfoData {
     ++$xi;
   }
 
-  ##-- common restrictions
-  push(@qxstrs, qq(\$p=/$coldb->{pgood}/)) if ($coldb->{pgood});
-  push(@qxstrs, qq(\$=!/$coldb->{pbad}/))  if ($coldb->{pbad});
+  ##-- common restrictions (trunk/2015-10-28: these are too expensive for large corpora (timeouts): ignore 'em
+  #push(@qxstrs, qq(\$p=/$coldb->{pgood}/)) if ($coldb->{pgood});
+  #push(@qxstrs, qq(\$=!/$coldb->{pbad}/))  if ($coldb->{pbad});
 
   ##-- utf8
   foreach (@q1strs,@q2strs,@qxstrs,@fstrs) {
