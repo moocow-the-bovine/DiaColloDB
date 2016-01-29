@@ -28,6 +28,8 @@ Available from https://sourceforge.net/projects/ddc-concordance/files/ddc-perl-x
 
 =item IPC::Run
 
+=item Log::Log4perl
+
 =item (a corpus to index or an existing index to query)
 
 =back

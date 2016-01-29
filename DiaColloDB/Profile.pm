@@ -1,4 +1,5 @@
 ## -*- Mode: CPerl -*-
+##
 ## File: DiaColloDB::Profile.pm
 ## Author: Bryan Jurish <moocow@cpan.org>
 ## Description: collocation db, (co-)frequency profile
@@ -17,7 +18,12 @@
 ##    - Kilgarriff, A. and Tugwell, D. 2002. `Sketching words'. In M.-H. Corréard (ed.) Lexicography and Natural
 ##      Language Processing: A Festschrift in Honour of B. T. S. Atkins. EURALEX, 125-137.
 ##      URL http://www.kilgarriff.co.uk/Publications/2002-KilgTugwell-AtkinsFest.pdf
-
+##
+##    - Evert, Stefan (2008). "Corpora and collocations." In A. Lüdeling and M. Kytö (eds.),
+##      Corpus Linguistics. An International Handbook, article 58, pages 1212-1248.
+##      Mouton de Gruyter, Berlin.
+##      URL (extended manuscript): http://purl.org/stefan.evert/PUB/Evert2007HSK_extended_manuscript.pdf
+##
 
 package DiaColloDB::Profile;
 use DiaColloDB::Utils qw(:math :html);
@@ -55,9 +61,11 @@ our @ISA = qw(DiaColloDB::Persistent);
 ##    titles => \@titles, ##-- item group titles (default:undef: unknown)
 ##    #
 ##    eps => $eps,       ##-- smoothing constant (default=0.5)
-##    score => $func,    ##-- selected scoring function qw(f fm lf lfm mi ld vsim)
+##    score => $func,    ##-- selected scoring function qw(f fm lf lfm mi ld ll)
 ##    mi => \%mi12,      ##-- score: mutual information * logFreq a la Wortprofil; requires compile_mi()
+##    mi3 => \%mi312,    ##-- score: mutual information^3 a la Rychly (2008); requires compile_mi3()
 ##    ld => \%ld12,      ##-- score: log-dice a la Wortprofil; requires compile_ld()
+##    ll => \%ll12,      ##-- score: 1-sided log-likelihood a la Evert (2008); requires compile_ll()
 ##    fm => \%fm12,      ##-- frequency per million score; requires compile_fm()
 ##    lf => \%lf12,      ##-- log-frequency ; requires compile_lf()
 ##    lfm => \%lfm12,    ##-- log-frequency per million; requires compile_lfm()
@@ -131,14 +139,15 @@ sub titles {
 ## @keys = $prf->scoreKeys()
 ##  + returns known score function keys
 sub scoreKeys {
-  return qw(mi ld fm lf lfm);
+  return qw(mi mi3 ld ll fm lf lfm);
 }
 
 ## $bool = $prf->empty()
 ##  + returns true iff profile is empty
 sub empty {
   my $p = shift;
-  return 0 if ($p->{f1});
+  #return 0 if ($p->{f1}); ##-- do we want to keep nonzero $f1 even if there are no collocates? i think not... moocow 2015-11-02
+  return 1 if (!$p->{f1});
   my $f = (grep {defined($p->{$_})} qw(f2 f12),$p->scoreKeys)[0];
   return !$f || !scalar(keys(%{$p->{$f}}));
 }
@@ -283,7 +292,7 @@ sub saveHtmlFile {
 ## Compilation
 
 ## $prf = $prf->compile($func,%opts)
-##  + compile for score-function $func, one of qw(f fm mi ld); default='f'
+##  + compile for score-function $func, one of qw(f fm lf lfm mi mi3 ld ll); default='f'
 sub compile {
   my $prf = shift;
   my $func = shift;
@@ -292,7 +301,9 @@ sub compile {
   return $prf->compile_lf(@_)  if ($func =~ m{^(?:l(?:og)?-?f(?:req(?:uency)?)?(?:12)?)$}i);
   return $prf->compile_lfm(@_) if ($func =~ m{^(?:l(?:og)?-?f(?:req(?:uency)?)?(?:-?p(?:er)?)?(?:-?m(?:(?:ill)?ion)?)(?:12)?)$}i);
   return $prf->compile_ld(@_)  if ($func =~ m{^(?:ld|log-?dice)}i);
-  return $prf->compile_mi(@_)  if ($func =~ m{^(?:l?f?mi|mutual-?information)$}i);
+  return $prf->compile_ll(@_)  if ($func =~ m{^(?:ll|log-?l(?:ikelihood)?)}i);
+  return $prf->compile_mi(@_)  if ($func =~ m{^(?:(?:lf)?mi(?:-?lf)?|mutual-?information-?(?:l(?:og)?)?-?f(?:req(?:uency)?)?)?$}i);
+  return $prf->compile_mi3(@_) if ($func =~ m{^(?:mi3|mutual-?information-?3)$}i);
   $prf->logwarn("compile(): unknown score function '$func'");
   return $prf->compile_f(@_);
 }
@@ -392,6 +403,31 @@ sub compile_mi {
   return $prf;
 }
 
+## $prf = $prf->compile_mi3(%opts)
+##  + computes MI^3 profile in $prf->{mi} a la Rychly (2008)
+##  + sets $prf->{score}='mi3'
+##  + %opts:
+##     eps => $eps  #-- clobber $prf->{eps}
+sub compile_mi3 {
+  my ($prf,%opts) = @_;
+  my ($N,$f1,$pf2,$pf12) = @$prf{qw(N f1 f2 f12)};
+  my $mi3 = $prf->{mi3} = {};
+  my $eps = $opts{eps} // $prf->{eps} // 0; #0.5;
+  my ($i2,$f2,$f12);
+  while (($i2,$f2)=each(%$pf2)) {
+    $f12 = $pf12->{$i2} // 0;
+    $mi3->{$i2} = (
+		   log2(
+			(($f12+$eps)**3 * ($N+$eps))
+			/
+			(($f1+$eps)*($f2+$eps))
+		       )
+		  );
+  }
+  $prf->{score} = 'mi3';
+  return $prf;
+}
+
 ## $prf = $prf->compile_ld(%opts)
 ##  + computes log-dice profile in $prf->{ld} a la Rychly (2008)
 ##  + sets $pf->{score}='ld'
@@ -414,6 +450,41 @@ sub compile_ld {
   $prf->{score} = 'ld';
   return $prf;
 }
+
+sub log0 { return $_[0]==0 ? 0 : log($_[0]) }
+
+## $prf = $prf->compile_ll(%opts)
+##  + computes 1-sided log-log-likelihood ratio in $prf->{ll} a la Evert (2008)
+##  + sets $pf->{score}='ll'
+##  + %opts:
+##     eps => $eps  #-- clobber $prf->{eps}
+sub compile_ll {
+  my ($prf,%opts) = @_;
+  my $ll = $prf->{ll} = {};
+  my $eps = $opts{eps} // $prf->{eps} // 0; #0.5; ##-- IGNORED here
+  my ($N,$f1,$pf2,$pf12) = @$prf{qw(N f1 f2 f12)};
+  $N  += 2*$eps;
+  $f1 += $eps;
+  my ($i2,$f2,$f12,$logl);
+  while (($i2,$f2)=each(%$pf2)) {
+    $f12  = ($pf12->{$i2} // 0) + $eps;
+    $logl = (##-- raw log-lambda
+	     $f12*log0($f12/($f1*$f2/$N))
+	     +($f1-$f12)*log0(($f1-$f12)/(($f1*($N-$f2)/$N)))
+	     +($f2-$f12)*log0(($f2-$f12)/(($N-$f1)*$f2/$N))
+	     +($N-$f1-$f2+$f12)*log0(($N-$f1-$f2+$f12)/(($N-$f1)*($N-$f2)/$N))
+	    );
+    $ll->{$i2} = (($f12 < ($f1*$f2/$N) ? -1 : 1) ##-- one-sided log-likelihood a la Evert (2008): negative for dis-associations
+		  #* $logl			 ##-- raw log-lambda values over-emphasize strong collocates
+		  * log0(1+$logl) 		 ##-- extra log() is better for scaling
+		  #* sqrt($logl)                 ##-- extra sqrt() for scaling
+		  #* ($logl**(1/3))              ##-- extra cube-root for scaling
+		 );
+  }
+  $prf->{score} = 'll';
+  return $prf;
+}
+
 
 ##==============================================================================
 ## Trimming

@@ -1,0 +1,101 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!-- Created with Inkscape (http://www.inkscape.org/) -->
+
+<svg
+   xmlns:dc="http://purl.org/dc/elements/1.1/"
+   xmlns:cc="http://creativecommons.org/ns#"
+   xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
+   xmlns:svg="http://www.w3.org/2000/svg"
+   xmlns="http://www.w3.org/2000/svg"
+   xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
+   xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
+   width="165.60921"
+   height="160.80872"
+   id="svg11546"
+   version="1.1"
+   inkscape:version="0.48.5 r10040"
+   sodipodi:docname="diacollo-logo-key-red99.svg">
+  <defs
+     id="defs11548" />
+  <sodipodi:namedview
+     id="base"
+     pagecolor="#ffffff"
+     bordercolor="#666666"
+     borderopacity="1.0"
+     inkscape:pageopacity="0.0"
+     inkscape:pageshadow="2"
+     inkscape:zoom="2.8"
+     inkscape:cx="75.061874"
+     inkscape:cy="66.906104"
+     inkscape:document-units="px"
+     inkscape:current-layer="g7608"
+     showgrid="false"
+     fit-margin-top="10"
+     fit-margin-left="10"
+     fit-margin-right="10"
+     fit-margin-bottom="10"
+     inkscape:window-width="1068"
+     inkscape:window-height="782"
+     inkscape:window-x="18"
+     inkscape:window-y="100"
+     inkscape:window-maximized="0" />
+  <metadata
+     id="metadata11551">
+    <rdf:RDF>
+      <cc:Work
+         rdf:about="">
+        <dc:format>image/svg+xml</dc:format>
+        <dc:type
+           rdf:resource="http://purl.org/dc/dcmitype/StillImage" />
+        <dc:title></dc:title>
+      </cc:Work>
+    </rdf:RDF>
+  </metadata>
+  <g
+     inkscape:label="Layer 1"
+     inkscape:groupmode="layer"
+     id="layer1"
+     transform="translate(-253.52932,-484.82555)">
+    <g
+       style="display:inline"
+       id="g7658"
+       transform="translate(-651.32212,-548.39857)">
+      <g
+         style="display:inline"
+         transform="translate(193.39328,757.04644)"
+         id="g7608">
+        <path
+           style="fill:#ffffff;fill-opacity:1;display:inline"
+           id="path7610"
+           d="m 867.06737,420.05843 c 0,3.82396 -3.09902,6.92796 -6.92298,6.92796 l -131.76325,0 c -3.82396,0 -6.92298,-3.104 -6.92298,-6.92796 l 0,-126.9528 c 0,-3.82395 3.09902,-6.92795 6.92298,-6.92795 l 131.76325,0 c 3.82396,0 6.92298,3.104 6.92298,6.92795 l 0,126.9528 0,0 z"
+           inkscape:connector-curvature="0" />
+        <path
+           style="fill:#b3b3b3;display:inline;fill-opacity:1"
+           id="path7612"
+           d="m 860.77466,289.79735 0,109.10104 c 0,3.82395 -6.92298,6.91799 -6.92298,6.91799 -23.29747,8.38281 -59.01345,20.74651 -118.71198,0 -6.0411,-2.09757 -6.92298,-3.09404 -6.92298,-6.91799 l 0,-109.10104"
+           inkscape:connector-curvature="0" />
+      </g>
+      <g
+         style="fill:#ffffff;fill-opacity:1;display:inline"
+         id="g7628"
+         transform="matrix(0.70010617,0,0,0.70010617,1006.1065,914.33539)">
+        <path
+           inkscape:connector-curvature="0"
+           id="path7630"
+           d="m -83.179975,192.73984 c -36.976095,40.58795 -18.665105,93.62885 11,125.3125 l 0,-76.46875 c -9.64868,-8.56567 -16.48653,-23.38788 -11,-48.84375 z m 115,0 c 5.52795,30.45731 -8.24697,46.45645 -21.53125,54.0625 3.438,2.03191 6.61367,4.43652 9.5,7.25 5.37387,5.1693 9.35841,11.1192 11.96875,17.875 2.61009,6.7559 3.90613,14.42155 3.90625,22.96875 -4e-5,2.68591 -0.12329,5.27301 -0.375,7.78125 18.6526,-31.45537 24.68188,-74.6945 -3.46875,-109.9375 z"
+           style="color:#000000;fill:#ffffff;fill-opacity:1;fill-rule:evenodd;stroke:none;stroke-width:3.10889316000000004;marker:none;visibility:visible;display:inline;overflow:visible;enable-background:accumulate" />
+        <text
+           xml:space="preserve"
+           style="font-size:144px;font-style:normal;font-variant:normal;font-weight:bold;font-stretch:normal;text-align:start;line-height:125%;letter-spacing:0px;word-spacing:0px;writing-mode:lr-tb;text-anchor:start;fill:#ffffff;fill-opacity:1;stroke:none;display:inline;font-family:Bitstream Vera Sans;-inkscape-font-specification:Bitstream Vera Sans Bold"
+           x="-80.871841"
+           y="347.49893"
+           id="text7632"
+           sodipodi:linespacing="125%"><tspan
+             sodipodi:role="line"
+             id="tspan7634"
+             x="-80.871841"
+             y="347.49893">D</tspan></text>
+      </g>
+    </g>
+  </g>
+</svg>

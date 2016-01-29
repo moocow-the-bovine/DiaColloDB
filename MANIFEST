@@ -6,6 +6,7 @@ MANIFEST.SKIP
 perlpod.css
 README.rpod
 README.txt
+Changes
 
 DiaColloDB.pm
 DiaColloDB.pod

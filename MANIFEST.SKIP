@@ -8,6 +8,7 @@
 ^pm_to_blib$
 ^blib
 \bpod2htm[di]\.
+^MYMETA\.
 \.svn
 ^\.\#
 \/\.\#
@@ -40,3 +41,6 @@ dump.mak
 ^dcdb-update-header\.perl$
 ^kern[0-9]*\b
 ^zeit[0-9]*\b
+^logo/
+^tags\.map$
+\.gp$

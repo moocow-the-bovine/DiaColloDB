@@ -16,6 +16,7 @@ REQUIREMENTS
     File::Map
     JSON
     IPC::Run
+    Log::Log4perl
     (a corpus to index or an existing index to query)
 
 DESCRIPTION

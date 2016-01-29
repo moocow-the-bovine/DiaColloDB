@@ -1,0 +1,153 @@
+##-*- Mode: Change-Log; coding: utf-8; -*-
+##
+## Change log for perl distribution DiaColloDB
+
+v0.07.015 Wed, 04 Nov 2015 14:18:20 +0100 moocow
+	* added mi3 profiles a la Rychlý (2008)
+	* report log-log-likelihood scores (extra log() for better scaling)
+	* singularity checking for log-likelihood computations
+
+v0.07.014 Tue, 03 Nov 2015 11:42:26 +0100 moocow
+	* added 1-sided log-likelihood ratio profiles a la Evert (2008)
+
+v0.07.013 2015-11-02 12:52:56 +0100 moocow
+	* fix for Profile::empty(): a profile is empty if it contains no collocates, even if it has nonzero f1
+
+v0.07.012 Wed, 28 Oct 2015 13:04:20 +0100 moocow
+	* omit {pgood},{pbad} restrictions in Relation::qinfoData()
+	  - these are too expensive for large corpora, resulting in timeouts for KWIC-links
+
+v0.07.011 Tue, 29 Sep 2015 09:10:33 +0200 moocow
+	* require perl >= v5.10.0 (for // operator)
+
+v0.07.010 2015-09-24  moocow
+	* moved DDC dependency and include to new CPAN-friendly DDC::Concordance
+	* updated README
+	* distcheck fixes
+	* fixed fill/trim/alignment bug in ddc-diff ('fill' option wasn't being properly honored)
+
+v0.07.009 2015-08-03  moocow
+	* relation-wise dbinfo
+	  - merged -r 15066:15067 diacollo-0.07.006+vsem into DiaColloDB.pm, DiaColloDB/Relation.pm
+
+v0.07.008 2015-07-31  moocow
+	* honor {xdmin},{xdmax} in DiaColloDB::xidsByDate()
+	  - fixes 'cannot align non-trivial multi-profiles of unequal size' bug in corpora with bogus dates (e.g. zeitungen)
+	* ignore Makefile.old
+
+v0.07.007 2015-07-23  moocow
+	* merged -r15021:15022 branch diacollo-0.07.006+vsem into Relation/DDC.pm
+	  - fix for e.g. author-profiles
+	* allow ddc queries without primary targets (=1), for 'subcorpus comparison'
+	* merged -r 15013:15014 diacollo-0.07.006+vsem into DDC.pm
+	  - fixes for pseudo-corpus comparison
+
+v0.07.006 2015-07-20  moocow, tweaks
+	* plots/*: pretty diff- and score-function plots
+	* documented -diff option to dcdb-query.perl
+	* Profile/Diff.pm pre-trimming tweaks, lavg fix
+	* doc fixes; lf, lfm score-funcs
+	* more diff documentation
+	* added, documented -diff=OP option (adiff,diff,sum,min,max,avg,havg)
+
+v0.07.005 2015-07-08  moocow
+	* ddc groupby-request parsing tweak
+	* groupby without token attributes
+	* ddc tweak for groupby without a token field -- still not working (keys()-queries fail)
+
+v0.07.004 2015-07-02  moocow
+	* fixed bogus $DiaColloDB::MMCLASS = "DiaColloDB::MultiMapFile::MMap" (not yet written)
+	* readme fixes
+	* distribution, docs, readme, htmlifypods
+	* fix mantis bug #804 : don't trim empty sub-profiles in diff mode
+
+v0.07.003 2015-06-01  moocow
+	* renamed 'local' profiling option to 'global' (for better web-wrapper transparency and defaults)
+
+v0.07.002 2015-05-29  moocow
+	* missing profile fix for diff (argh)
+	* added misc/ddc-sample.txt: notes on #SAMPLE keyword
+	* merged -r14464:HEAD diacollo-0.06+ddc intro trunk
+
+v0.05.001 2015-04-23  moocow
+	* reverted trunk to current state of diacollo-0.05.001-pre-vsem branch
+	* benchmark -iters for dcdb-query.perl
+	* started trying to add DocClassify-based DSem to DiaColloDB: stuck on questions of modularity
+	* 'logwhich' option: log multiple sub-classes
+
+v0.05.001 2015-03-24  moocow
+	* EnumFile fixes for missing keys
+	* EnumFile::Tied : tied interface to EnumFile
+	  - EnumFile and friends (except for FixedLen::MMap) now allow in-memory cache to override file contents for i2s(), s2i()
+
+v0.05 2015-03-23  moocow
+	* more verbose union messages
+	* added wvi-doc2terms.perl: not very encouraging
+	* woe is me: additive term-identities don't look kosher with word2vec
+	* work on topic-doc matrix (WAY TOO BIG  sentence-based model with k=200)
+	* word2vec tweaks: a bit further along...
+	* union tweaks
+	* union() now uses temporary  objects to map attribute indices (ai2u, xi2u)
+	  - should improve memory usage a bit
+	  - individual maps are still loaded to memory on a per-db basis
+	    (at most 1 at any time) in Cofreqs::union and Unigrams::union
+	* stricter request handling (die on unsupported attributes)
+	* groupby and generic requests working via web-wrapper
+	  - thought: should we model the query language on ddc (maybe even
+	    use DDC::XS or similar) for max compatibility?
+	* updated MANIFEST
+	* parseRequest() for user queries working
+	* added {maxExpand} option to kludge memory-hogging queries
+	* factored out parseRequest() from groupby()
+	  + TODO: implement generic target query using parseRequest() rather than named parameters
+	* dbinfo for http (add url), list, file, http
+	* dbinfo, timestamp, disk usage
+	* remove MYMETA.yml from svn; ignore some other stuff
+	* EnumFile: more fixes for perl 5.18.2
+	* more groupby fixes
+	* attrs/groupby hack for shared arrays
+	* removed 'use bytes' pragmas almost everywhere
+	  - deprecated in perl 5.18.2 (ubuntu 14.04.1 / kira)
+	  - workaround is to use utf8::encode() and length(), if needed on a temporary
+	* delete empty records for test-check-enum
+	* added test-check-enum.perl
+	* buggy diacollo : taz
+
+v0.04 2015-03-09  moocow
+	* 'having' filters, wip
+	* adopt xdmin,xdmax for union
+	* use lib qw(lib) for update-header
+	* merged -r r14008:14041 branch diacollo-0.03+attrs intro trunk : compile-time user-defined attributes
+
+v0.03 2015-03-04  moocow
+	* metadata parsing for Document/DDCTabs.pm
+	* w2v test functionality now in w2v-compile.perl + w2v-query.perl
+	* removed cofreqs debugging log stuff
+	* utf8 parsing mode (improved filter regex matching)
+	* removed generated Makefile from svn
+	* tweaks for d* integration
+	* added dump.mak from old Makefile r13904
+	* export tweaks
+	* cofreqs loading tweaks, timing
+	* union tweaks and woes : seems basically working now
+	* dump DiaColloDB::Persistent subclass files
+	  - toArray(), fromArray() for PackedFile
+	  - work-in-progress: DiaColloDB::union()
+	* Client layer working and pretty much tested
+	* dcdb-query.perl added to MANIFEST
+	* added dcdb-query.perl : replaces dcdb-(profile|compare).perl
+	* moved Client/Distributed.pm -> Client/list.pm
+
+v0.02 2015-02-24  moocow
+	* DiaColloDB/Client/Distributed.pm: error pass-through
+	* distributed client stuff
+	  - functionality is basically in place, but NOT CORRECT
+	  - getting (fudge*k)-best items from sub-corpora wonks up the
+	  results (e.g. 'gnädig' doesn't appear for Mann vs Frau in
+	  distributed kern), other frequencies and scores are off too
+	* Diff improvements: trimming via absolute value, add() support
+	* utf8 tweaks
+	* DiaColloDB::compare(): basically working ("diff" profiles)
+
+v0.01 2015-02-20  moocow
+	* initial version

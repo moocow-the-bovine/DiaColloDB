@@ -1274,11 +1274,11 @@ sub test_ddcdiff {
   my $dbdir = shift || 'dta.d';
   my %opts  = map {split(/=/,$_,2)} @_;
 
-  $opts{aquery}   ||= "Sch\x{e4}del #has[author,/Blumenbach/]";
-  $opts{bquery}   ||= "Sch\x{e4}del #has[author,/Forster/]";
-  $opts{groupby} ||= 'l,p=ADJA';
-  $opts{aslice}   ||= 0;
-  $opts{bslice}   ||= 0;
+  $opts{aquery}   ||= "Fr\xfchling";
+  $opts{bquery}   ||= "Herbst";
+  $opts{groupby} ||= '';
+  $opts{aslice}   ||= 10;
+  $opts{bslice}   ||= 10;
   $opts{adate}   ||= ''; #'1600:1799';
   $opts{bdate}   ||= ''; #'1800:1899';
   $opts{score}   ||= 'ld';
@@ -1292,7 +1292,7 @@ sub test_ddcdiff {
 
   exit 0;
 }
-#test_ddcdiff(@ARGV);
+test_ddcdiff(@ARGV);
 
 ##--------------------------------------------------------------
 sub test_pnndiff {
