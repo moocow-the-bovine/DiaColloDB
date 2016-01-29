@@ -1178,13 +1178,15 @@ sub vprofile {
   my %dprfs  = map {($_=>DiaColloDB::Profile->new(label=>$_, titles=>$groupby->{titles}, N=>$vs->{N}, f1=>($f1p->{pack($pack_ix,$_)}//0)))} @slices;
   if (@slices > 1) {
     $vs->vlog($logDebug, "vprofile(): partionining profile data into ", scalar(@slices), " slice(s)");
-    (my $pack_ds = '@'.packsize($pack_gkey).$pack_ix) =~ s/\*$//;
-    my ($key2,$f12,$ds,$prf);
+    my $len_gkey = packsize($pack_gkey);
+    (my $pack_ds = '@'.$len_gkey.$pack_ix) =~ s/\*$//;
+    my ($key2,$gkey,$f12,$ds,$prf);
     while (($key2,$f12) = each %$f12p) {
-      $ds  = unpack($pack_ds, $key2);
-      $prf = $dprfs{$ds};
-      $prf->{f12}{$key2} = $f12;
-      $prf->{f2}{$key2}  = $f2p->{$key2};
+      $ds   = unpack($pack_ds, $key2);
+      $prf  = $dprfs{$ds};
+      $gkey = substr($key2, 0, $len_gkey);
+      $prf->{f12}{$gkey} = $f12;
+      $prf->{f2}{$gkey}  = $f2p->{$key2};
     }
   } else {
     $vs->vlog($logDebug, "vprofile(): creating single-slice profile");
