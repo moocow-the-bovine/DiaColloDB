@@ -42,6 +42,7 @@ BEGIN {
 ##   mgood  => $regex,      ##-- positive filter regex for metadata attributes
 ##   mbad   => $regex,      ##-- negative filter regex for metadata attributes
 ##   submax => $submax,     ##-- choke on requested tdm cross-subsets if dense subset size ($NT_sub * $ND_sub) > $submax; default=2**29 (512M)
+##   mquery => \%mquery,    ##-- query templates for meta-fields (default: textClass hack for genre): ($mattr=>$TEMPLATE, ...)
 ##   ##
 ##   ##-- logging options
 ##   logvprofile => $level, ##-- log-level for vprofile() (default=undef:none)
@@ -91,6 +92,9 @@ sub new {
 			       mgood => $DiaColloDB::TDF_MGOOD_DEFAULT,
 			       mbad  => $DiaColloDB::TDF_MBAD_DEFAULT,
 			       submax => 2**29,
+			       mquery => {
+					  'genre' => '* #HAS[textClass,/^\Q__W2__\E/]',
+					 },
 			       minFreq => undef,
 			       minDocFreq => 4,
 			       minDocSize => 4,
@@ -1499,12 +1503,23 @@ sub qinfo {
   my $qf = $qo->getFilters // [];
   my $q2str = '';
   foreach (@{$opts{groupby}{areqs}}) {
-    if ($_->[0] =~ /^doc\.(.*)/) {
-      push(@$qf, DDC::XS::CQFHasField->new($1,"__W2.${xi}__"));
+    if ($_->[2]{atype} eq 'm') {
+      ##-- meta-attribute
+      if (defined($vs->{mquery}{$_->[2]{aname}})) {
+	##-- meta-attribute: from template
+	(my $mqstr = $vs->{mquery}{$_->[2]{aname}}) =~ s/__W2__/__W2.${xi}__/g;
+	my $mqobj = DDC::XS->parse($mqstr);
+	push(@$qf, @{$mqobj->getOptions->getFilters}) if ($mqobj->getOptions);
+	$q2str .= ($q2str ? " WITH " : '').$mqobj->toString if (!UNIVERSAL::isa($mqobj,'DDC::XS::CQTokAny'));
+      } else {
+	##-- meta-attribute: default: literal #HAS filter
+	push(@$qf, DDC::XS::CQFHasField->new($_->[2]{aname},"__W2.${xi}__"));
+      }
     }
     else {
+      ##-- token-attribute (literal)
       $q2str .= ' WITH ' if ($q2str);
-      $q2str .= DDC::XS::CQTokExact->new($_->[0],"__W2.${xi}__")->toString;
+      $q2str .= DDC::XS::CQTokExact->new($_->[2]{aname},"__W2.${xi}__")->toString;
     }
     ++$xi;
   }

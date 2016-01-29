@@ -500,6 +500,7 @@ BEGIN {
 		);
   %ATTR_CBEXPR = (
 		  'doc.textClass' => DDC::XS::CQCountKeyExprRegex->new(DDC::XS::CQCountKeyExprBibl->new('textClass'),':.*$',''),
+		  'doc.genre'     => DDC::XS::CQCountKeyExprRegex->new(DDC::XS::CQCountKeyExprBibl->new('textClass'),':.*$',''),
 		 );
 }
 sub attrName {
