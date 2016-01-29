@@ -1174,7 +1174,7 @@ sub vprofile {
   }
 
   ##-- convert packed to native-style profiles (by date-slice)
-  my @slices = $sliceby ? (map {$sliceby*$_} (($dslo/$sliceby)..($dshi/$sliceby))) : qw(0);
+  my @slices = $sliceby ? (map {$sliceby*$_} (($dlo/$sliceby)..($dhi/$sliceby))) : qw(0);
   my %dprfs  = map {($_=>DiaColloDB::Profile->new(label=>$_, titles=>$groupby->{titles}, N=>$vs->{N}, f1=>($f1p->{pack($pack_ix,$_)}//0)))} @slices;
   if (@slices > 1) {
     $vs->vlog($logDebug, "vprofile(): partionining profile data into ", scalar(@slices), " slice(s)");

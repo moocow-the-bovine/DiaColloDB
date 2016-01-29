@@ -1578,7 +1578,7 @@ sub parseDateRequest {
   }
 
   ##-- slice-range
-  ($slo,$shi) = map {$slice ? ($slice*int(($_//0)/$slice)) : 0} ($dlo,$dhi);
+  ($slo,$shi) = map {$slice ? ($slice*int($_/$slice)) : 0} (($dlo//$coldb->{xdmin}),($dhi//$coldb->{xdmax}));
 
   return wantarray ? ($dfilter,$slo,$shi,$dlo,$dhi) : $dfilter;
 }
