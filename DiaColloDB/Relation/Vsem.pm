@@ -6,11 +6,9 @@
 package DiaColloDB::Relation::Vsem;
 use DiaColloDB::Relation;
 use DiaColloDB::Relation::Vsem::Query;
-use DiaColloDB::Profile::Pdl;
-use DiaColloDB::Profile::PdlDiff;
 use DiaColloDB::Utils qw(:pack :fcntl :file :math :json :list :pdl :temp :env :run);
 use DiaColloDB::PackedFile;
-use DiaColloDB::Temp::Hash;
+#use DiaColloDB::Temp::Hash;
 #use DiaColloDB::Temp::Array;
 use DiaColloDB::PDL::MM;
 use DiaColloDB::PDL::Utils;

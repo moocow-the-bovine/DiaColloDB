@@ -53,10 +53,6 @@ DiaColloDB/Profile/Multi.pm
 DiaColloDB/Profile/Multi.pod
 DiaColloDB/Profile/MultiDiff.pm
 DiaColloDB/Profile/MultiDiff.pod
-DiaColloDB/Profile/Pdl.pm
-#DiaColloDB/Profile/Pdl.pod
-DiaColloDB/Profile/PdlDiff.pm
-#DiaColloDB/Profile/PdlDiff.pod
 DiaColloDB/Relation.pm
 DiaColloDB/Relation.pod
 DiaColloDB/Relation/Cofreqs.pm
