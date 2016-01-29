@@ -78,6 +78,22 @@ EOH
 ##======================================================================
 
 ##--------------------------------------------------------------
+## tupleIds : binary search with on-the-fly indexing: TODO
+if (0) {
+pp_def('diacollo_tupleids',
+       Pars => join("\n    ",
+		    '',
+		    "items(A,N);",    ##-- item-tuples (A:#/attributes, N:#/items)
+		    "isort(N,A);",    ##-- sort-indices for items() along dimension N for attribute A
+		    "apos();",        ##-- selected attribute (A) index
+		    "avals(NV);",     ##-- target values for attribute (A)
+		    "[o] ivals(NV);", ##-- all item-indices $ii:N with items($apos,$ii) \in $avals(), -1 for none
+		    "[o] nivals();",  ##-- number of returned ivals() -- HARD: we don't know this in advance!
+		   ),
+      );
+}
+
+##--------------------------------------------------------------
 ## cof_${TC}_${TYPE} : coo+ptr(1)-matrix vs. ptr-vector, output=HASH-ref
 ##  + ${TC} is one of 't':terms, 'c':cats
 ##  + ${TYPE} is a piddle type for indices (long, indx)

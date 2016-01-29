@@ -8,7 +8,7 @@ use Pod::Usage;
 use File::Basename qw(basename);
 use strict;
 
-use DiaColloDB::Relation::Vsem; ##-- DEBUG
+use DiaColloDB::Relation::TDF; ##-- DEBUG
 
 BEGIN {
   select STDERR; $|=1; select STDOUT;
@@ -75,7 +75,7 @@ GetOptions(##-- general
 	   'collocations|collocs|collo|col|cofreqs|cof|co|f12|f2|12|2' => sub { $rel='cof' },
 	   'unigrams|ug|u|f1|1' => sub { $rel='xf' },
 	   'ddc' => sub { $rel='ddc' },
-	   'vector-space|vec|vector-semantics|vsem|vs|semantics|sem|lsi|tfidf|tdm' => sub { $rel='vsem' },
+	   'tdf|tdm|matrix|mat|vector-space|vs|vector|vec' => sub { $rel='tdf' },
 	   ##
 	   (map {("${_}date|${_}d=s"=>\$query{"${_}date"})} ('',qw(a b))), 				  ##-- date,adate,bdate
 	   (map {("${_}date-slice|${_}ds|${_}slice|${_}sl|${_}s=s"=>\$query{"${_}slice"})} ('',qw(a b))), ##-- slice,aslice,bslice

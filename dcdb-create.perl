@@ -8,7 +8,7 @@ use Pod::Usage;
 use File::Basename qw(basename);
 use strict;
 
-use DiaColloDB::Relation::Vsem; ##-- DEBUG
+use DiaColloDB::Relation::TDF; ##-- DEBUG
 
 ##----------------------------------------------------------------------
 ## Globals
@@ -37,11 +37,11 @@ our %coldb    = (
 		 tfmin=>2,
 		 fmin_l=>undef,
 		 keeptmp=>0,
-		 vsopts=>{
-			  minDocFreq => 4,
-			  minDocSize => 8,
-#			  maxDocSize => 'inf',
-			 },
+		 tdfopts=>{
+			   minDocFreq => 4,
+			   minDocSize => 8,
+			   #maxDocSize => 'inf',
+			  },
 		 vbreak=>'#file',
 		);
 
@@ -51,8 +51,8 @@ our %coldb    = (
 sub pack64 {
   $coldb{$_}=($_[1] ? 'Q>' : 'N') foreach qw(pack_id pack_f pack_off);
   $coldb{pack_len}=($_[1] ? 'n' : 'N');
-  $coldb{vsopts}{itype} = $_[1] ? 'ccs_indx' : 'long';
-  $coldb{vsopts}{vtype} = $_[1] ? 'double' : 'float';
+  $coldb{tdfopts}{itype} = $_[1] ? 'ccs_indx' : 'long';
+  $coldb{tdfopts}{vtype} = $_[1] ? 'double' : 'float';
 }
 GetOptions(##-- general
 	   'help|h' => \$help,
@@ -75,13 +75,16 @@ GetOptions(##-- general
 	   'min-cofrequency|min-cf|mincf|cfmin=i' => \$coldb{cfmin},
 	   'min-term-frequency|min-tf|mintf|tfmin|min-frequency|min-f|minf|fmin=i' => \$coldb{tfmin},
 	   'min-lemma-frequency|min-lf|minlf|lfmin=i' => \$coldb{fmin_l},
-	   'index-vsem|vsem|vs!' => \$coldb{index_vsem},
-	   'vsem-break|vbreak|vb=s' => \$coldb{vbreak},
-	   'vsem-break-min-size|vsem-break-min|vsem-nmin|vbnmin|vbmin=s' => \$coldb{vsopts}{minDocSize},
-	   'vsem-break-max-size|vsem-break-max|vsem-nmax|vbnmax|vbmax=s' => \$coldb{vsopts}{maxDocSize},
-	   'vsem-option|vsopt|vso|vopt|vo|vO=s%' => \$coldb{vsopts},
+	   'index-tdf|index-tdm|tdf|tdm!' => \$coldb{index_tdf},
+	   'tdf-dbreak|dbreak|db|vbreak|vb=s' => \$coldb{dbreak},
+	   'tdf-break-min-size|tdf-break-min|tdf-nmin|vbnmin|vbmin=s' => \$coldb{tdfopts}{minDocSize},
+	   'tdf-break-max-size|tdf-break-max|tdf-nmax|vbnmax|vbmax=s' => \$coldb{tdfopts}{maxDocSize},
+	   'tdf-option|tdm-option|tdfopt|tdmopt|tdmo|tdfo|to|tO=s%' => \$coldb{tdfopts},
 	   'keeptmp|keep' => \$coldb{keeptmp},
-	   'nofilters|F' => sub { $coldb{$_}=undef foreach (qw(pgood pbad wgood wbad lgood lbad vsmgood vsmbad)); },
+	   'nofilters|F' => sub {
+	     $coldb{$_}=undef foreach (qw(pgood pbad wgood wbad lgood lbad mgood mbad));
+	     $coldb{tdfopts}{$_}=undef foreach (qw(mgood mbad));
+	   },
 	   'option|O=s%' => \%coldb,
 	   '64bit|64|quad|Q!'   => sub { pack64( $_[1]); },
 	   '32bit|32|long|L|N!' => sub { pack64(!$_[1]); },
@@ -181,27 +184,25 @@ dcdb-create.perl - create a DiaColloDB collocation database from a corpus dump
    -tfmin TFMIN         ##-- minimum global term frequency (default=5)
    -lfmin TFMIN         ##-- minimum global lemma frequency (default=undef:tfmin)
    -cfmin CFMIN         ##-- minimum relation co-occurrence frequency (default=2)
-   -[no]vsem            ##-- do/don't create vector-semantic index relation (default=if available)
-   -vsem-break BREAK    ##-- set vector-model "document" granularity (e.g. s,p,page,file; default=file)
-   -vsem-nmin VNMIN     ##-- set minimum number of content tokens per vector-model "document" (default=8)
-   -vsem-nmax VNMAX     ##-- set maximum number of content tokens per vector-model "document (default=inf)
-   -vsem-option OPT=VAL ##-- set arbitrary vector-model option, e.g.
-                        ##   minFreq=INT           # minimum term frequency (default=undef: use TFMIN)
-                        ##   minDocFreq=INT        # minimum term document-"frequency" (default=4)
-                        ##   minDocSize=INT        # minimum document size (#/terms) (default=4)
-                        ##   maxDocSize=INT        # maximum document size (#/terms) (default=inf)
-                        ##   #smoothf=FLOAT         # frequency smoothing constant (default=1)
-                        ##   #verbose=LEVEL         # verbosity level (default=2)
-                        ##   #svdr=INT              # target model rank (default=64)
-                        ##   #saveMem=BOOL          # use less memory when compiling (default=1)
+   -[no]tdf             ##-- do/don't create (term x document) index relation (default=if available)
+   -tdf-break BREAK     ##-- set tdf matrix "document" granularity (e.g. s,p,page,file; default=file)
+   -tdf-nmin VNMIN      ##-- set minimum number of content tokens per tdf "document" (default=8)
+   -tdf-nmax VNMAX      ##-- set maximum number of content tokens per tdf "document" (default=inf)
+   -tdf-option OPT=VAL  ##-- set arbitrary vector-model option, e.g.
+                        ##   minFreq=INT            # minimum term frequency (default=undef: use TFMIN)
+                        ##   minDocFreq=INT         # minimum term document-"frequency" (default=4)
+                        ##   minDocSize=INT         # minimum document size (#/terms) (default=4)
+                        ##   maxDocSize=INT         # maximum document size (#/terms) (default=inf)
+                        ##   mgood=REGEX            # positive regex for document-level metatdata
+                        ##   mbad=REGEX             # negative regex for document-level metatdata
    -option OPT=VAL      ##-- set arbitrary DiaColloDB option, e.g.
-                        ##   pack_id=PACKFMT       # pack-format for IDs
-                        ##   pack_f=PACKFMT        # pack-format for frequencies
-                        ##   pack_date=PACKFMT     # pack-format for dates
-                        ##   (p|w|l|vsm)good=REGEX # positive regex for (postags|words|lemmata|vsem-metadata)
-                        ##   (p|w|l|vsm)bad=REGEX  # negative regex for (postags|words|lemmata|vsem-metadata)
-                        ##   ddcServer=HOST:PORT   # server for ddc relations
-                        ##   ddcTimeout=SECONDS    # timeout for ddc relations
+                        ##   pack_id=PACKFMT        # pack-format for IDs
+                        ##   pack_f=PACKFMT         # pack-format for frequencies
+                        ##   pack_date=PACKFMT      # pack-format for dates
+                        ##   (p|w|l)good=REGEX      # positive regex for (postags|words|lemmata)
+                        ##   (p|w|l)bad=REGEX       # negative regex for (postags|words|lemmata)
+                        ##   ddcServer=HOST:PORT    # server for ddc relations
+                        ##   ddcTimeout=SECONDS     # timeout for ddc relations
 
  I/O and Logging Options:
    -log-level LEVEL     ##-- set log-level (default=TRACE)

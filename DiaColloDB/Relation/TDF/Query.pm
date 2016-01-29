@@ -1,9 +1,10 @@
 ## -*- Mode: CPerl -*-
-## File: DiaColloDB::Relation::Vsem::Query.pm
+## File: DiaColloDB::Relation::TDF::Query.pm
 ## Author: Bryan Jurish <moocow@cpan.org>
-## Description: collocation db, profiling relation: vector-space semantic model: query hacks
+## Description: collocation db, profiling relation: (term x document) frequency matrix: query hacks
+##  + formerly DiaColloDB::Relation::Vsem::Query ("vector-space distributional semantic index")
 
-package DiaColloDB::Relation::Vsem::Query;
+package DiaColloDB::Relation::TDF::Query;
 use DiaColloDB::Utils qw(:pdl);
 use DDC::XS;
 use PDL;
@@ -51,7 +52,7 @@ sub new {
 ##  + %opts: as for DiaColloDB::profile(), also
 ##    (
 ##     coldb => $coldb,   ##-- DiaColloDB context (for enums)
-##     vsem  => $vsem,    ##-- DiaColloDB::Relation::Vsem context (for meta-enums)
+##     tdf   => $tdf,     ##-- DiaColloDB::Relation::TDF context (for meta-enums)
 ##     dlo   => $dlo,     ##-- minimum date (undef or '': no minimum)
 ##     dhi   => $dhi,     ##-- maximum date (undef or '': no maximum)
 ##    )
@@ -66,7 +67,7 @@ sub compile {
 ##  + %opts: as for DiaColloDB::profile(), also
 ##    (
 ##     coldb => $coldb,   ##-- DiaColloDB context (for enums)
-##     vsem  => $vsem,    ##-- DiaColloDB::Relation::Vsem context (for meta-enums)
+##     tdf  => $tdf,    ##-- DiaColloDB::Relation::TDF context (for meta-enums)
 ##     #dlo   => $dlo,     ##-- minimum date (undef or '': no minimum)
 ##     #dhi   => $dhi,     ##-- maximum date (undef or '': no maximum)
 ##    )
@@ -79,7 +80,7 @@ sub compileLocal {
 
 ## $vq_or_undef = $vq->compileOptions(%opts)
 ##  + merges underlying CQueryOptions restrictions into $vq piddles
-##  + %opts: as for DiaColloDB::Relation::Vsem::Query::compile()
+##  + %opts: as for DiaColloDB::Relation::TDF::Query::compile()
 sub compileOptions {
   my $vq = shift;
   return $vq if (!$vq->{cq}->can('getOptions') || !defined(my $qo=$vq->{cq}->getOptions));
@@ -123,8 +124,8 @@ BEGIN {
 ##----------------------------------------------------------------------
 ## $vq = $DDC_XS_OBJECT->__dcvs_compile($vq,%opts)
 ##  + compiles DDC::XS::Object (CQuery or CQFilter) $cquery
-##  + returns a new DiaColloDB::Relation::Vsem::Query object representing the evalution, or undef on failure
-##  + %opts: as for DiaColloDB::Relation::Vsem::Query::compile()
+##  + returns a new DiaColloDB::Relation::TDF::Query object representing the evalution, or undef on failure
+##  + %opts: as for DiaColloDB::Relation::TDF::Query::compile()
 sub DDC::XS::Object::__dcvs_compile {
   my ($cq,$vq,%opts) = @_;
   $vq->logconfess("unsupported query expression of type ", ref($cq), " (", $cq->toString, ")");
@@ -155,7 +156,7 @@ sub DDC::XS::CQToken::__dcvs_attr {
 ##   + negates $vq if applicable ({ti} only)
 sub DDC::XS::CQToken::__dcvs_compile_neg {
   my ($cq,$vq,%opts) = @_;
-  $vq->{ti} = DiaColloDB::Utils::_negate_p($vq->{ti}, $opts{vsem}->nTerms)
+  $vq->{ti} = DiaColloDB::Utils::_negate_p($vq->{ti}, $opts{tdf}->nTerms)
     if ($cq->getNegated xor ($cq->can('getRegexNegated') ? $cq->getRegexNegated : 0));
   return $vq;
 }
@@ -166,7 +167,7 @@ sub DDC::XS::CQToken::__dcvs_compile_re {
   $cq->__dcvs_init($vq,%opts);
   my $attr = $cq->__dcvs_attr($vq,%opts);
   my $ais  = $attr->{enum}->re2i($regex);
-  my $ti = $vq->{ti} = $opts{vsem}->termIds($attr->{a}, $ais);
+  my $ti = $vq->{ti} = $opts{tdf}->termIds($attr->{a}, $ais);
   return $cq->__dcvs_compile_neg($vq,%opts);
 }
 
@@ -190,7 +191,7 @@ sub DDC::XS::CQTokExact::__dcvs_compile {
   $cq->__dcvs_init($vq,%opts);
   my $attr = $cq->__dcvs_attr($vq,%opts);
   my $ai = $attr->{enum}->s2i($cq->getValue);
-  my $ti = $vq->{ti} = $opts{vsem}->termIds($attr->{a}, $ai);
+  my $ti = $vq->{ti} = $opts{tdf}->termIds($attr->{a}, $ai);
   return $cq->__dcvs_compile_neg($vq,%opts);
 }
 
@@ -215,7 +216,7 @@ sub DDC::XS::CQTokSet::__dcvs_compile {
   my $attr = $cq->__dcvs_attr($vq,%opts);
   my $enum = $attr->{enum};
   my $ais  = [map {$enum->s2i($_)} @{$cq->getValues}];
-  my $ti   = $vq->{ti} = $opts{vsem}->termIds($attr->{a}, $ais);
+  my $ti   = $vq->{ti} = $opts{tdf}->termIds($attr->{a}, $ais);
   return $cq->__dcvs_compile_neg($vq,%opts);
 }
 
@@ -312,8 +313,8 @@ sub DDC::XS::CQTokLemma::__dcvs_compile {
 sub DDC::XS::CQNegatable::__dcvs_compile_neg {
   my ($cq,$vq,%opts) = @_;
   if ($cq->getNegated) {
-    $vq->{ti} = DiaColloDB::Utils::_negate_p($vq->{ti}, $opts{vsem}->nTerms);
-    $vq->{ci} = DiaColloDB::Utils::_negate_p($vq->{ci}, $opts{vsem}->nCats);
+    $vq->{ti} = DiaColloDB::Utils::_negate_p($vq->{ti}, $opts{tdf}->nTerms);
+    $vq->{ci} = DiaColloDB::Utils::_negate_p($vq->{ci}, $opts{tdf}->nCats);
   }
   return $vq;
 }
@@ -353,7 +354,7 @@ sub DDC::XS::CQWithout::__dcvs_compile {
   my ($cq,$vq,%opts) = @_;
   return DDC::XS::Object::__dcvs_compile($vq,@_) if (ref($cq) ne 'DDC::XS::CQWithout');
   my ($vq1,$vq2) = $cq->__dcvs_compile_dtrs($vq,%opts);
-  $vq->{ti} = DiaColloDB::Utils::_setdiff_p($vq1->{ti},$vq2->{ti},$opts{vsem}->nTerms);
+  $vq->{ti} = DiaColloDB::Utils::_setdiff_p($vq1->{ti},$vq2->{ti},$opts{tdf}->nTerms);
   return DDC::XS::CQToken::__dcvs_compile_neg($cq,$vq,%opts);
 }
 
@@ -367,8 +368,8 @@ sub DDC::XS::CQAnd::__dcvs_compile {
   return DDC::XS::Object::__dcvs_compile($vq,@_) if (ref($cq) ne 'DDC::XS::CQAnd');
   my ($vq1,$vq2) = $cq->__dcvs_compile_dtrs($vq,%opts);
   $vq->{ti} = DiaColloDB::Utils::_union_p($vq1->{ti}, $vq2->{ti});
-  $vq->{ci} = DiaColloDB::Utils::_intersect_p($opts{vsem}->catSubset($vq1->{ti}, $vq1->{ci}),
-					      $opts{vsem}->catSubset($vq2->{ti}, $vq2->{ci}));
+  $vq->{ci} = DiaColloDB::Utils::_intersect_p($opts{tdf}->catSubset($vq1->{ti}, $vq1->{ci}),
+					      $opts{tdf}->catSubset($vq2->{ti}, $vq2->{ci}));
   return $cq->__dcvs_compile_neg($vq,%opts);
 }
 
@@ -457,7 +458,7 @@ sub DDC::XS::CQFHasField::__dcvs_init {
   my ($cq,$vq,%opts) = @_;
   my $attr = $cq->getArg0;
   $vq->logconfess("unsupported metadata attribute \`$attr' in ", ref($cq), " expression (", $cq->toString, ")")
-    if (!$opts{vsem}->hasMeta($attr));
+    if (!$opts{tdf}->hasMeta($attr));
   #$vq->logconfess("negated filters not yet supported in ", ref($cq), " expression (", $cq->toString, ")")
   #  if ($cq->getNegated);
   return $vq;
@@ -468,7 +469,7 @@ sub DDC::XS::CQFHasField::__dcvs_init {
 ##  + honors $cq->getNegated() flag, alters $vq->{ci} if applicable
 sub DDC::XS::CQFHasField::__dcvs_compile_neg {
   my ($cq,$vq,%opts) = @_;
-  $vq->{ci} = DiaColloDB::Utils::_negate_p($vq->{ci}, $opts{vsem}->nCats) if ($cq->getNegated);
+  $vq->{ci} = DiaColloDB::Utils::_negate_p($vq->{ci}, $opts{tdf}->nCats) if ($cq->getNegated);
   return $vq;
 }
 
@@ -478,14 +479,14 @@ sub DDC::XS::CQFHasField::__dcvs_compile_neg {
 ##  + calls $CQFHasField->__dcvs_compile_neg($vq,%opts)
 ##  + requires additional %opts:
 ##    (
-##     attr   => \%attr,   ##-- attribute data as returned by Vsem::metaAttr()
+##     attr   => \%attr,   ##-- attribute data as returned by TDF::metaAttr()
 ##     valids => $valids,  ##-- attribute-value ids
 ##    )
-##  + TODO: use a persistent reverse-index here (but first build it in create())
+##  + TODO: use a persistent reverse-index here (but first build it in TDF::create())
 sub DDC::XS::CQFHasField::__dcvs_compile_p {
   my ($cq,$vq,%opts) = @_;
   my ($attr,$valids) = @opts{qw(attr valids)};
-  $vq->{ci} = $opts{vsem}->catIds(@opts{qw(attr valids)});
+  $vq->{ci} = $opts{tdf}->catIds(@opts{qw(attr valids)});
   return DDC::XS::CQFHasField::__dcvs_compile_neg($cq,$vq,%opts);
 }
 
@@ -498,7 +499,7 @@ sub DDC::XS::CQFHasFieldValue::__dcvs_compile {
   my ($cq,$vq,%opts) = @_;
   $cq->__dcvs_init($vq,%opts);
   my $attr  = $cq->getArg0;
-  my $enum  = $opts{vsem}->metaEnum($attr);
+  my $enum  = $opts{tdf}->metaEnum($attr);
   my $vals  = $enum->s2i($cq->getArg1);
   return $cq->__dcvs_compile_p($vq, %opts, attr=>$attr, valids=>$vals);
 }
@@ -510,7 +511,7 @@ sub DDC::XS::CQFHasFieldRegex::__dcvs_compile {
   my ($cq,$vq,%opts) = @_;
   $cq->__dcvs_init($vq,%opts);
   my $attr = $cq->getArg0;
-  my $enum = $opts{vsem}->metaEnum($attr);
+  my $enum = $opts{tdf}->metaEnum($attr);
   my $vals = $enum->re2i($cq->getArg1);
   return $cq->__dcvs_compile_p($vq,%opts, attr=>$attr, valids=>$vals);
 }

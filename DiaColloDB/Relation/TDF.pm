@@ -1,11 +1,12 @@
 ## -*- Mode: CPerl -*-
-## File: DiaColloDB::Relation::Vsem.pm
+## File: DiaColloDB::Relation::TDF.pm
 ## Author: Bryan Jurish <moocow@cpan.org>
-## Description: collocation db, profiling relation: vector-space semantic model (native)
+## Description: collocation db, profiling relation: co-occurence frequencies via (term x document) raw-frequency matrix
+##  + formerly DiaColloDB::Relation::Vsem.pm ("vector-space distributional semantic index")
 
-package DiaColloDB::Relation::Vsem;
+package DiaColloDB::Relation::TDF;
 use DiaColloDB::Relation;
-use DiaColloDB::Relation::Vsem::Query;
+use DiaColloDB::Relation::TDF::Query;
 use DiaColloDB::Utils qw(:pack :fcntl :file :math :json :list :pdl :temp :env :run);
 use DiaColloDB::PackedFile;
 #use DiaColloDB::Temp::Hash;
@@ -38,8 +39,6 @@ BEGIN {
 ##   ##-- user options
 ##   base   => $basename,   ##-- relation basename
 ##   flags  => $flags,      ##-- i/o flags (default: 'r')
-##   #dcopts => \%dcopts,    ##-- options for DocClassify::Mapper->new()
-##   #dcio   => \%dcio,      ##-- options for DocClassify::Mapper->saveDir()
 ##   mgood  => $regex,      ##-- positive filter regex for metadata attributes
 ##   mbad   => $regex,      ##-- negative filter regex for metadata attributes
 ##   submax => $submax,     ##-- choke on requested tdm cross-subsets if dense subset size ($NT_sub * $ND_sub) > $submax; default=2**29 (512M)
@@ -89,8 +88,8 @@ sub new {
   my $that = shift;
   my $vs   = $that->SUPER::new(
 			       flags => 'r',
-			       mgood => $DiaColloDB::VSMGOOD_DEFAULT,
-			       mbad  => $DiaColloDB::VSMBAD_DEFAULT,
+			       mgood => $DiaColloDB::TDF_MGOOD_DEFAULT,
+			       mbad  => $DiaColloDB::TDF_MBAD_DEFAULT,
 			       submax => 2**29,
 			       minFreq => undef,
 			       minDocFreq => 4,
@@ -112,7 +111,7 @@ sub new {
 }
 
 ##==============================================================================
-## Vsem API: Utils
+## TDF API: Utils
 
 ## $vtype = $vs->vtype()
 ##  + get PDL::Type for storing compiled values
@@ -293,7 +292,7 @@ sub create {
     or remove_tree($vsdir)
       or $vs->logconfess("create(): could not remove stale $vsdir: $!");
   make_path($vsdir)
-    or $vs->logconfess("create(): could not create Vsem directory $vsdir: $!");
+    or $vs->logconfess("create(): could not create TDF directory $vsdir: $!");
 
   ##-- initialize: logging
   my $nfiles    = scalar(@$docmeta);
@@ -690,12 +689,12 @@ sub create {
 
 ## $vs = CLASS_OR_OBJECT->union($coldb, \@dbargs, %opts)
 ##  + merge multiple co-frequency indices into new object
-##  + @dbargs : array of sub-objects ($coldb,...) containing {vsem} keys
+##  + @dbargs : array of sub-objects ($coldb,...) containing {tdf} keys
 ##  + %opts: clobber %$vs
 ##  + implicitly flushes the new index
 sub union {
   my ($vs,$coldb,$dbargs,%opts) = @_;
-  $vs->logconfess("union(): native index mode not yet implemented");
+  $vs->logconfess("union(): not yet implemented");
 
   ##-- union: create/clobber
   $vs = $vs->new() if (!ref($vs));
@@ -712,7 +711,7 @@ sub union {
     or remove_tree($vsdir)
       or $vs->logconfess("union(): could not remove stale $vsdir: $!");
   make_path($vsdir)
-    or $vs->logconfess("union(): could not create Vsem directory $vsdir: $!");
+    or $vs->logconfess("union(): could not create TDF directory $vsdir: $!");
 
   ##-- union: logging
   my $logCreate = 'trace';
@@ -736,13 +735,13 @@ sub union {
 
   ##-- union: term-attributes: extract tuples
   my $NA  = scalar @{$coldb->{attrs}};
-  my $NT0 = pdl($itype, [map {$_->{vsem}->nTerms} @$dbargs])->sum;
+  my $NT0 = pdl($itype, [map {$_->{tdf}->nTerms} @$dbargs])->sum;
   $vs->vlog($logCreate, "union(): term-attribute tuples: extract (NA=$NA x NT<=$NT0)");
   my ($db,$dbvs,$tslice,$utvals, $a,$apos,$uapos, $a2u);
   my $tvals0 = zeroes($itype,$NA,$NT0);
   my $toff = 0;
   foreach $db (@$dbargs) {
-    $dbvs   = $db->{vsem};
+    $dbvs   = $db->{tdf};
     $tslice = $db->{_vsunion_tslice0} = "$toff:".($toff+$dbvs->nTerms-1);
     foreach $a (@{$dbvs->{attrs}}) {
       next if (!defined($apos  = $dbvs->tpos($a)));
@@ -774,16 +773,16 @@ sub union {
   my $mbad  = $vs->{mbad}  ? qr{$vs->{mbad}}  : undef;
   my %meta = (map {($_=>{n=>0, s2i=>{}, vals=>undef})}
 	      grep { !(defined($mgood) && $_ !~ $mgood) || !(defined($mbad) && $_ =~ $mbad) }
-	      map {@{$_->{vsem}{meta}}}
+	      map {@{$_->{tdf}{meta}}}
 	      @$dbargs);
   my $meta = $vs->{meta} = [sort keys %meta];
   my $NM   = scalar @$meta;
-  my $NC   = pdl($itype, [map {$_->{vsem}->nCats} @$dbargs])->sum;
+  my $NC   = pdl($itype, [map {$_->{tdf}->nCats} @$dbargs])->sum;
   my $mvals = $vs->{mvals} = zeroes($itype, $NM,$NC);
   my $moff = 0;
   my ($mslice,$m,$mdata,$mi,$mstrs,$mpos,$umpos,$m2u);
   foreach $db (@$dbargs) {
-    $dbvs = $db->{vsem};
+    $dbvs = $db->{tdf};
     $mslice = "$moff:".($moff+$dbvs->nCats-1);
     foreach $m (@{$dbvs->{meta}}) {
       next if (!defined($mpos = $dbvs->mpos($m)));
@@ -823,10 +822,10 @@ sub union {
   undef %meta;
 
   ##-- union: aux: info
-  $vs->{N} = pdl($itype, [map {$_->{vsem}{N}} @$dbargs])->sum;
+  $vs->{N} = pdl($itype, [map {$_->{tdf}{N}} @$dbargs])->sum;
 
   ##-- union: mapper: enums
-  my $ND = pdl($itype, [map {$_->{vsem}->nDocs} @$dbargs])->sum;
+  my $ND = pdl($itype, [map {$_->{tdf}->nDocs} @$dbargs])->sum;
   $vs->vlog($logCreate, "union(): mapper: identity-enums");
   $map->{tenum}  = $vs->idEnum($NT);
   $map->{gcenum} = $vs->idEnum($NC);
@@ -842,7 +841,7 @@ sub union {
   my $c2date = $vs->{c2date} = zeroes(ushort, $NC);
   my ($doff,$coff) = (0,0);
   foreach $db (@$dbargs) {
-    $dbvs   = $db->{vsem};
+    $dbvs   = $db->{tdf};
 
     ($tmp=$d2c->slice("$doff:".($doff+$dbvs->nDocs-1))) .= $dbvs->{d2c};
     $tmp  += $coff;
@@ -865,14 +864,14 @@ sub union {
 
   ##-- union: mapper: tdm0
   $vs->vlog($logCreate, "union(): mapper: tdm0 (NT=$NT x ND=$ND)");
-  my $tdm0_nnz = pdl($itype, [map {$_->{vsem}{dcmap}{tdm}->_nnz} @$dbargs])->sum;
+  my $tdm0_nnz = pdl($itype, [map {$_->{tdf}{dcmap}{tdm}->_nnz} @$dbargs])->sum;
   my $tdm0_w   = zeroes($itype, 2,$tdm0_nnz);
   my $tdm0_v   = zeroes($vtype,   $tdm0_nnz);
   $doff = 0;
   my $nzoff = 0;
   my ($dbmap,$dbtdm0,$nzslice);
   foreach $db (@$dbargs) {
-    $dbvs   = $db->{vsem};
+    $dbvs   = $db->{tdf};
     $dbmap  = $dbvs->{dcmap};
     $dbtdm0 = $dbmap->get_tdm0();
     $nzslice = "$nzoff:".($nzoff+$dbmap->{tdm}->_nnz-1);
@@ -988,7 +987,7 @@ sub compare {
 ## + %opts: as for DiaColloDB::Relation::profile()
 ## + new/altered %opts:
 ##   (
-##    vq      => $vq,        ##-- parsed query, DiaColloDB::Relation::Vsem::Query object
+##    vq      => $vq,        ##-- parsed query, DiaColloDB::Relation::TDF::Query object
 ##    groubpy => \%groupby,  ##-- as returned by $vs->groupby($coldb, \%opts)
 ##    dlo     => $dlo,       ##-- as returned by $coldb->parseDateRequest(@opts{qw(date slice fill)},1);
 ##    dhi     => $dhi,       ##-- as returned by $coldb->parseDateRequest(@opts{qw(date slice fill)},1);
@@ -1000,7 +999,7 @@ sub vprofile {
 
   ##-- common variables
   my $logLocal = $vs->{logvprofile};
-  my $logDebug = undef; #'trace';
+  my $logDebug = undef; #'debug';
 
   ##-- sanity checks / fixes
   $vs->{attrs} = $coldb->{attrs} if (!@{$vs->{attrs}//[]});
@@ -1021,8 +1020,8 @@ sub vprofile {
   @$opts{qw(dslo dshi dlo dhi)} = ($dslo,$dshi,$dlo,$dhi);
 
   ##-- parse & compile query
-  my %vqopts = (%$opts,coldb=>$coldb,vsem=>$vs);
-  my $vq     = $opts->{vq} = DiaColloDB::Relation::Vsem::Query->new($q)->compile(%vqopts);
+  my %vqopts = (%$opts,coldb=>$coldb,tdf=>$vs);
+  my $vq     = $opts->{vq} = DiaColloDB::Relation::TDF::Query->new($q)->compile(%vqopts);
 
   ##-- sanity checks: null-query
   my ($ti,$ci) = @$vq{qw(ti ci)};
@@ -1300,7 +1299,7 @@ sub tupleIds {
     return ($vals==$valids)->which;
   }
 
-  ##-- nontrivial value-set: do vsearch lookup
+  ##-- nontrivial value-set: do vsearch lookup (too complex and doesn't work for final element)
   my $sorti   = $vs->{"${typ}sorti"}->slice(",($apos)");
   my $vals_qs = $vals->index($sorti);
   my $i0      = $valids->vsearch($vals_qs);
@@ -1308,7 +1307,7 @@ sub tupleIds {
   $i0         = $i0->where($i0_mask);
   my $ilen    = ($valids->where($i0_mask)+1)->vsearch($vals_qs);
   $ilen      -= $i0;
-  $ilen->slice("-1")->lclip(1) if ($ilen->nelem); ##-- hack for bogus 0-length at final element
+  $ilen->slice("-1")->inplace->lclip(1) if ($ilen->nelem); ##-- hack for bogus 0-length at final element
   my $iseq    = $ilen->rldseq($i0);
   return $sorti->index($iseq)->qsort;
 }
@@ -1356,7 +1355,7 @@ sub catSubset {
 
 ## \%groupby = $vs->groupby($coldb, $groupby_request, %opts)
 ## \%groupby = $vs->groupby($coldb, \%groupby,        %opts)
-##  + modified version of DiaColloDB::groupby() suitable for pdl-ized Vsem relation
+##  + modified version of DiaColloDB::groupby() suitable for pdl-ized TDF relation
 ##  + $grouby_request : see DiaColloDB::parseRequest()
 ##  + returns a HASH-ref:
 ##    (
@@ -1367,7 +1366,7 @@ sub catSubset {
 ##     attrs => \@attrs,   ##-- like $coldb->attrs($groupby_request), modulo "having" parts
 ##     titles => \@titles, ##-- like map {$coldb->attrTitle($_)} @attrs
 ##     ##
-##     ##-- REMOVED: not constructed for Vsem::groupby()
+##     ##-- REMOVED: not constructed for TDF::groupby()
 ##     #x2g => \&x2g,       ##-- group-id extraction code suitable for e.g. DiaColloDB::Relation::Cofreqs::profile(groupby=>\&x2g)
 ##     #g2s => \&g2s,       ##-- stringification object suitable for DiaColloDB::Profile::stringify() [CODE,enum, or undef]
 ##     ##
@@ -1397,7 +1396,7 @@ sub groupby {
   my $gb = { req=>$gbreq };
 
   ##-- get attribute requests
-  my $gbareqs = $gb->{areqs} = $coldb->parseRequest($gb->{req}, %opts, logas=>'vsem groupby', allowExtra=>[map {($_,"doc.$_")} @{$vs->{meta}}]);
+  my $gbareqs = $gb->{areqs} = $coldb->parseRequest($gb->{req}, %opts, logas=>'tdf groupby', allowExtra=>[map {($_,"doc.$_")} @{$vs->{meta}}]);
 
   ##-- get attribute names (compat)
   my $gbattrs = $gb->{attrs} = [map {$_->[0]} @$gbareqs];
@@ -1512,7 +1511,7 @@ sub qinfo {
 
   ##-- options: set filters, WITHIN
   $qo->setFilters($qf);
-  (my $inbreak = $coldb->{vbreak}) =~ s/^#//;
+  (my $inbreak = $coldb->{dbreak}) =~ s/^#//;
 
   ##-- construct query
   my $qtemplate = ("$q1str && $q2str "

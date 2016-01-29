@@ -19,7 +19,7 @@ use DiaColloDB::Relation;
 use DiaColloDB::Relation::Unigrams;
 use DiaColloDB::Relation::Cofreqs;
 use DiaColloDB::Relation::DDC;
-#use DiaColloDB::Relation::Vsem;
+#use DiaColloDB::Relation::TDF; ##-- loaded on-demand
 use DiaColloDB::Profile;
 use DiaColloDB::Profile::Multi;
 use DiaColloDB::Profile::MultiDiff;
@@ -29,7 +29,6 @@ use DiaColloDB::Utils qw(:math :fcntl :json :sort :pack :regex :file :si :run :e
 #use DiaColloDB::Temp::Vec;
 use DiaColloDB::Timer;
 use DDC::XS; ##-- for query parsing
-use Tie::File::Indexed::JSON; ##-- for vsem training
 use Fcntl;
 use File::Path qw(make_path remove_tree);
 use strict;
@@ -66,15 +65,15 @@ our $LGOOD_DEFAULT   = undef;
 ##  + default negative lemma regex for document parsing
 our $LBAD_DEFAULT   = undef;
 
-## $VSMGOOD_DEFAULT
-##  + default positive meta-field regex for document parsing (vsem only)
+## $TDF_MGOOD_DEFAULT
+##  + default positive meta-field regex for document parsing (tdf only)
 ##  + don't use qr// here, since Storable doesn't like pre-compiled Regexps
-our $VSMGOOD_DEFAULT = q/^(?:author|title|basename|collection|flags|textClass|genre)$/;
+our $TDF_MGOOD_DEFAULT = q/^(?:author|title|basename|collection|flags|textClass|genre)$/;
 
-## $VSMBAD_DEFAULT
-##  + default negative meta-field regex for document parsing (vsem only)
+## $TDF_MBAD_DEFAULT
+##  + default negative meta-field regex for document parsing (tdf only)
 ##  + don't use qr// here, since Storable doesn't like pre-compiled Regexps
-our $VSMBAD_DEFAULT = q/_$/;
+our $TDF_MBAD_DEFAULT = q/_$/;
 
 ## $ECLASS
 ##  + enum class
@@ -91,17 +90,22 @@ our $XECLASS = 'DiaColloDB::EnumFile::FixedLen::MMap';
 our $MMCLASS = 'DiaColloDB::MultiMapFile';
 #our $MMCLASS = 'DiaColloDB::MultiMapFile::MMap'; ##-- TODO?
 
-## %VSOPTS : vsem: default options for DiaColloDB::Relation::Vsem->new()
-our %VSOPTS = (
-	       minFreq=>undef,    ##-- minimum total term-frequency for model inclusion (default=from $coldb->{tfmin})
-	       minDocFreq=>4,     ##-- minimim "doc-frequency" (#/docs per term) for model inclusion
-	       minDocSize=>4,     ##-- minimum doc size (#/tokens per doc) for model inclusion (default=8; formerly $coldb->{vbnmin})
-	                          ##   + for kern[page?] (n:%sigs,%toks): 1:0%,0%, 2:5.1%,0.5%, 4:18%,1.6%, 5:22%,2.3%, 8:34%,4.6%, 10:40%,6.5%, 16:54%,12.8%
-	       maxDocSize=>'inf', ##-- maximum doc size (#/tokens per doc) for model inclusion (default=inf; formerly $coldb->{vbnmax})
-	       #smoothf=>1,        ##-- smoothing constant
-	       #saveMem=>1, 	  ##-- slower but memory-friendlier compilation
-	       vtype=>'float',    ##-- store compiled values as 32-bit floats
-	       itype=>'long',     ##-- store compiled indices as 32-bit integers
+## %TDF_OPTS : tdf: default options for DiaColloDB::Relation::TDF->new()
+our %TDF_OPTS = (
+		 mgood => $TDF_MGOOD_DEFAULT, ##-- positive filter regex for metadata attributes
+		 mbad  => $TDF_MBAD_DEFAULT,  ##-- negative filter regex for metadata attributes
+		 ##
+		 minFreq=>undef,    ##-- minimum total term-frequency for model inclusion (default=from $coldb->{tfmin})
+		 minDocFreq=>4,     ##-- minimim "doc-frequency" (#/docs per term) for model inclusion
+		 minDocSize=>4,     ##-- minimum doc size (#/tokens per doc) for model inclusion (default=8; formerly $coldb->{vbnmin})
+	                            ##   + for kern[page?] (n:%sigs,%toks): 1:0%,0%, 2:5.1%,0.5%, 4:18%,1.6%, 5:22%,2.3%, 8:34%,4.6%, 10:40%,6.5%, 16:54%,12.8%
+		 maxDocSize=>'inf', ##-- maximum doc size (#/tokens per doc) for model inclusion (default=inf; formerly $coldb->{vbnmax})
+		 ##
+		 #smoothf=>1,       ##-- smoothing constant
+		 #saveMem=>1, 	    ##-- slower but memory-friendlier compilation
+		 ##
+		 vtype=>'float',    ##-- store compiled values as 32-bit floats
+		 itype=>'long',     ##-- store compiled indices as 32-bit integers
 	      );
 
 ##==============================================================================
@@ -129,10 +133,10 @@ our %VSOPTS = (
 ##    tfmin => $tfmin,    ##-- minimum global term-frequency WITHOUT date component (default=2)
 ##    fmin_${a} => $fmin, ##-- minimum independent frequency for value of attribute ${a} (default=undef:from $tfmin)
 ##    keeptmp => $bool,   ##-- keep temporary files? (default=0)
-##    index_vsem => $bool,##-- vsem: create/use vector-semantic index? (default=undef: if available)
-##    index_cof  => $bool,##-- cof: create/use co-frequency index (default=1)
-##    vbreak => $vbreak,  ##-- vsem: use break-type $break for vsem index (default=undef: files)
-##    vsopts => \%vsopts, ##-- vsem: options for DocClassify::Mapper->new(); default={} (all inherited from %VSOPTS)
+##    index_tdf => $bool, ##-- tdf: create/use (term x document) frequency matrix index? (default=undef: if available)
+##    index_cof => $bool, ##-- cof: create/use co-frequency index (default=1)
+##    dbreak => $dbreak,  ##-- tdf: use break-type $break for tdf index (default=undef: files)
+##    tdfopts => \%tdfopts, ##-- tdf: options for DocClassify::Mapper->new(); default={} (all inherited from %TDF_OPTS)
 ##    ##
 ##    ##-- runtime ddc relation options
 ##    ddcServer => "$host:$port", ##-- server for ddc relation
@@ -145,8 +149,8 @@ our %VSOPTS = (
 ##    wbad   => $regex,   ##-- negative filter regex for word text
 ##    lgood  => $regex,   ##-- positive filter regex for lemma text
 ##    lbad   => $regex,   ##-- negative filter regex for lemma text
-##    vsmgood => $regex,  ##-- positive filter regex for metadata attributes (vsem only)
-##    vsmbad  => $regex,  ##-- negative filter regex for metadata attributes (vsem only)
+##    #vsmgood => $regex,  ##-- positive filter regex for metadata attributes (tdf only) --> use {tdfopts}{mgood}
+##    #vsmbad  => $regex,  ##-- negative filter regex for metadata attributes (tdf only) --> use {tdfopts}{mbad}
 ##    ##
 ##    ##-- logging
 ##    logOpen => $level,        ##-- log-level for open/close (default='info')
@@ -176,8 +180,8 @@ our %VSOPTS = (
 ##    ##-- relation data
 ##    xf    => $xf,       ##-- ug: $xi => $f($xi) : N=>N
 ##    cof   => $cof,      ##-- cf: [$xi1,$xi2] => $f12
-##    ddc   => $ddc,      ##-- ddc client relation
-##    vsem  => $vsem,     ##-- vector-space semantic model
+##    ddc   => $ddc,      ##-- ddc: ddc client relation
+##    tdf   => $tdf,      ##-- tdf: (term x document) frequency matrix model
 ##   )
 sub new {
   my $that = shift;
@@ -197,10 +201,10 @@ sub new {
 		      cfmin => 2,
 		      tfmin => 2,
 		      #keeptmp => 0,
-		      index_vsem => undef,
+		      index_tdf => undef,
 		      index_cof => 1,
-		      vbreak => undef,
-		      vsopts => {},
+		      dbreak => undef,
+		      tdfopts => {},
 
 		      ##-- filters
 		      pgood => $PGOOD_DEFAULT,
@@ -209,8 +213,8 @@ sub new {
 		      wbad  => $WBAD_DEFAULT,
 		      lgood => $LGOOD_DEFAULT,
 		      lbad  => $LBAD_DEFAULT,
-		      vsmgood => $VSMGOOD_DEFAULT,
-		      vsmbad  => $VSMBAD_DEFAULT,
+		      #vsmgood => $TDF_MGOOD_DEFAULT,
+		      #vsmbad  => $TDF_MBAD_DEFAULT,
 
 		      ##-- logging
 		      logOpen => 'info',
@@ -240,7 +244,7 @@ sub new {
 		      #xf    => undef, #DiaColloDB::Relation::Unigrams->new(packas=>$coldb->{pack_f}),
 		      #cof   => undef, #DiaColloDB::Relation::Cofreqs->new(pack_f=>$pack_f, pack_i=>$pack_i, dmax=>$dmax, fmin=>$cfmin),
 		      #ddc   => undef, #DiaColloDB::Relation::DDC->new(),
-		      #vsem  => undef, #DiaColloDB::Relation::Vsem->new(),
+		      #tdf   => undef, #DiaColloDB::Relation::TDF->new(),
 
 		      @_,	##-- user arguments
 		     },
@@ -304,12 +308,12 @@ sub open {
     or $coldb->logconfess("open(): failed to load header file", $coldb->headerFile, ": $!");
   @$coldb{keys %opts} = values %opts; ##-- clobber header options with user-supplied values
 
-  ##-- open: vsem: require
-  $coldb->{index_vsem} = 0 if (!-r "$dbdir/vsem.hdr");
-  if ($coldb->{index_vsem}) {
-    if (!require "DiaColloDB/Relation/Vsem.pm") {
-      $coldb->logwarn("open(): require failed for DiaColloDB/Relation/Vsem.pm ; vector-space modelling disabled", ($@ ? "\n: $@" : ''));
-      $coldb->{index_vsem} = 0;
+  ##-- open: tdf: require
+  $coldb->{index_tdf} = 0 if (!-r "$dbdir/tdf.hdr");
+  if ($coldb->{index_tdf}) {
+    if (!require "DiaColloDB/Relation/TDF.pm") {
+      $coldb->logwarn("open(): require failed for DiaColloDB/Relation/TDF.pm ; (term x document) matrix modelling disabled", ($@ ? "\n: $@" : ''));
+      $coldb->{index_tdf} = 0;
     }
   }
 
@@ -369,13 +373,13 @@ sub open {
   $coldb->{ddc} = DiaColloDB::Relation::DDC->new(-r "$dbdir/ddc.hdr" ? (base=>"$dbdir/ddc") : qw())->fromDB($coldb)
     // 'DiaColloDB::Relation::DDC';
 
-  ##-- open: vsem (if available)
-  if ($coldb->{index_vsem}) {
-    $coldb->{vsopts}     //= {};
-    $coldb->{vsopts}{$_} //= $VSOPTS{$_} foreach (keys %VSOPTS); ##-- vsem: default options
-    $coldb->{vsem} = DiaColloDB::Relation::Vsem->new((-r "$dbdir/vsem.hdr" ? (base=>"$dbdir/vsem") : qw()),
-						     %{$coldb->{vsopts}}
-						    );
+  ##-- open: tdf (if available)
+  if ($coldb->{index_tdf}) {
+    $coldb->{tdfopts}     //= {};
+    $coldb->{tdfopts}{$_} //= $TDF_OPTS{$_} foreach (keys %TDF_OPTS); ##-- tdf: default options
+    $coldb->{tdf} = DiaColloDB::Relation::TDF->new((-r "$dbdir/tdf.hdr" ? (base=>"$dbdir/tdf") : qw()),
+						   %{$coldb->{tdfopts}}
+						  );
   }
 
   ##-- all done
@@ -387,7 +391,7 @@ sub open {
 sub dbkeys {
   return (
 	  (ref($_[0]) ? (map {($_."enum",$_."2x")} @{$_[0]->attrs}) : qw()),
-	  qw(xenum xf cof vsem),
+	  qw(xenum xf cof tdf),
 	 );
 }
 
@@ -587,14 +591,14 @@ sub create {
   make_path($dbdir)
     or $coldb->logconfess("create(): could not create DB directory $dbdir: $!");
 
-  ##-- initialize: vsem
-  $coldb->{index_vsem} //= 1;
-  if ($coldb->{index_vsem}) {
-    if (!require "DiaColloDB/Relation/Vsem.pm") {
-      $coldb->logwarn("create(): require failed for DiaColloDB/Relation/Vsem.pm ; vector-space modelling disabled", ($@ ? "\n: $@" : ''));
-      $coldb->{index_vsem} = 0;
+  ##-- initialize: tdf
+  $coldb->{index_tdf} //= 1;
+  if ($coldb->{index_tdf}) {
+    if (!require "DiaColloDB/Relation/TDF.pm") {
+      $coldb->logwarn("create(): require failed for DiaColloDB/Relation/TDF.pm ; (term x document) matrix modelling disabled", ($@ ? "\n: $@" : ''));
+      $coldb->{index_tdf} = 0;
     } else {
-      $coldb->info("vector-space modelling via DiaColloDB::Relation::Vsem enabled.");
+      $coldb->info("(term x document) matrix modelling via DiaColloDB::Relation::TDF enabled.");
     }
   }
 
@@ -640,19 +644,19 @@ sub create {
   CORE::open(my $atokfh, ">:raw", $atokfile)
     or $coldb->logconfess("$0: open failed for $atokfile: $!");
 
-  ##-- initialize: vsem: doc-data array (temporary)
+  ##-- initialize: tdf: doc-data array (temporary)
   my ($docmeta,$docoff);
   my $ndocs = 0; ##-- current size of @$docmeta, @$docoff
-  my $index_vsem = $coldb->{index_vsem};
-  if ($index_vsem) {
+  my $index_tdf = $coldb->{index_tdf};
+  if ($index_tdf) {
     $docmeta = $coldb->{docmeta} = tmparray("$dbdir/docmeta", UNLINK=>!$coldb->{keeptmp}, pack_o=>'J', pack_l=>'J')
       or $coldb->logconfess("create(): could not tie temporary doc-data array to $dbdir/docmeta.*: $!");
     $docoff = $coldb->{docoff} = tmparrayp("$dbdir/docoff", 'J', UNLINK=>!$coldb->{keeptmp})
       or $coldb->logconfess("create(): couldl not tie temporary doc-offset array to $dbdir/docoff.*: $!");
   }
-  my $vbreak = ($coldb->{vbreak} // '#file');
-  $vbreak    = "#$vbreak" if ($vbreak !~ /^#/);
-  $coldb->{vbreak} = $vbreak;
+  my $dbreak = ($coldb->{dbreak} // '#file');
+  $dbreak    = "#$dbreak" if ($dbreak !~ /^#/);
+  $coldb->{dbreak} = $dbreak;
 
   ##-- initialize: filter regexes
   my $pgood = $coldb->{pgood} ? qr{$coldb->{pgood}} : undef;
@@ -678,7 +682,7 @@ sub create {
     $doc  = $corpus->idocument();
     $date = $doc->{date};
 
-    ##-- initalize vsem data (#/sigs)
+    ##-- initalize tdf data (#/sigs)
     $nsigs = 0;
     $docoff_cur=$toki;
 
@@ -718,22 +722,22 @@ sub create {
 	$atokfh->print("\n");
 	$last_was_eos = 1;
       }
-      elsif (defined($tok) && $tok eq $vbreak && $docoff && $docoff_cur < $toki) { ##-- TODO: honor vbnmin,vbnmax in Vsem
-	##-- break:vsem
+      elsif (defined($tok) && $tok eq $dbreak && $docoff && $docoff_cur < $toki) { ##-- TODO: honor vbnmin,vbnmax in TDF
+	##-- break:tdf
 	++$nsigs;
 	push(@$docoff, $docoff_cur);
 	$docoff_cur = $toki;
       }
     }
 
-    ##-- store final doc-break (for vsem)
+    ##-- store final doc-break (for tdf)
     if ($docoff && $docoff_cur < $toki) {
       ++$nsigs;
       push(@$docoff, $docoff_cur);
       $docoff_cur = $toki;
     }
 
-    ##-- store doc-data (for vsem)
+    ##-- store doc-data (for tdf)
     if ($docmeta) {
       push(@$docmeta, {
 		       id    => $ndocs++,
@@ -854,7 +858,7 @@ sub create {
     chomp;
     if ($_) {
       if ($toki_in == $docoff_in) {
-	##-- update break-indices for vsem
+	##-- update break-indices for tdf
 	$docoff->[$doci_cur] = $toki_out;
 	$docoff_in = $docoff->[++$doci_cur];
       }
@@ -875,7 +879,7 @@ sub create {
       $tokfh->print("\n");
     }
   }
-  ##-- update any trailing vsem break indices
+  ##-- update any trailing tdf break indices
   if ($docoff) {
     $ndocs = $#$docoff;
     for (; $doci_cur <= $ndocs; ++$doci_cur) {
@@ -889,7 +893,7 @@ sub create {
   CORE::close($tokfh)
       or $coldb->logconfess("create(): failed to temporary token-file $tokfile: $!");
   CORE::close($vtokfh)
-      or $coldb->logconfess("create(): failed to temporary vsem-token-file $vtokfile: $!");
+      or $coldb->logconfess("create(): failed to temporary tdf-token-file $vtokfile: $!");
   my $ntok_out = $toki_out;
   my $ptokbad = $ntok_in ? sprintf("%.2f%%",100*($ntok_in-$ntok_out)/$ntok_in) : 'nan%';
   $coldb->vlog($coldb->{logCreate}, "create(): assigned $nx term+date tuple-IDs to $ntok_out of $ntok_in tokens (pruned $ptokbad)");
@@ -899,7 +903,7 @@ sub create {
 
   ##-- CONTINUE HERE: TODO
   ## x+ re-map $docmeta or similar if required
-  ## x+ adjust $docmeta: read vsem data from re-mapped token file (tokfile? atokfile? something else?)
+  ## x+ adjust $docmeta: read tdf data from re-mapped token file (tokfile? atokfile? something else?)
   ## x+ free up $aconf->[$ai]{i2j} when it's no longer needed (save memory)
   ## x+ maybe save more memory by using PackedFile for {i2j}?
 
@@ -945,14 +949,14 @@ sub create {
     $coldb->info("NOT creating co-frequency index $dbdir/cof.*; set index_cof=1 to enable");
   }
 
-  ##-- create vector-space model (if requested & available)
-  if ($coldb->{index_vsem}) {
-    $coldb->info("creating vector-space model $dbdir/vsem* [vbreak=$vbreak]");
-    $coldb->{vsopts}     //= {};
-    $coldb->{vsopts}{$_} //= $VSOPTS{$_} foreach (keys %VSOPTS); ##-- vsem: default options
-    $coldb->{vsem} = DiaColloDB::Relation::Vsem->create($coldb, undef, base=>"$dbdir/vsem");
+  ##-- create tdf-model (if requested & available)
+  if ($coldb->{index_tdf}) {
+    $coldb->info("creating (term x document) index $dbdir/tdf* [dbreak=$dbreak]");
+    $coldb->{tdfopts}     //= {};
+    $coldb->{tdfopts}{$_} //= $TDF_OPTS{$_} foreach (keys %TDF_OPTS); ##-- tdf: default options
+    $coldb->{tdf} = DiaColloDB::Relation::TDF->create($coldb, undef, base=>"$dbdir/tdf");
   } else {
-    $coldb->info("NOT creating vector-space model, 'vsem' profiling relation disabled");
+    $coldb->info("NOT creating (term x document) index, 'tdf' profiling relation disabled");
   }
 
   ##-- create ddc client relation (no-op if ddcServer option is not set)
@@ -1146,24 +1150,24 @@ sub union {
     $coldb->vlog($coldb->{logCreate}, "union(): NOT creating co-frequency index $dbdir/cof.*; set index_cof=1 to enable");
   }
 
-  ##-- vsem: populate
-  my $db_vsem            = !grep {!$_->{index_vsem}} @dbargs;
-  $coldb->{index_vsem} //= $db_vsem;
-  if ($coldb->{index_vsem} && $db_vsem) {
-    $coldb->vlog($coldb->{logCreate}, "union(): creating vector-space index $dbdir/vsem.*");
-    my $vsopts0            = $dbargs[0]{vsem}{vsopts};
-    $coldb->{vsopts}     //= {};
-    $coldb->{vsopts}     //= $vsopts0->{$_} foreach (keys %$vsopts0); ##-- vsem: inherit options
-    $coldb->{vsopts}{$_} //= $VSOPTS{$_}    foreach (keys %VSOPTS);   ##-- vsem: default options
-    $coldb->{vsem} = DiaColloDB::Relation::Vsem->union($coldb, \@dbargs,
-						       base => "$dbdir/vsem",
+  ##-- tdf: populate (TODO)
+  my $db_tdf            = !grep {!$_->{index_tdf}} @dbargs;
+  $coldb->{index_tdf} //= $db_tdf;
+  if ($coldb->{index_tdf} && $db_tdf) {
+    $coldb->vlog($coldb->{logCreate}, "union(): creating (term x document) index $dbdir/tdf.*");
+    my $tdfopts0          = $dbargs[0]{tdf}{tdfopts};
+    $coldb->{tdfopts}     //= {};
+    $coldb->{tdfopts}     //= $tdfopts0->{$_} foreach (keys %$tdfopts0);   ##-- tdf: inherit options
+    $coldb->{tdfopts}{$_} //= $TDF_OPTS{$_}   foreach (keys %TDF_OPTS);    ##-- tdf: default options
+    $coldb->{tdf} = DiaColloDB::Relation::TDF->union($coldb, \@dbargs,
+						       base => "$dbdir/tdf",
 						       flags => $flags,
 						       keeptmp => $coldb->{keeptmp},
-						       %{$coldb->{vsopts}},
+						       %{$coldb->{tdfopts}},
 						      )
-      or $coldb->logconfess("create(): failed to populate vector-space index $dbdir/vsem.*: $!");
+      or $coldb->logconfess("create(): failed to populate (term x document) index $dbdir/tdf.*: $!");
   } else {
-    $coldb->vlog($coldb->{logCreate}, "union(): NOT creating vector-space index $dbdir/vsem.*; set index_vsem=1 on all argument DBs to enable");
+    $coldb->vlog($coldb->{logCreate}, "union(): NOT creating (term x document) index $dbdir/tdf.*; set index_tdf=1 on all argument DBs to enable");
   }
 
   ##-- cleanup
@@ -1195,7 +1199,7 @@ sub union {
 ## @keys = $coldb->headerKeys()
 ##  + keys to save as header
 sub headerKeys {
-  return (qw(attrs), grep {!ref($_[0]{$_}) && $_ !~ m{^(?:dbdir$|flags$|perms$|info$|vsopts$|log)}} keys %{$_[0]});
+  return (qw(attrs), grep {!ref($_[0]{$_}) && $_ !~ m{^(?:dbdir$|flags$|perms$|info$|tdfopts$|log)}} keys %{$_[0]});
 }
 
 ## $bool = $coldb->loadHeaderData()
@@ -1455,8 +1459,8 @@ sub relname {
   elsif ($rel =~ m/^(?:c|f?1?2$)/) {
     return 'cof';
   }
-  elsif ($rel =~ m/^(?:v|sem|tdm|tfidf)/) {
-    return 'vsem';
+  elsif ($rel =~ m/^(?:v|vec|vs|vsem|sem|td[mf])$/) {
+    return 'tdf';
   }
   return $rel;
 }
