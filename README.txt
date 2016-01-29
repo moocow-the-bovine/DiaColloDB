@@ -34,9 +34,9 @@ INSTALLATION
      bash$ make install       # install the module on your system
 
 SEE ALSO
-    *   http://kaskade.dwds.de/~moocow/dta/diacollo/ contains a live web
-        demo of a DiaCollo index on the *Deutsches Textarchiv* corpus,
-        including a user-oriented help page.
+    *   http://kaskade.dwds.de/dstar/dta/diacollo/ contains a live web demo
+        of a DiaCollo index on the *Deutsches Textarchiv* corpus, including
+        a user-oriented help page.
 
 AUTHOR
     Bryan Jurish <moocow@cpan.org>
