@@ -2,6 +2,10 @@
 ##
 ## Change log for perl distribution DiaColloDB
 
+v0.08.001 Fri, 29 Jan 2016 12:35:44 +0100 moocow
+	* added co-occurrence profiles over (term x document) frequency matrix via DiaColloDB::Relation::TDF
+	  - requires PDL, PDL::CCS, etc.: should be safe to omit, only loaded on demand
+
 v0.07.015 Wed, 04 Nov 2015 14:18:20 +0100 moocow
 	* added mi3 profiles a la Rychlý (2008)
 	* report log-log-likelihood scores (extra log() for better scaling)
