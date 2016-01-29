@@ -162,7 +162,8 @@ $query{bquery} = @ARGV ? shift : $query{query};
 $rel  = "d$rel" if ($isDiff);
 
 #$query{query} = '$p=NN !#has[textClass,/politik/i]' if ($query{query} eq 'debug'); ##-- DEBUG
-$query{query} = 'Mann #has[textClass,/zeitung/i]' if ($query{query} eq 'debug'); ##-- DEBUG
+#$query{query} = 'Mann #has[textClass,/zeitung/i]' if ($query{query} eq 'debug'); ##-- DEBUG
+$query{query} = '* #has[textClass,/Zeitung/i]' if ($query{query} eq 'debug'); ##-- DEBUG
 
 if ($niters != 1) {
   $cli->info("performing $niters query iterations");

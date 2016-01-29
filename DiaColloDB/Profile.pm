@@ -451,7 +451,9 @@ sub compile_ld {
   return $prf;
 }
 
-sub log0 { return $_[0]==0 ? 0 : log($_[0]) }
+sub log0 {
+  return $_[0]>0 ? log($_[0]) : 0;
+}
 
 ## $prf = $prf->compile_ll(%opts)
 ##  + computes 1-sided log-log-likelihood ratio in $prf->{ll} a la Evert (2008)
@@ -466,6 +468,7 @@ sub compile_ll {
   $N  += 2*$eps;
   $f1 += $eps;
   my ($i2,$f2,$f12,$logl);
+  my $llmin = 0;
   while (($i2,$f2)=each(%$pf2)) {
     $f12  = ($pf12->{$i2} // 0) + $eps;
     $logl = (##-- raw log-lambda
@@ -481,6 +484,7 @@ sub compile_ll {
 		  #* ($logl**(1/3))              ##-- extra cube-root for scaling
 		 );
   }
+
   $prf->{score} = 'll';
   return $prf;
 }
