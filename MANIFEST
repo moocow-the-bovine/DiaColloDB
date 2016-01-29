@@ -30,7 +30,6 @@ DiaColloDB/EnumFile/FixedLen.pm
 DiaColloDB/EnumFile/FixedLen.pod
 DiaColloDB/EnumFile/FixedMap.pm
 DiaColloDB/EnumFile/FixedMap.pod
-DiaColloDB/EnumFile/Identity.pm
 DiaColloDB/EnumFile/MMap.pm
 DiaColloDB/EnumFile/MMap.pod
 DiaColloDB/EnumFile/Tied.pm

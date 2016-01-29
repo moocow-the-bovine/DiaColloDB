@@ -8,7 +8,7 @@ require 5.10.0; ##-- for // operator
 use DiaColloDB::Client;
 use DiaColloDB::Logger;
 use DiaColloDB::EnumFile;
-use DiaColloDB::EnumFile::Identity;
+#use DiaColloDB::EnumFile::Identity;
 use DiaColloDB::EnumFile::FixedLen;
 use DiaColloDB::EnumFile::FixedMap;
 use DiaColloDB::EnumFile::MMap;
