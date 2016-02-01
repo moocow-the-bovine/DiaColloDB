@@ -113,14 +113,14 @@ GetOptions(##-- general
 	   'bench|n-iterations|iterations|iters|i=i' => \$niters,
 	  );
 
-pod2usage({-exitval=>0,-verbose=>0}) if ($help);
-pod2usage({-exitval=>1,-verbose=>0,-msg=>"$prog: ERROR: no DBURL specified!"}) if (@ARGV<1);
-pod2usage({-exitval=>1,-verbose=>0,-msg=>"$prog: ERROR: no QUERY specified!"}) if (@ARGV<2);
-
 if ($version) {
   print STDERR "$prog version $DiaColloDB::VERSION by Bryan Jurish\n";
   exit 0 if ($version);
 }
+
+pod2usage({-exitval=>0,-verbose=>0}) if ($help);
+pod2usage({-exitval=>1,-verbose=>0,-msg=>"$prog: ERROR: no DBURL specified!"}) if (@ARGV<1);
+pod2usage({-exitval=>1,-verbose=>0,-msg=>"$prog: ERROR: no QUERY specified!"}) if (@ARGV<2);
 
 
 ##----------------------------------------------------------------------
