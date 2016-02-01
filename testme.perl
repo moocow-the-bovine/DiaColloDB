@@ -13,7 +13,7 @@ use Data::Dumper;
 use Benchmark qw(timethese cmpthese);
 use utf8;
 
-use DiaColloDB::Relation::Vsem; ##-- DEBUG
+use DiaColloDB::Relation::TDF; ##-- DEBUG
 BEGIN {
   select STDERR; $|=1; select STDOUT; $|=1;
   $, = ' ';
