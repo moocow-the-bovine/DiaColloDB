@@ -42,7 +42,7 @@ BEGIN {
 ##   mgood  => $regex,      ##-- positive filter regex for metadata attributes
 ##   mbad   => $regex,      ##-- negative filter regex for metadata attributes
 ##   submax => $submax,     ##-- choke on requested tdm cross-subsets if dense subset size ($NT_sub * $ND_sub) > $submax; default=2**29 (512M)
-##   mquery => \%mquery,    ##-- query templates for meta-fields (default: textClass hack for genre): ($mattr=>$TEMPLATE, ...)
+##   mquery => \%mquery,    ##-- qinfo templates for meta-fields (default: textClass hack for genre): ($mattr=>$TEMPLATE, ...)
 ##   ##
 ##   ##-- logging options
 ##   logvprofile => $level, ##-- log-level for vprofile() (default=undef:none)
@@ -93,7 +93,7 @@ sub new {
 			       mbad  => $DiaColloDB::TDF_MBAD_DEFAULT,
 			       submax => 2**29,
 			       mquery => {
-					  'genre' => '* #HAS[textClass,/^\Q__W2__\E/]',
+					  'doc.genre' => '* #HAS[textClass,/^\Q__W2__\E/]',
 					 },
 			       minFreq => undef,
 			       minDocFreq => 4,
@@ -1499,48 +1499,81 @@ sub qinfo {
   my $q1 = $opts{qobj} ? $opts{qobj}->clone : $coldb->parseQuery($opts{query}, logas=>'qinfo', default=>'', ddcmode=>1);
   my ($qo);
   $q1->setOptions($qo=DDC::XS::CQueryOptions->new) if (!defined($qo=$q1->getOptions));
-  my $q1str = $q1->toString.' =1';
+  $q1->SetMatchId(1);
+  my $qf = $qo->getFilters // [];
+  my ($qfi,$qfobj,$ma,$aqstr,$aq,$af,$av);
+  foreach my $qfi (0..$#$qf) {
+    $qfobj = $qf->[$qfi];
+    next if (!UNIVERSAL::isa($qfobj,'DDC::XS::CQFHasField'));
+    $ma = $coldb->attrName( $qfobj->getArg0 );
+    if (defined($aqstr=$vs->{mquery}{$ma})) {
+      ##-- meta-filter: from template
+      $aq = $coldb->qparse($aqstr)
+	or $vs->logconfess("qinfo(): failed to parse query-template '$aqstr': $coldb->{error}");
+      $af = (($aq->getOptions ? $aq->getOptions->getFilters : undef)//[])->[0];
+      if (UNIVERSAL::isa($aq,'DDC::XS::CQTokAny') && UNIVERSAL::isa($af,'DDC::XS::CQFHasFieldRegex')) {
+	##-- meta-filter: from template: target=regex
+	if ($qfobj->isa('DDC::XS::CQFHasFieldRegex')) {
+	  $af->setArg1($qfobj->getArg1);
+	} elsif ($qfobj->isa('DDC::XS::CQFHasFieldValue')) {
+	  $af->setArg1(quotemeta($qfobj->getArg1));
+	} elsif ($qfobj->isa('DDC::XS::CQFHasFieldSet')) {
+	  $af->setArg1(join('|',map {"(?:".quotemeta($_).")"} @{$qfobj->getValues}));
+	} else {
+	  $vs->logwarn("qinfo(): can't translate '$ma' regex field template '$aqstr' to DDC-safe query");
+	  next;
+	}
+	$qf->[$qfi] = $af;
+      } else {
+	##-- meta-filter: from template: target=?
+	$vs->logwarn("qinfo(): can't translate non-trivial '$ma' field template '$aqstr' to DDC-safe query");
+      }
+    }
+  }
 
   ##-- item2 query (via groupby, lifted from Relation::qinfoData())
   my $xi = 1;
-  my $qf = $qo->getFilters // [];
-  my $q2str = '';
+  my $q2 = DDC::XS::CQTokAny->new();
   foreach (@{$opts{groupby}{areqs}}) {
     if ($_->[2]{atype} eq 'm') {
       ##-- meta-attribute
-      if (defined($vs->{mquery}{$_->[2]{aname}})) {
+      $ma = $coldb->attrName( $_->[2]{aname} );
+      if (defined($aqstr=$vs->{mquery}{$ma})) {
 	##-- meta-attribute: from template
-	(my $mqstr = $vs->{mquery}{$_->[2]{aname}}) =~ s/__W2__/__W2.${xi}__/g;
-	my $mqobj = DDC::XS->parse($mqstr);
-	push(@$qf, @{$mqobj->getOptions->getFilters}) if ($mqobj->getOptions);
-	$q2str .= ($q2str ? " WITH " : '').$mqobj->toString if (!UNIVERSAL::isa($mqobj,'DDC::XS::CQTokAny'));
+	$aqstr =~ s/__W2__/__W2.${xi}__/g;
+	$aq = $coldb->qparse($aqstr)
+	  or $vs->logconfess("qinfo(): failed to parse query-template '$aqstr': $coldb->{error}");
+	$q2 = $q2->isa('DDC::XS::CQTokAny') ? $aq : ($aq->isa('DDC::XS::CQTokAny') ? $q2 : DDC::XS::CQWith->new($q2,$aq));
+	push(@$qf, @{$aq->getOptions->getFilters}) if ($aq->getOptions);
       } else {
 	##-- meta-attribute: default: literal #HAS filter
-	push(@$qf, DDC::XS::CQFHasField->new($_->[2]{aname},"__W2.${xi}__"));
+	$ma =~ s/^doc\.//;
+	push(@$qf, DDC::XS::CQFHasField->new($ma,"__W2.${xi}__"));
       }
     }
     else {
       ##-- token-attribute (literal)
-      $q2str .= ' WITH ' if ($q2str);
-      $q2str .= DDC::XS::CQTokExact->new($_->[2]{aname},"__W2.${xi}__")->toString;
+      $aq = DDC::XS::CQTokExact->new($_->[2]{aname},"__W2.${xi}__");
+      $q2 = $q2->isa('DDC::XS::CQTokAny') ? $aq : ($aq->isa('DDC::XS::CQTokAny') ? $q2 : DDC::XS::CQWith->new($q2,$aq));
     }
     ++$xi;
   }
-  $q2str ||= '*';
-  $q2str .= ' =2';
+  $q2->SetMatchId(2);
 
   ##-- options: set filters, WITHIN
-  $qo->setFilters($qf);
   (my $inbreak = $coldb->{dbreak}) =~ s/^#//;
+  $qo->setWithin([$inbreak]);
+  $qo->setFilters($qf);
 
   ##-- construct query
-  my $qtemplate = ("$q1str && $q2str "
-		   .$qo->toString
-		   ." #IN $inbreak"
-		  );
+  my $qboth = ($q1->isa('DDC::XS::CQTokAny') ? $q2
+	       : ($q2->isa('DDC::XS::CQTokAny') ? $q1
+		  : DDC::XS::CQAnd->new($q1,$q2)));
+  $qboth->setOptions($qo);
+
   return {
 	  fcoef => 1,
-	  qtemplate => $qtemplate,
+	  qtemplate => $qboth->toStringFull,
 	 };
 }
 

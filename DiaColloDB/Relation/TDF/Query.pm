@@ -195,6 +195,7 @@ sub DDC::XS::CQTokExact::__dcvs_compile {
   return $cq->__dcvs_compile_neg($vq,%opts);
 }
 
+
 ##----------------------------------------------------------------------
 ## $vq = $CQTokInfl->__dcvs_compile($vq,%opts)
 ##  + should set $vq->{ti}
@@ -219,6 +220,7 @@ sub DDC::XS::CQTokSet::__dcvs_compile {
   my $ti   = $vq->{ti} = $opts{tdf}->termIds($attr->{a}, $ais);
   return $cq->__dcvs_compile_neg($vq,%opts);
 }
+
 
 ##----------------------------------------------------------------------
 ## $vq = $CQTokSetInfl->__dcvs_compile($vq,%opts)
