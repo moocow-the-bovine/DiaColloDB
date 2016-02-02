@@ -1292,7 +1292,7 @@ sub test_ddcdiff {
 
   exit 0;
 }
-test_ddcdiff(@ARGV);
+#test_ddcdiff(@ARGV);
 
 ##--------------------------------------------------------------
 sub test_pnndiff {
@@ -1537,10 +1537,10 @@ sub test_vsem_reindex {
   # Out of memory!
   # ... on plato, source=kern01.files
   # ... see vsnotes.txt; better but not yet really memory-friendly
-  my %VSOPTS = %DiaColloDB::VSOPTS;
+  my %TDF_OPTS = %DiaColloDB::TDF_OPTS;
   $coldb->info("creating vector-space model $dbdir/vsem* [vbreak=$coldb->{vbreak}]");
   $coldb->{vsopts} //= {};
-  $coldb->{vsopts}{$_} //= $VSOPTS{$_} foreach (keys %VSOPTS); ##-- vsem: default options
+  $coldb->{vsopts}{$_} //= $TDF_OPTS{$_} foreach (keys %TDF_OPTS); ##-- vsem: default options
 
   ##-- tie doctmp array
   -e "$dbdir/doctmp.a"
@@ -1870,8 +1870,19 @@ sub vs_add_genre {
 
   $that->info("done");
 }
-vs_add_genre(@ARGV);
+#vs_add_genre(@ARGV);
 
+##==============================================================================
+## hv test (for tdf/pdl aggregation)
+
+sub xs_hvtest {
+  my ($niters,$nitems) = @_;
+  $niters ||= 1000;
+  $nitems ||= 100;
+  DiaColloDB::PDL::Utils::diacollo_hvtest($niters,$nitems);
+  exit 0;
+}
+xs_hvtest(@ARGV);
 
 ##==============================================================================
 ## MAIN
