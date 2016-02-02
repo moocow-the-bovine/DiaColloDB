@@ -19,6 +19,7 @@ x+ rename Relation::Vsem -> Relation::TDM
 
 + debug/correct
   - update "install" rule for dstar build/diacollo (see dta build dir)
+  - fix boolean query eval (&& vs ||): maybe allow 'tdm' component in TDF::Query?
   - incorrect results e.g. for "Obst" in 1998 with co-occurent "Pak"
     + 1 shared paragraph "doc" d, f(Obst,d)=1, f(Pak,d)=2
     + we SHOULD get f12(Obst,Pak|year) = \sum_{d \in year} min{f(Obst,d),f(Pak,d)} = 1, but we get f12=2
