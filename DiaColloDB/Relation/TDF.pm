@@ -1349,11 +1349,14 @@ sub metaEnum {
 ## $cats = $vs->catSubset($terms)
 ## $cats = $vs->catSubset($terms,$cats)
 ##  + gets (sorted) cat-subset for (sorted) term-set $terms
-##  + too expensive, since it uses $tdm->dice_axis(0,$terms)
 sub catSubset {
   my ($vs,$terms,$cats) = @_;
   return $cats if (!defined($terms));
-  return DiaColloDB::Utils::_intersect_p($cats, $vs->{d2c}->index($vs->{tdm}->dice_axis(0,$terms)->_whichND->slice("(1),"))->uniq);
+  #return DiaColloDB::Utils::_intersect_p($cats, $vs->{d2c}->index($vs->{tdm}->dice_axis(0,$terms)->_whichND->slice("(1),"))->uniq);
+  my $ptr0 = $vs->{ptr0};
+  my $nz_off = $ptr0->index($terms);
+  my $nz_len = $ptr0->index($terms+1) - $nz_off;
+  return DiaColloDB::Utils::_intersect_p($cats, $vs->{d2c}->index($vs->{tdm}->_whichND->index2d(1,$nz_len->rldseq($nz_off))->uniq)->uniq);
 }
 
 

@@ -8,7 +8,7 @@ use Pod::Usage;
 use File::Basename qw(basename);
 use strict;
 
-#use DiaColloDB::Relation::TDF; ##-- DEBUG
+use DiaColloDB::Relation::TDF; ##-- DEBUG
 
 BEGIN {
   select STDERR; $|=1; select STDOUT;
@@ -163,7 +163,8 @@ $rel  = "d$rel" if ($isDiff);
 
 #$query{query} = '$p=NN !#has[textClass,/politik/i]' if ($query{query} eq 'debug'); ##-- DEBUG
 #$query{query} = 'Mann #has[textClass,/zeitung/i]' if ($query{query} eq 'debug'); ##-- DEBUG
-$query{query} = '* #has[textClass,/Zeitung/i]' if ($query{query} eq 'debug'); ##-- DEBUG
+#$query{query} = '* #has[textClass,/Zeitung/i]' if ($query{query} eq 'debug'); ##-- DEBUG
+$query{query} = 'Katze && Maus' if ($query{query} eq 'debug'); ##-- DEBUG
 
 if ($niters != 1) {
   $cli->info("performing $niters query iterations");
