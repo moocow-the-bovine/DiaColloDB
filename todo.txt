@@ -18,6 +18,7 @@ x+ rename Relation::Vsem -> Relation::TDM
   - later: others
 
 + debug/correct
+  - update "install" rule for dstar build/diacollo (see dta build dir)
   - incorrect results e.g. for "Obst" in 1998 with co-occurent "Pak"
     + 1 shared paragraph "doc" d, f(Obst,d)=1, f(Pak,d)=2
     + we SHOULD get f12(Obst,Pak|year) = \sum_{d \in year} min{f(Obst,d),f(Pak,d)} = 1, but we get f12=2
@@ -37,6 +38,8 @@ x+ rename Relation::Vsem -> Relation::TDM
     + incompatible pdl type-enums save raw headers using float type = 5 or 6 depending on PDL_Indx availability
       - this causes "Bus error" pukes on old PDL distros without PDL_Indx (type 6 -> double)
       - can be hacked with 'pdl-raw-settype.perl'
+  - fix kwic-search links for Kant/Hegel example (* #has[author,/Kant/]) should NOT link to all "Kant"-tokens,
+    just the relevant item2
 
 + document, package, & upload to CPAN
   - Alien:: module(s) for DDC, gfsm, moot?
