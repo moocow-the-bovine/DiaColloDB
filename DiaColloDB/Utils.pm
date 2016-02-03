@@ -41,6 +41,7 @@ our %EXPORT_TAGS =
      si    => [qw(si_str)],
      pdl   => [qw(_intersect_p _union_p _complement_p _setdiff_p),
 	       qw(readPdlFile writePdlFile writePdlHeader writeCcsHeader mmzeroes mmtemp),
+	       qw(maxval mintype),
 	      ],
      temp  => [qw($TMPDIR tmpdir tmpfh tmpfile tmparray tmparrayp tmphash)],
     );

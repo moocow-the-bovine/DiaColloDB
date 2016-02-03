@@ -302,7 +302,7 @@ sub create {
   my $nsigs0   = $docoff->[$#$docoff];
   my $nterms0  = $coldb->{xenum}->size;
   my $imax     = $nsigs0 > $nterms0 ? $nsigs0 : $nterms0;
-  my $imintype = DiaColloDB::Utils::mintype($imax);
+  my $imintype = DiaColloDB::Utils::mintype($imax, qw(ushort long indx));
   $vs->info("create(): using PDL integer type $imintype (max value = $imax)");
   $vs->{itype} = $imintype;
 
