@@ -76,7 +76,7 @@ GetOptions(##-- general
 	   'min-term-frequency|min-tf|mintf|tfmin|min-frequency|min-f|minf|fmin=i' => \$coldb{tfmin},
 	   'min-lemma-frequency|min-lf|minlf|lfmin=i' => \$coldb{fmin_l},
 	   'index-tdf|index-tdm|tdf|tdm!' => \$coldb{index_tdf},
-	   'tdf-dbreak|dbreak|db|vbreak|vb=s' => \$coldb{dbreak},
+	   'tdf-dbreak|tdf-break|dbreak|db|vbreak|vb=s' => \$coldb{dbreak},
 	   'tdf-break-min-size|tdf-break-min|tdf-nmin|vbnmin|vbmin=s' => \$coldb{tdfopts}{minDocSize},
 	   'tdf-break-max-size|tdf-break-max|tdf-nmax|vbnmax|vbmax=s' => \$coldb{tdfopts}{maxDocSize},
 	   'tdf-option|tdm-option|tdfopt|tdmopt|tdmo|tdfo|to|tO=s%' => \$coldb{tdfopts},
@@ -185,7 +185,7 @@ dcdb-create.perl - create a DiaColloDB collocation database from a corpus dump
    -lfmin TFMIN         ##-- minimum global lemma frequency (default=undef:tfmin)
    -cfmin CFMIN         ##-- minimum relation co-occurrence frequency (default=5)
    -[no]tdf             ##-- do/don't create (term x document) index relation (default=if available)
-   -tdf-break BREAK     ##-- set tdf matrix "document" granularity (e.g. s,p,page,file; default=file)
+   -tdf-dbreak BREAK    ##-- set tdf matrix "document" granularity (e.g. s,p,page,file; default=file)
    -tdf-nmin VNMIN      ##-- set minimum number of content tokens per tdf "document" (default=8)
    -tdf-nmax VNMAX      ##-- set maximum number of content tokens per tdf "document" (default=inf)
    -tdf-option OPT=VAL  ##-- set arbitrary vector-model option, e.g.

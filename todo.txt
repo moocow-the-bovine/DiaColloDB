@@ -19,7 +19,9 @@ x+ rename Relation::Vsem -> Relation::TDM
 
 + debug/correct
   - dstar: update "install" rule for dstar build/diacollo (see dta build dir)
-  - tdf: auto-detect minimum 'itype' during create() and/or union()
+    + do this in-place on next test build (something small, e.g. pnn)
+  - bug?: no tdf docs found for "Katze && Hund && Maus" in zeit.d-f, but ddc finds 131 matches with "#in file": why?
+  x- tdf: auto-detect minimum 'itype' during create() and/or union()
   x- fix boolean query eval (&& vs ||): maybe allow 'tdm' component in TDF::Query?
     + LATER: we're already performing && on cat-subset
   x- incorrect results e.g. for "Obst" in 1998 with co-occurent "Pak"
@@ -38,14 +40,17 @@ x+ rename Relation::Vsem -> Relation::TDM
      + item2=herabschauen/VVPP gets f2=2 f12=2, but ddc only finds it once in slice (and that once with 'Obst')
      + shouldn't be a grouping problem here, since we're grouping by whole term-tuples (l,p)
      + problem was stale dta_[56].files being used in diacollo index generation, some cats were doubled
-  - dstar: synchronize pdl versions on BUILDHOST (kira,kaskade) and WEBHOST (kaskade)
+  x- dstar: synchronize pdl versions on BUILDHOST (kira,kaskade) and WEBHOST (kaskade)
     + incompatible pdl type-enums save raw headers using float type = 5 or 6 depending on PDL_Indx availability
       - this causes "Bus error" pukes on old PDL distros without PDL_Indx (type 6 -> double)
       - can be hacked with 'pdl-raw-settype.perl'
+    + plato (workstation): 2.007 (dist) / 2.014 (local)
+    + kira (buildhost): 2.007 (dist)
+    + kaskade (runhost): 2.4.11 (dist) --> 2.007 (from wheezy, built as deb)
   x- fix kwic-search links for Kant/Hegel example
     + (* #has[author,/Kant/]) should NOT link to all "Kant"-tokens, just the relevant item2
     ?+ maybe fix query-parsing to allow token-attribute syntax for meta-field queries (e.g. boolean expressions?)
-  - merge intro trunk (probably best to branch trunk out again from current state and just replace old trunk with current branch)
+  x- merge intro trunk (probably best to branch trunk out again from current state and just replace old trunk with current branch)
 
 + document, package, & upload to CPAN
   - Alien:: module(s) for DDC, gfsm, moot?
