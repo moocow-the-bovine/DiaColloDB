@@ -59,6 +59,7 @@ BEGIN {
 ##   ##
 ##   ##-- guts: aux: info
 ##   N => $tdm0Total,       ##-- total number of (doc,term) frequencies counted
+##   dbreak => $dbreak,     ##-- inherited from $coldb on create()
 ##   ##
 ##   ##-- guts: aux: term-tuples ($NA:number of term-attributes, $NT:number of term-tuples)
 ##   attrs  => \@attrs,       ##-- known term attributes
@@ -196,7 +197,7 @@ sub open {
       or $vs->logconess("failed to load header from '$vs->{base}.hdr': $!");
   }
 
-  ##-- open maybe create directory
+  ##-- open: maybe create directory
   my $vsdir = "$vs->{base}.d";
   if (!-d $vsdir) {
     $vs->logconfess("open(): no such directory '$vsdir'") if (!fccreat($flags));
@@ -204,7 +205,7 @@ sub open {
       or $vs->logconfess("open(): could not create relation directory '$vsdir': $!");
   }
 
-  ##-- load: model data
+  ##-- open: model data
   my %ioopts = (ReadOnly=>!fcwrite($flags), mmap=>1, log=>$vs->{logIO});
   defined($vs->{tdm} = readPdlFile("$vsdir/tdm", class=>'PDL::CCS::Nd', %ioopts))
     or $vs->logconfess("open(): failed to load term-document frequency matrix from $vsdir/tdm.*: $!");
@@ -222,13 +223,13 @@ sub open {
   $vs->{tdm}->setptr(0, $ptr0)        if (defined($ptr0));
   $vs->{tdm}->setptr(1, $ptr1,$pix1)  if (defined($ptr1) && defined($pix1));
 
-  ##-- load: aux data: piddles
+  ##-- open: aux data: piddles
   foreach (qw(tvals tsorti mvals msorti d2c c2d c2date)) {
     defined($vs->{$_}=readPdlFile("$vsdir/$_.pdl", %ioopts))
       or $vs->logconfess("open(): failed to load piddle data from $vsdir/$_.pdl: $!");
   }
 
-  ##-- load: metadata: enums
+  ##-- open: metadata: enums
   my %efopts = (flags=>$vs->{flags}); #, pack_i=>$coldb->{pack_id}, pack_o=>$coldb->{pack_off}, pack_l=>$coldb->{pack_len}
   foreach my $mattr (@{$vs->{meta}}) {
     $vs->{"meta_e_$mattr"} = $DiaColloDB::ECLASS->new(base=>"$vsdir/meta_e_$mattr", %efopts)
@@ -956,7 +957,8 @@ sub union {
 sub dbinfo {
   my $vs = shift;
   my $info = $vs->SUPER::dbinfo();
-  @$info{qw(dcopts attrs meta mgood mbad N)} = @$vs{qw(dcopts attrs meta mgood mbad N)};
+  my @feat = qw(dbreak attrs meta mgood mbad N minFreq minDocFreq minDocSize maxDocSize);
+  @$info{@feat}   = @$vs{@feat};
   $info->{nTerms} = $vs->nTerms;
   $info->{nDocs}  = $vs->nDocs;
   $info->{nCats}  = $vs->nCats;
@@ -1569,7 +1571,7 @@ sub qinfo {
   $q2->SetMatchId(2);
 
   ##-- options: set filters, WITHIN
-  (my $inbreak = $coldb->{dbreak}) =~ s/^#//;
+  (my $inbreak = $vs->{dbreak}) =~ s/^#//;
   $qo->setWithin([$inbreak]);
   $qo->setFilters($qf);
 

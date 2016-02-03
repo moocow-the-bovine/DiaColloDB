@@ -378,7 +378,8 @@ sub open {
     $coldb->{tdfopts}     //= {};
     $coldb->{tdfopts}{$_} //= $TDF_OPTS{$_} foreach (keys %TDF_OPTS); ##-- tdf: default options
     $coldb->{tdf} = DiaColloDB::Relation::TDF->new((-r "$dbdir/tdf.hdr" ? (base=>"$dbdir/tdf") : qw()),
-						   %{$coldb->{tdfopts}}
+						   dbreak => $coldb->{dbreak},
+						   %{$coldb->{tdfopts}},
 						  );
   }
 
@@ -949,7 +950,7 @@ sub create {
     $coldb->info("creating (term x document) index $dbdir/tdf* [dbreak=$dbreak]");
     $coldb->{tdfopts}     //= {};
     $coldb->{tdfopts}{$_} //= $TDF_OPTS{$_} foreach (keys %TDF_OPTS); ##-- tdf: default options
-    $coldb->{tdf} = DiaColloDB::Relation::TDF->create($coldb, undef, base=>"$dbdir/tdf");
+    $coldb->{tdf} = DiaColloDB::Relation::TDF->create($coldb, undef, base=>"$dbdir/tdf", dbreak=>$dbreak);
   } else {
     $coldb->info("NOT creating (term x document) index, 'tdf' profiling relation disabled");
   }
