@@ -23,7 +23,7 @@ my @VAL_TYPES     = map {PDL->can($_) ? PDL->can($_)->() : qw()} qw(float double
 my @VAL_TYPE_CHRS = map {$_->ppsym} @VAL_TYPES;
 my $VAL_TYPE_CHRS = join('',@VAL_TYPE_CHRS);
 
-my $CDEBUG = 1;
+my $CDEBUG = 0;
 my $PPDEBUG = $CDEBUG;
 pp_addhdr(($CDEBUG ? '' : "/*")."#define DIACOLLO_DEBUG 1".($CDEBUG ? '': "*/")."\n");
 
