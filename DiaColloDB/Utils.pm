@@ -548,7 +548,7 @@ sub si_str {
 }
 
 ##==============================================================================
-## Functions: pdl
+## Functions: pdl: setops
 
 ## $pi = CLASS::_intersect_p($p1,$p2)
 ## $pi = CLASS->_intersect_p($p1,$p2)
@@ -636,6 +636,9 @@ sub _setdiff_p {
   }
 }
 
+##==============================================================================
+## Functions: pdl: I/O
+
 ## $pdl_or_undef = CLASS->readPdlFile($basename, %opts)
 ##  + %opts:
 ##     class=>$class,    # one of qw(PDL PDL::CCS::Nd)
@@ -720,6 +723,8 @@ sub writeCcsHeader {
   return PDL::CCS::IO::Common::_ccsio_write_header($ccs, $file);
 }
 
+##==============================================================================
+## Functions: pdl: mmap temporaries
 
 ## $pdl = mmzeroes($file?, $type?, @dims, \%opts?)
 ## $pdl = $pdl->mmzeroes($file?, $type?, \%opts?)
@@ -749,6 +754,43 @@ sub mmunlink {
   shift if (UNIVERSAL::isa($_[0],__PACKAGE__));
   return DiaColloDB::PDL::MM::unlink(@_);
 }
+
+##==============================================================================
+## Functions: pdl: misc
+
+## $type = CLASS->mintype($pdl,    @types)
+## $type = CLASS->mintype($maxval, @types)
+##  + returns minimum PDL::Types type from @types required for representing $maxval ($pdl->max if passed as a PDL)
+##  + @types defaults to all known PDL types
+sub mintype {
+  my $that = UNIVERSAL::isa($_[0],__PACKAGE__) ? shift : __PACKAGE__;
+  my ($arg,@types) = @_;
+  $arg   = $arg->max if (UNIVERSAL::isa($arg,'PDL'));
+  @types = map {$_->{ioname}} values(%PDL::Types::typehash) if (!@types);
+  @types = sort {$a->enum <=> $b->enum} map {ref($_) ? $_ : (PDL->can($_) ? PDL->can($_)->() : qw())} @types;
+  foreach my $type (@types) {
+    return $type if (maxval($type) >= $arg);
+  }
+  return PDL::float(); ##-- float is enough to represent anything, in principle
+}
+BEGIN {
+  *PDL::mintype = \&mintype;
+}
+
+## $maxval = $type->maxval()
+## $maxval = CLASS::maxval($type_or_name)
+sub maxval {
+  no warnings 'pack';
+  my $type = shift;
+  $type    = PDL->can($type)->() if (!ref($type) && PDL->can($type));
+  return 'inf' if ($type >= PDL::float());
+  my $nbits  = 8*length(pack($PDL::Types::pack[$type->enum],0));
+  return (PDL->pdl($type,2)->pow(PDL->sequence($type,$nbits+1))-1)->double->max;
+}
+BEGIN {
+  *PDL::Type::maxval = \&maxval;
+}
+
 
 ## ($vals,$counts) = $pdl->valcounts()
 ##  + wrapper for $pdl->flat->qsort->rle() with masking lifted from MUDL::PDL::Smooth

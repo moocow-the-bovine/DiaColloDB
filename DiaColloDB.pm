@@ -723,7 +723,7 @@ sub create {
 	$atokfh->print("\n");
 	$last_was_eos = 1;
       }
-      elsif (defined($tok) && $tok eq $dbreak && $docoff && $docoff_cur < $toki) { ##-- TODO: honor vbnmin,vbnmax in TDF
+      elsif (defined($tok) && $tok eq $dbreak && $docoff && $docoff_cur < $toki) {
 	##-- break:tdf
 	++$nsigs;
 	push(@$docoff, $docoff_cur);
@@ -901,12 +901,6 @@ sub create {
 
   ##-- cleanup: drop $aconf->[$ai]{i2j} now that we've used it
   delete($_->{i2j}) foreach (@$aconf);
-
-  ##-- CONTINUE HERE: TODO
-  ## x+ re-map $docmeta or similar if required
-  ## x+ adjust $docmeta: read tdf data from re-mapped token file (tokfile? atokfile? something else?)
-  ## x+ free up $aconf->[$ai]{i2j} when it's no longer needed (save memory)
-  ## x+ maybe save more memory by using PackedFile for {i2j}?
 
   ##-- compile: xenum
   $coldb->vlog($coldb->{logCreate}, "create(): creating tuple-enum $dbdir/xenum.*");

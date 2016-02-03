@@ -33,7 +33,7 @@ our %coldb    = (
 		 pack_off=>'N',
 		 pack_len=>'n',
 		 dmax=>5,
-		 cfmin=>2,
+		 cfmin=>5,
 		 tfmin=>2,
 		 fmin_l=>undef,
 		 keeptmp=>0,
@@ -183,7 +183,7 @@ dcdb-create.perl - create a DiaColloDB collocation database from a corpus dump
    -dmax DIST           ##-- maximum distance for collocation-frequencies (default=5)
    -tfmin TFMIN         ##-- minimum global term frequency (default=5)
    -lfmin TFMIN         ##-- minimum global lemma frequency (default=undef:tfmin)
-   -cfmin CFMIN         ##-- minimum relation co-occurrence frequency (default=2)
+   -cfmin CFMIN         ##-- minimum relation co-occurrence frequency (default=5)
    -[no]tdf             ##-- do/don't create (term x document) index relation (default=if available)
    -tdf-break BREAK     ##-- set tdf matrix "document" granularity (e.g. s,p,page,file; default=file)
    -tdf-nmin VNMIN      ##-- set minimum number of content tokens per tdf "document" (default=8)

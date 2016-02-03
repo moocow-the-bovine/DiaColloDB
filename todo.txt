@@ -19,6 +19,7 @@ x+ rename Relation::Vsem -> Relation::TDM
 
 + debug/correct
   - dstar: update "install" rule for dstar build/diacollo (see dta build dir)
+  - tdf: auto-detect minimum 'itype' during create() and/or union()
   x- fix boolean query eval (&& vs ||): maybe allow 'tdm' component in TDF::Query?
     + LATER: we're already performing && on cat-subset
   x- incorrect results e.g. for "Obst" in 1998 with co-occurent "Pak"

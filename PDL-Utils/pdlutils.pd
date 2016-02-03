@@ -17,6 +17,7 @@ my %ccsConfig = %PDL::CCS::Config::ccsConfig;
 my $INDX      = $ccsConfig{INDX_SIG};
 my @INT_TYPES = @{$ccsConfig{INT_TYPE_CHRS}};
 my $INT_TYPES = join('',@INT_TYPES);
+my @INT_TYPE_NAMES = map {$PDL::Types::typehash{$_}{ioname}} @{$ccsConfig{INT_TYPE_KEYS}};
 
 my $CDEBUG = 0;
 pp_addhdr(($CDEBUG ? '' : "/*")."#define DIACOLLO_DEBUG 1".($CDEBUG ? '': "*/")."\n");
@@ -96,10 +97,10 @@ pp_def('diacollo_tupleids',
 ##--------------------------------------------------------------
 ## cof_${TC}_${TYPE} : coo+ptr(1)-matrix vs. ptr-vector, output=HASH-ref
 ##  + ${TC} is one of 't':terms, 'c':cats
-##  + ${TYPE} is a piddle type for indices (long, indx)
+##  + ${TYPE} is a piddle type for indices (byte, short, ushort, long, longlong, indx)
 ##  + supports groupby independent TC-attributes only (no term+doc dependence)
 ##  + from lda/ftdm-kbest.perl inline test _cof3d_pzh()
-##  + variants cof_t_indx(), cof_t_long()
+##  + variants e.g. cof_t_indx(), cof_t_long()
 
 ## undef = cof_x_def($tcinfix, $itype)
 ##  + $tcinfix is one of 't':terms, 'c':cats
@@ -295,15 +296,16 @@ TYPE is the integer type used by the underlying tdm model, which see for details
 	);
 }
 foreach my $tcinfix (qw(t c)) {
-  cof_x_def($tcinfix,'long');
-  cof_x_def($tcinfix,'indx') if (PDL->can('indx'));
+  foreach my $itype (grep {PDL->can($_)} @INT_TYPE_NAMES) {
+    cof_x_def($tcinfix,$itype);
+  }
 }
 
 ##--------------------------------------------------------------
 ## cof_tc_TYPE : coo+ptr(1)-matrix vs. ptr-vector, output=HASH-ref
-##  + TYPE is a piddle type for indices (long, indx)
+##  + ${TYPE} is a piddle type for indices (byte, short, ushort, long, longlong, indx)
 ##  + supports both term- and doc-attributes in groupby groups
-##  + variants cof_tc_indx(), cof_tc_long()
+##  + variants e.g. cof_tc_indx(), cof_tc_long()
 
 ## undef = cof_tc_def($itype)
 ##  + $itype is a PDL type or string name
@@ -444,14 +446,16 @@ TYPE is the integer type used by the underlying tdm model, which see for details
 },
 	);
 }
-cof_tc_def('long');
-cof_tc_def('indx') if (PDL->can('indx'));
+foreach my $itype (grep {PDL->can($_)} @INT_TYPE_NAMES) {
+  cof_tc_def($itype);
+}
 
 
 ##--------------------------------------------------------------
 ## tym_gf_t_TYPE : item2 freqs, tym=coo, output=HASH-ref (groupby terms only)
+##  + ${TYPE} is a piddle type for indices (byte, short, ushort, long, longlong, indx)
 ##  + from lda/ftdm-kbest.perl inline test _f2_scan()
-##  + variants tym_gf_t_indx(), tym_gf_t_long()
+##  + variants e.g. tym_gf_t_indx(), tym_gf_t_long()
 
 sub tym_gf_t_def {
   my $itype = shift;
@@ -553,12 +557,14 @@ TYPE is the integer type used by the underlying tdm model, which see for details
 },
 	);
 }
-tym_gf_t_def('long');
-tym_gf_t_def('indx') if (PDL->can('indx'));
+foreach my $itype (grep {PDL->can($_)} @INT_TYPE_NAMES) {
+  tym_gf_t_def($itype);
+}
 
 ##--------------------------------------------------------------
 ## gf_c_TYPE : item2 freqs, cf=dense, output=HASH-ref (groupby cats only)
-##  + variants gf_c_indx(), gf_c_long()
+##  + ${TYPE} is a piddle type for indices (byte, short, ushort, long, longlong, indx)
+##  + variants e.g. gf_c_indx(), gf_c_long()
 
 sub gf_c_def {
   my $itype = shift;
@@ -649,13 +655,14 @@ TYPE is the integer type used by the underlying tdm model, which see for details
 },
 	);
 }
-gf_c_def('long');
-gf_c_def('indx') if (PDL->can('indx'));
-
+foreach my $itype (grep {PDL->can($_)} @INT_TYPE_NAMES) {
+  gf_c_def($itype);
+}
 
 ##--------------------------------------------------------------
 ## gf_tc_TYPE : item2 freqs, tdm=coo, output=HASH-ref (groupby terms+cats), slow O(Nnz) linear tdm-scan
-##  + variants gf_tc_indx(), gf_tc_long()
+##  + ${TYPE} is a piddle type for indices (byte, short, ushort, long, longlong, indx)
+##  + variants e.g. gf_tc_indx(), gf_tc_long()
 
 sub gf_tc_def {
   my $itype = shift;
@@ -756,8 +763,9 @@ TYPE is the integer type used by the underlying tdm model, which see for details
 
 	);
 }
-gf_tc_def('long');
-gf_tc_def('indx') if (PDL->can('indx'));
+foreach my $itype (grep {PDL->can($_)} @INT_TYPE_NAMES) {
+  gf_tc_def($itype);
+}
 
 ##======================================================================
 ## Footer Administrivia

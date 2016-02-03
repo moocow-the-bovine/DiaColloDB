@@ -54,7 +54,7 @@ BEGIN {
 ##   minDocSize => $dnmin,  ##-- minimum doc size (#/tokens per doc) for model inclusion (default=4; formerly $coldb->{vbnmin})
 ##   maxDocSize => $dnmax,  ##-- maximum doc size (#/tokens per doc) for model inclusion (default=inf; formerly $coldb->{vbnmax})
 ##   #smoothf    => $f0,     ##-- smoothing constant to avoid log(0); default=1
-##   vtype      => $vtype,  ##-- PDL::Type for storing compiled values (default=float)
+##   vtype      => $vtype,  ##-- PDL::Type for storing compiled values (default=float; auto-promoted if required)
 ##   itype      => $itype,  ##-- PDL::Type for storing compiled integers (default=long)
 ##   ##
 ##   ##-- guts: aux: info
@@ -121,7 +121,7 @@ sub new {
 ##  + get PDL::Type for storing compiled values
 sub vtype {
   return $_[0]{vtype} if (UNIVERSAL::isa($_[0]{vtype},'PDL::Type'));
-  return $_[0]{vtype} = (PDL->can($_[0]{vtype}//'double') // PDL->can('double'))->();
+  return $_[0]{vtype} = (PDL->can($_[0]{vtype}//'float') // PDL->can('float'))->();
 }
 
 ## $itype = $vs->itype()
@@ -297,6 +297,14 @@ sub create {
       or $vs->logconfess("create(): could not remove stale $vsdir: $!");
   make_path($vsdir)
     or $vs->logconfess("create(): could not create TDF directory $vsdir: $!");
+
+  ##-- initialize: index-type (auto-promote)
+  my $nsigs0   = $docoff->[$#$docoff];
+  my $nterms0  = $coldb->{xenum}->size;
+  my $imax     = $nsigs0 > $nterms0 ? $nsigs0 : $nterms0;
+  my $imintype = DiaColloDB::Utils::mintype($imax);
+  $vs->info("create(): using PDL integer type $imintype (max value = $imax)");
+  $vs->{itype} = $imintype;
 
   ##-- initialize: logging
   my $nfiles    = scalar(@$docmeta);
