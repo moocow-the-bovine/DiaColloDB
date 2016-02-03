@@ -8,7 +8,7 @@ use Pod::Usage;
 use File::Basename qw(basename);
 use strict;
 
-use DiaColloDB::Relation::TDF; ##-- DEBUG
+#use DiaColloDB::Relation::TDF; ##-- DEBUG
 
 BEGIN {
   select STDERR; $|=1; select STDOUT;
@@ -161,11 +161,15 @@ $query{query}  = shift;
 $query{bquery} = @ARGV ? shift : $query{query};
 $rel  = "d$rel" if ($isDiff);
 
-#$query{query} = '$p=NN !#has[textClass,/politik/i]' if ($query{query} eq 'debug'); ##-- DEBUG
-#$query{query} = 'Mann #has[textClass,/zeitung/i]' if ($query{query} eq 'debug'); ##-- DEBUG
-#$query{query} = '* #has[textClass,/Zeitung/i]' if ($query{query} eq 'debug'); ##-- DEBUG
-#$query{query} = 'Katze && Maus' if ($query{query} eq 'debug'); ##-- DEBUG
-$query{query} = '* #has[genre,/Zeitung/]' if ($query{query} eq 'debug'); ##-- DEBUG
+##-- DEBUG queries
+if (0 && $query{query} eq 'debug') {
+  #$query{query} = '$p=NN !#has[textClass,/politik/i]';
+  #$query{query} = 'Mann #has[textClass,/zeitung/i]';
+  #$query{query} = '* #has[textClass,/Zeitung/i]';
+  #$query{query} = 'Katze && Maus';
+  #$query{query} = '* #has[genre,/Zeitung/]';
+}
+##--/DEBUG queries
 
 if ($niters != 1) {
   $cli->info("performing $niters query iterations");
