@@ -61,8 +61,8 @@ DiaColloDB/Relation/DDC.pm
 DiaColloDB/Relation/DDC.pod
 DiaColloDB/Relation/Unigrams.pm
 DiaColloDB/Relation/Unigrams.pod
-DiaColloDB/Relation/Vsem.pm
-DiaColloDB/Relation/Vsem/Query.pm
+DiaColloDB/Relation/TDF.pm
+DiaColloDB/Relation/TDF/Query.pm
 DiaColloDB/Temp.pm
 DiaColloDB/Temp/Array.pm
 DiaColloDB/Temp/Hash.pm
