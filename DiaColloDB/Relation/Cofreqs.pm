@@ -570,17 +570,17 @@ sub subprofile {
       $r2->getraw(\$buf) or last;
       ($i2,$f12)    = unpack($pack2, $buf);
       $key2         = $groupby ? $groupby->($i2) : $i2;
-      next if (!defined($key2)); ##-- item2 selection via groupby sub
+      next if (!defined($key2)); ##-- item2 selection via groupby CODE-ref
       $pf2->{$key2}  += unpack($pack1f, $r1->fetchraw($i2,\$buf));
       $pf12->{$key2} += $f12;
     }
   }
   return DiaColloDB::Profile->new(
-				N=>$cof->{N},
-				f1=>$pf1,
-				f2=>$pf2,
-				f12=>$pf12,
-			       );
+				  N=>$cof->{N},
+				  f1=>$pf1,
+				  f2=>$pf2,
+				  f12=>$pf12,
+				 );
 }
 
 ##==============================================================================

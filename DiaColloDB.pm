@@ -8,9 +8,10 @@ require 5.10.0; ##-- for // operator
 use DiaColloDB::Client;
 use DiaColloDB::Logger;
 use DiaColloDB::EnumFile;
-use DiaColloDB::EnumFile::MMap;
+#use DiaColloDB::EnumFile::Identity;
 use DiaColloDB::EnumFile::FixedLen;
 use DiaColloDB::EnumFile::FixedMap;
+use DiaColloDB::EnumFile::MMap;
 use DiaColloDB::EnumFile::Tied;
 use DiaColloDB::MultiMapFile;
 use DiaColloDB::PackedFile;
@@ -18,12 +19,14 @@ use DiaColloDB::Relation;
 use DiaColloDB::Relation::Unigrams;
 use DiaColloDB::Relation::Cofreqs;
 use DiaColloDB::Relation::DDC;
+#use DiaColloDB::Relation::TDF; ##-- loaded on-demand
 use DiaColloDB::Profile;
 use DiaColloDB::Profile::Multi;
 use DiaColloDB::Profile::MultiDiff;
 use DiaColloDB::Corpus;
 use DiaColloDB::Persistent;
-use DiaColloDB::Utils qw(:fcntl :json :sort :pack :regex :file :si);
+use DiaColloDB::Utils qw(:math :fcntl :json :sort :pack :regex :file :si :run :env :temp);
+#use DiaColloDB::Temp::Vec;
 use DiaColloDB::Timer;
 use DDC::XS; ##-- for query parsing
 use Fcntl;
@@ -34,7 +37,7 @@ use strict;
 ##==============================================================================
 ## Globals & Constants
 
-our $VERSION = "0.07.015";
+our $VERSION = "0.08.001";
 our @ISA = qw(DiaColloDB::Client);
 
 ## $PGOOD_DEFAULT
@@ -58,9 +61,19 @@ our $WBAD_DEFAULT   = q/[\.]/;
 ##  + default positive lemma regex for document parsing
 our $LGOOD_DEFAULT   = undef;
 
-## $WBAD_DEFAULT
+## $LBAD_DEFAULT
 ##  + default negative lemma regex for document parsing
 our $LBAD_DEFAULT   = undef;
+
+## $TDF_MGOOD_DEFAULT
+##  + default positive meta-field regex for document parsing (tdf only)
+##  + don't use qr// here, since Storable doesn't like pre-compiled Regexps
+our $TDF_MGOOD_DEFAULT = q/^(?:author|title|basename|collection|flags|textClass|genre)$/;
+
+## $TDF_MBAD_DEFAULT
+##  + default negative meta-field regex for document parsing (tdf only)
+##  + don't use qr// here, since Storable doesn't like pre-compiled Regexps
+our $TDF_MBAD_DEFAULT = q/_$/;
 
 ## $ECLASS
 ##  + enum class
@@ -75,7 +88,25 @@ our $XECLASS = 'DiaColloDB::EnumFile::FixedLen::MMap';
 ## $MMCLASS
 ##  + multimap class
 our $MMCLASS = 'DiaColloDB::MultiMapFile';
-#our $MMCLASS = 'DiaColloDB::MultiMapFile::MMap'; ##-- TODO
+#our $MMCLASS = 'DiaColloDB::MultiMapFile::MMap'; ##-- TODO?
+
+## %TDF_OPTS : tdf: default options for DiaColloDB::Relation::TDF->new()
+our %TDF_OPTS = (
+		 mgood => $TDF_MGOOD_DEFAULT, ##-- positive filter regex for metadata attributes
+		 mbad  => $TDF_MBAD_DEFAULT,  ##-- negative filter regex for metadata attributes
+		 ##
+		 minFreq=>undef,    ##-- minimum total term-frequency for model inclusion (default=from $coldb->{tfmin})
+		 minDocFreq=>4,     ##-- minimim "doc-frequency" (#/docs per term) for model inclusion
+		 minDocSize=>4,     ##-- minimum doc size (#/tokens per doc) for model inclusion (default=8; formerly $coldb->{vbnmin})
+	                            ##   + for kern[page?] (n:%sigs,%toks): 1:0%,0%, 2:5.1%,0.5%, 4:18%,1.6%, 5:22%,2.3%, 8:34%,4.6%, 10:40%,6.5%, 16:54%,12.8%
+		 maxDocSize=>'inf', ##-- maximum doc size (#/tokens per doc) for model inclusion (default=inf; formerly $coldb->{vbnmax})
+		 ##
+		 #smoothf=>1,       ##-- smoothing constant
+		 #saveMem=>1, 	    ##-- slower but memory-friendlier compilation
+		 ##
+		 vtype=>'float',    ##-- store compiled values as 32-bit floats
+		 itype=>'long',     ##-- store compiled indices as 32-bit integers
+	      );
 
 ##==============================================================================
 ## Constructors etc.
@@ -90,8 +121,8 @@ our $MMCLASS = 'DiaColloDB::MultiMapFile';
 ##                        ##    + each attribute can be token-attribute qw(w p l) or a document metadata attribute "doc.ATTR"
 ##                        ##    + document "date" attribute is always indexed
 ##    info => \%info,     ##-- additional data to return in info() method (e.g. collection, maintainer)
-##    bos => $bos,        ##-- special string to use for BOS, undef or empty for none (default=undef)
-##    eos => $eos,        ##-- special string to use for EOS, undef or empty for none (default=undef)
+##    #bos => $bos,        ##-- special string to use for BOS, undef or empty for none (default=undef) DISABLED
+##    #eos => $eos,        ##-- special string to use for EOS, undef or empty for none (default=undef) DISABLED
 ##    pack_id => $fmt,    ##-- pack-format for IDs (default='N')
 ##    pack_f  => $fmt,    ##-- pack-format for frequencies (default='N')
 ##    pack_date => $fmt,  ##-- pack-format for dates (default='n')
@@ -99,7 +130,13 @@ our $MMCLASS = 'DiaColloDB::MultiMapFile';
 ##    pack_len => $len,   ##-- pack-format for string lengths (default='n')
 ##    dmax  => $dmax,     ##-- maximum distance for collocation-frequencies and implicit ddc near() queries (default=5)
 ##    cfmin => $cfmin,    ##-- minimum co-occurrence frequency for Cofreqs and ddc queries (default=2)
+##    tfmin => $tfmin,    ##-- minimum global term-frequency WITHOUT date component (default=2)
+##    fmin_${a} => $fmin, ##-- minimum independent frequency for value of attribute ${a} (default=undef:from $tfmin)
 ##    keeptmp => $bool,   ##-- keep temporary files? (default=0)
+##    index_tdf => $bool, ##-- tdf: create/use (term x document) frequency matrix index? (default=undef: if available)
+##    index_cof => $bool, ##-- cof: create/use co-frequency index (default=1)
+##    dbreak => $dbreak,  ##-- tdf: use break-type $break for tdf index (default=undef: files)
+##    tdfopts => \%tdfopts, ##-- tdf: options for DocClassify::Mapper->new(); default={} (all inherited from %TDF_OPTS)
 ##    ##
 ##    ##-- runtime ddc relation options
 ##    ddcServer => "$host:$port", ##-- server for ddc relation
@@ -112,11 +149,13 @@ our $MMCLASS = 'DiaColloDB::MultiMapFile';
 ##    wbad   => $regex,   ##-- negative filter regex for word text
 ##    lgood  => $regex,   ##-- positive filter regex for lemma text
 ##    lbad   => $regex,   ##-- negative filter regex for lemma text
+##    #vsmgood => $regex,  ##-- positive filter regex for metadata attributes (tdf only) --> use {tdfopts}{mgood}
+##    #vsmbad  => $regex,  ##-- negative filter regex for metadata attributes (tdf only) --> use {tdfopts}{mbad}
 ##    ##
 ##    ##-- logging
 ##    logOpen => $level,        ##-- log-level for open/close (default='info')
 ##    logCreate => $level,      ##-- log-level for create messages (default='info')
-##    logCorpusFile => $level,  ##-- log-level for corpus file-parsing (default='trace')
+##    logCorpusFile => $level,  ##-- log-level for corpus file-parsing (default='info')
 ##    logCorpusFileN => $N,     ##-- log corpus file-parsing only for every N files (0 for none; default:undef ~ $corpus->size()/100)
 ##    logExport => $level,      ##-- log-level for export messages (default='info')
 ##    logProfile => $level,     ##-- log-level for verbose profiling messages (default='trace')
@@ -129,6 +168,7 @@ our $MMCLASS = 'DiaColloDB::MultiMapFile';
 ##    ${a}enum => $aenum,   ##-- attribute enum: $aenum : ($dbdir/${a}_enum.*) : $astr<=>$ai : A*<=>N
 ##                          ##    e.g.  lemmata: $lenum : ($dbdir/l_enum.*   )  : $lstr<=>$li : A*<=>N
 ##    ${a}2x   => $a2x,     ##-- attribute multimap: $a2x : ($dbdir/${a}_2x.*) : $ai=>@xis  : N=>N*
+##    #${a}2w   => $a2w,     ##-- attribute multimap: $a2w : ($dbdir/${a}_2w.*) : $ai=>@wis  : N=>N*
 ##    pack_x$a => $fmt      ##-- pack format: extract attribute-id $ai from a packed tuple-string $xs ; $ai=unpack($coldb->{"pack_x$a"},$xs)
 ##    ##
 ##    ##-- tuple data (+dates)
@@ -137,14 +177,11 @@ our $MMCLASS = 'DiaColloDB::MultiMapFile';
 ##    xdmin => $xdmin,      ##-- minimum date
 ##    xdmax => $xdmax,      ##-- maximum date
 ##    ##
-##    ##-- tuple data (-dates)
-##    #tenum  => $tenum,     ##-- enum: attribute-tuples (no dates), only if $coldb->{indexAttrs}
-##    #pack_t => $fmt,       ##-- symbol pack-format for $tenum : "${pack_id}[Nattrs]"
-##    ##
 ##    ##-- relation data
 ##    xf    => $xf,       ##-- ug: $xi => $f($xi) : N=>N
 ##    cof   => $cof,      ##-- cf: [$xi1,$xi2] => $f12
-##    ddc   => $ddc,      ##-- ddc client relation
+##    ddc   => $ddc,      ##-- ddc: ddc client relation
+##    tdf   => $tdf,      ##-- tdf: (term x document) frequency matrix model
 ##   )
 sub new {
   my $that = shift;
@@ -162,7 +199,12 @@ sub new {
 		      pack_len =>'n',
 		      dmax => 5,
 		      cfmin => 2,
+		      tfmin => 2,
 		      #keeptmp => 0,
+		      index_tdf => undef,
+		      index_cof => 1,
+		      dbreak => undef,
+		      tdfopts => {},
 
 		      ##-- filters
 		      pgood => $PGOOD_DEFAULT,
@@ -171,11 +213,13 @@ sub new {
 		      wbad  => $WBAD_DEFAULT,
 		      lgood => $LGOOD_DEFAULT,
 		      lbad  => $LBAD_DEFAULT,
+		      #vsmgood => $TDF_MGOOD_DEFAULT,
+		      #vsmbad  => $TDF_MBAD_DEFAULT,
 
 		      ##-- logging
 		      logOpen => 'info',
 		      logCreate => 'info',
-		      logCorpusFile => 'trace',
+		      logCorpusFile => 'info',
 		      logCorpusFileN => undef,
 		      logExport => 'info',
 		      logProfile => 'trace',
@@ -192,7 +236,7 @@ sub new {
 		      #l2x   => undef, #$MMCLASS->new(pack_i=>$coldb->{pack_id}, pack_o=>$coldb->{pack_off}, pack_l=>$coldb->{pack_id}),
 		      #pack_xl => 'N',
 
-		      ##-- tuples
+		      ##-- tuples (+dates)
 		      #xenum  => undef, #$XECLASS::FixedLen->new(pack_i=>$coldb->{pack_id}, pack_s=>$coldb->{pack_x}),
 		      #pack_x => 'Nn',
 
@@ -200,12 +244,14 @@ sub new {
 		      #xf    => undef, #DiaColloDB::Relation::Unigrams->new(packas=>$coldb->{pack_f}),
 		      #cof   => undef, #DiaColloDB::Relation::Cofreqs->new(pack_f=>$pack_f, pack_i=>$pack_i, dmax=>$dmax, fmin=>$cfmin),
 		      #ddc   => undef, #DiaColloDB::Relation::DDC->new(),
+		      #tdf   => undef, #DiaColloDB::Relation::TDF->new(),
 
 		      @_,	##-- user arguments
 		     },
 		     ref($that)||$that);
   $coldb->{class}  = ref($coldb);
-  $coldb->{pack_x} = $coldb->{pack_id} . $coldb->{pack_date};
+  $coldb->{pack_w} = $coldb->{pack_id};
+  $coldb->{pack_x} = $coldb->{pack_w} . $coldb->{pack_date};
   if (defined($coldb->{dbdir})) {
     ##-- avoid initial close() if called with dbdir=>$dbdir argument
     my $dbdir = $coldb->{dbdir};
@@ -234,12 +280,12 @@ sub open {
   my ($coldb,$dbdir,%opts) = @_;
   DiaColloDB::Logger->ensureLog();
   $coldb = $coldb->new() if (!ref($coldb));
-  @$coldb{keys %opts} = values %opts;
+  #@$coldb{keys %opts} = values %opts; ##-- clobber options after loadHeader()
   $dbdir //= $coldb->{dbdir};
   $dbdir =~ s{/$}{};
   $coldb->close() if ($coldb->opened);
   $coldb->{dbdir} = $dbdir;
-  my $flags = fcflags($coldb->{flags});
+  my $flags = fcflags($opts{flags} // $coldb->{flags});
   $coldb->vlog($coldb->{logOpen}, "open($dbdir)");
 
   ##-- open: truncate
@@ -260,6 +306,16 @@ sub open {
   ##-- open: header
   $coldb->loadHeader()
     or $coldb->logconfess("open(): failed to load header file", $coldb->headerFile, ": $!");
+  @$coldb{keys %opts} = values %opts; ##-- clobber header options with user-supplied values
+
+  ##-- open: tdf: require
+  $coldb->{index_tdf} = 0 if (!-r "$dbdir/tdf.hdr");
+  if ($coldb->{index_tdf}) {
+    if (!require "DiaColloDB/Relation/TDF.pm") {
+      $coldb->logwarn("open(): require failed for DiaColloDB/Relation/TDF.pm ; (term x document) matrix modelling disabled", ($@ ? "\n: $@" : ''));
+      $coldb->{index_tdf} = 0;
+    }
+  }
 
   ##-- open: common options
   my %efopts = (flags=>$flags, pack_i=>$coldb->{pack_id}, pack_o=>$coldb->{pack_off}, pack_l=>$coldb->{pack_len});
@@ -270,14 +326,14 @@ sub open {
 
   ##-- open: by attribute
   my $axat = 0;
-  foreach my $a (@$attrs) {
-    ##-- open: ${a}*
-    my $abase = (-r "$dbdir/${a}_enum.hdr" ? "$dbdir/${a}_" : "$dbdir/${a}"); ##-- v0.03-compatibility hack
-    $coldb->{"${a}enum"} = $ECLASS->new(base=>"${abase}enum", %efopts)
+  foreach my $attr (@$attrs) {
+    ##-- open: ${attr}*
+    my $abase = (-r "$dbdir/${attr}_enum.hdr" ? "$dbdir/${attr}_" : "$dbdir/${attr}"); ##-- v0.03-compatibility hack
+    $coldb->{"${attr}enum"} = $ECLASS->new(base=>"${abase}enum", %efopts)
       or $coldb->logconfess("open(): failed to open enum ${abase}enum.*: $!");
-    $coldb->{"${a}2x"} = $MMCLASS->new(base=>"${abase}2x", %mmopts)
+    $coldb->{"${attr}2x"} = $MMCLASS->new(base=>"${abase}2x", %mmopts)
       or $coldb->logconfess("open(): failed to open expansion multimap ${abase}2x.*: $!");
-    $coldb->{"pack_x$a"} //= "\@${axat}$coldb->{pack_id}";
+    $coldb->{"pack_x$attr"} //= "\@${axat}$coldb->{pack_id}";
     $axat += packsize($coldb->{pack_id});
   }
 
@@ -291,7 +347,7 @@ sub open {
     my ($dmin,$dmax,$d) = ('inf','-inf');
     foreach (@{$coldb->{xenum}->toArray}) {
       next if (!$_);
-      $d = unpack($pack_xdate,$_);
+      next if (!defined($d = unpack($pack_xdate,$_))); ##-- strangeness: getting only 9-bytes in $_ for 10-byte values in file and toArray(): why?!
       $dmin = $d if ($d < $dmin);
       $dmax = $d if ($d > $dmax);
     }
@@ -305,25 +361,38 @@ sub open {
   $coldb->{xf}{N} = $coldb->{xN} if ($coldb->{xN} && !$coldb->{xf}{N}); ##-- compat
 
   ##-- open: cof
-  $coldb->{cof} = DiaColloDB::Relation::Cofreqs->new(base=>"$dbdir/cof", flags=>$flags,
-						     pack_i=>$coldb->{pack_id}, pack_f=>$coldb->{pack_f},
-						     dmax=>$coldb->{dmax}, fmin=>$coldb->{cfmin},
-						    )
-    or $coldb->logconfess("open(): failed to open co-frequency file $dbdir/cof.*: $!");
+  if ($coldb->{index_cof}//1) {
+    $coldb->{cof} = DiaColloDB::Relation::Cofreqs->new(base=>"$dbdir/cof", flags=>$flags,
+						       pack_i=>$coldb->{pack_id}, pack_f=>$coldb->{pack_f},
+						       dmax=>$coldb->{dmax}, fmin=>$coldb->{cfmin},
+						      )
+      or $coldb->logconfess("open(): failed to open co-frequency file $dbdir/cof.*: $!");
+  }
 
   ##-- open: ddc (undef if ddcServer isn't set in ddc.hdr or $coldb)
   $coldb->{ddc} = DiaColloDB::Relation::DDC->new(-r "$dbdir/ddc.hdr" ? (base=>"$dbdir/ddc") : qw())->fromDB($coldb)
     // 'DiaColloDB::Relation::DDC';
 
+  ##-- open: tdf (if available)
+  if ($coldb->{index_tdf}) {
+    $coldb->{tdfopts}     //= {};
+    $coldb->{tdfopts}{$_} //= $TDF_OPTS{$_} foreach (keys %TDF_OPTS); ##-- tdf: default options
+    $coldb->{tdf} = DiaColloDB::Relation::TDF->new((-r "$dbdir/tdf.hdr" ? (base=>"$dbdir/tdf") : qw()),
+						   dbreak => $coldb->{dbreak},
+						   %{$coldb->{tdfopts}},
+						  );
+  }
+
   ##-- all done
   return $coldb;
 }
 
+
 ## @dbkeys = $coldb->dbkeys()
 sub dbkeys {
   return (
-	  (ref($_[0]) ? (map {($_."enum",$_."2x")} $_[0]->attrs) : qw()),
-	  qw(xenum xf cof),
+	  (ref($_[0]) ? (map {($_."enum",$_."2x")} @{$_[0]->attrs}) : qw()),
+	  qw(xenum xf cof tdf),
 	 );
 }
 
@@ -413,7 +482,8 @@ BEGIN {
 		  'p' => [map {(uc($_),ucfirst($_),$_)} qw(postag tag pt pos p)],
 		  ##
 		  'doc.collection' => [qw(doc.collection collection doc.corpus corpus)],
-		  'doc.textClass'  => [qw(doc.textClass textClass textclass tc doc.genre genre)],
+		  'doc.textClass'  => [qw(doc.textClass textClass textclass tc)], #doc.genre genre
+		  'doc.genre'      => [qw(doc.genre genre doc.textClass0 textClass0 textclass0 tc0)],
 		  'doc.title'      => [qw(doc.title title)],
 		  'doc.author'     => [qw(doc.author author)],
 		  'doc.basename'   => [qw(doc.basename basename)],
@@ -423,7 +493,7 @@ BEGIN {
 		  date  => [map {(uc($_),ucfirst($_),$_)} qw(date d)],
 		  slice => [map {(uc($_),ucfirst($_),$_)} qw(dslice slice sl ds s)],
 		 );
-  %ATTR_ALIAS = (map {my $a=$_; map {($_=>$a)} @{$ATTR_RALIAS{$a}}} keys %ATTR_RALIAS);
+  %ATTR_ALIAS = (map {my $attr=$_; map {($_=>$attr)} @{$ATTR_RALIAS{$attr}}} keys %ATTR_RALIAS);
   %ATTR_TITLE = (
 		 'l'=>'lemma',
 		 'w'=>'word',
@@ -431,6 +501,7 @@ BEGIN {
 		);
   %ATTR_CBEXPR = (
 		  'doc.textClass' => DDC::XS::CQCountKeyExprRegex->new(DDC::XS::CQCountKeyExprBibl->new('textClass'),':.*$',''),
+		  'doc.genre'     => DDC::XS::CQCountKeyExprRegex->new(DDC::XS::CQCountKeyExprBibl->new('textClass'),':.*$',''),
 		 );
 }
 sub attrName {
@@ -441,38 +512,38 @@ sub attrName {
 ## $atitle = $CLASS_OR_OBJECT->attrTitle($attr_or_alias)
 ##  + returns an attribute title for $attr_or_alias
 sub attrTitle {
-  my ($that,$a) = @_;
-  $a = $that->attrName($a//'');
-  return $ATTR_TITLE{$a} if (exists($ATTR_TITLE{$a}));
-  $a =~ s/^(?:doc|meta)\.//;
-  return $a;
+  my ($that,$attr) = @_;
+  $attr = $that->attrName($attr//'');
+  return $ATTR_TITLE{$attr} if (exists($ATTR_TITLE{$attr}));
+  $attr =~ s/^(?:doc|meta)\.//;
+  return $attr;
 }
 
 ## $acbexpr = $CLASS_OR_OBJECT->attrCountBy($attr_or_alias,$matchid=0)
 sub attrCountBy {
-  my ($that,$a,$matchid) = @_;
-  $a = $that->attrName($a//'');
-  if (exists($ATTR_CBEXPR{$a})) {
+  my ($that,$attr,$matchid) = @_;
+  $attr = $that->attrName($attr//'');
+  if (exists($ATTR_CBEXPR{$attr})) {
     ##-- aliased attribute
-    return $ATTR_CBEXPR{$a};
+    return $ATTR_CBEXPR{$attr};
   }
-  if ($a =~ /^doc\.(.*)$/) {
+  if ($attr =~ /^doc\.(.*)$/) {
     ##-- document attribute ("doc.ATTR" convention)
     return DDC::XS::CQCountKeyExprBibl->new($1);
   } else {
     ##-- token attribute
-    return DDC::XS::CQCountKeyExprToken->new($a, ($matchid||0), 0);
+    return DDC::XS::CQCountKeyExprToken->new($attr, ($matchid||0), 0);
   }
 }
 
 ## $aquery_or_filter_or_undef = $CLASS_OR_OBJECT->attrQuery($attr_or_alias,$cquery)
 ##  + returns a CQuery or CQFilter object for condition $cquery on $attr_or_alias
 sub attrQuery {
-  my ($that,$a,$cquery) = @_;
-  $a = $that->attrName( $a // ($cquery ? $cquery->getIndexName : undef) // '' );
-  if ($a =~ /^doc\./) {
+  my ($that,$attr,$cquery) = @_;
+  $attr = $that->attrName( $attr // ($cquery ? $cquery->getIndexName : undef) // '' );
+  if ($attr =~ /^doc\./) {
     ##-- document attribute ("doc.ATTR" convention)
-    return $that->query2filter($a,$cquery);
+    return $that->query2filter($attr,$cquery);
   }
   ##-- token condition (use literal $cquery)
   return $cquery;
@@ -481,14 +552,14 @@ sub attrQuery {
 ## \@attrdata = $coldb->attrData()
 ## \@attrdata = $coldb->attrData(\@attrs=$coldb->attrs)
 ##  + get attribute data for \@attrs
-##  + return @attrdata = ({a=>$a, i=>$i, enum=>$aenum, pack_x=>$pack_xa, a2x=>$a2x, ...})
+##  + return @attrdata = ({a=>$attr, i=>$i, enum=>$aenum, pack_x=>$pack_xa, a2x=>$a2x, ...})
 sub attrData {
   my ($coldb,$attrs) = @_;
   $attrs //= $coldb->attrs;
-  my ($a);
+  my ($attr);
   return [map {
-    $a = $coldb->attrName($attrs->[$_]);
-    {i=>$_, a=>$a, enum=>$coldb->{"${a}enum"}, pack_x=>$coldb->{"pack_x$a"}, a2x=>$coldb->{"${a}2x"}}
+    $attr = $coldb->attrName($attrs->[$_]);
+    {i=>$_, a=>$attr, enum=>$coldb->{"${attr}enum"}, pack_x=>$coldb->{"pack_x$attr"}, a2x=>$coldb->{"${attr}2x"}}
   } (0..$#$attrs)];
 }
 
@@ -522,6 +593,17 @@ sub create {
   make_path($dbdir)
     or $coldb->logconfess("create(): could not create DB directory $dbdir: $!");
 
+  ##-- initialize: tdf
+  $coldb->{index_tdf} //= 1;
+  if ($coldb->{index_tdf}) {
+    if (!require "DiaColloDB/Relation/TDF.pm") {
+      $coldb->logwarn("create(): require failed for DiaColloDB/Relation/TDF.pm ; (term x document) matrix modelling disabled", ($@ ? "\n: $@" : ''));
+      $coldb->{index_tdf} = 0;
+    } else {
+      $coldb->info("(term x document) matrix modelling via DiaColloDB::Relation::TDF enabled.");
+    }
+  }
+
   ##-- initialize: attributes
   my $attrs = $coldb->{attrs} = [map {$coldb->attrName($_)} @{$coldb->attrs(undef,['l'])}];
 
@@ -531,37 +613,52 @@ sub create {
   my $pack_f     = $coldb->{pack_f};
   my $pack_off   = $coldb->{pack_off};
   my $pack_len   = $coldb->{pack_len};
-  my $pack_x     = $coldb->{pack_x} = $pack_id."[".scalar(@$attrs)."]".$pack_date;
+  my $pack_w     = $coldb->{pack_w} = $pack_id."[".scalar(@$attrs)."]";
+  my $pack_x     = $coldb->{pack_x} = $pack_w.$pack_date;
 
   ##-- initialize: common flags
   my %efopts = (flags=>$flags, pack_i=>$coldb->{pack_id}, pack_o=>$coldb->{pack_off}, pack_l=>$coldb->{pack_len});
   my %mmopts = (%efopts, pack_l=>$coldb->{pack_id});
 
   ##-- initialize: attribute enums
-  my $aconf = [];  ##-- [{a=>$a, i=>$i, enum=>$aenum, pack_x=>$pack_xa, s2i=>\%s2i, ns=>$nstrings, #a2x=>$a2x, ...}, ]
+  my $aconf = [];  ##-- [{a=>$attr, i=>$i, enum=>$aenum, pack_x=>$pack_xa, s2i=>\%s2i, ns=>$nstrings, ?i2j=>$pftmp, ...}, ]
   my $axpos = 0;
-  my ($a,$ac);
+  my ($attr,$ac);
   foreach (0..$#$attrs) {
-    push(@$aconf,$ac={i=>$_, a=>($a=$attrs->[$_])});
-    $ac->{enum}   = $coldb->{"${a}enum"} = $ECLASS->new(%efopts);
-    $ac->{pack_x} = $coldb->{"pack_x$a"} = '@'.$axpos.$pack_id;
+    push(@$aconf,$ac={i=>$_, a=>($attr=$attrs->[$_])});
+    $ac->{enum}   = $coldb->{"${attr}enum"} = $ECLASS->new(%efopts);
+    $ac->{pack_x} = $coldb->{"pack_x$attr"} = '@'.$axpos.$pack_id;
     $ac->{s2i}    = $ac->{enum}{s2i};
-    $ac->{ma}     = $1 if ($a =~ /^(?:meta|doc)\.(.*)$/);
+    $ac->{ma}     = $1 if ($attr =~ /^(?:meta|doc)\.(.*)$/);
     $axpos       += packsize($pack_id);
   }
   my @aconfm = grep { defined($_->{ma})} @$aconf; ##-- meta-attributes
   my @aconfw = grep {!defined($_->{ma})} @$aconf; ##-- token-attributes
 
-  ##-- initialize: tuple enum
+  ##-- initialize: tuple enum (+dates)
   my $xenum = $coldb->{xenum} = $XECLASS->new(%efopts, pack_s=>$pack_x);
   my $xs2i  = $xenum->{s2i};
   my $nx    = 0;
 
-
   ##-- initialize: corpus token-list (temporary)
-  my $tokfile =  "$dbdir/tokens.dat";
-  CORE::open(my $tokfh, ">$tokfile")
-    or $coldb->logconfess("$0: open failed for $tokfile: $!");
+  ##  + 1 token/line, blank lines ~ EOS, token lines ~ "$a0i $a1i ... $aNi $date"
+  my $atokfile =  "$dbdir/atokens.dat";
+  CORE::open(my $atokfh, ">:raw", $atokfile)
+    or $coldb->logconfess("$0: open failed for $atokfile: $!");
+
+  ##-- initialize: tdf: doc-data array (temporary)
+  my ($docmeta,$docoff);
+  my $ndocs = 0; ##-- current size of @$docmeta, @$docoff
+  my $index_tdf = $coldb->{index_tdf};
+  if ($index_tdf) {
+    $docmeta = $coldb->{docmeta} = tmparray("$dbdir/docmeta", UNLINK=>!$coldb->{keeptmp}, pack_o=>'J', pack_l=>'J')
+      or $coldb->logconfess("create(): could not tie temporary doc-data array to $dbdir/docmeta.*: $!");
+    $docoff = $coldb->{docoff} = tmparrayp("$dbdir/docoff", 'J', UNLINK=>!$coldb->{keeptmp})
+      or $coldb->logconfess("create(): couldl not tie temporary doc-offset array to $dbdir/docoff.*: $!");
+  }
+  my $dbreak = ($coldb->{dbreak} // '#file');
+  $dbreak    = "#$dbreak" if ($dbreak !~ /^#/);
+  $coldb->{dbreak} = $dbreak;
 
   ##-- initialize: filter regexes
   my $pgood = $coldb->{pgood} ? qr{$coldb->{pgood}} : undef;
@@ -572,24 +669,24 @@ sub create {
   my $lbad  = $coldb->{lbad}  ? qr{$coldb->{lbad}}  : undef;
 
   ##-- initialize: logging
-  my $logFileN = $coldb->{logCorpusFileN};
   my $nfiles   = $corpus->size();
-  if (!defined($logFileN)) {
-    $logFileN = int($nfiles / 100);
-    $logFileN = 1 if ($logFileN < 1);
-  }
+  my $logFileN = $coldb->{logCorpusFileN} // max2(1,int($nfiles/20));
 
   ##-- initialize: enums, date-range
   $coldb->vlog($coldb->{logCreate},"create(): processing $nfiles corpus file(s)");
   my ($xdmin,$xdmax) = ('inf','-inf');
-  my ($bos,$eos) = @$coldb{qw(bos eos)};
-  my ($doc, $date,$tok,$w,$p,$l,@ais,$x,$xi, $filei);
-  my ($last_was_eos,$bosxi,$eosxi);
+  my ($doc, $date,$tok,$w,$p,$l,@ais,$aistr,$x,$xi, $nsigs, $filei, $last_was_eos);
+  my $docoff_cur = -1;
+  my $toki       = 0;
   for ($corpus->ibegin(); $corpus->iok; $corpus->inext) {
-    $coldb->vlog($coldb->{logCorpusFile}, sprintf("create(): processing files [%3d%%]: %s", 100*$filei/$nfiles, $corpus->ifile))
+    $coldb->vlog($coldb->{logCorpusFile}, sprintf("create(): processing files [%3.0f%%]: %s", 100*($filei-1)/$nfiles, $corpus->ifile))
       if ($logFileN && ($filei++ % $logFileN)==0);
     $doc  = $corpus->idocument();
     $date = $doc->{date};
+
+    ##-- initalize tdf data (#/sigs)
+    $nsigs = 0;
+    $docoff_cur=$toki;
 
     ##-- get date-range
     $xdmin = $date if ($date < $xdmin);
@@ -599,21 +696,10 @@ sub create {
     @ais = qw();
     $ais[$_->{i}] = ($_->{s2i}{$doc->{meta}{$_->{ma}}} //= ++$_->{ns}) foreach (@aconfm);
 
-    ##-- allocate bos,eos
-    undef $bosxi;
-    undef $eosxi;
-    foreach $w (grep {($_//'') ne ''} $bos,$eos) {
-      $ais[$_->{i}] = ($_->{s2i}{$w} //= ++$_->{ns}) foreach (@aconfw);
-      $x   = pack($pack_x,@ais,$date);
-      $xi  = $xs2i->{$x} = ++$nx if (!defined($xi=$xs2i->{$x}));
-      $bosxi = $xi if (defined($bos) && $w eq $bos);
-      $eosxi = $xi if (defined($eos) && $w eq $eos);
-    }
-
-    ##-- iterate over tokens
+    ##-- iterate over tokens, populating initial attribute-enums and writing $atokfile
     $last_was_eos = 1;
     foreach $tok (@{$doc->{tokens}}) {
-      if (defined($tok)) {
+      if (ref($tok)) {
 	##-- normal token
 	($w,$p,$l) = @$tok{qw(w p l)};
 
@@ -627,26 +713,195 @@ sub create {
 
 	##-- get attribute value-ids and build tuple
 	$ais[$_->{i}] = ($_->{s2i}{$tok->{$_->{a}//''}} //= ++$_->{ns}) foreach (@aconfw);
+	$aistr        = join(' ',@ais);
 
-	$x  = pack($pack_x, @ais,$date);
-	$xi = $xs2i->{$x} = ++$nx if (!defined($xi=$xs2i->{$x}));
-
-	$tokfh->print(($last_was_eos && defined($bosxi) ? ($bosxi,"\n") : qw()), $xi,"\n");
+	$atokfh->print("$aistr $date\n");
 	$last_was_eos = 0;
+	++$toki;
       }
-      elsif (!$last_was_eos) {
+      elsif (!defined($tok) && !$last_was_eos) {
 	##-- eos
-	$tokfh->print((defined($eosxi) ? ($eosxi,"\n") : qw()), "\n");
+	$atokfh->print("\n");
 	$last_was_eos = 1;
       }
+      elsif (defined($tok) && $tok eq $dbreak && $docoff && $docoff_cur < $toki) {
+	##-- break:tdf
+	++$nsigs;
+	push(@$docoff, $docoff_cur);
+	$docoff_cur = $toki;
+      }
+    }
+
+    ##-- store final doc-break (for tdf)
+    if ($docoff && $docoff_cur < $toki) {
+      ++$nsigs;
+      push(@$docoff, $docoff_cur);
+      $docoff_cur = $toki;
+    }
+
+    ##-- store doc-data (for tdf)
+    if ($docmeta) {
+      push(@$docmeta, {
+		       id    => $ndocs++,
+		       nsigs => $nsigs,
+		       file  => $corpus->ifile,
+		       (map {($_=>$doc->{$_})} qw(meta date label)),
+		      })
     }
   }
+  ##-- store final pseudo-doc offset (total #/tokens)
+  push(@$docoff, $toki) if ($docoff);
+
   ##-- store date-range
   @$coldb{qw(xdmin xdmax)} = ($xdmin,$xdmax);
 
-  ##-- close token storage
-  $tokfh->close()
-    or $corpus->logconfess("create(): failed to close temporary token storage file '$tokfile': $!");
+  ##-- close temporary attribute-token file(s)
+  CORE::close($atokfh)
+      or $corpus->logconfess("create(): failed to close temporary token storage file '$atokfile': $!");
+
+  ##-- filter: by attribute frequency
+  my $ibad  = unpack($pack_id,pack($pack_id,-1));
+  foreach $ac (@$aconf) {
+    my $afmin = $coldb->{"fmin_".$ac->{a}} // '';
+    $afmin    = $coldb->{tfmin} // 0 if (($afmin//'') eq '');
+    next if ($afmin <= 0);
+    $coldb->vlog($coldb->{logCreate}, "create(): building attribute frequency filter (fmin_$ac->{a}=$afmin)");
+
+    ##-- filter: by attribute frequency: setup re-numbering map $ac->{i2j}
+    my $i2j = $ac->{i2j} = tmparrayp("$dbdir/i2j_$ac->{a}.tmp", 'J', UNLINK=>!$coldb->{keeptmp});
+
+    ##-- filter: by attribute frequency: populate $ac->{i2j} and update $ac->{s2i}
+    env_push(LC_ALL=>'C');
+    my $ai1   = $ac->{i}+1;
+    my $cmdfh = opencmd("cut -d\" \" -f$ai1 $atokfile | sort -n | uniq -c |")
+      or $coldb->logconfess("create(): failed to open pipe from sort for attribute frequency filter (fmin_$ac->{a}=$afmin)");
+    my ($f,$i);
+    my $nj   = 0;
+    while (defined($_=<$cmdfh>)) {
+      chomp;
+      ($f,$i)    = split(' ',$_,2);
+      $i2j->[$i] = ($f >= $afmin ? ++$nj : $ibad) if ($i)
+    }
+    $cmdfh->close();
+    env_pop();
+
+    my $nabad = $ac->{ns} - $nj;
+    my $pabad = $ac->{ns} ? sprintf("%.2f%%", 100*$nabad/$ac->{ns}) : 'nan%';
+    $coldb->vlog($coldb->{logCreate}, "create(): filter (fmin_$ac->{a}=$afmin) pruning $nabad of $ac->{ns} attribute value type(s) ($pabad)");
+
+    tied(@$i2j)->flush;
+    my $s2i = $ac->{s2i};
+    my ($s,$j,@badkeys);
+    while (($s,$i)=each %$s2i) {
+      if (($j=$i2j->[$i])==$ibad) {
+	delete $s2i->{$s};
+      } else {
+	$s2i->{$s} = $j;
+      }
+    }
+    $ac->{ns} = $nj;
+    tied(@$i2j)->flush;
+  }
+
+  ##-- filter: terms: populate $ws2w (map IDs)
+  my $tfmin = $coldb->{tfmin}//0;
+  my $ws2w  = undef; ##-- join(' ',@ais) => pack($pack_w,i2j(@ais)) : includes attribute-id re-mappings
+  if ($tfmin > 0 || grep {defined($_->{i2j})} @$aconf) {
+    $coldb->vlog($coldb->{logCreate}, "create(): populating global term enum (tfmin=$tfmin)");
+    my @ai2j  = map {defined($_->{i2j}) ? $_->{i2j} : undef} @$aconf;
+    my @ai2ji = grep {defined($ai2j[$_])} (0..$#ai2j);
+    my $na        = scalar(@$attrs);
+    my ($nw0,$nw) = (0,0);
+    my ($f);
+    env_push(LC_ALL=>'C');
+    my $cmdfh = opencmd("cut -d \" \" -f -$na $atokfile | sort -n | uniq -c |")
+      or $coldb->logconfess("create(): failed to open pipe from sort for global term filter");
+  FILTER_WTUPLES:
+    while (defined($_=<$cmdfh>)) {
+      chomp;
+      ++$nw0;
+      ($f,$aistr) = split(' ',$_,2);
+      next if (!$aistr || $f < $tfmin);
+      @ais = split(' ',$aistr,$na);
+      foreach (@ai2ji) {
+	##-- apply attribute-wise re-mappings
+	$ais[$_] = $ai2j[$_][$ais[$_]//0];
+	next FILTER_WTUPLES if ($ais[$_] == $ibad);
+      }
+      $ws2w->{$aistr} = pack($pack_w,@ais);
+      ++$nw;
+    }
+    $cmdfh->close();
+    env_pop();
+
+    my $nwbad = $nw0 - $nw;
+    my $pwbad = $nw0 ? sprintf("%.2f%%", 100*$nwbad/$nw0) : 'nan%';
+    $coldb->vlog($coldb->{logCreate}, "create(): will prune $nwbad of $nw0 term tuple type(s) ($pwbad)");
+  }
+
+  ##-- compile: apply filters & assign term-ids
+  $coldb->vlog($coldb->{logCreate}, "create(): filtering corpus tokens & assigning term-IDs");
+  my $tokfile = "$dbdir/tokens.dat";
+  CORE::open(my $tokfh, ">:raw", $tokfile)
+      or $coldb->logconfess("$0: open failed for $tokfile: $!");
+  my $vtokfile = "$dbdir/vtokens.bin";
+  CORE::open(my $vtokfh, ">:raw", $vtokfile)
+      or $coldb->logconfess("$0: open failed for $vtokfile: $!");
+  CORE::open($atokfh, "<:raw", $atokfile)
+      or $coldb->logconfess("$0: re-open failed for $atokfile: $!");
+  $nx       = 0;
+  my $len_w = packsize($pack_w);
+  my $ntok_in = $toki;
+  my ($toki_in,$toki_out) = (0,0);
+  my $doci_cur   = 0;
+  tied(@$docoff)->flush() if ($docoff);
+  my $docoff_in  = $docoff ? $docoff->[$doci_cur] : -1;
+  while (defined($_=<$atokfh>)) {
+    chomp;
+    if ($_) {
+      if ($toki_in == $docoff_in) {
+	##-- update break-indices for tdf
+	$docoff->[$doci_cur] = $toki_out;
+	$docoff_in = $docoff->[++$doci_cur];
+      }
+      ++$toki_in;
+      $date = $1 if (s/ ([0-9]+)$//);
+      if (defined($ws2w)) {
+	next if (!defined($w=$ws2w->{$_}));
+      } else {
+	$w = pack($pack_w, split(' ',$_));
+      }
+      $x  = $w.pack($pack_date,$date);
+      $xi = $xs2i->{$x} = ++$nx if (!defined($xi=$xs2i->{$x}));
+      $tokfh->print($xi,"\n");
+      $vtokfh->print($w);
+      ++$toki_out;
+    }
+    else {
+      $tokfh->print("\n");
+    }
+  }
+  ##-- update any trailing tdf break indices
+  if ($docoff) {
+    $ndocs = $#$docoff;
+    for (; $doci_cur <= $ndocs; ++$doci_cur) {
+      $docoff->[$doci_cur] = $toki_out;
+    }
+    tied(@$docoff)->flush();
+  }
+
+  CORE::close($atokfh)
+      or $coldb->logconfess("create(): failed to temporary attribute-token-file $atokfile: $!");
+  CORE::close($tokfh)
+      or $coldb->logconfess("create(): failed to temporary token-file $tokfile: $!");
+  CORE::close($vtokfh)
+      or $coldb->logconfess("create(): failed to temporary tdf-token-file $vtokfile: $!");
+  my $ntok_out = $toki_out;
+  my $ptokbad = $ntok_in ? sprintf("%.2f%%",100*($ntok_in-$ntok_out)/$ntok_in) : 'nan%';
+  $coldb->vlog($coldb->{logCreate}, "create(): assigned $nx term+date tuple-IDs to $ntok_out of $ntok_in tokens (pruned $ptokbad)");
+
+  ##-- cleanup: drop $aconf->[$ai]{i2j} now that we've used it
+  delete($_->{i2j}) foreach (@$aconf);
 
   ##-- compile: xenum
   $coldb->vlog($coldb->{logCreate}, "create(): creating tuple-enum $dbdir/xenum.*");
@@ -662,7 +917,7 @@ sub create {
     $ac->{enum}->save("$dbdir/$ac->{a}_enum")
       or $coldb->logconfess("create(): failed to save $dbdir/$ac->{a}_enum: $!");
 
-    ##-- compile: by attribute: expansion multimaps
+    ##-- compile: by attribute: expansion multimaps (+dates)
     $coldb->create_xmap("$dbdir/$ac->{a}_2x",$xs2i,$ac->{pack_x},"attribute expansion multimap");
   }
 
@@ -676,15 +931,29 @@ sub create {
     or $coldb->logconfess("create(): failed to create unigram index: $!");
 
   ##-- compute collocation frequencies
-  $coldb->info("creating co-frequency index $dbdir/cof.* [dmax=$coldb->{dmax}, fmin=$coldb->{cfmin}]");
-  my $cof = $coldb->{cof} = DiaColloDB::Relation::Cofreqs->new(base=>"$dbdir/cof", flags=>$flags,
-							       pack_i=>$pack_id, pack_f=>$pack_f,
-							       dmax=>$coldb->{dmax}, fmin=>$coldb->{cfmin},
-							       keeptmp=>$coldb->{keeptmp},
-							      )
-    or $coldb->logconfess("create(): failed to create co-frequency index $dbdir/cof.*: $!");
-  $cof->create($coldb, $tokfile)
-    or $coldb->logconfess("create(): failed to create co-frequency index: $!");
+  if ($coldb->{index_cof}//1) {
+    $coldb->info("creating co-frequency index $dbdir/cof.* [dmax=$coldb->{dmax}, fmin=$coldb->{cfmin}]");
+    my $cof = $coldb->{cof} = DiaColloDB::Relation::Cofreqs->new(base=>"$dbdir/cof", flags=>$flags,
+								 pack_i=>$pack_id, pack_f=>$pack_f,
+								 dmax=>$coldb->{dmax}, fmin=>$coldb->{cfmin},
+								 keeptmp=>$coldb->{keeptmp},
+								)
+      or $coldb->logconfess("create(): failed to create co-frequency index $dbdir/cof.*: $!");
+    $cof->create($coldb, $tokfile)
+      or $coldb->logconfess("create(): failed to create co-frequency index: $!");
+  } else {
+    $coldb->info("NOT creating co-frequency index $dbdir/cof.*; set index_cof=1 to enable");
+  }
+
+  ##-- create tdf-model (if requested & available)
+  if ($coldb->{index_tdf}) {
+    $coldb->info("creating (term x document) index $dbdir/tdf* [dbreak=$dbreak]");
+    $coldb->{tdfopts}     //= {};
+    $coldb->{tdfopts}{$_} //= $TDF_OPTS{$_} foreach (keys %TDF_OPTS); ##-- tdf: default options
+    $coldb->{tdf} = DiaColloDB::Relation::TDF->create($coldb, undef, base=>"$dbdir/tdf", dbreak=>$dbreak);
+  } else {
+    $coldb->info("NOT creating (term x document) index, 'tdf' profiling relation disabled");
+  }
 
   ##-- create ddc client relation (no-op if ddcServer option is not set)
   if ($coldb->{ddcServer}) {
@@ -702,7 +971,24 @@ sub create {
   $coldb->vlog($coldb->{logCreate}, "create(): DB $dbdir created.");
 
   ##-- cleanup
-  CORE::unlink($tokfile) if (!$coldb->{keeptmp});
+  !$docmeta
+    or !tied(@$docmeta)
+    or untie(@$docmeta)
+    or $coldb->logwarn("create(): could untie temporary doc-data array $dbdir/docmeta.*: $!");
+  delete $coldb->{docmeta};
+
+  !$docoff
+    or !tied(@$docoff)
+    or untie(@$docoff)
+    or $coldb->logwarn("create(): could untie temporary doc-offset array $dbdir/docoff.*: $!");
+  delete $coldb->{docoff};
+
+  if (!$coldb->{keeptmp}) {
+    foreach ($vtokfile,$tokfile,$atokfile) {
+      CORE::unlink($_)
+	  or $coldb->logwarne("creat(): could not remove temporary file '$_': $!");
+    }
+  }
 
   return $coldb;
 }
@@ -762,30 +1048,30 @@ sub union {
   ##-- common variables: enums
   my %efopts = (flags=>$flags, pack_i=>$coldb->{pack_id}, pack_o=>$coldb->{pack_off}, pack_l=>$coldb->{pack_len});
 
-  ##-- union: attribute enums; also sets $db->{"_union_${a}i2u"} for each attribute $a
+  ##-- union: attribute enums; also sets $db->{"_union_${a}i2u"} for each attribute $attr
   ##   + $db->{"${a}i2u"} is a PackedFile temporary in $dbdir/"${a}_i2u.tmp${argi}"
-  my ($ac,$a,$aenum,$as2i,$argi);
+  my ($ac,$attr,$aenum,$as2i,$argi);
   my $adata = $coldb->attrData($attrs);
   foreach $ac (@$adata) {
     $coldb->vlog($coldb->{logCreate}, "union(): creating attribute enum $dbdir/$ac->{a}_enum.*");
-    $a     = $ac->{a};
-    $aenum = $coldb->{"${a}enum"} = $ac->{enum} = $ECLASS->new(%efopts);
+    $attr  = $ac->{a};
+    $aenum = $coldb->{"${attr}enum"} = $ac->{enum} = $ECLASS->new(%efopts);
     $as2i  = $aenum->{s2i};
     foreach $argi (0..$#dbargs) {
       ##-- enum union: guts
       $db        = $dbargs[$argi];
-      my $dbenum = $db->{"${a}enum"};
+      my $dbenum = $db->{"${attr}enum"};
       $coldb->vlog($coldb->{logCreate}, "union(): processing $dbenum->{base}.*");
       $aenum->addEnum($dbenum);
       $db->{"_union_argi"}    = $argi;
-      $db->{"_union_${a}i2u"} = (DiaColloDB::PackedFile
-				 ->new(file=>"$dbdir/${a}_i2u.tmp${argi}", flags=>'rw', packas=>$coldb->{pack_id})
+      $db->{"_union_${attr}i2u"} = (DiaColloDB::PackedFile
+				 ->new(file=>"$dbdir/${attr}_i2u.tmp${argi}", flags=>'rw', packas=>$coldb->{pack_id})
 				 ->fromArray( [@$as2i{$dbenum ? @{$dbenum->toArray} : ''}] ))
-	or $coldb->logconfess("union(): failed to create temporary $dbdir/${a}_i2u.tmp${argi}");
-      $db->{"_union_${a}i2u"}->flush();
+	or $coldb->logconfess("union(): failed to create temporary $dbdir/${attr}_i2u.tmp${argi}");
+      $db->{"_union_${attr}i2u"}->flush();
     }
-    $aenum->save("$dbdir/${a}_enum")
-      or $coldb->logconfess("union(): failed to save attribute enum $dbdir/${a}_enum: $!");
+    $aenum->save("$dbdir/${attr}_enum")
+      or $coldb->logconfess("union(): failed to save attribute enum $dbdir/${attr}_enum: $!");
   }
 
   ##-- union: date-range
@@ -846,15 +1132,39 @@ sub union {
     or $coldb->logconfess("union(): could not populate unigram index $dbdir/xf.*: $!");
 
   ##-- co-frequencies: populate
-  $coldb->vlog($coldb->{logCreate}, "union(): creating co-frequency index $dbdir/cof.* [fmin=$coldb->{cfmin}]");
-  $coldb->{cof} = DiaColloDB::Relation::Cofreqs->new(base=>"$dbdir/cof", flags=>$flags,
-						     pack_i=>$pack_id, pack_f=>$pack_f,
-						     dmax=>$coldb->{dmax}, fmin=>$coldb->{cfmin},
-						     keeptmp=>$coldb->{keeptmp},
-						    )
-    or $coldb->logconfess("create(): failed to open co-frequency index $dbdir/cof.*: $!");
-  $coldb->{cof}->union($coldb, [map {[@$_{qw(cof _union_xi2u)}]} @dbargs])
-    or $coldb->logconfess("union(): could not populate co-frequency index $dbdir/cof.*: $!");
+  if ($coldb->{index_cof}//1) {
+    $coldb->vlog($coldb->{logCreate}, "union(): creating co-frequency index $dbdir/cof.* [fmin=$coldb->{cfmin}]");
+    $coldb->{cof} = DiaColloDB::Relation::Cofreqs->new(base=>"$dbdir/cof", flags=>$flags,
+						       pack_i=>$pack_id, pack_f=>$pack_f,
+						       dmax=>$coldb->{dmax}, fmin=>$coldb->{cfmin},
+						       keeptmp=>$coldb->{keeptmp},
+						      )
+      or $coldb->logconfess("create(): failed to open co-frequency index $dbdir/cof.*: $!");
+    $coldb->{cof}->union($coldb, [map {[@$_{qw(cof _union_xi2u)}]} @dbargs])
+      or $coldb->logconfess("union(): could not populate co-frequency index $dbdir/cof.*: $!");
+  } else {
+    $coldb->vlog($coldb->{logCreate}, "union(): NOT creating co-frequency index $dbdir/cof.*; set index_cof=1 to enable");
+  }
+
+  ##-- tdf: populate (TODO)
+  my $db_tdf            = !grep {!$_->{index_tdf}} @dbargs;
+  $coldb->{index_tdf} //= $db_tdf;
+  if ($coldb->{index_tdf} && $db_tdf) {
+    $coldb->vlog($coldb->{logCreate}, "union(): creating (term x document) index $dbdir/tdf.*");
+    my $tdfopts0          = $dbargs[0]{tdf}{tdfopts};
+    $coldb->{tdfopts}     //= {};
+    $coldb->{tdfopts}     //= $tdfopts0->{$_} foreach (keys %$tdfopts0);   ##-- tdf: inherit options
+    $coldb->{tdfopts}{$_} //= $TDF_OPTS{$_}   foreach (keys %TDF_OPTS);    ##-- tdf: default options
+    $coldb->{tdf} = DiaColloDB::Relation::TDF->union($coldb, \@dbargs,
+						       base => "$dbdir/tdf",
+						       flags => $flags,
+						       keeptmp => $coldb->{keeptmp},
+						       %{$coldb->{tdfopts}},
+						      )
+      or $coldb->logconfess("create(): failed to populate (term x document) index $dbdir/tdf.*: $!");
+  } else {
+    $coldb->vlog($coldb->{logCreate}, "union(): NOT creating (term x document) index $dbdir/tdf.*; set index_tdf=1 on all argument DBs to enable");
+  }
 
   ##-- cleanup
   if (!$coldb->{keeptmp}) {
@@ -885,7 +1195,7 @@ sub union {
 ## @keys = $coldb->headerKeys()
 ##  + keys to save as header
 sub headerKeys {
-  return (qw(attrs), grep {!ref($_[0]{$_}) && $_ !~ m{^(?:dbdir$|flags$|perms$|log)}} keys %{$_[0]});
+  return (qw(attrs), grep {!ref($_[0]{$_}) && $_ !~ m{^(?:dbdir$|flags$|perms$|info$|tdfopts$|log)}} keys %{$_[0]});
 }
 
 ## $bool = $coldb->loadHeaderData()
@@ -1145,6 +1455,9 @@ sub relname {
   elsif ($rel =~ m/^(?:c|f?1?2$)/) {
     return 'cof';
   }
+  elsif ($rel =~ m/^(?:v|vec|vs|vsem|sem|td[mf])$/) {
+    return 'tdf';
+  }
   return $rel;
 }
 
@@ -1223,23 +1536,32 @@ sub enumIds {
 sub parseDateRequest {
   my ($coldb,$date,$slice,$fill,$ddcmode) = @_;
   my ($dfilter,$slo,$shi,$dlo,$dhi);
-  if ($date && (UNIVERSAL::isa($date,'Regexp') || $date =~ /^\//)) {
+  $date //= '';
+  if ($date =~ /^\s*$/) {
+    ##-- empty date request: ignore
+    $dlo = $dhi = undef;
+  }
+  elsif (UNIVERSAL::isa($date,'Regexp') || $date =~ /^\//) {
     ##-- date request: regex string
     $coldb->logconfess("parseDateRequest(): can't handle date regex '$date' in ddc mode") if ($ddcmode);
     my $dre  = regex($date);
     $dfilter = sub { $_[0] =~ $dre };
   }
-  elsif ($date && $date =~ /^\s*([0-9]+)\s*[\-\:]+\s*([0-9]+)\s*$/) {
+  elsif ($date =~ /^\s*((?:[0-9]+|\*?))\s*[\-\:]+\s*((?:[0-9]+|\*?))\s*$/) {
     ##-- date request: range MIN:MAX (inclusive)
-    ($dlo,$dhi) = ($1+0,$2+0);
+    ($dlo,$dhi) = ($1,$2);
+    $dlo  = $coldb->{xdmin} if (($dlo//'') =~ /^\*?$/);
+    $dhi  = $coldb->{xdmax} if (($dhi//'') =~ /^\*?$/);
+    $dlo += 0;
+    $dhi += 0;
     $dfilter = sub { $_[0]>=$dlo && $_[0]<=$dhi };
   }
-  elsif ($date && $date =~ /[\s\,\|]/) {
+  elsif ($date =~ /[\s\,\|]+/) {
     ##-- date request: list
     my %dwant = map {($_=>undef)} grep {($_//'') ne ''} split(/[\s\,\|]+/,$date);
     $dfilter  = sub { exists($dwant{$_[0]}) };
   }
-  elsif ($date) {
+  else {
     ##-- date request: single value
     $dlo = $dhi = $date;
     $dfilter = sub { $_[0] == $date };
@@ -1252,7 +1574,7 @@ sub parseDateRequest {
   }
 
   ##-- slice-range
-  ($slo,$shi) = map {$slice ? ($slice*int(($_//0)/$slice)) : 0} ($dlo,$dhi);
+  ($slo,$shi) = map {$slice ? ($slice*int($_/$slice)) : 0} (($dlo//$coldb->{xdmin}),($dhi//$coldb->{xdmax}));
 
   return wantarray ? ($dfilter,$slo,$shi,$dlo,$dhi) : $dfilter;
 }
@@ -1361,40 +1683,40 @@ sub parseQuery {
   my ($q);
   if ($areqs) {
     ##-- compat: diacollo<=v0.06-style attribute-wise request in @$areqs; construct DDC query by hand
-    my ($a,$areq,$aq);
+    my ($attr,$areq,$aq);
     foreach (@$areqs) {
       if (UNIVERSAL::isa($_,'ARRAY')) {
 	##-- compat: attribute request: ARRAY
-	($a,$areq) = @$_;
+	($attr,$areq) = @$_;
       } elsif (UNIVERSAL::isa($_,'HASH')) {
 	##-- compat: attribute request: HASH
-	($a,$areq) = %$_;
+	($attr,$areq) = %$_;
       } else {
 	##-- compat: attribute request: STRING (native)
-	($a,$areq) = m{^(${attrre})[:=](${valre})$} ? ($1,$2) : ($_,undef);
-	$a    =~ s/\\(.)/$1/g;
+	($attr,$areq) = m{^(${attrre})[:=](${valre})$} ? ($1,$2) : ($_,undef);
+	$attr =~ s/\\(.)/$1/g;
 	$areq =~ s/\\(.)/$1/g if (defined($areq));
       }
 
       ##-- compat: parse defaults
-      ($a,$areq) = ('',$a)   if (defined($defaultIndex) && !defined($areq));
-      $a = $defaultIndex//'' if (($a//'') eq '');
-      $a =~ s/^\$//;
+      ($attr,$areq) = ('',$attr)   if (defined($defaultIndex) && !defined($areq));
+      $attr = $defaultIndex//'' if (($attr//'') eq '');
+      $attr =~ s/^\$//;
 
       if (UNIVERSAL::isa($areq,'DDC::XS::CQuery')) {
 	##-- compat: value: ddc query object
 	$aq = $areq;
-	$aq->setIndexName($a) if ($aq->can('setIndexName') && $a ne '');
+	$aq->setIndexName($attr) if ($aq->can('setIndexName') && $attr ne '');
       }
       elsif (UNIVERSAL::isa($areq,'ARRAY')) {
 	##-- compat: value: array --> CQTokSet @{VAL1,...,VALN}
-	$aq = DDC::XS::CQTokSet->new($a, '', $areq);
+	$aq = DDC::XS::CQTokSet->new($attr, '', $areq);
       }
       elsif (UNIVERSAL::isa($areq,'RegExp') || (!$opts{ddcmode} && $areq && $areq =~ m{^${regre}$})) {
 	##-- compat: value: regex --> CQTokRegex /REGEX/
 	my $re = regex($areq)."";
 	$re    =~ s{^\(\?\^\:(.*)\)$}{$1};
-	$aq = DDC::XS::CQTokRegex->new($a, $re);
+	$aq = DDC::XS::CQTokRegex->new($attr, $re);
       }
       elsif ($opts{ddcmode} && ($areq//'') ne '') {
 	##-- compat: ddcmode: parse requests as ddc queries
@@ -1407,9 +1729,9 @@ sub parseQuery {
 	my $vals = [grep {($_//'') ne ''} map {s{\\(.)}{$1}g; $_} split(/(?:(?<!\\)[\,\s\|])+/,($areq//''))];
 	$aq = (@$vals<=1
 	       ? (($vals->[0]//'*') eq '*'
-		  ? DDC::XS::CQTokAny->new($a,'*')
-		  : DDC::XS::CQTokExact->new($a,$vals->[0]))
-	       : DDC::XS::CQTokSet->new($a,($areq//''),$vals));
+		  ? DDC::XS::CQTokAny->new($attr,'*')
+		  : DDC::XS::CQTokExact->new($attr,$vals->[0]))
+	       : DDC::XS::CQTokSet->new($attr,($areq//''),$vals));
       }
       ##-- push request to query
       $q = $q ? DDC::XS::CQWith->new($q,$aq) : $aq;
@@ -1465,6 +1787,7 @@ sub parseQuery {
 ##     warn  => $level,       ##-- log-level for unknown attributes (default: 'warn')
 ##     logas => $reqtype,     ##-- request type for warnings
 ##     default => $attr,      ##-- default attribute (for query requests)
+##     allowExtra => \@attrs, ##-- allow extra attributes @attrs (may also be HASH-ref)
 ##     allowUnknown => $bool, ##-- allow unknown attributes? (default: 0)
 sub queryAttributes {
   my ($coldb,$cquery,%opts) = @_;
@@ -1478,7 +1801,7 @@ sub queryAttributes {
   };
 
   my $areqs = [];
-  my ($q,$a,$aq);
+  my ($q,$attr,$aq);
   foreach $q (@{$cquery->Descendants}) {
     if (!defined($q)) {
       ##-- NULL: ignore
@@ -1498,7 +1821,7 @@ sub queryAttributes {
       $warnsub->("negated query clause in native $logas request (".$q->toString.")") if ($q->getNegated);
       $warnsub->("explicit term-expansion chain in native $logas request (".$q->toString.")") if ($q->can('getExpanders') && @{$q->getExpanders});
 
-      my $a = $q->getIndexName || $default;
+      my $attr = $q->getIndexName || $default;
       if (ref($q) =~ /^DDC::XS::CQTok(?:Exact|Set|Regex|Any)$/) {
 	$aq = $q;
       } elsif (ref($q) eq 'DDC::XS::CQTokInfl') {
@@ -1515,7 +1838,7 @@ sub queryAttributes {
 	$warnsub->("token query clause of type ".ref($q)." in native $logas request (".$q->toString.")");
       }
       $aq=undef if ($aq && $aq->isa('DDC::XS::CQTokAny')); ##-- empty value, e.g. for groupby
-      push(@$areqs, [$a,$aq]);
+      push(@$areqs, [$attr,$aq]);
     }
     elsif ($q->isa('DDC::XS::CQFilter')) {
       ##-- CQFilter
@@ -1532,13 +1855,15 @@ sub queryAttributes {
   }
 
   ##-- check for unsupported attributes & normalize attribute names
+  my $allowExtra = $opts{allowExtra};
+  $allowExtra    = { map {($_=>undef)} @$allowExtra } if (!UNIVERSAL::isa($allowExtra,'HASH'));
   @$areqs = grep {
-    $a = $coldb->attrName($_->[0]);
-    if (!$opts{allowUnknown} && !$coldb->hasAttr($a)) {
-      $warnsub->("unsupported attribute '".($_->[0]//'(undef)')."' in native $logas request");
+    $attr = $coldb->attrName($_->[0]);
+    if ( !$opts{allowUnknown} && !$coldb->hasAttr($attr) && !($allowExtra && exists($allowExtra->{$attr})) ) {
+      $warnsub->("unsupported attribute '".($_->[0]//'(undef)')."' in $logas request");
       0
     } else {
-      $_->[0] = $a;
+      $_->[0] = $attr;
       1
     }
   } @$areqs;
@@ -1572,6 +1897,7 @@ sub parseRequest {
 ##  + %opts:
 ##     warn  => $level,    ##-- log-level for unknown attributes (default: 'warn')
 ##     relax => $bool,     ##-- allow unsupported attributes (default=0)
+##     xenum => $xenum,    ##-- enum to use for \&x2g and \&g2s (default: $coldb->{xenum})
 sub groupby {
   my ($coldb,$gbreq,%opts) = @_;
   return $gbreq if (UNIVERSAL::isa($gbreq,'HASH'));
@@ -1590,7 +1916,7 @@ sub groupby {
   $gb->{titles} = [map {$coldb->attrTitle($_)} @$gbattrs];
 
   ##-- get groupby-sub
-  my $xenum = $coldb->{xenum};
+  my $xenum = $opts{xenum} // $coldb->{xenum};
   my $gbpack = join('',map {$coldb->{"pack_x$_"}} @$gbattrs);
   my ($ids);
   my @gbids  = (
@@ -1644,12 +1970,12 @@ sub groupby {
 ##  + %opts:
 ##     logas => $logas,   ##-- log-prefix for warnings
 sub query2filter {
-  my ($coldb,$a,$q,%opts) = @_;
+  my ($coldb,$attr,$q,%opts) = @_;
   return undef if (!defined($q));
   my $logas = $opts{logas} || 'query2filter';
 
   ##-- document attribute ("doc.ATTR" convention)
-  my $field = $coldb->attrName( $a // $q->getIndexName );
+  my $field = $coldb->attrName( $attr // $q->getIndexName );
   $field = $1 if ($field =~ /^doc\.(.*)$/);
   if (UNIVERSAL::isa($q, 'DDC::XS::CQTokAny')) {
     return undef;
@@ -1829,13 +2155,13 @@ sub compare {
 			   (grep {defined($_)} @opts{qw(query q lemma lem l)})
 			  )[0]//'';
   }
-  foreach my $a (qw(date slice)) {
-    $opts{"a$a"} = ((map {defined($opts{"a$_"}) ? $opts{"a$_"} : qw()} @{$ATTR_RALIAS{$a}}),
-		    (map {defined($opts{$_})    ? $opts{$_}    : qw()} @{$ATTR_RALIAS{$a}}),
-		   )[0]//'';
-    $opts{"b$a"} = ((map {defined($opts{"b$_"}) ? $opts{"b$_"} : qw()} @{$ATTR_RALIAS{$a}}),
-		    (map {defined($opts{$_})    ? $opts{$_}    : qw()} @{$ATTR_RALIAS{$a}}),
-		   )[0]//'';
+  foreach my $attr (qw(date slice)) {
+    $opts{"a$attr"} = ((map {defined($opts{"a$_"}) ? $opts{"a$_"} : qw()} @{$ATTR_RALIAS{$attr}}),
+		       (map {defined($opts{$_})    ? $opts{$_}    : qw()} @{$ATTR_RALIAS{$attr}}),
+		      )[0]//'';
+    $opts{"b$attr"} = ((map {defined($opts{"b$_"}) ? $opts{"b$_"} : qw()} @{$ATTR_RALIAS{$attr}}),
+		       (map {defined($opts{$_})    ? $opts{$_}    : qw()} @{$ATTR_RALIAS{$attr}}),
+		      )[0]//'';
   }
   delete @opts{keys %ATTR_ALIAS};
 
@@ -1853,7 +2179,7 @@ sub compare {
   $coldb->vlog($coldb->{logRequest},
 	       "compare("
 	       .join(', ',
-		     map {"$_->[0]=".quotemeta($_->[1]//'')}
+		     map {"$_->[0]=".quotemeta($_->[1]//'')."'"}
 		     ([rel=>$rel],
 		      (map {["a$_"=>$opts{"a$_"}]} (qw(query date slice))),
 		      (map {["b$_"=>$opts{"b$_"}]} (qw(query date slice))),

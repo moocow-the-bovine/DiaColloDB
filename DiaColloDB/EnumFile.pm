@@ -88,6 +88,18 @@ sub DESTROY {
   $_[0]->close() if ($_[0]->opened);
 }
 
+## $enum = $enum->promote($class,$force)
+##  + promote to $class
+##  + if $force is false (default), promotion to CLASS::MMap will be disabled
+sub promote {
+  my ($enum,$class,$force) = @_;
+  return $enum if (UNIVERSAL::isa($enum,$class)
+		   || (!$force && UNIVERSAL::isa((ref($enum)||$enum)."::MMap", $class)));
+  return $class->new() if (!ref($enum));
+  %$enum = ((UNIVERSAL::can($class,'new') ? %{$class->new} : qw()),%$enum);
+  return bless($enum,$class);
+}
+
 ##==============================================================================
 ## I/O
 
@@ -108,6 +120,8 @@ sub open {
   if (fcread($flags) && !fctrunc($flags)) {
     $enum->loadHeader()
       or $enum->logconess("failed to load header from '$enum->{base}.hdr': $!");
+    return $enum->promote($enum->{hclass})->open($base,$flags)
+      if ($enum->{hclass} && !$enum->isa($enum->{hclass})); ##-- auto-promote based on header data
   }
 
   $enum->{sfh} = fcopen("$base.es", $flags, $enum->{perms})
@@ -345,7 +359,7 @@ sub save {
 ## @keys = $coldb->headerKeys()
 ##  + keys to save as header
 sub headerKeys {
-  return grep {!ref($_[0]{$_}) && $_ !~ m{^(?:flags|perms|base|loaded|dirty)$}} keys %{$_[0]};
+  return grep {!ref($_[0]{$_}) && $_ !~ m{^(?:flags|perms|base|loaded|dirty|hclass)$}} keys %{$_[0]};
 }
 
 ## $bool = $enum->loadHeaderData($hdr)
@@ -357,6 +371,7 @@ sub loadHeaderData {
     $enum->logconfess("loadHeaderData() failed to load header data from ", $enum->headerFile, ": $!");
   }
   elsif (defined($hdr)) {
+    $enum->{hclass} = $hdr->{class};  ##-- save stored header-class
     $enum->SUPER::loadHeaderData($hdr);
   }
   return $enum;

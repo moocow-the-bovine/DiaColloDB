@@ -23,7 +23,10 @@ our @ISA = qw(DiaColloDB::Logger);
 ##    tokens =>\@tokens,  ##-- tokens, including undef for eos
 ##    meta   =>\%meta,    ##-- document metadata (e.g. author, title, collection, ...)
 ##   )
-## + each token in @tokens is a HASH-ref {w=>$word,p=>$pos,l=>$lemma,...}, or undef for EOS
+## + each token in @tokens is one of the following:
+##   - undef       : EOS (default, for collocation profiling)
+##   - a HASH-ref  : normal token: {w=>$word,p=>$pos,l=>$lemma,...}
+##   - a string    : block boundary / "break", e.g. "s": sentence-break, "p": paragraph-break, ...
 sub new {
   my $that = shift;
   my $doc  = bless({
@@ -51,6 +54,7 @@ sub fromFile {
 sub label {
   return $_[0]{label} // "$_[0]";
 }
+
 
 ##==============================================================================
 ## Footer

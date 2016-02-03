@@ -28,10 +28,13 @@ our @ISA = qw(DiaColloDB::Document);
 ##    wf     =>$iw,       ##-- index-field for $word attribute (default=0)
 ##    pf     =>$ip,       ##-- index-field for $pos attribute (default=1)
 ##    lf     =>$il,       ##-- index-field for $lemma attribute (default=2)
+##    pagef  =>$ipage,    ##-- index-field for $page attribute (default=undef:none)
 ##    tokens =>\@tokens,  ##-- tokens, including undef for EOS
 ##    meta   =>\%meta,    ##-- document metadata (e.g. author, title, collection, ...)
+##                        ##   + also generates special $meta->{genre} as 1st component of $meta->{textClass} if available
 ##   )
 ## + each token in @tokens is a HASH-ref {w=>$word,p=>$pos,l=>$lemma,...}
+## + default attribute positions ($iw,$ip,$il,$ipage) are overridden doc lines '%%$DDC:index[INDEX]=LONGNAME w' etc if present
 sub new {
   my $that = shift;
   my $doc  = $that->SUPER::new(
@@ -40,6 +43,7 @@ sub new {
 			       wf=>0,
 			       pf=>1,
 			       lf=>2,
+			       pagef=>undef,
 			       @_, ##-- user arguments
 			      );
   return $doc;
@@ -63,7 +67,7 @@ sub fromFile {
   $doc->logconfess("fromFile(): cannot open file '$file': $!") if (!ref($fh));
   binmode($fh,':utf8') if ($doc->{utf8});
 
-  my ($wf,$pf,$lf) = @$doc{qw(wf pf lf)};
+  my ($wf,$pf,$lf,$pagef) = map {($_//-1)} @$doc{qw(wf pf lf pagef)};
   my $tokens   = $doc->{tokens};
   @$tokens     = qw();
   my $meta     = $doc->{meta};
@@ -72,14 +76,11 @@ sub fromFile {
   my $eosre    = $doc->{eosre};
   $eosre       = qr{$eosre} if ($eosre && !ref($eosre));
   my $last_was_eos = 1;
-  my ($w,$p,$l);
+  my $is_eos  = 0;
+  my $curpage = '';
+  my ($w,$p,$l,$page);
   while (defined($_=<$fh>)) {
     chomp;
-    if ($eosre && $_ =~ $eosre) {
-      push(@$tokens,$eos) if (!$last_was_eos);
-      $last_was_eos = 1;
-      next;
-    }
     if (/^%%/) {
       if (/^%%(?:\$DDC:meta\.date_|\$?date)=([0-9]+)/) {
 	$doc->{date} = $1;
@@ -96,13 +97,43 @@ sub fromFile {
       elsif (/^%%\$DDC:index\[([0-9]+)\]=Lemma\b/ || /^%%\$DDC:index\[([0-9]+)\]=\S+ l$/) {
 	$lf = $doc->{lf} = $1;
       }
+      elsif (/^%%\$DDC:index\[([0-9]+)\]=Pos\b/ || /^%%\$DDC:index\[([0-9]+)\]=\S+ page$/) {
+	$pagef = $doc->{pagef} = $1;
+      }
+      elsif (/^%%\$DDC:BREAK.([^=]+)/) {
+	push(@$tokens,"#$1");
+      }
+      elsif (/^%%\$DDC:PAGE=/) {
+	push(@$tokens,"#page");
+      }
+      if ($eosre && $_ =~ $eosre) {
+	push(@$tokens,$eos) if (!$last_was_eos);
+	$last_was_eos = 1;
+      }
       next;
     }
-    ($w,$p,$l) = (split(/\t/,$_))[$wf,$pf,$lf];
+    elsif ($eosre && $_ =~ $eosre) {
+      push(@$tokens,$eos) if (!$last_was_eos);
+      $last_was_eos = 1;
+      next;
+    }
+    ($w,$p,$l,$page) = (split(/\t/,$_))[$wf,$pf,$lf,$pagef];
+
+    ##-- honor dta-style $page index
+    if ($pagef > 0 && $page ne $curpage) {
+      push(@$tokens, "#page");
+      $curpage = $page;
+    }
+
+    ##-- add token
     push(@$tokens, {w=>($w//''), p=>($p//''), l=>($l//'')});
     $last_was_eos = 0;
   }
   push(@$tokens,$eos) if (!$last_was_eos);
+
+  ##-- hack: compute top-level $meta->{genre} from $meta->{textClass} if required
+  ($meta->{genre} = $meta->{textClass}) =~ s/\:.*$//
+    if (defined($meta->{textClass}) && !defined($meta->{genre}));
 
   $fh->close() if (!ref($file));
   return $doc;

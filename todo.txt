@@ -1,0 +1,63 @@
+Wed, 27 Jan 2016 11:11:56 +0100
+x+ rename Relation::Vsem -> Relation::TDM
+  x- generate native-compatible profiles in vprofile() (wip)
+  x- fix create() code
+    x* remove tfidf stuff
+    x* comple tym, cf
+  x- fix Vsem::Query code (remove obsolete compileSlices etc)
+  x- remove stale Profile::Pdl, PdlDiff, etc. classes
+  x- handle groupby for term-attrs-only (ok), doc-attrs-only (ok), {term+doc}-attrs (ok)
+!  - suppress target-term output in tdm cofreq profiles (tricky)?
+  x- add implicit 'genre' field to vsem meta-index (extract 1st component of textClass, since vsem groupby can't handle regex transformations)
+!  - implement union() method
+  x- remove stale EnumFile::Identity
+
++ re-build & re-publish dstar indices
+  - first: dta, kern, zeit (beta-test) [wip]
+  - next: dta+dwds (test union())
+  - later: others
+
++ debug/correct
+  - dstar: update "install" rule for dstar build/diacollo (see dta build dir)
+  - tdf: auto-detect minimum 'itype' during create() and/or union()
+  x- fix boolean query eval (&& vs ||): maybe allow 'tdm' component in TDF::Query?
+    + LATER: we're already performing && on cat-subset
+  x- incorrect results e.g. for "Obst" in 1998 with co-occurent "Pak"
+    + 1 shared paragraph "doc" d, f(Obst,d)=1, f(Pak,d)=2
+    + we SHOULD get f12(Obst,Pak|year) = \sum_{d \in year} min{f(Obst,d),f(Pak,d)} = 1, but we get f12=2
+      - reason seems to be that "Pak" gets 2 different tags, so it's counted as 2 different terms
+      - each term adds only the min{f(w1,d),f(w2,d)}=1, but we're counting the same GROUP twice
+      - don't know how to handle this right except for maybe creating a temp-piddle and running
+        ccs_accum_minimum() or similar over it
+      - since we don't know output size in advance, we either need to (a) operate block-wise
+        and pass computation state in and out (ugly), or (b) write results to a tempfile
+	and then read (mmap?) that in.
+      - ignoring for now, since results look basically ok
+      - fixed: use temporary doc-local hash in pdlutils diacollo_cof_t_TYPE()
+  x- bug symptom: [dta,dbreak=p]: q=Obst gb=l,p date=1900-1999, ds=100
+     + item2=herabschauen/VVPP gets f2=2 f12=2, but ddc only finds it once in slice (and that once with 'Obst')
+     + shouldn't be a grouping problem here, since we're grouping by whole term-tuples (l,p)
+     + problem was stale dta_[56].files being used in diacollo index generation, some cats were doubled
+  - dstar: synchronize pdl versions on BUILDHOST (kira,kaskade) and WEBHOST (kaskade)
+    + incompatible pdl type-enums save raw headers using float type = 5 or 6 depending on PDL_Indx availability
+      - this causes "Bus error" pukes on old PDL distros without PDL_Indx (type 6 -> double)
+      - can be hacked with 'pdl-raw-settype.perl'
+  x- fix kwic-search links for Kant/Hegel example
+    + (* #has[author,/Kant/]) should NOT link to all "Kant"-tokens, just the relevant item2
+    ?+ maybe fix query-parsing to allow token-attribute syntax for meta-field queries (e.g. boolean expressions?)
+  - merge intro trunk (probably best to branch trunk out again from current state and just replace old trunk with current branch)
+
++ document, package, & upload to CPAN
+  - Alien:: module(s) for DDC, gfsm, moot?
+
+x+ merge in log-likelihood stuff from trunk (?)
+  BRANCH "trunk" = svn+ssh://odo.dwds.de/home/svn/dev/DiaColloDB/trunk
+  BRANCH "vsem" = svn+ssh://odo.dwds.de/home/svn/dev/DiaColloDB/branches/diacollo-0.07.006+vsem
+  BRANCH "native" = svn+ssh://odo.dwds.de/home/svn/dev/DiaColloDB/branches/diacollo-0.07.006+vsem-native
+  + 15592 : HEAD
+  + 15509 : branched vsem -> native
+  + 15069 : merged -r 15066:15068 vsem -> trunk (Relation.pm, Cofreqs.pm, DDC.pm, Unigrams.pm, DiaColloDB.pm)
+  + 15023 : merged -r 15021:15022 vsem -> trunk (DDC.pm)
+  + 15015 : merged -r 15013:15014 vsem -> trunk (DDC.pm)
+  + 15013 : branched trunk -> vsem
+

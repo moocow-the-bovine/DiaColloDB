@@ -1,12 +1,14 @@
 #!/usr/bin/perl -w
 
-use lib '.';
+use lib qw(. ./blib/lib ./blib/arch lib lib/blib/lib lib/blib/arch);
 use DiaColloDB;
 use DiaColloDB::Utils qw(:json :time);
 use Getopt::Long qw(:config no_ignore_case);
 use Pod::Usage;
 use File::Basename qw(basename);
 use strict;
+
+use DiaColloDB::Relation::TDF; ##-- DEBUG
 
 BEGIN {
   select STDERR; $|=1; select STDOUT;
@@ -73,6 +75,7 @@ GetOptions(##-- general
 	   'collocations|collocs|collo|col|cofreqs|cof|co|f12|f2|12|2' => sub { $rel='cof' },
 	   'unigrams|ug|u|f1|1' => sub { $rel='xf' },
 	   'ddc' => sub { $rel='ddc' },
+	   'tdf|tdm|matrix|mat|vector-space|vs|vector|vec' => sub { $rel='tdf' },
 	   ##
 	   (map {("${_}date|${_}d=s"=>\$query{"${_}date"})} ('',qw(a b))), 				  ##-- date,adate,bdate
 	   (map {("${_}date-slice|${_}ds|${_}slice|${_}sl|${_}s=s"=>\$query{"${_}slice"})} ('',qw(a b))), ##-- slice,aslice,bslice
@@ -110,14 +113,14 @@ GetOptions(##-- general
 	   'bench|n-iterations|iterations|iters|i=i' => \$niters,
 	  );
 
-pod2usage({-exitval=>0,-verbose=>0}) if ($help);
-pod2usage({-exitval=>1,-verbose=>0,-msg=>"$prog: ERROR: no DBURL specified!"}) if (@ARGV<1);
-pod2usage({-exitval=>1,-verbose=>0,-msg=>"$prog: ERROR: no QUERY specified!"}) if (@ARGV<2);
-
 if ($version) {
   print STDERR "$prog version $DiaColloDB::VERSION by Bryan Jurish\n";
   exit 0 if ($version);
 }
+
+pod2usage({-exitval=>0,-verbose=>0}) if ($help);
+pod2usage({-exitval=>1,-verbose=>0,-msg=>"$prog: ERROR: no DBURL specified!"}) if (@ARGV<1);
+pod2usage({-exitval=>1,-verbose=>0,-msg=>"$prog: ERROR: no QUERY specified!"}) if (@ARGV<2);
 
 
 ##----------------------------------------------------------------------
@@ -157,6 +160,16 @@ our $isDiff = (@ARGV > 1);
 $query{query}  = shift;
 $query{bquery} = @ARGV ? shift : $query{query};
 $rel  = "d$rel" if ($isDiff);
+
+##-- DEBUG queries
+if (0 && $query{query} eq 'debug') {
+  #$query{query} = '$p=NN !#has[textClass,/politik/i]';
+  #$query{query} = 'Mann #has[textClass,/zeitung/i]';
+  #$query{query} = '* #has[textClass,/Zeitung/i]';
+  #$query{query} = 'Katze && Maus';
+  #$query{query} = '* #has[genre,/Zeitung/]';
+}
+##--/DEBUG queries
 
 if ($niters != 1) {
   $cli->info("performing $niters query iterations");
@@ -220,7 +233,7 @@ dcdb-query.perl - query a DiaColloDB
    -O KEY=VALUE          # set DiaColloDB::Client option
 
  Query Options:
-   -col , -ug , -ddc     # select profile type (collocations, unigrams, or ddc client; default=-col)
+   -col, -ug, -ddc, -vs  # select profile type (collocations, unigrams, ddc client, vector-space; default=-col)
    -(a|b)?date DATES     # set target DATE or /REGEX/ or MIN-MAX
    -(a|b)?slice SLICE    # set target date slice (default=1)
    -groupby GROUPBY      # set result aggregation (default=l)

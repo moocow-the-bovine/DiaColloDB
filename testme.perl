@@ -1,6 +1,6 @@
 #!/usr/bin/perl -w
 
-use lib qw(.);
+use lib qw(. dclib ./blib/lib ./blib/arch);
 use DiaColloDB;
 use DiaColloDB::Utils qw(:sort :regex);
 use PDL;
@@ -12,6 +12,12 @@ use JSON;
 use Data::Dumper;
 use Benchmark qw(timethese cmpthese);
 use utf8;
+
+use DiaColloDB::Relation::TDF; ##-- DEBUG
+BEGIN {
+  select STDERR; $|=1; select STDOUT; $|=1;
+  $, = ' ';
+}
 
 ##==============================================================================
 ## test: enum
@@ -1169,6 +1175,29 @@ sub test_tied_enum {
 #test_tied_enum(@ARGV);
 
 ##==============================================================================
+## test: identity enums
+
+sub test_idenum {
+  my $n    = shift // 10;
+  my $base = shift // 'idenum';
+  my $e = DiaColloDB::EnumFile::Identity->new();
+  $e->setsize($n);
+
+  $e->save($base) or die("$0: save failed for '$base': $!");
+  my $e2 = DiaColloDB::EnumFile->new(base=>$base) or die("$0: open failed for '$base': $!");
+
+  my ($i2s,$s2i) = $e2->tiepair();
+  my $s0 = $i2s->[0];
+  my $i0 = $s2i->{0};
+
+  print "--dump--\n";
+  $e->saveTextFile("-");
+  exit 0;
+}
+#test_idenum(@ARGV);
+
+
+##==============================================================================
 ## test: parseRequest via ddc
 
 ##--------------------------------------------------------------
@@ -1263,7 +1292,7 @@ sub test_ddcdiff {
 
   exit 0;
 }
-test_ddcdiff(@ARGV);
+#test_ddcdiff(@ARGV);
 
 ##--------------------------------------------------------------
 sub test_pnndiff {
@@ -1310,7 +1339,550 @@ sub test_diffop {
 }
 #test_diffop(@ARGV);
 
+##==============================================================================
+## test: vsem
 
+sub matcat2d {
+  my ($a,$b) = @_;
+  my $c = zeroes($a->type, $a->dim(0)+$b->dim(0), $a->dim(1)+$b->dim(1));
+  my ($tmp);
+  ($tmp=$c->slice("0:".($a->dim(0)-1).",0:".($a->dim(1)-1))) .= $a;
+  ($tmp=$c->slice(-$b->dim(0).":-1,".-$b->dim(1).":-1"))     .= $b;
+  return $c;
+}
+BEGIN {
+  *PDL::matcat2d = \&matcat2d;
+}
+
+sub isok {
+  my ($label,$bool) = @_;
+  print "$label: ".($bool ? "ok" : "NOT ok")."\n";
+}
+sub svdok {
+  my ($label,$raw,$v,$s,$u,$eps) = @_;
+  $eps //= 1e-5;
+  isok("svd:$label", all(($v x stretcher($s) x $u)->abs->approx($raw->abs,$eps)));
+}
+
+##--------------------------------------------------------------
+## test: vsem: union
+sub test_svd_union {
+  $, = ' ';
+  my @adims = (5,3);
+  my @bdims = (7,2);
+  my $a =    sequence(@adims)->xchg(0,1);
+  my $b = 10*sequence(@bdims)->xchg(0,1);
+  my ($tmp);
+  ($tmp=$a->where($a % 3)) .= 0;
+  ($tmp=$b->where($b % 3)) .= 0;
+
+  my $ab = matcat2d($a,$b);
+  my ($va,$sa,$ua) = $a->svd;
+  my ($vb,$sb,$ub) = $b->svd;
+  my ($vab,$sab,$uab) = $ab->svd;
+  svdok("a", $a,$va,$sa,$ua);
+  svdok("b", $b,$vb,$sb,$ub);
+  svdok("ab", $ab,$vab,$sab,$uab);
+
+  ##-- ok, but this doesn't help us with vsem union()
+  my $vabc = matcat2d($va,$vb);
+  my $sabc = $sa->append($sb);
+  my $uabc = matcat2d($ua,$ub);
+  svdok("ab:cat", $ab,$vabc,$sabc,$uabc);
+
+  ##-- stretcher values all == 1 (matrices already singular)
+  my ($vabv,$vabs,$vabu) = $vabc->svd;
+  my ($uabv,$uabs,$uabu) = $uabc->svd;
+
+  exit 0;
+}
+#test_svd_union();
+
+
+##--------------------------------------------------------------
+## test: vsem: get sig sizes
+sub test_vsem_sigsize {
+  my $dbdir = shift || 'kern01.d';
+  print STDERR "$0: sigsize: $dbdir\n";
+
+  my @docs;
+  tie(@docs, 'Tie::File::Indexed::JSON', "$dbdir/doctmp.a", mode=>'ra')
+    or die("$0: tie filed for $dbdir/doctmp.a: $!");
+
+  ##-- dump sig sizes
+  my ($doc,$sig,$n);
+  foreach $doc (@docs) {
+    foreach $sig (@{$doc->{sigs}}) {
+      $n = 0;
+      $n += $_ foreach (values %$sig);
+      print "$n\n";
+    }
+  }
+
+  exit 0;
+}
+#test_vsem_sigsize(@ARGV);
+
+##--------------------------------------------------------------
+## test: vsem: trim sigs
+sub test_vsem_trimsigs {
+  my $tmpfile = shift || 'doctmp.a';
+  my $nmin    = shift || 8;
+  my $nmax    = shift || 1024;
+
+  print STDERR "$0: trimsigs: $tmpfile (min=$nmin, max=$nmax)\n";
+
+  my (@idocs,@odocs);
+  tie(@idocs, 'Tie::File::Indexed::JSON', $tmpfile, mode=>'ra')
+    or die("$0: tie filed for $tmpfile: $!");
+
+  my $outfile = "$tmpfile.out";
+  tie(@odocs, 'Tie::File::Indexed::JSON', $outfile, mode=>'rw')
+    or die("$0: tie filed for $outfile: $!");
+
+  ##-- trim sigs
+  my ($doc,$sig,$n,@sigs);
+  my ($ndocs,$nsig_in,$nsig_out,$ntok_in,$ntok_out) = (0,0,0,0,0);
+  foreach $doc (@idocs) {
+    @sigs = qw();
+    foreach $sig (@{$doc->{sigs}}) {
+      $n = 0;
+      $n += $_ foreach (values %$sig);
+      ++$nsig_in;
+      $ntok_in += $n;
+      if ($n >= $nmin && $n <= $nmax) {
+	push(@sigs,$sig);
+	++$nsig_out;
+	$ntok_out += $n;
+      }
+    }
+    if (@sigs) {
+      $doc->{id} = $ndocs++;
+      $doc->{sigs} = \@sigs;
+      push(@odocs, $doc);
+    }
+  }
+  my $ndoc_in  = @idocs;
+  my $ndoc_out = @odocs;
+
+  untie(@idocs);
+  tied(@odocs)->rename($tmpfile);
+  untie(@odocs);
+
+  my $lfmt = "%3s";
+  my $nfmt = "%".length($ntok_in)."d";
+  my $pfmt = "%6.2f%%";
+  my $trimline = sub {
+    my ($label,$n_in,$n_out) = @_;
+    return sprintf(" + $lfmt: $nfmt in, $nfmt out ($pfmt trimmed)\n", $label, $n_in, $n_out, 100*($n_in-$n_out)/$n_in);
+  };
+  print STDERR
+    ("$0: file=$tmpfile ; outfile=$outfile\n",
+     $trimline->('docs', $ndoc_in, $ndoc_out),
+     $trimline->('sigs', $nsig_in, $nsig_out),
+     $trimline->('toks', $ntok_in, $ntok_out),
+    );
+  exit 0;
+}
+#test_vsem_trimsigs(@ARGV);
+
+##--------------------------------------------------------------
+## test: vsem: tofloat
+sub test_vsem_tofloat {
+  my $dbdir = shift || 'kern01.d';
+
+  my %dcio = (verboseIO=>1, saveSvdUS=>1, mmap=>0);
+  my $vs = DiaColloDB::Relation::Vsem->new(base=>"$dbdir/vsem", flags=>'r', dcio=>\%dcio)
+    or die("$0: failed to open $dbdir/vsem: $!");
+
+  ##-- tweak map
+  my $map = $vs->{dcmap};
+  $map->{itype} = 'long';
+  $map->{vtype} = 'float';
+
+  ##-- convert types & re-save
+  $map->compile_types() or die("$0: compile_types() failed");
+  $map->saveDir("$dbdir/vsem.d/map.d-32", %dcio)
+    or die("$0: failed to save $dbdir/vsem.d/map.d-32");
+
+  ##-- all done
+  exit 0;
+}
+#test_vsem_tofloat(@ARGV);
+
+##--------------------------------------------------------------
+## test: vsem: reindex
+sub test_vsem_reindex {
+  my $dbdir = shift || 'kern01.d';
+
+  ##-- open (index_vsem:0)
+  my $coldb = DiaColloDB->new() or die("$0: failed to create DiaColloDB object");
+  $coldb->open($dbdir, index_vsem=>0) or die("$0: failed to open DiaColloDB directory $dbdir/:_ $!");
+
+  ##-- (re-)index vsem (dying with log:
+  # 2015-08-03 13:30:17 dcdb-create.perl[19761] INFO: DocClassify.Mapper.LSI: compile(): lemmatizer class: DocClassify::Lemmatizer::Raw
+  # 2015-08-03 13:30:17 dcdb-create.perl[19761] INFO: DocClassify.Mapper.LSI: compileTrim(): by #/terms per doc: maxTermsPerDoc=0
+  # 2015-08-03 13:30:17 dcdb-create.perl[19761] INFO: DocClassify.Mapper.LSI: compileTrim(): by global term freqency: minFreq=10
+  # 2015-08-03 13:30:18 dcdb-create.perl[19761] INFO: DocClassify.Mapper.LSI: compileTrim(): by document term frequency: minDocFreq=5
+  # 2015-08-03 13:30:19 dcdb-create.perl[19761] INFO: DocClassify.Mapper.LSI: compileCatEnum(): nullCat='(none)'
+  # 2015-08-03 13:30:19 dcdb-create.perl[19761] INFO: DocClassify.Mapper.LSI: compileTermEnum()
+  # 2015-08-03 13:30:19 dcdb-create.perl[19761] INFO: DocClassify.Mapper.LSI: compile_dcm(): matrix: dcm: (ND=408339 x NC=15915) [Doc x Cat -> Deg]
+  # 2015-08-03 13:30:21 dcdb-create.perl[19761] INFO: DocClassify.Mapper.LSI: compile_tdm0(): matrix: tdm0: (NT=72972 x ND=408339) [Term x Doc -> Freq]
+  # 2015-08-03 13:30:21 dcdb-create.perl[19761] INFO: DocClassify.Mapper.LSI: compile_tdm0(): matrix: tdm0: doc_wt [Doc -> Terms]
+  # 2015-08-03 13:30:32 dcdb-create.perl[19761] INFO: DocClassify.Mapper.LSI: compile_tdm0(): matrix: tdm0: Nnz
+  # 2015-08-03 13:30:32 dcdb-create.perl[19761] INFO: DocClassify.Mapper.LSI: compile_tdm0(): matrix: tdm0: PDL::CCS::Nd
+  # 2015-08-03 13:31:03 dcdb-create.perl[19761] INFO: DocClassify.Mapper.LSI: compile_tdm_log(): smooth(smoothf=1.001)
+  # 2015-08-03 13:31:04 dcdb-create.perl[19761] INFO: DocClassify.Mapper.LSI: compile_tw(): vector: tw: (NT=72972) [Term -> Weight]
+  # 2015-08-03 13:31:04 dcdb-create.perl[19761] INFO: DocClassify.Mapper.LSI: compile_tw(): tw=max-entropy-quotient, weightByCat=0, wRaw=1, wCooked=1
+  # Out of memory!
+  # ... on plato, source=kern01.files
+  # ... see vsnotes.txt; better but not yet really memory-friendly
+  my %TDF_OPTS = %DiaColloDB::TDF_OPTS;
+  $coldb->info("creating vector-space model $dbdir/vsem* [vbreak=$coldb->{vbreak}]");
+  $coldb->{vsopts} //= {};
+  $coldb->{vsopts}{$_} //= $TDF_OPTS{$_} foreach (keys %TDF_OPTS); ##-- vsem: default options
+
+  ##-- tie doctmp array
+  -e "$dbdir/doctmp.a"
+    && ($coldb->{doctmpa} = [])
+    && tie(@{$coldb->{doctmpa}}, 'Tie::File::Indexed::JSON', "$dbdir/doctmp.a", mode=>'ra', temp=>0)
+    || $coldb->logconfess("could not tie temporary doc-data array to $dbdir/doctmp.a: $!");
+
+  ##-- tweak options
+  #$coldb->{vsopts}{weightByCat} = 1;
+  #$coldb->{vsopts}{termWeight} = 'uniform';
+  #@{$coldb->{vsopts}}{qw(twRaw twCooked)} = qw(1 0);
+  $coldb->{vsopts}{saveMem} = 1;
+  #$coldb->{vsopts}{svdr} = 32;
+
+  ##-- re-index
+  $coldb->{vsem} = DiaColloDB::Relation::Vsem->create($coldb, undef, base=>"$dbdir/vsem");
+
+  exit 0;
+}
+#test_vsem_reindex(@ARGV);
+
+sub test_vsem {
+  my $dbdir = shift || 'dta_phil.d';
+  my %opts  = map {split(/=/,$_,2)} @_;
+  %opts = (
+	   query => "Mädchen",
+	   slice => 0,
+	   kbest => 10,
+	   slice => 100,
+	   date => '1600:1699', ##-- BUGGY ?!
+	   groupby => 'l',
+	   %opts,
+	  );
+
+  my $coldb = DiaColloDB->new(dbdir=>$dbdir) or die("$0: failed to open $dbdir/: $!");
+  $mp = $coldb->profile('vsem',%opts) or die("$0: failed to acquire profile: $!");
+  $mp->saveTextFile('-');
+  exit 0;
+}
+#test_vsem(@ARGV);
+
+sub test_vsem_diff {
+  my $dbdir = shift || 'kern01.d';
+  my %opts  = map {split(/=/,$_,2)} @_;
+  %opts = (
+	   aquery => "Katze",
+	   bquery => "Maus",
+	   slice => 0,
+	   kbest => 10,
+	   #date => '1600:1699', ##-- Can't call method "nelem" on an undefined value at DiaColloDB/Profile/PdlDiff.pm line 150.
+	   groupby => 'l,p=NN',
+	   diff => 'havg',
+	   %opts,
+	  );
+
+  my $coldb = DiaColloDB->new(dbdir=>$dbdir) or die("$0: failed to open $dbdir/: $!");
+  $mp = $coldb->compare('vsem',%opts) or die("$0: failed to acquire profile: $!");
+  $mp->saveTextFile('-');
+  exit 0;
+}
+#test_vsem_diff(@ARGV);
+
+##--------------------------------------------------------------
+## bench: attribute-token lists
+
+sub read_atoks_txt {
+  my $atokfile = shift;
+  open(my $atokfh, "<:raw", $atokfile)
+    or die("$0: open failed for $atokfile: $!");
+  my (@vals);
+  while (defined($_=<$atokfh>)) {
+    chomp;
+    next if (/^\s*$/);
+    @vals = split(' ',$_);
+  }
+  close($atokfh);
+  return;
+}
+
+sub read_atoks_bin {
+  my $atokfile = shift;
+  open(my $atokfh, "<:raw", $atokfile)
+    or die("$0: open failed for $atokfile: $!");
+  my ($buf,@vals);
+  my $pack_w = 'N2';
+  my $pack_l = 8;
+  while (!$atokfh->eof) {
+    CORE::read($atokfh, $buf, $pack_l)
+	or die("$0: read failed for $atokfh: $!");
+    @vals = unpack($pack_w,$buf);
+  }
+  return;
+}
+
+sub bench_atok_file {
+  my $dbdir = shift // 'out.d';
+
+  ##-- prepare: write binfile
+  print STDERR "$0: bench_atok_file(): prepare\n";
+  my $atokfile = "$dbdir/atokens.dat";
+  open(my $atokfh, "<:raw", $atokfile)
+    or die("$0: open failed for $atokfile: $!");
+  my $pack_w = 'N2';
+  open(my $binfh, ">:raw", "$atokfile.bin")
+    or die("$0: open failed for $atokfile.bin: $!");
+  my (@vals);
+  while (defined($_=<$atokfh>)) {
+    chomp;
+    next if (/^\s*$/);
+    @vals = split(' ',$_);
+    pop(@vals);
+    $binfh->print(pack($pack_w,@vals));
+  }
+  close($binfh);
+  close($atokfh);
+
+  ##-- bench
+  cmpthese(1, {
+	       'txt' => sub { read_atoks_txt($atokfile) },
+	       'bin' => sub { read_atoks_bin("$atokfile.bin") },
+	      });
+}
+#bench_atok_file(@ARGV);
+
+##==============================================================================
+## convert tdm tfidf to frequency matrix
+
+sub tfidf_to_tdm {
+  my $vsdir = shift;
+  $vsdir =~ s{/$}{};
+  $vsdir = "$vsdir/vsem.d" if (!-e "$vsdir/tdm.ix");
+  DiaColloDB->ensureLog();
+
+  ##-- open
+  my $vs = DiaColloDB;
+  $vs->info("open($vsdir)");
+  my %ioopts = (ReadOnly=>0, mmap=>1);
+  defined(my $tdm = DiaColloDB::Utils::readPdlFile("$vsdir/tdm", class=>'PDL::CCS::Nd', %ioopts, mmap=>0))
+    or $vs->logconfess("open(): failed to load term-document matrix from $vsdir/tdm.*: $!");
+  defined(my $tw  = DiaColloDB::Utils::readPdlFile("$vsdir/tw.pdl", %ioopts))
+    or $vs->logconfess("open(): failed to load term-weights from $vsdir/tw.pdl: $!");
+
+  ##-- common variables
+  my $ix = $tdm->_whichND;
+  my $nz = $tdm->_nzvals;
+
+  if (all($nz==$nz->rint)) {
+    die("$0: $vsdir/tdm.nz already contains only integer values; aborting");
+  }
+
+  $vs->info("converting tfidf to raw frequency matrix");
+  $nz /= $tw->index($ix->slice("(0),"));
+  $nz *= log(2);
+  $nz->inplace->exp;
+  $nz -= 1;
+  $nz->inplace->rint;
+  $nz = $nz->append(0);
+
+  $vs->info("saving altered $vsdir/tdm.nz");
+  DiaColloDB::Utils::writePdlFile($nz, "$vsdir/tdm.nz")
+      or die("$0: failed to save $vsdir/tdm.nz: $!");
+
+  $vs->info("converted $vsdir/tdm.nz");
+  exit 0;
+}
+#tfidf_to_tdm(@ARGV);
+
+##==============================================================================
+## vsem: convert tdm to tcm
+
+sub tdm_to_tcm {
+  my $dbdir = shift // 'kern.d-p';
+  DiaColloDB->ensureLog();
+
+  DiaColloDB->info("tdm_to_tcm($dbdir)");
+  my $coldb = DiaColloDB->new(dbdir=>$dbdir) or die("$0: failed to open DiaColloDB directory '$dbdir': $_");
+  my $vs    = $coldb->{vsem};
+  my $tdm   = $vs->{tdm};
+  my $d2c   = $vs->{d2c};
+
+  my $wnd0  = $tdm->_whichND->pdl;
+  $wnd0->slice("(1),") .= $d2c->index($tdm->_whichND->slice("(1),"));
+  $wnd0->_ccs_accum_sum_int($tdm->_nzvals, 0,0,
+			    (my $wnd1=zeroes($wnd0->type, $tdm->ndims, $tdm->_nnz+1)),
+			    (my $vals1=zeroes($tdm->type, $tdm->_nnz+1)),
+			    (my $nout=pdl($wnd0->type, 0)));
+  $nout  = $nout->sclr;
+  $wnd1  = $wnd1->slice(",0:".($nout-1));
+  $vals1 = $vals1->slice("0:$nout");
+  $vals1->set($nout => 0);
+  my $tcm = PDL::CCS::Nd->newFromWhich($wnd1, $vals1, dims=>[$vs->nTerms,$vs->nCats], sorted=>1, steal=>1);
+  $tcm->writefraw("$vs->{base}.d/tcm")
+    or die("$0: failed to write $vs->{base}/tcm*: $!");
+  exit 0;
+}
+#tdm_to_tcm(@ARGV);
+
+##==============================================================================
+## vsem: convert tdm to tym
+
+sub tdm_to_tym {
+  my $dbdir = shift // 'kern.d-p';
+  DiaColloDB->ensureLog();
+
+  DiaColloDB->info("tdm_to_tym($dbdir)");
+  my $coldb = DiaColloDB->new(dbdir=>$dbdir) or die("$0: failed to open DiaColloDB directory '$dbdir': $_");
+  my $vs    = $coldb->{vsem};
+  my $tdm   = $vs->{tdm};
+  my $d2c   = $vs->{d2c};
+  my $c2date = $vs->{c2date};
+
+  DiaColloDB->info("converting");
+  my $wnd0  = $tdm->_whichND->pdl;
+  $wnd0->slice("(1),") .= $c2date->index( $d2c->index($tdm->_whichND->slice("(1),")) );
+  $wnd0->_ccs_accum_sum_int($tdm->_nzvals, 0,0,
+			    (my $wnd1=zeroes($wnd0->type, $tdm->ndims, $tdm->_nnz+1)),
+			    (my $vals1=zeroes($tdm->type, $tdm->_nnz+1)),
+			    (my $nout=pdl($wnd0->type, 0)));
+  $nout  = $nout->sclr;
+  $wnd1  = $wnd1->slice(",0:".($nout-1));
+  $vals1 = $vals1->slice("0:$nout");
+  $vals1->set($nout => 0);
+  my $ymax = $wnd0->slice("(1),")->max;
+  my $tym = PDL::CCS::Nd->newFromWhich($wnd1, $vals1, dims=>[$vs->nTerms,$ymax+1], sorted=>0, steal=>1);
+  $tym->writefraw("$vs->{base}.d/tym")
+    or die("$0: failed to write $vs->{base}/tym*: $!");
+  exit 0;
+}
+#tdm_to_tym(@ARGV);
+
+##==============================================================================
+## vsem: convert tdm to cf
+
+sub tdm_to_cf {
+  my $dbdir = shift // 'kern.d-p';
+  DiaColloDB->ensureLog();
+
+  ##-- create dummy 'cf.pdl' if it doesn't exist
+  my $vsdir = "$dbdir/vsem.d";
+  my $cffile = "$vsdir/cf.pdl";
+  if (!-e $cffile) {
+    pdl(float,0)->writefraw($cffile)
+      or die("$0: failed to write dummy $cffile: $!");
+  }
+
+  DiaColloDB->info("tdm_to_cf($dbdir)");
+  my $coldb = DiaColloDB->new(dbdir=>$dbdir) or die("$0: failed to open DiaColloDB directory '$dbdir': $_");
+  my $vs    = $coldb->{vsem};
+  my $tdm   = $vs->{tdm};
+  my $d2c   = $vs->{d2c};
+  delete $vs->{cf};
+
+  DiaColloDB->info("converting");
+  $tdm->_nzvals->indadd( $d2c->index($tdm->_whichND->slice("(1),")), my $cf=zeroes($vs->vtype,$vs->nCats));
+  $cf->writefraw($cffile)
+    or die("$0: failed to write $cffile: $!");
+  exit 0;
+}
+#tdm_to_cf(@ARGV);
+
+##==============================================================================
+## vsem: add "genre" field from "textClass"
+
+sub vs_add_genre {
+  my $dbdir = shift // 'kern.d-p';
+  DiaColloDB->ensureLog();
+  my $vsdir = "$dbdir/vsem.d";
+  my $that   = 'DiaColloDB';
+
+  ##-- open vsem header
+  (my $hfile=$vsdir) =~ s{\.d(?:/?)$}{\.hdr};
+  my $hdr = DiaColloDB::Utils::loadJsonFile($hfile)
+    or $that->logconfess("failed to load header from $hfile: $!");
+  die("$0: vsem index in $vsdir/ already contains a 'genre' field") if (grep {$_ eq 'genre'} @{$hdr->{meta}//[]});
+
+  ##-- open "textClass" enum
+  my $tcenum = $DiaColloDB::ECLASS->new(base=>"$vsdir/meta_e_textClass")
+    or $that->logconfess("failed to open enum $vsdir/meta_e_textClass: $!");
+
+  ##-- open 'mvals' and 'msorti' piddles
+  defined(my $mvals0 = DiaColloDB::Utils::readPdlFile("$vsdir/mvals.pdl", mmap=>0))
+    or $that->logconfess("failed to read $vsdir/mvals.pdl: $!");
+  defined(my $msorti0 = DiaColloDB::Utils::readPdlFile("$vsdir/msorti.pdl", mmap=>0))
+    or $that->logconfess("failed to read $vsdir/msorti.pdl: $!");
+
+  $that->info("creating genre enum");
+  my $g2i = {''=>0};
+  my $ng  = 0;
+  my ($tc,$g,$tci,$gi);
+  my $tci2gi = zeroes($mvals0->type, $tcenum->size);
+  my $ntc = $tcenum->size;
+  for ($tci=0; $tci < $ntc; ++$tci) {
+    $tc = $tcenum->i2s($tci);
+    ($g=$tc) =~ s/\:.*$//;
+    $gi = $g2i->{$g} = ++$ng if (!defined($gi=$g2i->{$g}));
+    $tci2gi->set($tci => $gi);
+  }
+  my %efopts = map {($_=>$tcenum->{$_})} qw(pack_id pack_o pack_l utf8);
+  my $genum = ref($tcenum)->new(%efopts)->fromHash($g2i)
+    or $that->logconfess("failed to create genre enum: $!");
+  $genum->save("$vsdir/meta_e_genre")
+    or $that->logconfess("failed to save $vsdir/meta_e_genre: $!");
+
+  ##-- update $mvals, $msorti
+  $that->info("updating mvals, msorti");
+  my $tcpos  = (grep {$hdr->{meta}[$_] eq 'textClass'} (0..$#{$hdr->{meta}}))[0];
+  my $mvals1 = zeroes($mvals0->dim(0)+1, $mvals0->dim(1));
+  $mvals1->slice("0:-2,") .= $mvals0;
+  $mvals1->slice("(-1),") .= $tci2gi->index( $mvals0->slice("($tcpos),") );
+  undef $mvals0;
+
+  my $msorti1 = zeroes($msorti0->dim(0), $msorti0->dim(1)+1);
+  $msorti1->slice(",0:-2") .= $msorti0;
+  $msorti1->slice(",(-1)") .= $mvals1->slice("(-1),")->qsorti;
+
+  ##-- update header
+  $that->info("updating header");
+  push(@{$hdr->{meta}}, 'genre');
+  DiaColloDB::Utils::saveJsonFile($hdr, $hfile)
+      or die("$0: failed to save header $hfile: $!");
+
+  ##-- write output piddles
+  $mvals1->writefraw("$vsdir/mvals.pdl")
+    or die("$0: failed to write new $vsdir/mvals.pdl");
+  $msorti1->writefraw("$vsdir/msorti.pdl")
+    or die("$0: failed to write new $vsdir/msorti1.pdl");
+
+  $that->info("done");
+}
+#vs_add_genre(@ARGV);
+
+##==============================================================================
+## hv test (for tdf/pdl aggregation)
+
+sub xs_hvtest {
+  my ($niters,$nitems) = @_;
+  $niters ||= 1000;
+  $nitems ||= 100;
+  DiaColloDB::PDL::Utils::diacollo_hvtest($niters,$nitems);
+  exit 0;
+}
+xs_hvtest(@ARGV);
 
 ##==============================================================================
 ## MAIN

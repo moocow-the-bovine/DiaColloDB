@@ -122,7 +122,15 @@ sub opened {
 sub toArray {
   my $enum = shift;
   return $enum->{i2s} if ($enum->loaded || !$enum->opened);
-  my @i2s = unpack("(A[$enum->{len_s}])*", ${$enum->{ixbufr}});
+
+  ##-- bizarre bug Mon, 03 Aug 2015 15:46:27 +0200 on plato
+  ##  + getting 9-byte items in this array for 10-byte (4+4+2) records
+  ##  + i2s() works as expected
+  ##  + wtf?!
+  #my @i2s = unpack("(A[$enum->{len_s}])*", ${$enum->{ixbufr}});
+  my $len_s = $enum->{len_s};
+  my @i2s   = map {substr(${$enum->{ixbufr}},$_*$len_s,$len_s)} (0..($enum->size-1));
+
   push(@i2s, @{$enum->{i2s}}[scalar(@i2s)..$#{$enum->{i2s}}]) if ($enum->dirty);
   return \@i2s;
 }

@@ -1,4 +1,7 @@
 ~$
+^lda\b
+^MYMETA\.
+^README\.html$
 ^plots\b
 ^footer\.rpod$
 ^Makefile$
@@ -36,6 +39,8 @@ dump.mak
 \#
 ^(?:timeus|times|compare|countnotes|timeprof)\b
 ^dcdb-update-header\.perl$
+^kern[0-9]*\b
+^zeit[0-9]*\b
 ^logo/
 ^tags\.map$
 \.gp$

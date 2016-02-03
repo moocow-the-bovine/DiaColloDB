@@ -11,6 +11,8 @@ use JSON;
 use IO::Handle;
 use IO::File;
 use IPC::Run;
+use File::Spec qw(); ##-- for tmpdir()
+use File::Temp qw(); ##-- for tempdir(), tempfile()
 use Fcntl qw(:DEFAULT SEEK_SET SEEK_CUR SEEK_END);
 use Time::HiRes qw(gettimeofday tv_interval);
 use POSIX qw(strftime);
@@ -25,18 +27,23 @@ our @EXPORT= qw();
 our %EXPORT_TAGS =
     (
      fcntl => [qw(fcflags fcread fcwrite fctrunc fccreat fcperl fcopen)],
-     json  => [qw(loadJsonString loadJsonFile saveJsonString saveJsonFile)],
+     json  => [qw(jsonxs loadJsonString loadJsonFile saveJsonString saveJsonFile)],
      sort  => [qw(csort_to csortuc_to)],
      run   => [qw(crun opencmd)],
      env   => [qw(env_set env_push env_pop)],
      pack  => [qw(packsize packFilterFetch packFilterStore)],
      math  => [qw($LOG2 log2 min2 max2)],
-     list  => [qw(luniq)],
+     list  => [qw(luniq xluniq)],
      regex => [qw(regex)],
      html  => [qw(htmlesc)],
      time  => [qw(s2hms s2timestr timestamp)],
      file  => [qw(file_mtime file_timestamp du_file du_glob)],
      si    => [qw(si_str)],
+     pdl   => [qw(_intersect_p _union_p _complement_p _setdiff_p),
+	       qw(readPdlFile writePdlFile writePdlHeader writeCcsHeader mmzeroes mmtemp),
+	       qw(maxval mintype),
+	      ],
+     temp  => [qw($TMPDIR tmpdir tmpfh tmpfile tmparray tmparrayp tmphash)],
     );
 our @EXPORT_OK = map {@$_} values(%EXPORT_TAGS);
 $EXPORT_TAGS{all} = [@EXPORT_OK];
@@ -140,10 +147,14 @@ sub fcopen {
 
 ## $data = PACKAGE::loadJsonString( $string,%opts)
 ## $data = PACKAGE::loadJsonString(\$string,%opts)
+##  + %opts passed to JSON::from_json(), e.g. (relaxed=>0)
+##  + supports $opts{json} = $json_obj
 sub loadJsonString {
   my $that = UNIVERSAL::isa($_[0],__PACKAGE__) ? shift : __PACKAGE__;
   my $bufr = ref($_[0]) ? $_[0] : \$_[0];
-  return from_json($$bufr, {utf8=>!utf8::is_utf8($$bufr), relaxed=>1, allow_nonref=>1, @_[1..$#_]});
+  my %opts = @_[1..$#_];
+  return $opts{json}->decode($$bufr) if ($opts{json});
+  return from_json($$bufr, {utf8=>!utf8::is_utf8($$bufr), relaxed=>1, allow_nonref=>1, %opts});
 }
 
 ## $data = PACKAGE::loadJsonFile($filename_or_handle,%opts)
@@ -165,10 +176,13 @@ sub loadJsonFile {
 ## $str = PACKAGE::saveJsonString($data)
 ## $str = PACKAGE::saveJsonString($data,%opts)
 ##  + %opts passed to JSON::to_json(), e.g. (pretty=>0, canonical=>0)'
+##  + supports $opts{json} = $json_obj
 sub saveJsonString {
   my $that = UNIVERSAL::isa($_[0],__PACKAGE__) ? shift : __PACKAGE__;
   my $data = shift;
-  return to_json($data, {utf8=>1, allow_nonref=>1, allow_unknown=>1, allow_blessed=>1, convert_blessed=>1, pretty=>1, canonical=>1, @_});
+  my %opts = @_;
+  return $opts{json}->encode($data)  if ($opts{json});
+  return to_json($data, {utf8=>1, allow_nonref=>1, allow_unknown=>1, allow_blessed=>1, convert_blessed=>1, pretty=>1, canonical=>1, %opts});
 }
 
 ## $bool = PACKAGE::saveJsonFile($data,$filename_or_handle,%opts)
@@ -183,6 +197,27 @@ sub saveJsonFile {
   if (!ref($file)) { close($fh) || return undef; }
   return 1;
 }
+
+##--------------------------------------------------------------
+## JSON: object
+
+## $json = jsonxs()
+## $json = jsonxs(%opts)
+## $json = jsonxs(\%opts)
+sub jsonxs {
+  my $that = UNIVERSAL::isa($_[0],__PACKAGE__) ? shift : __PACKAGE__;
+  my %opts = (
+	      utf8=>1, relaxed=>1, allow_nonref=>1, allow_unknown=>1, allow_blessed=>1, convert_blessed=>1, pretty=>1, canonical=>1,
+	      (@_==1 ? %{$_[0]} : @_),
+	     );
+  my $jxs  = JSON->new;
+  foreach (grep {$jxs->can($_)} keys %opts) {
+    $jxs->can($_)->($jxs,$opts{$_});
+  }
+  return $jxs;
+}
+
+BEGIN { *json = \&jsonxs; }
 
 ##==============================================================================
 ## Functions: env
@@ -364,6 +399,22 @@ sub luniq {
   return [map {defined($tmp) && $tmp eq $_ ? qw() : ($tmp=$_)} sort grep {defined($_)} @{$_[0]//[]}];
 }
 
+## \@l_uniq = xluniq(\@l,\&keyfunc)
+##  + returns elements of @l with unique defined keys according to \&keyfunc (default=\&overload::StrVal)
+sub xluniq {
+  my ($l,$keyfunc) = @_;
+  $keyfunc //= \&overload::StrVal;
+  my $tmp;
+  return [
+	  map {$_->[1]}
+	  map {defined($tmp) && $tmp->[0] eq $_->[0] ? qw() : ($tmp=$_)}
+	  sort {$a->[0] cmp $b->[0]}
+	  grep {defined($_->[0])}
+	  map  {[$keyfunc->($_),$_]}
+	  @{$l//[]}
+	 ];
+}
+
 ##==============================================================================
 ## Functions: regexes
 
@@ -454,11 +505,13 @@ sub file_timestamp {
   return file_timestamp(file_mtime(@_));
 }
 
-## $nbytes = du_file(@filenames_or_fh)
+## $nbytes = du_file(@filenames_or_dirnames_or_fhs)
 sub du_file {
   shift if (UNIVERSAL::isa($_[0],__PACKAGE__));
   my $du = 0;
-  $du += (-s $_)//0 foreach (@_);
+  foreach (@_) {
+    $du += (!ref($_) && -d $_ ? du_glob("$_/*") : (-s $_))//0;
+  }
   return $du;
 }
 
@@ -493,6 +546,392 @@ sub si_str {
   return sprintf("%.2fz", $x*10**21) if ($x >= 10**-21); ##-- zepto
   return sprintf("%.2fy", $x*10**24) if ($x >= 10**-24); ##-- yocto
   return sprintf("%.2g", $x); ##-- default
+}
+
+##==============================================================================
+## Functions: pdl: setops
+
+## $pi = CLASS::_intersect_p($p1,$p2)
+## $pi = CLASS->_intersect_p($p1,$p2)
+##  + intersection of 2 piddles; undef is treated as the universal set
+##  + argument piddles MUST be sorted in ascending order
+sub _intersect_p {
+  shift if (UNIVERSAL::isa($_[0],__PACKAGE__));
+  return (defined($_[0])
+	  ? (defined($_[1])
+	     ? $_[0]->v_intersect($_[1]) ##-- v_intersect is 1.5-3x faster than PDL::Primitive::intersect()
+	     : $_[0])
+	  : $_[1]);
+}
+## $pu = CLASS::_union_p($p1,$p2)
+## $pi = CLASS->_intersect_p($p1,$p2)
+##  + union of 2 piddles; undef is treated as the universal set
+##  + argument piddles MUST be sorted in ascending order
+sub _union_p {
+  shift if (UNIVERSAL::isa($_[0],__PACKAGE__));
+  return (defined($_[0])
+	  ? (defined($_[1])
+	     ? $_[0]->v_union($_[1])  ##-- v_union is 1.5-3x faster than PDL::Primitive::setops($a,'OR',$b)
+	     : $_[0])
+	  : $_[1]);
+}
+
+## $pneg = CLASS::_complement_p($p,$N)
+## $pneg = CLASS->_complement_p($p,$N)
+##  + index-piddle negation; undef is treated as the universal set
+##  + $N is the total number of elements in the index-universe
+BEGIN { *_not_p = *_negate_p = \&_complement_p; }
+sub _complement_p {
+  shift if (UNIVERSAL::isa($_[0],__PACKAGE__));
+  my ($p,$N) = @_;
+  if (!defined($p)) {
+    ##-- neg(\universe) = \emptyset
+    return PDL->null->long;
+  }
+  elsif ($p->nelem==0) {
+    ##-- neg(\emptyset) = \universe
+    return undef;
+  }
+  else {
+    ##-- non-trivial negation
+    ##
+    ##-- mask: ca. 2.2x faster than v_setdiff
+    no strict 'subs';
+    my $mask = PDL->ones(PDL::byte(),$N);
+    (my $tmp=$mask->index($p)) .= 0;
+    return $mask->which;
+    ##
+    ##-- v_setdiff: ca. 68% slower than mask
+    #my $U = sequence($p->type, $N);
+    #return scalar($U->v_setdiff($p));
+  }
+}
+
+
+## $pdiff = CLASS::_setdiff_p($a,$b,$N)
+## $pdiff = CLASS->_setdiff_p($a,$b,$N)
+##  + index-piddle difference; undef is treated as the universal set
+##  + $N is the total number of elements in the index-universe
+sub _setdiff_p {
+  shift if (UNIVERSAL::isa($_[0],__PACKAGE__));
+  my ($a,$b,$N) = @_;
+  if (!defined($a)) {
+    ##-- \universe - b = \neg(b)
+    return _complement_p($b,$N);
+  }
+  elsif (!defined($b)) {
+    ##-- a - \universe = \emptyset
+    return PDL->null->long;
+  }
+  elsif ($a->nelem==0) {
+    ##-- \empyset - b = \emptyset
+    return $a;
+  }
+  elsif ($b->nelem==0) {
+    ##-- a - \emptyset = a
+    return $a;
+  }
+  else {
+    ##-- non-trivial setdiff
+    return scalar($a->v_setdiff($b));
+  }
+}
+
+##==============================================================================
+## Functions: pdl: I/O
+
+## $pdl_or_undef = CLASS->readPdlFile($basename, %opts)
+##  + %opts:
+##     class=>$class,    # one of qw(PDL PDL::CCS::Nd)
+##     mmap =>$bool,     # use mapfraw() (default=1)
+##     log=>$level,      # log-level (default=undef: off)
+##     ...               # other keys passed to CLASS->mapfraw() rsp. CLASS->readfraw()
+sub readPdlFile {
+  #require PDL::IO::FastRaw;
+  my $that  = UNIVERSAL::isa($_[0],__PACKAGE__) ? shift : __PACKAGE__;
+  my ($file,%opts) = @_;
+  my $class = $opts{class} // 'PDL';
+  my $mmap  = $opts{mmap}  // 1;
+  my $ro    = (!$mmap || (exists($opts{ReadOnly}) ? $opts{ReadOnly} : (!-w "$file.hdr"))) || 0;
+  $that->vlog($opts{log}, "readPdlFile($file) [class=$class,mmap=$mmap,ReadOnly=$ro]");
+  delete @opts{qw(class mmap ReadOnly verboseIO)};
+  return undef if (!-e "$file.hdr");
+  return $mmap ? $class->mapfraw($file,{%opts,ReadOnly=>$ro}) : $class->readfraw($file,\%opts);
+}
+
+## $bool = CLASS->writePdlFile($pdl_or_undef, $basename, %opts)
+##  + unlinks target file(s) if $pdl is not defined
+##  + %opts:
+##     log => $bool,       # log-level (default=undef: off)
+##     ...                 # other keys passed to $pdl->writefraw()
+sub writePdlFile {
+  #require PDL::IO::FastRaw;
+  my $that  = UNIVERSAL::isa($_[0],__PACKAGE__) ? shift : __PACKAGE__;
+  my ($pdl,$file,%opts) = @_;
+  if (defined($pdl)) {
+    ##-- write: raw
+    $that->vlog($opts{log}, "writePdlFile($file)");
+    delete($opts{verboseIO});
+    return $pdl->writefraw($file,\%opts);
+  }
+  else {
+    ##-- write: undef: unlink
+    $that->vlog($opts{log}, "writePdlFile($file): unlink");
+    foreach (grep {-e "file$_"} ('','.hdr','.ix','.ix.hdr','.nz','.nz.hdr','.fits')) {
+      unlink("file$_") or $that->logconfess(__PACKAGE__, "::writePdlFile(): failed to unlink '$file$_': $!");
+    }
+  }
+  return 1;
+}
+
+## $bool = CLASS->writePdlHeader($filename, $type, $ndims, @dims)
+##  + writes a PDL::IO::FastRaw-style header $filename (e.g. "pdl.hdr")
+##  + adapted from PDL::IO::FastRaw::_writefrawhdr()
+##  + arguments
+##     $type   ##-- PDL::Type or integer
+##     $ndims  ##-- number of piddle dimensions
+##     @dims   ##-- dimension size list, piddle, or ARRAY-ref
+sub writePdlHeader {
+  my $that  = UNIVERSAL::isa($_[0],__PACKAGE__) ? shift : __PACKAGE__;
+  my ($file,$type,$ndims,@dims) = @_;
+  $that->logconfess("writePdlHeader(): missing required parameter (FILE,TYPE,NDIMS,DIMS...)") if (@_ < 3);
+  $type = $type->enum if (UNIVERSAL::isa($type,'PDL::Type'));
+  @dims = map {UNIVERSAL::isa($_,'PDL') ? $_->list : (UNIVERSAL::isa($_,'ARRAY') ? @$_ : $_)} @dims;
+  open(my $fh, ">$file")
+    or return undef;
+    #$that->logconfess("writePdlHeader(): open failed for '$file': $!");
+  print $fh join("\n", $type, $ndims, join(' ', @dims), '');
+  close($fh);
+}
+
+## $bool = CLASS->writeCcsHeader($filename, $itype, $vtype, $pdims, %opts)
+##  + writes a PDL::CCS::IO::FastRaw-style header $filename (e.g. "pdl.hdr")
+##  + arguments:
+##     $itype,          ##-- PDL::Type for index (default: PDL::CCS::Utils::ccs_indx())
+##     $vtype,          ##-- PDL::Type for values (default: $PDL::IO::Misc::deftype)
+##     $pdims,          ##-- dimension piddle or ARRAY-ref
+##  + %opts:            ##-- passed to PDL::CCS::Nd->newFromWich
+sub writeCcsHeader {
+  my $that  = UNIVERSAL::isa($_[0],__PACKAGE__) ? shift : __PACKAGE__;
+  $that->logconfess("writeCcsFile(): missing required parameter (FILE,ITYPE,VTYPE,DIMS...)") if (@_ < 3);
+  my ($file,$itype,$vtype,$pdims,%opts) = @_;
+  $itype = PDL::CCS::Utils::ccs_indx() if (!defined($itype));
+  $vtype = $PDL::IO::Misc::deftype  if (!defined($vtype));
+  $pdims = PDL->pdl($itype, $pdims) if (!UNIVERSAL::isa($pdims,'PDL'));
+  my $ccs = PDL::CCS::Nd->newFromWhich(PDL->zeroes($itype,$pdims->nelem,1),
+				       PDL->zeroes($vtype,2),
+				       pdims=>$pdims, sorted=>1, steal=>1, %opts);
+  return PDL::CCS::IO::Common::_ccsio_write_header($ccs, $file);
+}
+
+##==============================================================================
+## Functions: pdl: mmap temporaries
+
+## $pdl = mmzeroes($file?, $type?, @dims, \%opts?)
+## $pdl = $pdl->mmzeroes($file?, $type?, \%opts?)
+##  + create a temporary mmap()ed pdl using DiaColloDB::PDL::MM; %opts:
+##    (
+##     file => $template,   ##-- file basename or File::Temp template; default='pdlXXXX'
+##     suffix => $suffix,   ##-- File::Temp::tempfile() suffix (default='.pdl')
+##     log  => $level,      ##-- logging verbosity (default=undef: off)
+##     temp => $bool,       ##-- delete on END (default: $file =~ /X{4}/)
+##    )
+sub mmzeroes {
+  require DiaColloDB::PDL::MM;
+  shift if (UNIVERSAL::isa($_[0],__PACKAGE__));
+  return DiaColloDB::PDL::MM::new(@_);
+}
+sub mmtemp {
+  require DiaColloDB::PDL::MM;
+  shift if (UNIVERSAL::isa($_[0],__PACKAGE__));
+  return DiaColloDB::PDL::MM::mmtemp(@_);
+}
+
+## mmunlink(@mmfiles)
+## mmunlink($mmpdl,@mmfiles)
+##  + unlinkes file(s) generated by mmzeroes($basename)
+sub mmunlink {
+  require DiaColloDB::PDL::MM;
+  shift if (UNIVERSAL::isa($_[0],__PACKAGE__));
+  return DiaColloDB::PDL::MM::unlink(@_);
+}
+
+##==============================================================================
+## Functions: pdl: misc
+
+## $type = CLASS->mintype($pdl,    @types)
+## $type = CLASS->mintype($maxval, @types)
+##  + returns minimum PDL::Types type from @types required for representing $maxval ($pdl->max if passed as a PDL)
+##  + @types defaults to all known PDL types
+sub mintype {
+  my $that = UNIVERSAL::isa($_[0],__PACKAGE__) ? shift : __PACKAGE__;
+  my ($arg,@types) = @_;
+  $arg   = $arg->max if (UNIVERSAL::isa($arg,'PDL'));
+  @types = map {$_->{ioname}} values(%PDL::Types::typehash) if (!@types);
+  @types = sort {$a->enum <=> $b->enum} map {ref($_) ? $_ : (PDL->can($_) ? PDL->can($_)->() : qw())} @types;
+  foreach my $type (@types) {
+    return $type if (maxval($type) >= $arg);
+  }
+  return PDL::float(); ##-- float is enough to represent anything, in principle
+}
+BEGIN {
+  *PDL::mintype = \&mintype;
+}
+
+## $maxval = $type->maxval()
+## $maxval = CLASS::maxval($type_or_name)
+sub maxval {
+  no warnings 'pack';
+  my $type = shift;
+  $type    = PDL->can($type)->() if (!ref($type) && PDL->can($type));
+  return 'inf' if ($type >= PDL::float());
+  my $nbits  = 8*length(pack($PDL::Types::pack[$type->enum],0));
+  return (PDL->pdl($type,2)->pow(PDL->sequence($type,$nbits+1))-1)->double->max;
+}
+BEGIN {
+  *PDL::Type::maxval = \&maxval;
+}
+
+
+## ($vals,$counts) = $pdl->valcounts()
+##  + wrapper for $pdl->flat->qsort->rle() with masking lifted from MUDL::PDL::Smooth
+sub valcounts {
+  my $pdl = shift;
+  my ($counts,$vals) = $pdl->flat->qsort->rle;
+  my $mask = ($counts > 0);
+  return ($vals->where($mask), $counts->where($mask));
+}
+BEGIN {
+  *PDL::valcounts = \&valcounts;
+}
+
+##==============================================================================
+## Functions: temporaries
+
+## $TMPDIR : global temp directory to use
+our $TMPDIR = undef;
+
+## TMPFILES : temporary files to be unlinked on END
+our @TMPFILES = qw();
+END {
+  foreach (@TMPFILES) {
+    !-e $_
+      or CORE::unlink($_)
+      or __PACKAGE__->logwarn("failed to unlink temporary file $_ in final cleanup");
+  }
+}
+
+## $tmpdir = CLASS->tmpdir()
+## $tmpdir = CLASS_>tmpdir($template, %opts)
+##  + in first form, get name of global tempdir ($TMPDIR || File::Spec::tmpdir())
+##  + in second form, create and return a new temporary directory via File::Temp::tempdir()
+sub tmpdir {
+  my $that = UNIVERSAL::isa($_[0],__PACKAGE__) ? shift : __PACKAGE__;
+  my $tmpdir = $TMPDIR || File::Spec->tmpdir();
+  return @_ ? File::Temp::tempdir($_[0], DIR=>$tmpdir, @_[1..$#_]) : $tmpdir;
+}
+
+## $fh = CLASS->tmpfh()
+## $fh = CLASS->tmpfh($template_or_filename, %opts)
+##  + get a new temporary filehandle or undef on error
+##  + in list context, returns ($fh,$filename) or empty list on error
+sub tmpfh {
+  my $that = UNIVERSAL::isa($_[0],__PACKAGE__) ? shift : __PACKAGE__;
+  my $template = shift // 'tmpXXXXX';
+  my ($fh,$filename);
+  if ($template =~ /X{4}/) {
+    ##-- use File::Temp::tempfile()
+    ($fh,$filename) = File::Temp::tempfile($template, DIR=>$that->tmpdir(), @_) or return qw();
+  } else {
+    ##-- use literal filename, honoring DIR, TMPDIR, and SUFFIX options
+    my %opts  = @_;
+    $filename = $template;
+    do { $opts{DIR} =~ s{/$}{}; $filename  = "$opts{DIR}/$filename"; } if ($filename !~ m{^/} && defined($opts{DIR}));
+    $filename  = $that->tmpdir."/".$filename if ($filename !~ m{^/} && $opts{TMPDIR});
+    $filename .= $opts{SUFFIX} if (defined($opts{SUFFIX}));
+    CORE::open($fh, "+>", $filename)
+	or $that->logconfess("tmpfh(): open failed for file '$filename': $!");
+    push(@TMPFILES, $filename) if ($opts{UNLINK});
+  }
+  return wantarray ? ($fh,$filename) : $fh;
+}
+
+## $filename = CLASS->tmpfile()
+## $filename = CLASS->tmpfile($template, %opts)
+sub tmpfile {
+  my $that = UNIVERSAL::isa($_[0],__PACKAGE__) ? shift : __PACKAGE__;
+  my ($fh,$filename) = $that->tmpfh(@_) or return undef;
+  $fh->close();
+  return $filename;
+}
+
+## \@tmparray = CLASS->tmparray($template, %opts)
+##  + ties a new temporary array via $class (default='Tie::File::Indexed::JSON')
+##  + calls tie(my @tmparray, 'DiaColloDB::Temp::Array', $tmpfilename, %opts)
+sub tmparray {
+  my $that  = UNIVERSAL::isa($_[0],__PACKAGE__) ? shift : __PACKAGE__;
+  my ($template,%opts) = @_;
+
+  ##-- load target module
+  eval { require "DiaColloDB/Temp/Array.pm" }
+    or $that->logconfess("tmparray(): failed to load class DiaColloDB::Temp::Array: $@");
+
+  ##-- default options
+  $template     //= 'dcdbXXXXXX';
+  $opts{SUFFIX} //= '.tmpa';
+  $opts{UNLINK}   = 1 if (!exists($opts{UNLINK}));
+
+  ##-- tie it up
+  my $tmpfile = $that->tmpfile($template, %opts);
+  tie(my @tmparray, 'DiaColloDB::Temp::Array', $tmpfile, %opts)
+    or $that->logconfess("tmparray(): failed to tie file '$tmpfile' via DiaColloDB::Temp::Array: $@");
+  return \@tmparray;
+}
+
+## \@tmparrayp = CLASS->tmparrayp($template, $packas, %opts)
+##  + ties a new temporary integer-array via DiaColloDB::PackedFile)
+##  + calls tie(my @tmparray, 'DiaColloDB::PackedFile', $tmpfilename, %opts)
+sub tmparrayp {
+  my $that  = UNIVERSAL::isa($_[0],__PACKAGE__) ? shift : __PACKAGE__;
+  my ($template,$packas,%opts) = @_;
+
+  ##-- load target module
+  eval { require "DiaColloDB/PackedFile.pm" }
+    or $that->logconfess("tmparrayp(): failed to load class DiaColloDB::PackedFile: $@");
+
+  ##-- default options
+  $template     //= 'dcdbXXXXXX';
+  $opts{SUFFIX} //= '.pf';
+  $opts{UNLINK}   = 1 if (!exists($opts{UNLINK}));
+
+  ##-- tie it up
+  my $tmpfile = $that->tmpfile($template, %opts);
+  tie(my @tmparray, 'DiaColloDB::PackedFile', $tmpfile, 'rw', packas=>$packas, temp=>$opts{UNLINK}, %opts)
+    or $that->logconfess("tmparrayp(): failed to tie file '$tmpfile' via DiaColloDB::PackedFile: $@");
+  return \@tmparray;
+}
+
+## \%tmphash = CLASS->tmphash($class, $template, %opts)
+##  + ties a new temporary hash via $class (default='DB_File')
+##  + calls tie(my @tmparray, $class, $tmpfilename, temp=>1, %opts)
+sub tmphash {
+  my $that  = UNIVERSAL::isa($_[0],__PACKAGE__) ? shift : __PACKAGE__;
+  my ($template,%opts) = @_;
+
+  ##-- load target module
+  eval { require "DiaColloDB/Temp/Hash.pm" }
+    or $that->logconfess("tmparray(): failed to load class DiaColloDB::Temp::Hash: $@");
+
+  ##-- default options
+  $template     //= 'dcdbXXXXXX';
+  $opts{SUFFIX} //= '.tmph';
+  $opts{UNLINK}   = 1 if (!exists($opts{UNLINK}));
+
+  ##-- tie it up
+  my $tmpfile = $that->tmpfile($template, %opts);
+  tie(my %tmphash, 'DiaColloDB::Temp::Hash', $tmpfile, %opts)
+    or $that->logconfess("tmphash(): failed to tie file '$tmpfile' via DiaColloDB::Temp::Hash: $@");
+  return \%tmphash;
 }
 
 ##==============================================================================

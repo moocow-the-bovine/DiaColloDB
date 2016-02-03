@@ -10,7 +10,7 @@
 
 =head1 NAME
 
-DiaColloDB::EnumFile::Tied - diachronic collocation db: flat fixed-length record-oriented files: tied interface
+DiaColloDB::EnumFile::Tied - diachronic collocation db: symbolE<lt>-E<gt>integer enum: tied interface
 
 =cut
 
@@ -57,6 +57,9 @@ Low-level L<Tie::Hash|Tie::Hash> subclass for representing symbol-E<gt>integer m
  (\@id2sym,\%sym2id) = $CLASS->tiepair(%opts);
  (\@id2sym,\%sym2id) = $CLASS->tiepair($enum);
  (\@id2sym,\%sym2id) = $enum->tiepair();
+ 
+  $class = $CLASS_OR_OBJECT->tieArrayClass();
+  $class = $CLASS_OR_OBJECT->tieHashClass();
  
  ##========================================================================
  ## API: DiaColloDB::EnumFile::TiedArray
@@ -115,7 +118,7 @@ e.g. L<MUDL::Enum|MUDL::Enum> as used by the L<DocClassify|DocClassify> module.
 =item tienew
 
  $enum = $CLASS->tienew(%opts,class=>$enumFileClass);
- $enum = $CLASS->tienew($enum)
+ $enum = $CLASS->tienew($enum);
 
 returns $enum if specified, otherwise a new L<DiaColloDB::EnumFile|DiaColloDB::EnumFile> object for %opts.
 
@@ -126,7 +129,22 @@ returns $enum if specified, otherwise a new L<DiaColloDB::EnumFile|DiaColloDB::E
  (\@id2sym,\%sym2id) = $enum->tiepair();
 
 Returns pair of tied objects suitable for simulating e.g. MUDL::Enum.
-%opts: passed to $CLASS-E<gt>tienew().
+%opts: passed to $CLASS-E<gt>tienew().  Ties objects using
+$enum-E<gt>tieArrayClass() rsp. $enum-E<gt>tieHashClass().
+
+=item tieArrayClass
+
+ $class = $CLASS_OR_OBJECT->tieArrayClass()
+
+Returns class for tied arrays to be returned by tiepair() method;
+default just returns "DiaColloDB::EnumFile::TiedArray".
+
+=item tieHashClass
+
+ $class = $CLASS_OR_OBJECT->tieHashClass()
+
+Returns class for tied arrays to be returned by tiepair() method;
+default just returns "DiaColloDB::EnumFile::TiedHash".
 
 =back
 

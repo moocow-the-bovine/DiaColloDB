@@ -180,11 +180,9 @@ sub profile {
   $mp->trim(%opts, empty=>!$opts{fill});
   $mp->stringify($groupby->{g2s}) if ($opts{strings});
 
-  ##-- finalize: multi-profile
-  return DiaColloDB::Profile::Multi->new(profiles=>\@dprfs,
-					 titles=>$groupby->{titles},
-					 qinfo =>$reldb->qinfo($coldb, %opts, qreqs=>$areqs, gbreq=>$groupby),
-					);}
+  ##-- return
+  return $mp;
+}
 
 
 ##--------------------------------------------------------------
@@ -280,6 +278,11 @@ sub subprofile {
 ##     qreqs => \@areqs,      ##-- as returned by $coldb->parseRequest($opts{query})
 ##     gbreq => \%groupby,    ##-- as returned by $coldb->groupby($opts{groupby})
 ##    )
+##  + returned hash \%qinfo should have keys:
+##    (
+##     fcoef => $fcoef,         ##-- frequency coefficient (2*$coldb->{dmax} for CoFreqs)
+##     qtemplate => $qtemplate, ##-- query template with __W1.I1__ rsp __W2.I2__ replacing groupby fields
+##    )
 sub qinfo {
   my ($rel,$coldb,%opts) = @_;
   $rel->logconfess("qinfo(): abstract method called");
@@ -315,7 +318,7 @@ sub qinfoData {
     ++$xi;
   }
 
-  ##-- common restrictions (2015-10-28: these are too expensive for large corpora (timeouts): ignore 'em
+  ##-- common restrictions (trunk/2015-10-28: these are too expensive for large corpora (timeouts): ignore 'em
   #push(@qxstrs, qq(\$p=/$coldb->{pgood}/)) if ($coldb->{pgood});
   #push(@qxstrs, qq(\$=!/$coldb->{pbad}/))  if ($coldb->{pbad});
 

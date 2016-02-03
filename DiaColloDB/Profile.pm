@@ -1,4 +1,5 @@
 ## -*- Mode: CPerl -*-
+##
 ## File: DiaColloDB::Profile.pm
 ## Author: Bryan Jurish <moocow@cpan.org>
 ## Description: collocation db, (co-)frequency profile
@@ -81,7 +82,6 @@ sub new {
 		    #titles=>undef,
 		    #mi=>{},
 		    #ld=>{},
-		    #fm=>{},
 		    @_
 		   }, (ref($that)||$that));
   return $prf;
@@ -221,6 +221,7 @@ sub saveTextFh {
   $prf->saveTextHeader($fh,%opts) if ($opts{header}//1);
   foreach (sort {$fscore->{$b} <=> $fscore->{$a}} keys %$fscore) {
     $fh->print(join("\t",
+		    map {$_//0}
 		    $N,
 		    $f1,
 		    $f2->{$_},
@@ -269,7 +270,7 @@ sub saveHtmlFile {
   my $fscore = $prf->{$prf->{score}//'f12'};
   my $fmt   = $opts{format} || "%.4f";
   foreach (sort {$fscore->{$b} <=> $fscore->{$a}} keys %$fscore) {
-    $fh->print("<tr>", (map {"<td>".htmlesc($_)."</td>"}
+    $fh->print("<tr>", (map {"<td>".htmlesc($_//0)."</td>"}
 			$N,
 			$f1,
 			$f2->{$_},
@@ -450,7 +451,9 @@ sub compile_ld {
   return $prf;
 }
 
-sub log0 { return $_[0]==0 ? 0 : log($_[0]) }
+sub log0 {
+  return $_[0]>0 ? log($_[0]) : 0;
+}
 
 ## $prf = $prf->compile_ll(%opts)
 ##  + computes 1-sided log-log-likelihood ratio in $prf->{ll} a la Evert (2008)
@@ -465,6 +468,7 @@ sub compile_ll {
   $N  += 2*$eps;
   $f1 += $eps;
   my ($i2,$f2,$f12,$logl);
+  my $llmin = 0;
   while (($i2,$f2)=each(%$pf2)) {
     $f12  = ($pf12->{$i2} // 0) + $eps;
     $logl = (##-- raw log-lambda
@@ -480,6 +484,7 @@ sub compile_ll {
 		  #* ($logl**(1/3))              ##-- extra cube-root for scaling
 		 );
   }
+
   $prf->{score} = 'll';
   return $prf;
 }

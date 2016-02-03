@@ -352,6 +352,7 @@ sub addPairs {
 ##  + multimap must be opened
 sub fetch {
   my ($mmf,$a) = @_;
+  return [] if (!defined($a));
 
   my ($boff,$bsz,$buf);
   CORE::seek($mmf->{afh}, $a*$mmf->{len_o}, SEEK_SET)

@@ -1,3 +1,4 @@
+##-*- Mode: CPerl -*-
 use ExtUtils::MakeMaker;
 
 ##----------------------------------------------------------------------
@@ -12,18 +13,28 @@ WriteMakefile
    LICENSE      => 'perl',
 
    PREREQ_PM    => {
-		    'DDC::Concordance' => 0.17,
+		    'DDC::Concordance' => 0.18, ##-- no functional changes from v0.18 to v0.20
 		    'DDC::XS'       => 0.05,
-		    'File::Path'    => undef,  ##-- make_tree, remove_path; 2.08_01
-		    'File::Map'     => undef,  # 0.63
-		    'JSON'          => undef,  # 2.53
-		    'IPC::Run'      => undef,  # 0.94
+		    'File::Path'    => 0,  ##-- make_tree, remove_path; 2.08_01
+		    'File::Map'     => 0,  # 0.63
+		    'JSON'          => 0,  # 2.53
+		    'IPC::Run'      => 0,  # 0.94
 		    'Log::Log4perl' => 1.07,   # 1.29
+		    'File::Temp'    => 0,
+		    'File::Spec'    => 0,
+		    'File::Map'     => 0,
+		    'DB_File' => 0,  ##-- for temporary hashes; 1.831
+		    ##
+		    ##-- for vector-semantic models (Vsem)
+		    'PDL::CCS' => '1.23.1',
+		    'PDL::VectorValued' => '1.0.5',
+		    'Tie::File::Indexed' => '0.04',
 		   },
 
 
-   EXE_FILES   => [ glob('dcdb-*.perl'), ],
-   NORECURS => 1, ##-- don't recurse into local 'MUDL' mirror dir
+   EXE_FILES => [ glob('dcdb-*.perl'), ],
+   #NORECURS  => 1, ##-- don't recurse into local 'MUDL' mirror dir
+   DIR => [ 'PDL-Utils' ],
   );
 
 ##-----------------------------------------------------------------------
@@ -232,9 +243,8 @@ $(INST_PODDIR)$(DFSEP).exists :: Makefile.PL
 sub MY::distdir {
   package MY;
   my $inherited = shift->SUPER::distdir(@_);
-  my $local =
-'
-##-- distdir_am: hacked create_distdir for superordinate automake
+  my $local_dont = '
+  ##-- distdir_am: hacked create_distdir for superordinate automake
 DISTDIR_AM ?= $(DISTNAME).am
 distdir_am:
 	$(RM_RF) $(DISTDIR_AM)
@@ -246,7 +256,7 @@ pm_list: $(PMLIST_AM)
 $(PMLIST_AM): $(TO_INST_PM)
 	echo "$(TO_INST_PM)" | xargs -n 1 echo | grep -v "\.in$$" > $@
 ';
-  return $inherited.$local;
+  return $inherited; #.$local;
 }
 
 ##---------------------------------------------------------------

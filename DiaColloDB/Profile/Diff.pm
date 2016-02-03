@@ -149,6 +149,7 @@ sub saveTextFh {
 
   foreach (sort {$scored->{$b} <=> $scored->{$a}} keys %$scored) {
     $fh->print(join("\t",
+		    map {$_//0}
 		    $Na, $Nb,
 		    $f1a,$f1b,
 		    $f2a->{$_}, $f2b->{$_},
@@ -243,7 +244,7 @@ our %DIFFOPS =
 sub diffop {
   my ($that,$op) = @_;
   $op //= $that->{diff} if (ref($that));
-  return $DIFFOPS{$op} // $op // $DIFFOPS{DEFAULT};
+  return (defined($op) ? $DIFFOPS{$op} : undef) // $op // $DIFFOPS{DEFAULT};
 }
 
 ## \&FUNC = $dprf->diffsub()
@@ -310,7 +311,7 @@ sub diffop_lavg {
 
 ## $dprf = $dprf->populate()
 ## $dprf = $dprf->populate($prf1,$prf2)
-##  + populates diff-profile by subtracting $prf2 scores from $prf1
+##  + populates diff-profile by applying the selected diff-operation on aligned operand scores
 sub populate {
   my ($dprf,$pa,$pb) = @_;
   $pa //= $dprf->{prf1};

@@ -124,8 +124,9 @@ sub dbinfo {
 ##    dmax  => $dmax,        ##-- maxmimum distance for implicit near() queries (default: query "#dmax[N]" or $rel->{dmax})
 ##   )
 sub profile {
-  my ($rel,$coldb,%opts) = @_;
-  $rel = $rel->fromDB($coldb,%opts);
+  my ($that,$coldb,%opts) = @_;
+  my $rel = $that->fromDB($coldb,%opts)
+    or $that->logconfess("profile(): initialization failed (did you forget to set the 'ddcServer' option?)");
 
   ##-- get count-query, count-by expressions, titles
   my $qcount = $rel->countQuery($coldb,\%opts);
@@ -318,6 +319,9 @@ sub ddcQuery {
   $cli->{limit} = $opts{limit}//-1 if (exists($opts{limit}));
 
   $rel->vlog($level, "$logas: query[server=$rel->{ddcServer},limit=$cli->{limit}]: $qstr");
+  $cli->open()
+    or $rel->logconfess("$logas: failed to connect to DDC server on $rel->{ddcServer}: $!")
+    if (!defined($cli->{sock}));
   my $result = $cli->queryJson($qstr);
 
   $rel->logconfess($coldb->{error}="$logas ERROR: DDC query failed: ".($result->{error_}//'(undefined error)'))

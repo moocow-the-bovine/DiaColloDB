@@ -215,6 +215,22 @@ aligns subprofile-pairs from $mp1 and $mp2
 
 =item *
 
+$mp1, $mp2 are either:
+
+=over 4
+
+=item HASH-refs
+
+with a 'profiles' key (e.g. DiaColloDB::Profile::Multi objects)
+
+=item ARRAY-refs
+
+of DiaColloDB::Profile-like objects to align
+
+=back
+
+=item *
+
 subprofiles are aligned in stored order
 
 =item *
