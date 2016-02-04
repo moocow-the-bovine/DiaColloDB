@@ -6,6 +6,7 @@
 use PDL::VectorValued::Dev;
 use PDL::CCS::Config;
 use PDL;
+use Config;
 use strict;
 
 our $VERSION = '0.08.001';
@@ -73,6 +74,71 @@ pp_addhdr(<<'EOH');
 
 EOH
 
+##------------------------------------------------------
+## byte-swapping
+
+my $isbigendian = ($Config{byteorder} =~ /1$/ ? 1 : 0);
+pp_addhdr($isbigendian ? "#define DIACOLLO_BIGENDIAN $isbigendian\n" : "#undef DIACOLLO_BIGENDIAN\n");
+
+pp_addhdr <<'EOH';
+inline static PDL_Long diacollo_bswap4(PDL_Long x)
+{
+  PDL_Long y;
+  char *yb=(char*)&y, *xb=(char*)&x;
+  yb[0] = xb[3];
+  yb[1] = xb[2];
+  yb[2] = xb[1];
+  yb[3] = xb[0];
+  return y;
+}
+
+#ifdef DIACOLLO_BIGENDIAN
+# define DIACOLLO_NPACK_long(x) x
+#else
+# define DIACOLLO_NPACK_long(x) diacollo_bswap4(x)
+#endif
+
+EOH
+
+if (PDL->can('longlong') && length(pack($PDL::Types::pack[ longlong->enum ],0))==8) {
+  pp_addhdr <<'EOH';
+inline static
+PDL_LongLong diacollo_bswap8(PDL_LongLong x)
+{
+  PDL_LongLong y;
+  char *yb=(char*)&y, *xb=(char*)&x;
+  yb[0] = xb[7];
+  yb[1] = xb[6];
+  yb[2] = xb[5];
+  yb[3] = xb[4];
+  yb[4] = xb[3];
+  yb[5] = xb[2];
+  yb[6] = xb[1];
+  yb[7] = xb[0];
+  return y;
+}
+
+#ifdef DIACOLLO_BIGENDIAN
+# define DIACOLLO_NPACK_longlong(x) x
+#else
+# define DIACOLLO_NPACK_longlong(x) diacollo_bswap8(x)
+#endif
+
+EOH
+}
+
+if (PDL->can('indx')) {
+  my $indx_len = length(pack($PDL::Types::pack[ indx->enum ],0));
+  pp_addhdr <<"EOH";
+
+#ifdef DIACOLLO_BIGENDIAN
+# define DIACOLLO_NPACK_indx(x) x
+#else
+# define DIACOLLO_NPACK_indx(x) diacollo_bswap${indx_len}(x)
+#endif
+
+EOH
+}
 
 ##======================================================================
 ## C Utilities
@@ -110,7 +176,7 @@ sub define_local {
 ## $str = undef_local(%defs)
 sub undef_local {
   my %defs = @_;
-  return "\n".join('', map {"#undef $_\n"} sort keys %defs)."\n";
+  return "\n".join('', map {s/\(.*$//; "#undef $_\n"} sort keys %defs)."\n";
 }
 
 
@@ -144,16 +210,18 @@ sub tym_create_def {
   my %defs  = (
 	       DIACOLLO_INAME => "\"$itype\"",
 	       DIACOLLO_ITYPE => $iinfo->{ctype},
+	       "NPACK(x)" => "DIACOLLO_NPACK_${itype}(x)",
 	      );
 
   ##~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
   ## tym_create : code
   my $code = define_local(%defs).q{
 
-  DIACOLLO_ITYPE ti, nzi0,nzi1, di,ci,cdate, nout=0;
+  DIACOLLO_ITYPE ti, nzi0,nzi1, di,ci, nout=0;
+  PDL_Ushort cdate;
   UV fval,fval0;
-  I32 keylen = 2*sizeof(DIACOLLO_ITYPE);
-  DIACOLLO_ITYPE *keybuf = (DIACOLLO_ITYPE*)malloc(keylen);
+  DIACOLLO_ITYPE ykey;
+  SV **svpp;
 
   //-- temporary hash for term-local year-counts
   HV *termhv = newHV();
@@ -161,25 +229,24 @@ sub tym_create_def {
   for (nzi0=0; nzi0 < $SIZE(Nnz); nzi0=nzi1) {
     ti = $tdmix(Ndims=>0,Nnz=>nzi0);
 
-    keybuf[0] = ti;
-    for (nzi1=nzi0; nzi1 < $SIZE(Nnz) && $tdmix(Ndims=>0,Nnz=>nzi1)==keybuf[0]; ++nzi1) {
+    for (nzi1=nzi0; nzi1 < $SIZE(Nnz) && $tdmix(Ndims=>0,Nnz=>nzi1)==ti; ++nzi1) {
       di = $tdmix(Ndims=>1,Nnz=>nzi1);
       ci = $d2c(ND=>di);
       cdate = $c2date(NC=>ci);
-      fval = $tdmvals(Nnz1=>nzi1);
+      fval  = $tdmnz(Nnz1=>nzi1);
 
-      keybuf[1] = cdate;
-      svpp = hv_fetch(termhv, (char*)keybuf, keylen, TRUE);
+      ykey = NPACK(cdate);
+      svpp = hv_fetch(termhv, (char*)(&ykey), sizeof(DIACOLLO_ITYPE), TRUE);
       if (SvOK(*svpp)) {
         fval0 = SvUV(*svpp);
         sv_setuv(*svpp, fval0+fval);
       } else {
-        sv_setuv(*svdp, fval);
+        sv_setuv(*svpp, fval);
       }
     }
 
     //-- populate file from temporary hv
-    //... how to we ensure it's sorted?!
+    //... how to we ensure it's sorted?! --> callback to perl!
     ++nout;
     hv_clear(termhv);
   }
@@ -187,13 +254,12 @@ sub tym_create_def {
   $nnzOut() = nout;
 
   //-- cleanup
-  if (keybuf) free(keybuf);
-  if (dochv) SvREFCNT_dec(dochv);
+  if (termhv) SvREFCNT_dec(termhv);
 
 }.undef_local(%defs);
 
   ##~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-  ## cof_x : ppdef
+  ## tym_create : ppdef
   my $INDX = $iinfo->{ppforcetype};
   vmsg("defining diacollo_tym_create_${itype}");
   vvpp_def("diacollo_tym_create_${itype}",
@@ -205,12 +271,12 @@ sub tym_create_def {
 			"$INDX  d2c(ND);",             	##-- d2c(): doc->cat map : $vs->{d2c}
 			"ushort c2date(NC);",           ##-- c2date(): cat->date map : $vs->{c2date}
 			##
+			"[t]   yf(NY);",                ##-- temporary cat-set
 			"$INDX \[o] nnzOut();",		##-- number of output nonzeroes
 			''
 		       ),
 	   OtherPars => join("\n    ",
-			     "char *ixoutfile;",	##-- output filename
-			     "char *nzoutfile;",	##-- output filename
+			     'IV cbWrite;',             ##-- term-wise hash-writing callback; $writeHash->($ti,\%y2f)
 			     '',
 			    ),
 	   GenericTypes => \@VAL_TYPE_CHRS,
@@ -218,6 +284,8 @@ sub tym_create_def {
 	   Doc => q{
 Guts for term-year matrix construction from term-document matrix,
 used by DiaColloDB::Relation::TDF::create().
+
+-- WORK IN PROGRESS --
 },
 	);
 }
