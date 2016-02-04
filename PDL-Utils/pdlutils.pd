@@ -135,6 +135,101 @@ pp_def('diacollo_tupleids',
 }
 
 ##--------------------------------------------------------------
+## tym_create_${ITYPE}
+##  + creates tym matrix file(s)
+
+sub tym_create_def {
+  my $itype = shift;
+  my $iinfo = typeinfo($itype);
+  my %defs  = (
+	       DIACOLLO_INAME => "\"$itype\"",
+	       DIACOLLO_ITYPE => $iinfo->{ctype},
+	      );
+
+  ##~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+  ## tym_create : code
+  my $code = define_local(%defs).q{
+
+  DIACOLLO_ITYPE ti, nzi0,nzi1, di,ci,cdate, nout=0;
+  UV fval,fval0;
+  I32 keylen = 2*sizeof(DIACOLLO_ITYPE);
+  DIACOLLO_ITYPE *keybuf = (DIACOLLO_ITYPE*)malloc(keylen);
+
+  //-- temporary hash for term-local year-counts
+  HV *termhv = newHV();
+
+  for (nzi0=0; nzi0 < $SIZE(Nnz); nzi0=nzi1) {
+    ti = $tdmix(Ndims=>0,Nnz=>nzi0);
+
+    keybuf[0] = ti;
+    for (nzi1=nzi0; nzi1 < $SIZE(Nnz) && $tdmix(Ndims=>0,Nnz=>nzi1)==keybuf[0]; ++nzi1) {
+      di = $tdmix(Ndims=>1,Nnz=>nzi1);
+      ci = $d2c(ND=>di);
+      cdate = $c2date(NC=>ci);
+      fval = $tdmvals(Nnz1=>nzi1);
+
+      keybuf[1] = cdate;
+      svpp = hv_fetch(termhv, (char*)keybuf, keylen, TRUE);
+      if (SvOK(*svpp)) {
+        fval0 = SvUV(*svpp);
+        sv_setuv(*svpp, fval0+fval);
+      } else {
+        sv_setuv(*svdp, fval);
+      }
+    }
+
+    //-- populate file from temporary hv
+    //... how to we ensure it's sorted?!
+    ++nout;
+    hv_clear(termhv);
+  }
+
+  $nnzOut() = nout;
+
+  //-- cleanup
+  if (keybuf) free(keybuf);
+  if (dochv) SvREFCNT_dec(dochv);
+
+}.undef_local(%defs);
+
+  ##~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+  ## cof_x : ppdef
+  my $INDX = $iinfo->{ppforcetype};
+  vmsg("defining diacollo_tym_create_${itype}");
+  vvpp_def("diacollo_tym_create_${itype}",
+	   Pars => join("\n    ",
+			'',
+			"$INDX tdmix(Ndims,Nnz);",	##-- tdm: logical (T,D) with ptr(1) : $vs->{tdm}->_whichND
+			"      tdmnz(Nnz1);",           ##-- tdm: nonzeroes+missing : $vs->{tdm}->_vals
+			##
+			"$INDX  d2c(ND);",             	##-- d2c(): doc->cat map : $vs->{d2c}
+			"ushort c2date(NC);",           ##-- c2date(): cat->date map : $vs->{c2date}
+			##
+			"$INDX \[o] nnzOut();",		##-- number of output nonzeroes
+			''
+		       ),
+	   OtherPars => join("\n    ",
+			     "char *ixoutfile;",	##-- output filename
+			     "char *nzoutfile;",	##-- output filename
+			     '',
+			    ),
+	   GenericTypes => \@VAL_TYPE_CHRS,
+	   Code => $code,
+	   Doc => q{
+Guts for term-year matrix construction from term-document matrix,
+used by DiaColloDB::Relation::TDF::create().
+},
+	);
+}
+if (0) {
+  foreach my $itype (@INT_TYPES) {
+    tym_create_def($itype);
+  }
+}
+
+
+
+##--------------------------------------------------------------
 ## cof_${TC}_${ITYPE} : coo+ptr(1)-matrix vs. ptr-vector, output=HASH-ref
 ##  + ${TC} is one of 't':terms, 'c':cats
 ##  + ${ITYPE} is a PDL type for integer indices

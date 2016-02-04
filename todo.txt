@@ -7,9 +7,7 @@ x+ rename Relation::Vsem -> Relation::TDM
   x- fix Vsem::Query code (remove obsolete compileSlices etc)
   x- remove stale Profile::Pdl, PdlDiff, etc. classes
   x- handle groupby for term-attrs-only (ok), doc-attrs-only (ok), {term+doc}-attrs (ok)
-!  - suppress target-term output in tdm cofreq profiles (tricky)?
   x- add implicit 'genre' field to vsem meta-index (extract 1st component of textClass, since vsem groupby can't handle regex transformations)
-!  - implement union() method
   x- remove stale EnumFile::Identity
 
 + re-build & re-publish dstar indices
@@ -18,12 +16,19 @@ x+ rename Relation::Vsem -> Relation::TDM
   - later: others
 
 + debug/correct
-  - dstar: update "install" rule for dstar build/diacollo (see dta build dir)
+  - tdf create(): memory-optimize tym construction
+    + zeit.d-p on kira: mem usage spikes from 9G to 29G between tym and ptrs (first plateau at 15G, then spike)
+  - ?suppress target-term output in tdm cofreq profiles (tricky)?
+  - implement tdf union() method
+  - implement tdf export() method
+  - document, package, & upload to CPAN
+    + Alien::* module(s) for DDC, gfsm, moot?
+
++ debug/fixed
+  x- dstar: update "install" rule for dstar build/diacollo (see dta build dir)
     + do this in-place on next test build (something small, e.g. pnn)
   x- bug?: no tdf docs found for "Katze && Hund && Maus" in zeit.d-f, but ddc finds 131 matches with "#in file": why?
      + fixed: problem was bogus list-context for _intersect_p() as called by (new) TDF::catSubset()
-  - tdf create(): memory-optimize tym construction
-    + zeit.d-p on kira: mem usage spikes from 9G to 29G between tym and ptrs (first plateau at 15G, then spike)
   x- tdf: auto-detect minimum 'itype' during create() and/or union()
   x- fix boolean query eval (&& vs ||): maybe allow 'tdm' component in TDF::Query?
     + LATER: we're already performing && on cat-subset
@@ -54,9 +59,6 @@ x+ rename Relation::Vsem -> Relation::TDM
     + (* #has[author,/Kant/]) should NOT link to all "Kant"-tokens, just the relevant item2
     ?+ maybe fix query-parsing to allow token-attribute syntax for meta-field queries (e.g. boolean expressions?)
   x- merge intro trunk (probably best to branch trunk out again from current state and just replace old trunk with current branch)
-
-+ document, package, & upload to CPAN
-  - Alien:: module(s) for DDC, gfsm, moot?
 
 + disk usage stats (in MB)
   CORPUS	TEI	DDC	NTOK		DIACOLLO-TDF	DIACOLLO+TDF	DIACOLLO=TDF
