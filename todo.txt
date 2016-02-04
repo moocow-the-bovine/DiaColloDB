@@ -20,7 +20,10 @@ x+ rename Relation::Vsem -> Relation::TDM
 + debug/correct
   - dstar: update "install" rule for dstar build/diacollo (see dta build dir)
     + do this in-place on next test build (something small, e.g. pnn)
-  - bug?: no tdf docs found for "Katze && Hund && Maus" in zeit.d-f, but ddc finds 131 matches with "#in file": why?
+  x- bug?: no tdf docs found for "Katze && Hund && Maus" in zeit.d-f, but ddc finds 131 matches with "#in file": why?
+     + fixed: problem was bogus list-context for _intersect_p() as called by (new) TDF::catSubset()
+  - tdf create(): memory-optimize tym construction
+    + zeit.d-p on kira: mem usage spikes from 9G to 29G between tym and ptrs (first plateau at 15G, then spike)
   x- tdf: auto-detect minimum 'itype' during create() and/or union()
   x- fix boolean query eval (&& vs ||): maybe allow 'tdm' component in TDF::Query?
     + LATER: we're already performing && on cat-subset
@@ -54,6 +57,13 @@ x+ rename Relation::Vsem -> Relation::TDM
 
 + document, package, & upload to CPAN
   - Alien:: module(s) for DDC, gfsm, moot?
+
++ disk usage stats (in MB)
+  CORPUS	TEI	DDC	NTOK		DIACOLLO-TDF	DIACOLLO+TDF	DIACOLLO=TDF
+  dta/#p	-	17100	182882418	352 ~2.1%    	1217 ~ 7.1%    	 865 ~ 5.1%
+  kern/#p	-	 4812	121559727	439 ~9.1%	1092 ~22.7%	 653 ~13.6%
+  zeit/#file	-	20084	504304208	679 ~3.4%	3341 ~16.6%	2662 ~13.3%
+  zeit/#p	-	20084	504304208	679 ~3.4%	3840 ~19.1%	3161 ~15.7%
 
 x+ merge in log-likelihood stuff from trunk (?)
   BRANCH "trunk" = svn+ssh://odo.dwds.de/home/svn/dev/DiaColloDB/trunk

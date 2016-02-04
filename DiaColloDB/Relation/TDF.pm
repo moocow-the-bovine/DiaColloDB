@@ -1366,7 +1366,7 @@ sub catSubset {
   my $ptr0 = $vs->{ptr0};
   my $nz_off = $ptr0->index($terms);
   my $nz_len = $ptr0->index($terms+1) - $nz_off;
-  return DiaColloDB::Utils::_intersect_p($cats, $vs->{d2c}->index($vs->{tdm}->_whichND->index2d(1,$nz_len->rldseq($nz_off))->uniq)->uniq);
+  return scalar DiaColloDB::Utils::_intersect_p($cats, $vs->{d2c}->index($vs->{tdm}->_whichND->index2d(1,$nz_len->rldseq($nz_off))->uniq)->uniq);
 }
 
 

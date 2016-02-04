@@ -8,7 +8,7 @@ use Pod::Usage;
 use File::Basename qw(basename);
 use strict;
 
-#use DiaColloDB::Relation::TDF; ##-- DEBUG
+use DiaColloDB::Relation::TDF; ##-- DEBUG
 
 BEGIN {
   select STDERR; $|=1; select STDOUT;
@@ -162,12 +162,13 @@ $query{bquery} = @ARGV ? shift : $query{query};
 $rel  = "d$rel" if ($isDiff);
 
 ##-- DEBUG queries
-if (0 && $query{query} eq 'debug') {
+if ($query{query} eq 'debug') {
   #$query{query} = '$p=NN !#has[textClass,/politik/i]';
   #$query{query} = 'Mann #has[textClass,/zeitung/i]';
   #$query{query} = '* #has[textClass,/Zeitung/i]';
   #$query{query} = 'Katze && Maus';
   #$query{query} = '* #has[genre,/Zeitung/]';
+  $query{query} = 'Katze && Maus && Hund';
 }
 ##--/DEBUG queries
 
@@ -269,10 +270,10 @@ dcdb-query.perl - query a DiaColloDB
    QUERY2               # space-separated target2 string(s) LIST or /REGEX/ or DDC-query (for diff profiles)
 
  Grouping and Filtering:
-   GROUPBY is a space- or comma-separated list of the form ATTR1[:FILTER1] ..., where:
+   GROUPBY is a space- or comma-separated list of the form ATTR1[=FILTER1] ..., where:
    - ATTR is the name or alias of a supported attribute (e.g. 'lemma', 'pos', etc.), and
    - FILTER is either a |-separated LIST of literal values or a /REGEX/[gimsadlu]*
-   
+
  Diff Operations:
    DIFF is one of: adiff diff sum min max avg havg gavg lavg
 
