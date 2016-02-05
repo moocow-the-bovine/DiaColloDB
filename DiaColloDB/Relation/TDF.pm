@@ -594,30 +594,20 @@ sub create {
   $vs->vlog($logCreate, "create(): creating term-year matrix $vsdir/tym.*");
   defined(my $c2date = readPdlFile("$c2datefile"))
     or $vs->logconfess("create(): failed to mmap $c2datefile");
-  my $ymax       = $c2date->max;
-  my $tym_which0 = $tdm->_whichND->pdl;
-  $tym_which0->slice("(1),") .= $c2date->index( $d2c->index($tdm->_whichND->slice("(1),")) );
-  undef $c2date;
-  undef $d2c;
-  $tym_which0->qsortveci(my $tym_qsorti=mmtemp("$vsdir/tym_qsi.tmp", $itype,$tym_which0->dim(1)));
-  $tym_which0->dice_axis(1,$tym_qsorti)->_ccs_accum_sum_int($tdm->_nzvals->index($tym_qsorti), 0,0,
-							    (my $tym_which=zeroes($itype, $tdm->ndims, $tdm->_nnz+1)),
-							    (my $tym_vals=zeroes($vtype, $tdm->_nnz+1)),
-							    (my $tym_nout=pdl($itype, 0)));
-  undef $tym_qsorti;
-  undef $tym_which0;
-  $tym_nout  = $tym_nout->sclr;
-  $tym_which = $tym_which->slice(",0:".($tym_nout-1));
-  $tym_vals  = $tym_vals->slice("0:$tym_nout");
-  $tym_vals->set($tym_nout => 0);
-  my $tym = PDL::CCS::Nd->newFromWhich($tym_which, $tym_vals, dims=>[$tdm->dim(0),$ymax+1], sorted=>1, steal=>1);
-  writePdlFile($tym, "$vsdir/tym")
-    or $vs->logconfess("failed to write term-year matrix $vs->{base}.d/tym.*: $!");
+
+  ##-- tym: create using local memory-optimized pdl-pp method
+  my $ymax = $c2date->max;
+  my $tymsub = PDL->can('diacollo_tym_create_'.$vs->itype) || \&PDL::diacollo_tym_create_long;
+  $tymsub->($tdm->_whichND, $tdm->_vals, $d2c, $c2date, (my $tym_nnz=pdl($itype,0)), "$vsdir/tym.ix", "$vsdir/tym.nz");
+  writePdlHeader("$vsdir/tym.ix.hdr", $itype, 2, 2,$tym_nnz)
+    or $vs->logconfess("create(): failed to save tym index header $vsdir/tym.ix.hdr: $!");
+  writePdlHeader("$vsdir/tym.nz.hdr", $vtype, 1, $tym_nnz+1)
+    or $vs->logconfess("create(): failed to save tdm value header $vsdir/tym.nz.hdr: $!");
+  writeCcsHeader("$vsdir/tym.hdr", $itype,$vtype,[$NT,$ymax+1])
+    or $vs->logconfess("create(): failed to save CCS header $vsdir/tym.hdr: $!");
 
   ##-- create: tym: cleanup
-  undef $tym;
-  undef $tym_which;
-  undef $tym_vals;
+  undef $c2date;
   undef $c2d;
   undef $d2c;
 

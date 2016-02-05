@@ -63,8 +63,9 @@ EOPM
 pp_addhdr("\n$ccsConfig{INDX_TYPEDEF}\n");
 pp_addhdr(<<'EOH');
 
-#include <stdio.h>  /*-- for debugging --*/
+#include <stdio.h>  /*-- for debugging and IO --*/
 #include <string.h> /*-- for memcpy() --*/
+#include <stdlib.h> /*-- for qsort(), realloc() --*/
 
 #ifdef DIACOLLO_DEBUG
 # define DCDEBUG(x) x
@@ -74,71 +75,6 @@ pp_addhdr(<<'EOH');
 
 EOH
 
-##------------------------------------------------------
-## byte-swapping
-
-my $isbigendian = ($Config{byteorder} =~ /1$/ ? 1 : 0);
-pp_addhdr($isbigendian ? "#define DIACOLLO_BIGENDIAN $isbigendian\n" : "#undef DIACOLLO_BIGENDIAN\n");
-
-pp_addhdr <<'EOH';
-inline static PDL_Long diacollo_bswap4(PDL_Long x)
-{
-  PDL_Long y;
-  char *yb=(char*)&y, *xb=(char*)&x;
-  yb[0] = xb[3];
-  yb[1] = xb[2];
-  yb[2] = xb[1];
-  yb[3] = xb[0];
-  return y;
-}
-
-#ifdef DIACOLLO_BIGENDIAN
-# define DIACOLLO_NPACK_long(x) x
-#else
-# define DIACOLLO_NPACK_long(x) diacollo_bswap4(x)
-#endif
-
-EOH
-
-if (PDL->can('longlong') && length(pack($PDL::Types::pack[ longlong->enum ],0))==8) {
-  pp_addhdr <<'EOH';
-inline static
-PDL_LongLong diacollo_bswap8(PDL_LongLong x)
-{
-  PDL_LongLong y;
-  char *yb=(char*)&y, *xb=(char*)&x;
-  yb[0] = xb[7];
-  yb[1] = xb[6];
-  yb[2] = xb[5];
-  yb[3] = xb[4];
-  yb[4] = xb[3];
-  yb[5] = xb[2];
-  yb[6] = xb[1];
-  yb[7] = xb[0];
-  return y;
-}
-
-#ifdef DIACOLLO_BIGENDIAN
-# define DIACOLLO_NPACK_longlong(x) x
-#else
-# define DIACOLLO_NPACK_longlong(x) diacollo_bswap8(x)
-#endif
-
-EOH
-}
-
-if (PDL->can('indx')) {
-  my $indx_len = length(pack($PDL::Types::pack[ indx->enum ],0));
-  pp_addhdr <<"EOH";
-
-#ifdef DIACOLLO_BIGENDIAN
-# define DIACOLLO_NPACK_indx(x) x
-#else
-# define DIACOLLO_NPACK_indx(x) diacollo_bswap${indx_len}(x)
-#endif
-
-EOH
-}
 
 ##======================================================================
 ## C Utilities
@@ -201,60 +137,139 @@ pp_def('diacollo_tupleids',
 }
 
 ##--------------------------------------------------------------
+## tym creation
+
+##------------------------------------------------------
+## tym construction: record sorting
+sub tym_qsort_def {
+  my $itype = shift;
+  my $iinfo = typeinfo($itype);
+  my %defs  = (
+	       #DIACOLLO_INAME => "\"$itype\"",
+	       DIACOLLO_ITYPE => $iinfo->{ctype},
+	      );
+
+  my $code = define_local(%defs).qq{
+
+static inline
+int diacollo_compare_${itype}(const void *a, const void *b)
+{
+  const DIACOLLO_ITYPE *aval = (const DIACOLLO_ITYPE *)a;
+  const DIACOLLO_ITYPE *bval = (const DIACOLLO_ITYPE *)b;
+  return (*aval > *bval) - (*aval < *bval);
+}
+
+static inline
+void diacollo_qsort2_${itype}(DIACOLLO_ITYPE *vals, size_t count) {
+  qsort(vals, count, 2*sizeof(DIACOLLO_ITYPE), diacollo_compare_${itype});
+}
+
+}.undef_local(%defs);
+
+  pp_addhdr($code);
+}
+foreach my $itype (@INT_TYPES) {
+  tym_qsort_def($itype);
+}
+
+##------------------------------------------------------
 ## tym_create_${ITYPE}
 ##  + creates tym matrix file(s)
-
 sub tym_create_def {
   my $itype = shift;
   my $iinfo = typeinfo($itype);
   my %defs  = (
 	       DIACOLLO_INAME => "\"$itype\"",
 	       DIACOLLO_ITYPE => $iinfo->{ctype},
-	       "NPACK(x)" => "DIACOLLO_NPACK_${itype}(x)",
+	       DIACOLLO_QSORT2 => "diacollo_qsort2_${itype}",
+	       DIACOLLO_YBUFLEN => "1024",
 	      );
 
   ##~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
   ## tym_create : code
   my $code = define_local(%defs).q{
 
-  DIACOLLO_ITYPE ti, nzi0,nzi1, di,ci, nout=0;
-  PDL_Ushort cdate;
-  UV fval,fval0;
-  DIACOLLO_ITYPE ykey;
-  SV **svpp;
+  DIACOLLO_ITYPE ti,di,ci,cy, nzi0,nzi1, nout=0, ty_prev,ty,tnzi;
+  $GENERIC() tyf;
+  size_t tballoc = DIACOLLO_YBUFLEN, tbn,tbi;
+  DIACOLLO_ITYPE *tbuf = (DIACOLLO_ITYPE*)malloc(2*tballoc*sizeof(DIACOLLO_ITYPE));
+  FILE *ixfh, *nzfh;
 
-  //-- temporary hash for term-local year-counts
-  HV *termhv = newHV();
+  DCDEBUG(fprintf(stderr,"tym_create_%s()~%s: Nnz=%d, ND=%d, NC=%d, ixfile=\"%s\", nzfile=\"%s\"\n", DIACOLLO_INAME, "$GENERIC()", $SIZE(Nnz), $SIZE(ND), $SIZE(NC), $COMP(ixfile), $COMP(nzfile)); fflush(stderr);)
 
+  //-- open output file(s)
+  if (!(ixfh=fopen($COMP(ixfile), "wb")))
+    croak("tym_create_%s(): open failed for ix-file '%s'", DIACOLLO_INAME, $COMP(ixfile));
+  if (!(nzfh=fopen($COMP(nzfile), "wb")))
+    croak("tym_create_%s(): open failed for nz-file '%s'", DIACOLLO_INAME, $COMP(nzfile));
+
+  //-- ye olde loope
   for (nzi0=0; nzi0 < $SIZE(Nnz); nzi0=nzi1) {
     ti = $tdmix(Ndims=>0,Nnz=>nzi0);
 
+    tbn = 0;
     for (nzi1=nzi0; nzi1 < $SIZE(Nnz) && $tdmix(Ndims=>0,Nnz=>nzi1)==ti; ++nzi1) {
       di = $tdmix(Ndims=>1,Nnz=>nzi1);
       ci = $d2c(ND=>di);
-      cdate = $c2date(NC=>ci);
-      fval  = $tdmnz(Nnz1=>nzi1);
+      cy = $c2date(NC=>ci);
 
-      ykey = NPACK(cdate);
-      svpp = hv_fetch(termhv, (char*)(&ykey), sizeof(DIACOLLO_ITYPE), TRUE);
-      if (SvOK(*svpp)) {
-        fval0 = SvUV(*svpp);
-        sv_setuv(*svpp, fval0+fval);
-      } else {
-        sv_setuv(*svpp, fval);
+      //-- maybe re-alloc term-local buffer
+      if (tbn==tballoc) {
+         DCDEBUG(fprintf(stderr, "tym_create_%s [ti=%d,nzi=%d,tbn=%d]: realloc %zd -> %zd\n", DIACOLLO_INAME, ti, nzi, tbn, tballoc, 2*tballoc); fflush(stderr);)
+         tballoc *= 2;
+         tbuf     = (DIACOLLO_ITYPE*)realloc(tbuf, 2*tballoc*sizeof(DIACOLLO_ITYPE));
       }
+
+      //-- append to term-local buffer
+      tbuf[2*tbn]   = cy;
+      tbuf[2*tbn+1] = nzi1;
+      ++tbn;
     }
 
-    //-- populate file from temporary hv
-    //... how to we ensure it's sorted?! --> callback to perl!
-    ++nout;
-    hv_clear(termhv);
+    //-- sort term-buffer & sum over each year
+    DIACOLLO_QSORT2(tbuf, tbn);
+    ty_prev = (DIACOLLO_ITYPE)-1;
+    tyf     = 0;
+    for (tbi=0; tbi < tbn; ++tbi) {
+      ty   = tbuf[2*tbi];
+      tnzi = tbuf[2*tbi+1];
+      if (ty != ty_prev) {
+         if (tyf != 0) {
+           //-- dump current record
+           fwrite(&ti,      1, sizeof(DIACOLLO_ITYPE), ixfh);
+	   fwrite(&ty_prev, 1, sizeof(DIACOLLO_ITYPE), ixfh);
+	   fwrite(&tyf,     1, sizeof($GENERIC()),     nzfh);
+	   ++nout;
+         }
+         ty_prev = ty;
+         tyf     = 0;
+      }
+      tyf += $tdmnz(Nnz1=>tnzi);
+    }
+    if (tyf != 0) {
+      //-- dump final record for term
+      fwrite(&ti,      1, sizeof(DIACOLLO_ITYPE), ixfh);
+      fwrite(&ty_prev, 1, sizeof(DIACOLLO_ITYPE), ixfh);
+      fwrite(&tyf,     1, sizeof($GENERIC()),     nzfh);
+      ++nout;
+    }
   }
 
+  //-- dump final "missing" value to nzfh
+  tyf = 0;
+  fwrite(&tyf,     1, sizeof($GENERIC()),     nzfh);
+
+  //-- save output nnz
   $nnzOut() = nout;
 
+  //-- close output file(s)
+  if (fclose(ixfh)!=0)
+    croak("tym_create_%s(): close failed for ix-file '%s'", DIACOLLO_INAME, $COMP(ixfile));
+  if (fclose(nzfh)!=0)
+    croak("tym_create_%s(): open failed for nz-file '%s'", DIACOLLO_INAME, $COMP(nzfile));
+
   //-- cleanup
-  if (termhv) SvREFCNT_dec(termhv);
+  if (tbuf) free(tbuf);
 
 }.undef_local(%defs);
 
@@ -271,12 +286,12 @@ sub tym_create_def {
 			"$INDX  d2c(ND);",             	##-- d2c(): doc->cat map : $vs->{d2c}
 			"ushort c2date(NC);",           ##-- c2date(): cat->date map : $vs->{c2date}
 			##
-			"[t]   yf(NY);",                ##-- temporary cat-set
 			"$INDX \[o] nnzOut();",		##-- number of output nonzeroes
 			''
 		       ),
 	   OtherPars => join("\n    ",
-			     'IV cbWrite;',             ##-- term-wise hash-writing callback; $writeHash->($ti,\%y2f)
+			     'char *ixfile;',		##-- output filename
+			     'char *nzfile;',		##-- output filename
 			     '',
 			    ),
 	   GenericTypes => \@VAL_TYPE_CHRS,
@@ -284,12 +299,10 @@ sub tym_create_def {
 	   Doc => q{
 Guts for term-year matrix construction from term-document matrix,
 used by DiaColloDB::Relation::TDF::create().
-
--- WORK IN PROGRESS --
 },
 	);
 }
-if (0) {
+if (1) {
   foreach my $itype (@INT_TYPES) {
     tym_create_def($itype);
   }
