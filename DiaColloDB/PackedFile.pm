@@ -348,6 +348,71 @@ sub fromArray {
   return $pf;
 }
 
+## $pdl = $pf->toPdl(%options)
+##  + returns a piddle for $pf
+##  + %options:
+##     type => $pdl_type,    ##-- pdl type (default:'auto':guess)
+##     swap => $bool_or_sub, ##-- byte-swap? (default:'auto':guess)
+##     mmap => $bool,        ##-- mmap data? (default: 0)
+##     ...                   ##-- other options passed to DiaColloDB::Utils::readPdlFile()
+sub toPdl {
+  my ($pf,%opts) = @_;
+  #require 'PDL.pm';
+  #require 'PDL/IO/FastRaw.pm';
+
+  ##-- type
+  if (($opts{type}//'auto') eq 'auto') {
+    $opts{type} = (map {$_->{ioname}}
+		   grep {length(pack($PDL::Types::pack[$_->{numval}],0))==$pf->{reclen}}
+		   @PDL::Types::typehash{@PDL::Types::names}
+		  )[0];
+  }
+  $opts{type} = PDL->can($opts{type})->() if (PDL->can($opts{type}));
+  $pf->logconfess("toPdl(): could not guess PDL type for pack template '$pf->{packas}'")
+    if (!UNIVERSAL::isa($opts{type},'PDL::Type'));
+
+  ##-- swap?
+  my $packsize = $pf->{reclen};
+  if (($opts{swap}//'auto') eq 'auto') {
+    my $buf = pack("C*", (1..$packsize));
+    my $val = unpack($pf->{packas}, $buf);
+    my $pdl = PDL->zeroes($opts{type}, 1);
+    ${$pdl->get_dataref} = $buf;
+    $pdl->upd_data;
+    if ($pdl->sclr == $val) {
+      $opts{swap} = 0;
+    }
+    elsif (defined(my $swapsub = $pdl->can("bswap${packsize}"))) {
+      $swapsub->($pdl);
+      if ($pdl->sclr==$val) {
+	$opts{swap} = $swapsub;
+      }
+    }
+  }
+  elsif ($opts{swap}) {
+    $opts{swap} = PDL->can("bswap${packsize}");
+  }
+  $pf->logconfess("toPdl(): could not guess swap function for pack template '$pf->{packas}' and PDL type $opts{type}")
+    if (($opts{swap}//'auto') eq 'auto');
+
+  ##-- create header
+  $pf->flush();
+  my $hfile = "$pf->{file}.phdr";
+  DiaColloDB::Utils::writePdlHeader($hfile, $opts{type}, 1, $pf->size)
+      or $pf->logconfess("toPdl(): failed to write PDL::IO::FastRaw header $hfile: $!");
+
+  ##-- read or mmap piddle file
+  my %io = (Creat=>0,Header=>$hfile);
+  my ($pdl);
+  if ($opts{mmap}) {
+    $pdl = PDL->mapfraw($pf->{file},{%io,ReadOnly=>($opts{ReadOnly}//1)});
+  } else {
+    $pdl = PDL->readfraw($pf->{file}, \%io);
+  }
+  defined($pdl) or $pf->logconfess("toPdl(): failed to ".($opts{mmap} ? "mmap" : "read")." file $pf->{file} as PDL data of type $opts{type}: $!");
+  $opts{swap}->($pdl) if (UNIVERSAL::isa($opts{swap},'CODE'));
+  return $pdl;
+}
 
 ##==============================================================================
 ## API: binary search
@@ -394,7 +459,7 @@ sub bsearch {
 }
 
 ##==============================================================================
-## distk usage, timestamp, etc
+## disk usage, timestamp, etc
 ##  + see DiaColloDB::Persistent
 
 ## @files = $obj->diskFiles()

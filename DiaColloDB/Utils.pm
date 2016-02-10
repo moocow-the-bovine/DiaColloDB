@@ -32,7 +32,7 @@ our %EXPORT_TAGS =
      run   => [qw(crun opencmd)],
      env   => [qw(env_set env_push env_pop)],
      pack  => [qw(packsize packFilterFetch packFilterStore)],
-     math  => [qw($LOG2 log2 min2 max2)],
+     math  => [qw($LOG2 log2 min2 max2 lmax lmin lsum)],
      list  => [qw(luniq xluniq)],
      regex => [qw(regex)],
      html  => [qw(htmlesc)],
@@ -387,6 +387,31 @@ sub max2 {
 ## $min2 = min2($x,$y)
 sub min2 {
   return $_[0] < $_[1] ? $_[0] : $_[1];
+}
+
+## $max = lmax(@vals)
+sub lmax {
+  my $max = undef;
+  foreach (@_) {
+    $max = $_ if (!defined($max) || (defined($_) && $_ > $max));
+  }
+  return $max;
+}
+
+## $min = lmin(@vals)
+sub lmin {
+  my $min = undef;
+  foreach (@_) {
+    $min = $_ if (!defined($min) || (defined($_) && $_ < $min));
+  }
+  return $min;
+}
+
+## $sum = lsum(@vals)
+sub lsum {
+  my $sum = 0;
+  $sum += $_ foreach (grep {defined($_)} @_);
+  return $sum;
 }
 
 ##==============================================================================

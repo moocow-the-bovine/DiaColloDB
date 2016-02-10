@@ -13,7 +13,7 @@ use Data::Dumper;
 use Benchmark qw(timethese cmpthese);
 use utf8;
 
-use DiaColloDB::Relation::TDF; ##-- DEBUG
+#use DiaColloDB::Relation::TDF; ##-- DEBUG
 BEGIN {
   select STDERR; $|=1; select STDOUT; $|=1;
   $, = ' ';
@@ -1882,7 +1882,23 @@ sub xs_hvtest {
   DiaColloDB::PDL::Utils::diacollo_hvtest($niters,$nitems);
   exit 0;
 }
-xs_hvtest(@ARGV);
+#xs_hvtest(@ARGV);
+
+##==============================================================================
+## PackedFile -> pdl
+
+sub test_pfpdl {
+  use PDL;
+  use PDL::IO::FastRaw;
+  my @args = @_;
+  @args  = qw(42 24 7) if (!@args);
+  my $pf = DiaColloDB::PackedFile->new(file=>'tmp.pf', flags=>'rw', packas=>'N');
+  $pf->fromArray(\@args);
+  my $pdl = $pf->toPdl();
+  print "got pdl: $pdl\n";
+  exit 0;
+}
+test_pfpdl(@ARGV);
 
 ##==============================================================================
 ## MAIN

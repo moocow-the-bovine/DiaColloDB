@@ -1063,10 +1063,10 @@ sub union {
       my $dbenum = $db->{"${attr}enum"};
       $coldb->vlog($coldb->{logCreate}, "union(): processing $dbenum->{base}.*");
       $aenum->addEnum($dbenum);
-      $db->{"_union_argi"}    = $argi;
+      $db->{"_union_argi"}       = $argi;
       $db->{"_union_${attr}i2u"} = (DiaColloDB::PackedFile
-				 ->new(file=>"$dbdir/${attr}_i2u.tmp${argi}", flags=>'rw', packas=>$coldb->{pack_id})
-				 ->fromArray( [@$as2i{$dbenum ? @{$dbenum->toArray} : ''}] ))
+				    ->new(file=>"$dbdir/${attr}_i2u.tmp${argi}", flags=>'rw', packas=>$coldb->{pack_id})
+				    ->fromArray( [@$as2i{$dbenum ? @{$dbenum->toArray} : ''}] ))
 	or $coldb->logconfess("union(): failed to create temporary $dbdir/${attr}_i2u.tmp${argi}");
       $db->{"_union_${attr}i2u"}->flush();
     }
@@ -1146,21 +1146,27 @@ sub union {
     $coldb->vlog($coldb->{logCreate}, "union(): NOT creating co-frequency index $dbdir/cof.*; set index_cof=1 to enable");
   }
 
-  ##-- tdf: populate (TODO)
+  ##-- tdf: populate
   my $db_tdf            = !grep {!$_->{index_tdf}} @dbargs;
   $coldb->{index_tdf} //= $db_tdf;
   if ($coldb->{index_tdf} && $db_tdf) {
     $coldb->vlog($coldb->{logCreate}, "union(): creating (term x document) index $dbdir/tdf.*");
-    my $tdfopts0          = $dbargs[0]{tdf}{tdfopts};
+    ##
+    my $tdfopts0          = $dbargs[0]{tdfopts};
     $coldb->{tdfopts}     //= {};
     $coldb->{tdfopts}     //= $tdfopts0->{$_} foreach (keys %$tdfopts0);   ##-- tdf: inherit options
     $coldb->{tdfopts}{$_} //= $TDF_OPTS{$_}   foreach (keys %TDF_OPTS);    ##-- tdf: default options
+    ##
+    my $dbreak = ($coldb->{dbreak} // $dbargs[0]{dbreak} // '#file');
+    $dbreak    = "#$dbreak" if ($dbreak !~ /^#/);
+    $coldb->{dbreak} = $dbreak;
+    ##
     $coldb->{tdf} = DiaColloDB::Relation::TDF->union($coldb, \@dbargs,
-						       base => "$dbdir/tdf",
-						       flags => $flags,
-						       keeptmp => $coldb->{keeptmp},
-						       %{$coldb->{tdfopts}},
-						      )
+						     base => "$dbdir/tdf",
+						     flags => $flags,
+						     keeptmp => $coldb->{keeptmp},
+						     %{$coldb->{tdfopts}},
+						    )
       or $coldb->logconfess("create(): failed to populate (term x document) index $dbdir/tdf.*: $!");
   } else {
     $coldb->vlog($coldb->{logCreate}, "union(): NOT creating (term x document) index $dbdir/tdf.*; set index_tdf=1 on all argument DBs to enable");
