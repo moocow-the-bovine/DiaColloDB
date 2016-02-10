@@ -277,11 +277,11 @@ sub opened {
 ##    )
 sub create {
   my ($vs,$coldb,$datfile,%opts) = @_;
+  env_push(LC_ALL=>'C');
 
   ##-- create/clobber
   $vs = $vs->new() if (!ref($vs));
-  $vs->{$_} = $coldb->{"vs$_"} foreach (grep {exists $coldb->{"vs$_"}} qw(mgood mbad));
-  @$vs{keys %{$coldb->{vsopts}//{}}} = values %{$coldb->{vsopts}//{}};
+  @$vs{keys %{$coldb->{tdfopts}//{}}} = values %{$coldb->{tdfopts}//{}};
   @$vs{keys %opts} = values %opts;
 
   ##-- sanity check(s)
@@ -487,7 +487,7 @@ sub create {
   $vs->{minDocFreq} //= 0;
   if ($vs->{minDocFreq} > 0) {
     $vs->vlog($logCreate, "create(): filter: by doc-frequency (minDocFreq=$vs->{minDocFreq})");
-    env_push(LC_ALL=>'C');
+    #env_push(LC_ALL=>'C');
     my $cmdfh = opencmd("cut -d\" \" -f-$NA $tdm0file | uniq -c |")
       or $vs->logconfess("create(): failed to open pipe from sort for doc-frequency filter");
     $wbad //= tmphash("$vsdir/wbad", %tmpargs);
@@ -505,7 +505,7 @@ sub create {
 	++$NT1;
       }
     }
-    env_pop();
+    #env_pop();
     CORE::close($cmdfh);
 
     my $nwbad = ($NT0-$NT1);
@@ -703,6 +703,7 @@ sub create {
   }
 
   ##-- return
+  env_pop();
   return $vs;
 }
 
@@ -720,9 +721,11 @@ sub create {
 sub union {
   my ($vs,$coldb,$dbargs,%opts) = @_;
   #$vs->logconfess("union(): not yet implemented");
+  env_push(LC_ALL=>'C');
 
   ##-- union: create/clobber
   $vs = $vs->new() if (!ref($vs));
+  @$vs{keys %{$coldb->{tdfopts}//{}}} = values %{$coldb->{tdfopts}//{}};
   @$vs{keys %opts} = values %opts;
 
   ##-- union: sanity checks
@@ -831,6 +834,7 @@ sub union {
   }
 
   ##-- union: all done
+  env_pop();
   return $vs;
 }
 
