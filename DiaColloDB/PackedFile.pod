@@ -82,6 +82,8 @@ DiaColloDB::PackedFile - diachronic collocation db: flat fixed-length record-ori
  \@data = $pf->toArray(%opts);
  $pf    = $pf->fromArray(\@data,%opts);
  
+ $pdl   = $pf->toPdl(%opts);
+ 
  ##========================================================================
  ## API: binary search
  
@@ -402,6 +404,20 @@ write file contents from a perl array.
 
  packas => $packas
 
+
+=item toPdl
+
+ $pdl = $pf->toPdl(%opts);
+
+Returns a flat PDL object representing $pf; currently only supports unary integer pack-templates.
+Requires L<PDL|PDL> and L<PDL::IO::FastRaw|PDL::IO::FastRaw>.
+Supported %opts:
+
+ type => $pdl_type,    ##-- pdl type (default:'auto':guess)
+ swap => $bool_or_sub, ##-- byte-swap? (default:'auto':guess)
+ mmap => $bool,        ##-- mmap data? (default: 0)
+ ...                   ##-- other options passed to DiaColloDB::Utils::readPdlFile()
+
 =back
 
 =cut
@@ -552,7 +568,7 @@ Bryan Jurish E<lt>moocow@cpan.orgE<gt>
 
 =head1 COPYRIGHT AND LICENSE
 
-Copyright (C) 2015 by Bryan Jurish
+Copyright (C) 2015-2016 by Bryan Jurish
 
 This package is free software; you can redistribute it and/or modify
 it under the same terms as Perl itself, either Perl version 5.14.2 or,

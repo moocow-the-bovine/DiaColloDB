@@ -1,7 +1,7 @@
 ## -*- Mode: CPerl -*-
 ## File: DiaColloDB::Temp::Array.pm
 ## Author: Bryan Jurish <moocow@cpan.org>
-## Description: DiaColloDB: temporary arrays
+## Description: DiaColloDB: temporary hashes
 
 package DiaColloDB::Temp::Hash;
 use DiaColloDB::Temp;

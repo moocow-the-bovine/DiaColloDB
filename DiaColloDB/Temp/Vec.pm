@@ -19,7 +19,7 @@ our $LOG_DEFAULT = undef;	##-- default log-level (undef: off)
 ##==============================================================================
 ## Constructors etc.
 
-## $tmpvec = CLASS->new($size, $bits)
+## $tmpvec = CLASS->new($size, $bits, %opts)
 ##  + %opts, %$tmpvec:
 ##    (
 ##     log  => $level,      ##-- logging verbosity (default=$LOG_DEFAULT)
@@ -31,14 +31,14 @@ sub new {
   my $that = UNIVERSAL::isa($_[0],__PACKAGE__) ? shift : __PACKAGE__;
   my $size = shift;
   my $bits = shift;
+  my %opts = @_;
   $that->logconfess("Usage: ", __PACKAGE__, "::new(SIZE, BITS)") if (!defined($size) || !defined($bits));
-  my $log    = $opts->{log} // $LOG_DEFAULT;
-  $file    //= $opts->{file} // 'vecXXXXX';
+  my $log    = $opts{log} // $LOG_DEFAULT;
 
   ##-- guts
   $that->vlog($log, "CREATE (anonymous): $size elements, $bits bits/element (TEMP)");
   my $tmpv = bless({
-		    log =>$log,
+		    %opts,
 		   }, ref($that)||$that);
   my $bufr = \$tmpv->{buf};
   File::Map::map_anonymous($$bufr, $size*$bits, 'shared');
