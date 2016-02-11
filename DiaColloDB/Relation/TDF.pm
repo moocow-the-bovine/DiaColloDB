@@ -874,7 +874,7 @@ sub dbinfo {
 ## $mprf = $rel->profile($coldb, %opts)
 ## + get a relation profile for selected items as a DiaColloDB::Profile::Multi object
 ## + %opts: as for DiaColloDB::Relation::profile()
-## + really just wraps $rel->pprofile(), DiaColloDB::Profile::Pdl::toProfile(), and DiaColloDB::Profile::Multi::stringify()
+## + really just wraps $rel->vprofile().
 sub profile {
   my ($vs,$coldb,%opts) = @_;
   return $vs->vprofile($coldb,\%opts);
@@ -1183,7 +1183,6 @@ sub mpos {
 
 ## $idPdl = $vs->idpdl($idPdl)
 ## $idPdl = $vs->idpdl(\@ids)
-## $idPdl = $vs->idpdl($ids)
 sub idpdl {
   shift if (UNIVERSAL::isa($_[0],__PACKAGE__));
   my $ids = shift;

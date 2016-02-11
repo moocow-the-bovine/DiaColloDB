@@ -53,8 +53,8 @@ sub new {
 ##    (
 ##     coldb => $coldb,   ##-- DiaColloDB context (for enums)
 ##     tdf   => $tdf,     ##-- DiaColloDB::Relation::TDF context (for meta-enums)
-##     dlo   => $dlo,     ##-- minimum date (undef or '': no minimum)
-##     dhi   => $dhi,     ##-- maximum date (undef or '': no maximum)
+##     #dlo   => $dlo,     ##-- minimum date (undef or '': no minimum)
+##     #dhi   => $dhi,     ##-- maximum date (undef or '': no maximum)
 ##    )
 sub compile {
   my $vq = shift;
