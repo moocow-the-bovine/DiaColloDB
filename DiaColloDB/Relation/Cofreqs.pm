@@ -385,7 +385,7 @@ sub create {
   ##-- sort filter
   env_push(LC_ALL=>'C');
   my $tmpfile = "$cof->{base}.dat";
-  my $sortfh = opencmd("| sort -n -k1 -k2 | uniq -c - $tmpfile")
+  my $sortfh = opencmd("| sort -nk1 -nk2 | uniq -c - $tmpfile")
     or $cof->logconfess("create(): open failed for pipe to sort|uniq: $!");
   binmode($sortfh,':raw');
 

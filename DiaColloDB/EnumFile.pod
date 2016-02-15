@@ -114,7 +114,7 @@ DiaColloDB::EnumFile inherits from L<DiaColloDB::Persistent|DiaColloDB::Persiste
 
 =item new
 
- $cldb = CLASS_OR_OBJECT->new(%args);
+ $enum = CLASS_OR_OBJECT->new(%args);
 
 %args, object structure:
 
