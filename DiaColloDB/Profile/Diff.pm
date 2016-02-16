@@ -260,12 +260,22 @@ sub diffsub {
   return \&diffop_diff;
 }
 
-## $bool = $dprf->diffpretrim()
-## $bool = $CLASS_OR_OBJECT->diffpretrim($opNameOrAlias)
-##  + returns true iff diff should pre-trim operand profiles
+## $how = $dprf->diffpretrim()
+## $how = $CLASS_OR_OBJECT->diffpretrim($opNameOrAlias)
+##  + returns if and how diff should pre-trim operand profiles: one of:
+##    0         : don't pre-trim
+##    'defined' : intersect defined collocates
+##    'best'    : union of k-best collocates
 sub diffpretrim {
   my ($that,$op) = @_;
-  return $that->diffop($op) =~ m/^a?diff|min|max/;
+  $op = $that->diffop($op);
+  if ($op =~ /^min|avg/) {
+    return 'defined';
+  }
+  elsif ($op =~ m/^a?diff|max/) {
+    return 'best';
+  }
+  return 0;
 }
 
 ## $selector = $dprf->diffkbest()
@@ -392,13 +402,8 @@ sub trim {
     $dprf->SUPER::trim(%opts) or return undef;
   }
   else {
-    ##-- heuristic trimming
-    if ($dprf->diffpretrim()) {
-      ##-- pre-trim operand profiles
-      my %abkeys = map {($_=>undef)} (($pa ? @{$pa->which(%opts)} : qw()), ($pb ? @{$pb->which(%opts)} : qw()));
-      $pa->trim(keep=>\%abkeys) if ($pa);
-      $pb->trim(keep=>\%abkeys) if ($pb);
-    }
+    ##-- heuristic (pre-)trimming
+    $dprf->pretrim($pa,$pb,%opts);
     $dprf->populate();
     $dprf->SUPER::trim(%opts);
   }
@@ -411,6 +416,28 @@ sub trim {
   return $dprf;
 }
 
+## ($pa,$pb) = $CLASS_OR_OBJECT->pretrim($pa,$pb,%opts)
+##   + perform pre-trimming on aligned profile pair ($pa,$pb)
+sub pretrim {
+  my ($that,$pa,$pb,%opts) = @_;
+  my $pretrim = $that->diffpretrim($opts{diff});
+
+  if ($pretrim eq 'kbest') {
+    ##-- pre-trim: union of k-best collocates
+    my %keep = map {($_=>undef)} (($pa ? @{$pa->which(%opts)} : qw()), ($pb ? @{$pb->which(%opts)} : qw()));
+    $pa->trim(keep=>\%keep);
+    $pb->trim(keep=>\%keep);
+  }
+  elsif ($pretrim eq 'defined') {
+    my @drop = (
+		($pa ? (grep {!exists $pa->{f12}{$_}} keys %{$pb->{f12}}) : qw()),
+		($pb ? (grep {!exists $pb->{f12}{$_}} keys %{$pa->{f12}}) : qw()),
+	       );
+    $pa->trim(drop=>\@drop) if ($pa);
+    $pb->trim(drop=>\@drop) if ($pb);
+  }
+  return ($pa,$pb);
+}
 
 ##==============================================================================
 ## Stringification

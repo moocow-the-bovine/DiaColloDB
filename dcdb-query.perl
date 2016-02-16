@@ -8,7 +8,7 @@ use Pod::Usage;
 use File::Basename qw(basename);
 use strict;
 
-#use DiaColloDB::Relation::TDF; ##-- DEBUG
+use DiaColloDB::Relation::TDF; ##-- DEBUG
 
 BEGIN {
   select STDERR; $|=1; select STDOUT;
@@ -162,14 +162,15 @@ $query{bquery} = @ARGV ? shift : $query{query};
 $rel  = "d$rel" if ($isDiff);
 
 ##-- DEBUG queries
-if (0 && $query{query} eq 'debug') {
+if (1 && $query{query} eq 'debug') {
   #$query{query} = '$p=NN !#has[textClass,/politik/i]';
   #$query{query} = 'Mann #has[textClass,/zeitung/i]';
   #$query{query} = '* #has[textClass,/Zeitung/i]';
   #$query{query} = 'Katze && Maus';
   #$query{query} = '* #has[genre,/Zeitung/]';
   #$query{query} = 'Katze && Maus && Hund';
-  ;
+  ##
+  ($isDiff,$rel,@query{qw(query bquery slice diff groupby)}) = (1,'dtdf','* #has[author,/Habermas/]','* #has[author,/Cassirer/]',0,'min','l,p=NN');
 }
 ##--/DEBUG queries
 
