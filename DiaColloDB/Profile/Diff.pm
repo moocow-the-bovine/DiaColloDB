@@ -263,17 +263,17 @@ sub diffsub {
 ## $how = $dprf->diffpretrim()
 ## $how = $CLASS_OR_OBJECT->diffpretrim($opNameOrAlias)
 ##  + returns if and how diff should pre-trim operand profiles: one of:
-##    0         : don't pre-trim
-##    'defined' : intersect defined collocates
-##    'best'    : union of k-best collocates
+##    0          : don't pre-trim
+##    'restrict' : intersect defined collocates
+##    'kbest'    : union of k-best collocates
 sub diffpretrim {
   my ($that,$op) = @_;
   $op = $that->diffop($op);
   if ($op =~ /^min|avg/) {
-    return 'defined';
+    return 'restrict';
   }
   elsif ($op =~ m/^a?diff|max/) {
-    return 'best';
+    return 'kbest';
   }
   return 0;
 }
@@ -428,13 +428,13 @@ sub pretrim {
     $pa->trim(keep=>\%keep);
     $pb->trim(keep=>\%keep);
   }
-  elsif ($pretrim eq 'defined') {
+  elsif ($pretrim eq 'restrict' && $pa && $pb) {
     my @drop = (
-		($pa ? (grep {!exists $pa->{f12}{$_}} keys %{$pb->{f12}}) : qw()),
-		($pb ? (grep {!exists $pb->{f12}{$_}} keys %{$pa->{f12}}) : qw()),
+		(grep {!exists $pa->{f12}{$_}} keys %{$pb->{f12}}),
+		(grep {!exists $pb->{f12}{$_}} keys %{$pa->{f12}}),
 	       );
-    $pa->trim(drop=>\@drop) if ($pa);
-    $pb->trim(drop=>\@drop) if ($pb);
+    $pa->trim(drop=>\@drop);
+    $pb->trim(drop=>\@drop);
   }
   return ($pa,$pb);
 }
