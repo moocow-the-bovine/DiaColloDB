@@ -26,6 +26,7 @@ WriteMakefile
 		    'DB_File' => 0,  ##-- for temporary hashes; 1.831
 		    ##
 		    ##-- for vector-semantic models (Vsem)
+		    'PDL' => '2.007', ##-- dist:2.007, local:2.014
 		    'PDL::CCS' => '1.23.1',
 		    'PDL::VectorValued' => '1.0.5',
 		    'Tie::File::Indexed' => '0.04',
