@@ -75,8 +75,10 @@ and supports the L<DiaColloDB::Document|DiaColloDB::Document> API.
 %args, object structure:
 
  ##-- parsing options
- eosre => $re,       ##-- EOS regex (empty or undef for file-breaks only; default='^$')
- utf8  => $bool,     ##-- enable utf8 parsing? (default=1)
+ eosre => $re,        ##-- EOS regex (empty or undef for file-breaks only; default='^$')
+ utf8  => $bool,      ##-- enable utf8 parsing? (default=1)
+ trimAuthor => $bool, ##-- trim "author" meta-attribute (eliminate DTA PNDs)? (default=1)
+ trimGenre  => $bool, ##-- trim/create trimmed "genre" meta-attribute? (default=1)
  ##
  ##-- document data
  date   =>$date,     ##-- year

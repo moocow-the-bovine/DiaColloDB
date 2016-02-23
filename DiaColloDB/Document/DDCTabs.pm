@@ -20,8 +20,10 @@ our @ISA = qw(DiaColloDB::Document);
 ## + %args, object structure:
 ##   (
 ##    ##-- parsing options
-##    eosre => $re,       ##-- EOS regex (empty or undef for file-breaks only; default='^$')
-##    utf8  => $bool,     ##-- enable utf8 parsing? (default=1)
+##    eosre => $re,        ##-- EOS regex (empty or undef for file-breaks only; default='^$')
+##    utf8  => $bool,      ##-- enable utf8 parsing? (default=1)
+##    trimAuthor => $bool, ##-- trim "author" meta-attribute (eliminate DTA PNDs)? (default=1)
+##    trimGenre  => $bool, ##-- create trimmed "genre" meta-attribute? (default=1)
 ##    ##
 ##    ##-- document data
 ##    date   =>$date,     ##-- year
@@ -31,7 +33,7 @@ our @ISA = qw(DiaColloDB::Document);
 ##    pagef  =>$ipage,    ##-- index-field for $page attribute (default=undef:none)
 ##    tokens =>\@tokens,  ##-- tokens, including undef for EOS
 ##    meta   =>\%meta,    ##-- document metadata (e.g. author, title, collection, ...)
-##                        ##   + also generates special $meta->{genre} as 1st component of $meta->{textClass} if available
+##                        ##   + may also generate special $meta->{genre} as 1st component of $meta->{textClass} if available
 ##   )
 ## + each token in @tokens is a HASH-ref {w=>$word,p=>$pos,l=>$lemma,...}
 ## + default attribute positions ($iw,$ip,$il,$ipage) are overridden doc lines '%%$DDC:index[INDEX]=LONGNAME w' etc if present
@@ -39,6 +41,8 @@ sub new {
   my $that = shift;
   my $doc  = $that->SUPER::new(
 			       utf8=>1,
+			       trimAuthor=>1,
+			       trimGenre=>1,
 			       eosre=>qr{^$},
 			       wf=>0,
 			       pf=>1,
@@ -131,9 +135,14 @@ sub fromFile {
   }
   push(@$tokens,$eos) if (!$last_was_eos);
 
-  ##-- hack: compute top-level $meta->{genre} from $meta->{textClass} if required
-  ($meta->{genre} = $meta->{textClass}) =~ s/\:.*$//
-    if (defined($meta->{textClass}) && !defined($meta->{genre}));
+  ##-- hack: compute top-level $meta->{genre} from $meta->{textClass} if requested
+  $meta->{genre} //= $meta->{textClass};
+  $meta->{genre} =~ s/\:.*$//
+    if ($doc->{trimGenre} && defined($meta->{genre}));
+
+  ##-- hack: trim top-level $meta->{author} if requested
+  $meta->{author} =~ s/\s*\(.*$//
+    if ($doc->{trimAuthor} && defined($meta->{author}));
 
   $fh->close() if (!ref($file));
   return $doc;

@@ -4,19 +4,33 @@ ABSTRACT
     DiaColloDB - diachronic collocation database
 
 REQUIREMENTS
-    ddc-perl
+    DB_File
+        For handling large temporary hashes during index construction.
+
+    DDC::Concordance (formerly ddc-perl)
         Perl module for DDC client connections. Available from
         https://sourceforge.net/projects/ddc-concordance/files/ddc-perl/
 
-    ddc-perl-xs
+    DDC::XS (formerly ddc-perl-xs)
         XS wrappers for DDC query parsing. Available from
         https://sourceforge.net/projects/ddc-concordance/files/ddc-perl-xs/
 
-    File::Path
     File::Map
+    File::Path
+    File::Temp
     JSON
     IPC::Run
     Log::Log4perl
+    PDL Perl Data Language for fast fixed-size numeric data structures, used
+        by the TDF (term-document frequency matrix) relation type.
+
+    PDL::CCS
+        PDL module for sparse index-encoded matrices, used by the TDF
+        (term-document frequency matrix) relation type.
+
+    Tie::File::Indexed
+        For handling large (temporary) arrays during index creation.
+
     (a corpus to index or an existing index to query)
 
 DESCRIPTION
