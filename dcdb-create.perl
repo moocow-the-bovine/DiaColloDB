@@ -8,7 +8,7 @@ use Pod::Usage;
 use File::Basename qw(basename);
 use strict;
 
-use DiaColloDB::Relation::TDF; ##-- DEBUG
+#use DiaColloDB::Relation::TDF; ##-- DEBUG
 
 ##----------------------------------------------------------------------
 ## Globals
@@ -64,7 +64,7 @@ GetOptions(##-- general
 	   'list|l!' => \$listargs,
 	   'union|u|merge!' => \$union,
 	   'document-class|dclass|dc=s' => \$corpus{dclass},
-	   'document-option|docoption|do=s%' => \$corpus{dopts},
+	   'document-option|docoption|do|dO=s%' => \$corpus{dopts},
 	   'by-sentence|bysentence' => sub { $corpus{dopts}{eosre}='^$' },
 	   'by-paragraph|byparagraph' => sub { $corpus{dopts}{eosre}='^%%\$DDC:BREAK\.p=' },
 	   'by-doc|bydoc|by-file|byfile' => sub { $corpus{dopts}{eosre}='' },
