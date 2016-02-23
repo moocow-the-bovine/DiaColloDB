@@ -25,7 +25,7 @@ WriteMakefile
 		    'File::Map'     => 0,
 		    'DB_File' => 0,  ##-- for temporary hashes; 1.831
 		    ##
-		    ##-- for vector-semantic models (Vsem)
+		    ##-- for (term x document) models (TDF, formerly "Vsem")
 		    'PDL' => '2.007', ##-- dist:2.007, local:2.014
 		    'PDL::CCS' => '1.23.1',
 		    'PDL::VectorValued' => '1.0.5',

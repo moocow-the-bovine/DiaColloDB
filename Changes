@@ -4,6 +4,7 @@
 
 v0.08.002 Tue, 23 Feb 2016 10:51:02 +0100 moocow
 	* added Document::DDCTabs options trimGenre, trimAuthor
+	* added explicit PDL dependency in PREREQ_PM, trying to get cpantesters to fire correctly
 
 v0.08.001 Fri, 29 Jan 2016 12:35:44 +0100 moocow
 	* added co-occurrence profiles over (term x document) frequency matrix via DiaColloDB::Relation::TDF
