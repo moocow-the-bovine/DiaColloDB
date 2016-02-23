@@ -95,6 +95,7 @@ sub new {
 			       submax => 2**29,
 			       mquery => {
 					  'doc.genre' => '* #HAS[textClass,/^\Q__W2__\E/]',
+					  'doc.pnd'   => '* #has[author,/\Q__W2__\E/]',
 					 },
 			       minFreq => undef,
 			       minDocFreq => 4,

@@ -42,7 +42,7 @@ sub enum_check {
   my $i=0;
   my $ntrimmed=0;
   foreach $s (@$i2s) {
-    ++$ntrimmed if ($s =~ s/\s*\(.*$//);
+    ++$ntrimmed if ($s =~ s/\s*\([^\)]*\)//g);
     $s2i{$s} = $i++;
   }
   my $norig = @$i2s;

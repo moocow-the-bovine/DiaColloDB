@@ -22,6 +22,7 @@ our @ISA = qw(DiaColloDB::Document);
 ##    ##-- parsing options
 ##    eosre => $re,        ##-- EOS regex (empty or undef for file-breaks only; default='^$')
 ##    utf8  => $bool,      ##-- enable utf8 parsing? (default=1)
+##    trimPND    => $bool, ##-- create trimmed "pnd" meta-attribute? (default=1)
 ##    trimAuthor => $bool, ##-- trim "author" meta-attribute (eliminate DTA PNDs)? (default=1)
 ##    trimGenre  => $bool, ##-- create trimmed "genre" meta-attribute? (default=1)
 ##    ##
@@ -41,6 +42,7 @@ sub new {
   my $that = shift;
   my $doc  = $that->SUPER::new(
 			       utf8=>1,
+			       trimPND=>1,
 			       trimAuthor=>1,
 			       trimGenre=>1,
 			       eosre=>qr{^$},
@@ -140,8 +142,15 @@ sub fromFile {
   $meta->{genre} =~ s/\:.*$//
     if ($doc->{trimGenre} && defined($meta->{genre}));
 
+  ##-- hack: compute/trim top-level $meta->{pnd} if requested
+  $meta->{pnd} //= $meta->{author};
+  if ($doc->{trimPND} && defined($meta->{pnd})) {
+    $meta->{pnd} = join(' ', ($meta->{pnd} =~ m/\#[0-9a-zA-Z]+/g));
+    delete($meta->{pnd}) if (($meta->{pnd}//'') eq '');
+  }
+
   ##-- hack: trim top-level $meta->{author} if requested
-  $meta->{author} =~ s/\s*\(.*$//
+  $meta->{author} =~ s/\s*\([^\)]*\)$//
     if ($doc->{trimAuthor} && defined($meta->{author}));
 
   $fh->close() if (!ref($file));
