@@ -2,6 +2,9 @@
 ##
 ## Change log for perl distribution DiaColloDB
 
+pending Wed, 24 Feb 2016 10:07:46 +0100 mocoow
+	* added missing PODs to MANIFEST
+
 v0.08.002 Tue, 23 Feb 2016 10:51:02 +0100 moocow
 	* added Document::DDCTabs options trimGenre, trimAuthor
 	* added explicit PDL dependency in CONFIGURE_REQUIRES + PREREQ_PM: try to be cpantesters-friendly (see RT bug #112321)
