@@ -6,6 +6,7 @@ ABSTRACT
 REQUIREMENTS
     DB_File
         For handling large temporary hashes during index construction.
+        Available from CPAN.
 
     DDC::Concordance (formerly ddc-perl)
         Perl module for DDC client connections. Available from CPAN, or via
