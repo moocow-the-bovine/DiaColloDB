@@ -2,6 +2,19 @@
 use ExtUtils::MakeMaker;
 
 ##----------------------------------------------------------------------
+## PDL-dependencies (for CONFIGURE_REQUIRES)
+my %pdl_deps = (
+		'PDL' => '2.007', ##-- dist:2.007, local:2.014
+		'PDL::CCS' => '1.23.1',
+		'PDL::VectorValued' => '1.0.5',
+	       );
+
+##-- disable PDL-Utils build if PDL isn't installed
+eval "use PDL;";
+my $HAVE_PDL = defined($PDL::VERSION);
+warn("$0 WARNING: PDL module is missing or broken, TDF relation will be disabled!") if (!$HAVE_PDL);
+
+##----------------------------------------------------------------------
 ## MAIN
 ##----------------------------------------------------------------------
 WriteMakefile
@@ -24,18 +37,22 @@ WriteMakefile
 		    'File::Spec'    => 0,
 		    'File::Map'     => 0,
 		    'DB_File' => 0,  ##-- for temporary hashes; 1.831
+		    'Tie::File::Indexed' => '0.04', ##-- for temporary object arrays
 		    ##
 		    ##-- for (term x document) models (TDF, formerly "Vsem")
-		    'PDL' => '2.007', ##-- dist:2.007, local:2.014
-		    'PDL::CCS' => '1.23.1',
-		    'PDL::VectorValued' => '1.0.5',
-		    'Tie::File::Indexed' => '0.04',
+		    %pdl_deps,
 		   },
+   CONFIGURE_REQUIRES => {
+			  'ExtUtils::MakeMaker' => 6.52, ##-- for CONFIGURE_REQUIRES
+			  %pdl_deps,
+			 },
 
 
    EXE_FILES => [ glob('dcdb-*.perl'), ],
+   ##
    #NORECURS  => 1, ##-- don't recurse into local 'MUDL' mirror dir
-   DIR => [ 'PDL-Utils' ],
+   ##
+   DIR => [ ($HAVE_PDL ? 'PDL-Utils' : qw()) ],
   );
 
 ##-----------------------------------------------------------------------

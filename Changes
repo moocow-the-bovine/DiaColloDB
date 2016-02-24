@@ -4,7 +4,8 @@
 
 v0.08.002 Tue, 23 Feb 2016 10:51:02 +0100 moocow
 	* added Document::DDCTabs options trimGenre, trimAuthor
-	* added explicit PDL dependency in PREREQ_PM, trying to get cpantesters to fire correctly
+	* added explicit PDL dependency in CONFIGURE_REQUIRES + PREREQ_PM: try to be cpantesters-friendly (see RT bug #112321)
+	* added manual check for PDL in Makefile.PL: disable PDL-Utils/ subdir build if PDL isn't installed
 
 v0.08.001 Fri, 29 Jan 2016 12:35:44 +0100 moocow
 	* added co-occurrence profiles over (term x document) frequency matrix via DiaColloDB::Relation::TDF

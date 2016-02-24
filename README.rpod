@@ -14,44 +14,76 @@ DiaColloDB - diachronic collocation database
 =item DB_File
 
 For handling large temporary hashes during index construction.
+Available from CPAN.
 
 =item DDC::Concordance (formerly ddc-perl)
 
 Perl module for DDC client connections.
-Available from https://sourceforge.net/projects/ddc-concordance/files/ddc-perl/
+Available from CPAN,
+or via SVN from L<https://svn.code.sf.net/p/ddc-concordance/code/ddc-perl/trunk>
 
 =item DDC::XS (formerly ddc-perl-xs)
 
 XS wrappers for DDC query parsing.
-Available from https://sourceforge.net/projects/ddc-concordance/files/ddc-perl-xs/
+Available from CPAN,
+or via SVN from L<https://svn.code.sf.net/p/ddc-concordance/code/ddc-perl-xs/trunk>
 
 =item File::Map
 
+Available from CPAN.
+
 =item File::Path
+
+Available from CPAN.
 
 =item File::Temp
 
+Available from CPAN.
+
 =item JSON
+
+Available from CPAN.
 
 =item IPC::Run
 
+Available from CPAN.
+
 =item Log::Log4perl
+
+Available from CPAN.
 
 =item PDL
 
+(optional)
+
 Perl Data Language for fast fixed-size numeric data structures,
-used by the TDF (term-document frequency matrix) relation type.
+used by the TDF (term-document frequency matrix) relation type,
+available from CPAN.
+
+It should still be possible to build, install, and run the DiaColloDB distribution
+on a system without PDL installed, but use of the
+the TDF (term x document) matrix relation type will be disabled.
 
 =item PDL::CCS
 
+(optional)
+
 PDL module for sparse index-encoded matrices,
-used by the TDF (term-document frequency matrix) relation type.
+used by the TDF (term-document frequency matrix) relation type,
+available from CPAN.
+See the caveats under L<PDL|/PDL>.
 
 =item Tie::File::Indexed
 
-For handling large (temporary) arrays during index creation.
+For handling large (temporary) arrays during index creation,
+available from CPAN.
 
 =item (a corpus to index or an existing index to query)
+
+Currently, only the ddc_dump "tabs" format is supported for corpus
+indexing.  Additional formats can be supported by
+implementing a subclass of L<DiaColloDB::Document|DiaColloDB::Document> forp
+parsing input documents.
 
 =back
 
@@ -79,11 +111,11 @@ Issue the following commands to the shell:
 
 =item *
 
-http://kaskade.dwds.de/dstar/dta/diacollo/ contains a live web demo of
-a DiaCollo index on the I<Deutsches Textarchiv> corpus, including a
-user-oriented help page.
+L<http://kaskade.dwds.de/dstar/dta/diacollo/> contains a live web demo of
+a DiaCollo index on the I<Deutsches Textarchiv> corpus of historical German, including a
+user-oriented help page (in English).
 
-=for html See <a href="http://kaskade.dwds.de/dstar/dta/diacollo/">here</a>.
+See L<http://kaskade.dwds.de/dstar/dta/diacollo/>.
 
 =back
 
