@@ -9,6 +9,7 @@ use File::Basename qw(basename);
 use strict;
 
 #use DiaColloDB::Relation::TDF; ##-- DEBUG
+#use DiaColloDB::Document::TCF; ##-- DEBUG
 
 ##----------------------------------------------------------------------
 ## Globals

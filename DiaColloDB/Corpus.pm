@@ -68,7 +68,21 @@ sub open {
 
   ##-- setup document-class
   my $dclass = $corpus->{dclass} || 'DDCTabs';
-  $dclass = $corpus->{dclass} = "DiaColloDB::Document::$dclass" if (!UNIVERSAL::isa($dclass,'DiaColloDB::Document'));
+  foreach my $prefix ('','DiaColloDB::','DiaColloDB::Document::') {
+    my $tryclass = $prefix.$dclass;
+    if (!UNIVERSAL::isa($tryclass,'DiaColloDB::Document')) {
+      ##-- try loading class
+      eval "use $tryclass;";
+    }
+    if (UNIVERSAL::isa($tryclass,'DiaColloDB::Document')) {
+      $dclass = $tryclass;
+      last;
+    }
+  }
+  $corpus->logwarn("open(): can't resolve DiaColloDB::Document subclass for {dclass} argument '$dclass'")
+    if (!UNIVERSAL::isa($dclass,'DiaColloDB::Document'));
+  $corpus->{dclass} = $dclass;
+  $corpus->info("using document parser class $corpus->{dclass}");
 
   return $corpus;
 }
