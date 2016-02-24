@@ -1,11 +1,15 @@
 ~$
+^todo\.txt$
+^reversion\.sh$
+^kant\b
+\b_Inline\b
 ^lda\b
 ^MYMETA\.
 ^README\.html$
 ^plots\b
 ^footer\.rpod$
-^Makefile$
-^pm_to_blib$
+\bMakefile$
+\bpm_to_blib$
 ^blib
 \bpod2htm[di]\.
 ^MYMETA\.
@@ -17,6 +21,9 @@
 \.old$
 \.log$
 \.out$
+\.o$
+\btestme$
+^PDL-Utils/.*\.(?:[co]|pm|xs|bs)$
 ^testme\.perl$
 \.(?:db|ttd|1g|types|i|d[0-9]?|d[ex]|dxd|bin|ng[0-5]|i[0-5]|cld|files|tabs|lab|kv|kvr|dat|rdat|tmp|export|[ls]|hdr|prf|xi)$
 ^cofgen

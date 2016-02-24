@@ -39,6 +39,7 @@ DiaColloDB/Logger.pod
 DiaColloDB/MultiMapFile.pm
 DiaColloDB/MultiMapFile.pod
 DiaColloDB/PDL/MM.pm
+DiaColloDB/PDL/MM.pod
 DiaColloDB/PackedFile.pm
 DiaColloDB/PackedFile.pod
 DiaColloDB/Persistent.pm
@@ -62,11 +63,17 @@ DiaColloDB/Relation/DDC.pod
 DiaColloDB/Relation/Unigrams.pm
 DiaColloDB/Relation/Unigrams.pod
 DiaColloDB/Relation/TDF.pm
+DiaColloDB/Relation/TDF.pod
 DiaColloDB/Relation/TDF/Query.pm
+DiaColloDB/Relation/TDF/Query.pod
 DiaColloDB/Temp.pm
+DiaColloDB/Temp.pod
 DiaColloDB/Temp/Array.pm
+DiaColloDB/Temp/Array.pod
 DiaColloDB/Temp/Hash.pm
+DiaColloDB/Temp/Hash.pod
 DiaColloDB/Temp/Vec.pm
+DiaColloDB/Temp/Vec.pod
 DiaColloDB/Timer.pm
 DiaColloDB/Timer.pod
 DiaColloDB/Utils.pm
