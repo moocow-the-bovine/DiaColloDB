@@ -41,6 +41,11 @@ DiaColloDB::Document::DDCTabs - diachronic collocation db, source document, DDC 
 
 =head1 DESCRIPTION
 
+DiaColloDB::Document::DDCTabs
+provides a L<DiaColloDB::Document|DiaColloDB::Document>-compliant API
+for parsing DDC tab-dump files as produced by C<ddc_dump --full --tabs>;
+see L<http://odo.dwds.de/~moocow/software/ddc/ddc_tabs.html> for details.
+
 =cut
 
 ##----------------------------------------------------------------
@@ -182,6 +187,7 @@ at your option, any later version of Perl 5 you may have available.
 
 =head1 SEE ALSO
 
+L<http://odo.dwds.de/~moocow/software/ddc/ddc_tabs.html>,
 L<DiaColloDB::Document(3pm)|DiaColloDB::Document>,
 L<DiaColloDB(3pm)|DiaColloDB>,
 L<perl(1)|perl>,
