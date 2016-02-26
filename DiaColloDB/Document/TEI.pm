@@ -176,8 +176,9 @@ sub fromFile {
     push(@$tokens,$w);
   }
   push(@$tokens,
-       ($eos && exists($break_final{$eos}) ? undef : qw()),
-       (map {"#$_"} sort keys %break_final));
+       (map {"#$_"} sort keys %break_final),
+       undef,  ##-- always push final eos
+      );
 
   return $doc;
 }
