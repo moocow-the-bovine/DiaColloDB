@@ -93,9 +93,10 @@ sub fromFile {
   }
 
   ##-- parse: sentences
+  @$tokens = ("#file"); ##-- always include '#file' break
   if (defined(my $xsents = [$xcorpus->getChildrenByLocalName('sentences')]->[0])) {
     foreach ($xsents->getChildrenByLocalName('sentence')) {
-      push(@$tokens, @id2w{split(' ',$_->getAttribute('tokenIDs'))}, undef);
+      push(@$tokens, "#s", @id2w{split(' ',$_->getAttribute('tokenIDs'))}, undef);
     }
   } else {
     @$tokens = @w;
