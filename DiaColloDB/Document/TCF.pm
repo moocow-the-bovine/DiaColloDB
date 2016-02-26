@@ -1,7 +1,7 @@
 ## -*- Mode: CPerl -*-
-## File: DiaColloDB::Document::DDCTabs.pm
+## File: DiaColloDB::Document::TCF.pm
 ## Author: Bryan Jurish <moocow@cpan.org>
-## Description: collocation db, source document, DDC tab-dump
+## Description: collocation db, source document, TCF format (tokens, sentences, postags, lemmas)
 
 package DiaColloDB::Document::TCF;
 use DiaColloDB::Document;
