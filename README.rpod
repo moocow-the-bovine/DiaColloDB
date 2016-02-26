@@ -80,9 +80,9 @@ available from CPAN.
 
 =item (a corpus to index or an existing index to query)
 
-Currently, only the ddc_dump "tabs" format is supported for corpus
-indexing.  Additional formats can be supported by
-implementing a subclass of L<DiaColloDB::Document|DiaColloDB::Document> forp
+See L<DiaColloDB::Document/SUBCLASSES> for a list of currently supported document formats.
+Additional formats can be supported by
+implementing a subclass of L<DiaColloDB::Document|DiaColloDB::Document> for
 parsing input documents.
 
 =back

@@ -59,9 +59,10 @@ REQUIREMENTS
         available from CPAN.
 
     (a corpus to index or an existing index to query)
-        Currently, only the ddc_dump "tabs" format is supported for corpus
-        indexing. Additional formats can be supported by implementing a
-        subclass of DiaColloDB::Document forp parsing input documents.
+        See "SUBCLASSES" in DiaColloDB::Document for a list of currently
+        supported document formats. Additional formats can be supported by
+        implementing a subclass of DiaColloDB::Document for parsing input
+        documents.
 
 DESCRIPTION
     The DiaColloDB package provides a set of object-oriented Perl modules

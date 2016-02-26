@@ -38,6 +38,7 @@ WriteMakefile
 		    'File::Map'     => 0,
 		    'DB_File' => 0,  ##-- for temporary hashes; 1.831
 		    'Tie::File::Indexed' => '0.04', ##-- for temporary object arrays
+		    'XML::LibXML' => '1.70',	    ##-- for XML-based input formats (TCF, TEI)
 		    ##
 		    ##-- for (term x document) models (TDF, formerly "Vsem")
 		    %pdl_deps,
