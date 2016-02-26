@@ -76,7 +76,7 @@ sub fromFile {
     }
   }
 
-  ##-- parse: date;
+  ##-- parse: date
   ($doc->{date} = $meta->{date} // $meta->{date_} // 0) =~ s/^[^0-9]*([0-9]+)[^0-9].*$//;
 
   ##-- parse: corpus

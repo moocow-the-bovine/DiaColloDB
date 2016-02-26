@@ -2,9 +2,12 @@
 ##
 ## Change log for perl distribution DiaColloDB
 
-pending Wed, 24 Feb 2016 10:07:46 +0100 mocoow
+v0.08.003 Fri, 26 Feb 2016 15:14:43 +0100 moocow
 	* added missing PODs to MANIFEST
-	* added basic DiaColloDB::Document::TCF support (attributes {w,p,l} only; metadata from abused <source> element)
+	* added more DiaColloDB::Document subclasses:
+	  - DiaColloDB::Document::JSON - raw JSON dump
+	  - DiaColloDB::Document::TCF - CLARIN-D TCF (attributes {w,p,l} only; metadata from abused <source> element)
+	  - DiaColloDB::Document::TEI - basic TEI-like XML (flexible but slow)
 
 v0.08.002 Tue, 23 Feb 2016 10:51:02 +0100 moocow
 	* added Document::DDCTabs options trimGenre, trimAuthor

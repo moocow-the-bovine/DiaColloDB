@@ -132,7 +132,9 @@ sub fromFile {
     next if (!defined($nods = $xpc->findnodes($xp, $xroot)));
     $meta->{$akey} = join(':', map {nodval($_)} @$nods) if (@$nods);
   }
-  $doc->{date} = nodval($xpc->findnodes($doc->{tei_date}, $xroot)) // 0;
+  ##-- parse: date (integer values only)
+  $doc->{date}  = nodval($xpc->findnodes($doc->{tei_date}, $xroot));
+  ($doc->{date} //= $meta->{date} // $meta->{date_} // 0) =~ s/^[^0-9]*([0-9]+)[^0-9].*$//;
 
   ##-- parse: tokens
   my %key2w = qw(); ## $key => \%w ; additional keys "n_"=>$w_pos
