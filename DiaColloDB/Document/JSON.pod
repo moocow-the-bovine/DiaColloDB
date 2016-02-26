@@ -7,7 +7,7 @@
 
 =head1 NAME
 
-DiaColloDB::Document::DDCTabs - diachronic collocation db, source document, DDC tab-dump
+DiaColloDB::Document::JSON - diachronic collocation db, source document, raw JSON
 
 =cut
 
@@ -20,7 +20,7 @@ DiaColloDB::Document::DDCTabs - diachronic collocation db, source document, DDC 
  ##========================================================================
  ## PRELIMINARIES
  
- use DiaColloDB::Document::DDCTabs;
+ use DiaColloDB::Document::JSON;
  
  ##========================================================================
  ## Constructors etc.
@@ -41,10 +41,16 @@ DiaColloDB::Document::DDCTabs - diachronic collocation db, source document, DDC 
 
 =head1 DESCRIPTION
 
+DiaColloDB::Document::JSON
+provides a L<DiaColloDB::Document|DiaColloDB::Document>-compliant API
+for parsing corpus files in raw L<JSON|http://www.json.org> format,
+assuming the stored data maps 1:1 onto the
+L<DiaColloDB::Document|DiaColloDB::Document> structure.
+
 =cut
 
 ##----------------------------------------------------------------
-## DESCRIPTION: DiaColloDB::Document::DDCTabs: Globals & Constants
+## DESCRIPTION: DiaColloDB::Document::JSON: Globals & Constants
 =pod
 
 =head2 Globals & Constants
@@ -53,7 +59,7 @@ DiaColloDB::Document::DDCTabs - diachronic collocation db, source document, DDC 
 
 =item Variable: @ISA
 
-DiaColloDB::Document::DDCTabs inherits from L<DiaColloDB::Document|DiaColloDB::Document>
+DiaColloDB::Document::JSON inherits from L<DiaColloDB::Document|DiaColloDB::Document>
 and supports the L<DiaColloDB::Document|DiaColloDB::Document> API.
 
 =back
@@ -61,7 +67,7 @@ and supports the L<DiaColloDB::Document|DiaColloDB::Document> API.
 =cut
 
 ##----------------------------------------------------------------
-## DESCRIPTION: DiaColloDB::Document::DDCTabs: Constructors etc.
+## DESCRIPTION: DiaColloDB::Document::JSON: Constructors etc.
 =pod
 
 =head2 Constructors etc.
@@ -74,18 +80,8 @@ and supports the L<DiaColloDB::Document|DiaColloDB::Document> API.
 
 %args, object structure:
 
- ##-- parsing options
- eosre => $re,        ##-- EOS regex (empty or undef for file-breaks only; default='^$')
- utf8  => $bool,      ##-- enable utf8 parsing? (default=1)
- trimAuthor => $bool, ##-- trim "author" meta-attribute (eliminate DTA PNDs)? (default=1)
- trimGenre  => $bool, ##-- create trimmed "genre" meta-attribute? (default=1)
- trimPND    => $bool, ##-- create trimmed "pnd" meta-attribute? (default=1)
- ##
  ##-- document data
  date   =>$date,     ##-- year
- wf     =>$iw,       ##-- index-field for $word attribute (default=0)
- pf     =>$ip,       ##-- index-field for $pos attribute (default=1)
- lf     =>$il,       ##-- index-field for $lemma attribute (default=2)
  tokens =>\@tokens,  ##-- tokens, including undef for EOS
  meta   =>\%meta,    ##-- document metadata (e.g. author, title, collection, ...)
 
@@ -96,7 +92,7 @@ Each token in @tokens is a HASH-ref {w=E<gt>$word,p=E<gt>$pos,l=E<gt>$lemma,...}
 =cut
 
 ##----------------------------------------------------------------
-## DESCRIPTION: DiaColloDB::Document::DDCTabs: API: I/O: parse
+## DESCRIPTION: DiaColloDB::Document::JSON: API: I/O: parse
 =pod
 
 =head2 API: I/O: parse
@@ -108,7 +104,7 @@ Each token in @tokens is a HASH-ref {w=E<gt>$word,p=E<gt>$pos,l=E<gt>$lemma,...}
  $bool = $doc->fromFile($filename_or_fh, %opts);
 
 parse tokens from $filename_or_fh.
-%opts: clobbers %$doc
+%opts: clobbers %$doc.
 
 =back
 
@@ -125,41 +121,114 @@ parse tokens from $filename_or_fh.
 
 The following is an example file in the format accepted by this module:
 
- %%$DDC:meta.date_=2016-02-25
- %%$DDC:meta.author=Jurish, Bryan
- %%$DDC:meta.collection=tiny
- %%$DDC:meta.textClass=dummy:test-data
- %%$DDC:meta.title=test document
- %%$DDC:BREAK.s=5
- %%$DDC:BREAK.p=11
- %%$DDC:BREAK.file=17
- %%$DDC:BREAK.textarea=17
- %%$DDC:index[0]=Token w
- %%$DDC:index[1]=Pos p
- %%$DDC:index[2]=Lemma l
- This	DT	this
- is	VBZ	be
- a	DT	a
- test	NN	test
- .	SENT	.
- 
- %%$DDC:BREAK.s=5
- This	DT	this
- is	VBZ	be
- only	RB	only
- a	DT	a
- test	NN	test
- .	SENT	.
- 
- %%$DDC:BREAK.s=11
- %%$DDC:BREAK.p=11
- This	DT	this
- is	VBZ	be
- still	RB	still
- a	DT	a
- test	NN	test
- .	SENT	.
- 
+ {
+    "date" : "2016",
+    "meta" : {
+       "author" : "Jurish, Bryan",
+       "collection" : "tiny",
+       "date_" : "2016-02-25",
+       "genre" : "dummy",
+       "textClass" : "dummy:test-data",
+       "title" : "test document"
+    },
+    "tokens" : [
+       "#s",
+       "#p",
+       "#file",
+       {
+          "l" : "this",
+          "p" : "DT",
+          "w" : "This"
+       },
+       {
+          "l" : "be",
+          "p" : "VBZ",
+          "w" : "is"
+       },
+       {
+          "l" : "a",
+          "p" : "DT",
+          "w" : "a"
+       },
+       {
+          "l" : "test",
+          "p" : "NN",
+          "w" : "test"
+       },
+       {
+          "l" : ".",
+          "p" : "SENT",
+          "w" : "."
+       },
+       null,
+       "#s",
+       {
+          "l" : "this",
+          "p" : "DT",
+          "w" : "This"
+       },
+       {
+          "l" : "be",
+          "p" : "VBZ",
+          "w" : "is"
+       },
+       {
+          "l" : "only",
+          "p" : "RB",
+          "w" : "only"
+       },
+       {
+          "l" : "a",
+          "p" : "DT",
+          "w" : "a"
+       },
+       {
+          "l" : "test",
+          "p" : "NN",
+          "w" : "test"
+       },
+       {
+          "l" : ".",
+          "p" : "SENT",
+          "w" : "."
+       },
+       null,
+       "#s",
+       "#p",
+       {
+          "l" : "this",
+          "p" : "DT",
+          "w" : "This"
+       },
+       {
+          "l" : "be",
+          "p" : "VBZ",
+          "w" : "is"
+       },
+       {
+          "l" : "still",
+          "p" : "RB",
+          "w" : "still"
+       },
+       {
+          "l" : "a",
+          "p" : "DT",
+          "w" : "a"
+       },
+       {
+          "l" : "test",
+          "p" : "NN",
+          "w" : "test"
+       },
+       {
+          "l" : ".",
+          "p" : "SENT",
+          "w" : "."
+       },
+       null
+    ]
+ }
+
 
 =cut
 
@@ -174,7 +243,7 @@ Bryan Jurish E<lt>moocow@cpan.orgE<gt>
 
 =head1 COPYRIGHT AND LICENSE
 
-Copyright (C) 2015-2016 by Bryan Jurish
+Copyright (C) 2016 by Bryan Jurish
 
 This package is free software; you can redistribute it and/or modify
 it under the same terms as Perl itself, either Perl version 5.14.2 or,
