@@ -411,6 +411,9 @@ sub toPdl {
   }
   defined($pdl) or $pf->logconfess("toPdl(): failed to ".($opts{mmap} ? "mmap" : "read")." file $pf->{file} as PDL data of type $opts{type}: $!");
   $opts{swap}->($pdl) if (UNIVERSAL::isa($opts{swap},'CODE'));
+  !-e $hfile
+    or CORE::unlink($hfile)
+    or $pf->logconfess("toPdl(): failed to unlink temporary PDL header '$hfile': $!");
   return $pdl;
 }
 
