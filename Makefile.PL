@@ -26,18 +26,21 @@ WriteMakefile
    LICENSE      => 'perl',
 
    PREREQ_PM    => {
+		    'DB_File' => 0,  ##-- for temporary hashes; 1.831
 		    'DDC::Concordance' => 0.18, ##-- no functional changes from v0.18 to v0.20
 		    'DDC::XS'       => 0.05,
-		    'File::Path'    => 0,  ##-- make_tree, remove_path; 2.08_01
+		    'File::Find'    => 0,
 		    'File::Map'     => 0,  # 0.63
-		    'JSON'          => 0,  # 2.53
-		    'IPC::Run'      => 0,  # 0.94
-		    'Log::Log4perl' => 1.07,   # 1.29
-		    'File::Temp'    => 0,
+		    'File::Path'    => 0,  ##-- make_tree, remove_path; 2.08_01
 		    'File::Spec'    => 0,
-		    'File::Map'     => 0,
-		    'DB_File' => 0,  ##-- for temporary hashes; 1.831
+		    'File::Temp'    => 0,
+		    'Getopt::Long'  => 0,
+		    'IPC::Run'      => 0,  # 0.94
+		    'JSON'          => 0,  # 2.53
+		    'Log::Log4perl' => 1.07,   # 1.29
+		    'LWP::UserAgent' => 0, ##-- 6.06, for http client-mode
 		    'Tie::File::Indexed' => '0.04', ##-- for temporary object arrays
+		    'Time::HiRes' => 0,		    ##-- for runtime profiling
 		    'XML::LibXML' => '1.70',	    ##-- for XML-based input formats (TCF, TEI)
 		    ##
 		    ##-- for (term x document) models (TDF, formerly "Vsem")
