@@ -170,7 +170,8 @@ if (1 && $query{query} eq 'debug') {
   #$query{query} = '* #has[genre,/Zeitung/]';
   #$query{query} = 'Katze && Maus && Hund';
   ##
-  ($isDiff,$rel,@query{qw(query bquery slice diff groupby)}) = (1,'dtdf','* #has[author,/Habermas/]','* #has[author,/Cassirer/]',0,'min','l,p=NN');
+  #($isDiff,$rel,@query{qw(query bquery slice diff groupby)}) = (1,'dtdf','* #has[author,/Habermas/]','* #has[author,/Cassirer/]',0,'min','l,p=NN');
+  ($isDiff,$rel,@query{qw(query bquery slice adate bdate)}) = (1,'d2','Bewegung','Bewegung',0,'1900:1910','1990:2000');
 }
 ##--/DEBUG queries
 

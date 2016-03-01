@@ -425,8 +425,8 @@ sub pretrim {
   if ($pretrim eq 'kbest') {
     ##-- pre-trim: union of k-best collocates
     my %keep = map {($_=>undef)} (($pa ? @{$pa->which(%opts)} : qw()), ($pb ? @{$pb->which(%opts)} : qw()));
-    $pa->trim(keep=>\%keep);
-    $pb->trim(keep=>\%keep);
+    $pa->trim(keep=>\%keep) if ($pa);
+    $pb->trim(keep=>\%keep) if ($pb);
   }
   elsif ($pretrim eq 'restrict' && $pa && $pb) {
     my @drop = (
