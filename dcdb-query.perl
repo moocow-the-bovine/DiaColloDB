@@ -215,12 +215,13 @@ __END__
 ###############################################################
 ## pods
 ###############################################################
-
 =pod
+
+=encoding utf8
 
 =head1 NAME
 
-dcdb-query.perl - query a DiaColloDB
+dcdb-query.perl - query a DiaColloDB diachronic collocation database
 
 =head1 SYNOPSIS
 
@@ -232,12 +233,8 @@ dcdb-query.perl - query a DiaColloDB
    -[no]time             # do/don't report operation timing (default=do)
    -iters NITERS         # benchmark NITERS iterations of query
 
- DiaColloDB Options:
-   -log-level LEVEL      # set minimum DiaColloDB log-level
-   -O KEY=VALUE          # set DiaColloDB::Client option
-
  Query Options:
-   -col, -ug, -ddc, -vs  # select profile type (collocations, unigrams, ddc client, vector-space; default=-col)
+   -col, -ug, -ddc, -tdf # select profile type (collocations, unigrams, ddc client, tdf matrix; default=-col)
    -(a|b)?date DATES     # set target DATE or /REGEX/ or MIN-MAX
    -(a|b)?slice SLICE    # set target date slice (default=1)
    -groupby GROUPBY      # set result aggregation (default=l)
@@ -245,10 +242,9 @@ dcdb-query.perl - query a DiaColloDB
    -nokbest              # disable k-best pruning
    -cutoff CUTOFF        # set minimum score for returned items (default=none)
    -nocutoff             # disable cutoff pruning
-   -eps EPS              # smoothing constant (default=0.5)
-   -diff DIFFOP          # diff operation (adiff|diff|sum|min|max|avg|havg|gavg; default=adiff)
    -[no]global           # do/don't trim profiles globally (vs. locally by date-slice; default=don't)
    -[no]strings          # debug: do/don't stringify returned profile (default=do)
+   -O KEY=VALUE          # set DiaColloDB::Client option
 
  Scoring Options:
    -f                    # score by raw frequency
@@ -259,6 +255,8 @@ dcdb-query.perl - query a DiaColloDB
    -mi3                  # score by pointwise mutual information^3 (Rychlý 2008)
    -ld                   # score by scaled log-Dice coefficient (Rychlý 2008)
    -ll                   # score by 1-sided log-likelihood ratio (Evert 2008)
+   -eps EPS              # smoothing constant (default=0.5)
+   -diff DIFFOP          # diff operation (adiff|diff|sum|min|max|avg|havg|gavg; default=adiff)
 
  I/O Options:
    -user USER[:PASSWD]   # user credentials for HTTP queries
@@ -266,6 +264,7 @@ dcdb-query.perl - query a DiaColloDB
    -json                 # use json output
    -null                 # don't output profile at all
    -[no]pretty           # do/don't pretty-print json output (default=do)
+   -log-level LEVEL      # set minimum DiaColloDB log-level
 
  Arguments:
    DBURL                # DB URL (file://, http://, or list:// ; query part sets local options)
@@ -283,11 +282,61 @@ dcdb-query.perl - query a DiaColloDB
 =cut
 
 ###############################################################
-## OPTIONS
+## DESCRIPTION
 ###############################################################
 =pod
 
-=head1 OPTIONS
+=head1 DESCRIPTION
+
+dcdb-query.perl
+is a command-line utility for querying a
+L<DiaColloDB|DiaColloDB> diachronic collocation database.
+
+=cut
+
+###############################################################
+## OPTIONS AND ARGUMENTS
+###############################################################
+=pod
+
+=head1 OPTIONS AND ARGUMENTS
+
+=cut
+
+###############################################################
+# Arguments
+###############################################################
+=pod
+
+=head2 Arguments
+
+=over 4
+
+=item DBURL
+
+URL identifying the L<DiaColloDB|DiaColloDB>
+database to be queried,
+in a form accepted by L<DiaColloDB::Client-E<gt>open()|DiaColloDB::Client/open>.
+In particular, I<DBURL> can be a local L<DiaColloDB|DiaColloDB> database directory,
+in which case it will be queried via
+the L<DiaColloDB::Client::file|DiaColloDB::Client::file> class.
+
+=item QUERY1
+
+Primary target query as accepted by
+L<DiaColloDB-E<gt>parseQuery|DiaColloDB/parseQuery>,
+usually a space-separated of target string(s) C<LIST>,
+a target C</REGEX/> or a DDC-query string.
+
+=item QUERY2
+
+Optional comparsion target query.
+If specified, a "diff" profile is computed
+as for L<DiaColloDB::compare()|DiaColloDB/compare>,
+otherwise a unary profile is computed
+as for L<DiaColloDB::profile()|DiaColloDB/profile>.
+
+=back
 
 =cut
 
@@ -308,32 +357,223 @@ Display a brief help message and exit.
 
 Display version information and exit.
 
-=item -verbose LEVEL
+=item -time
 
-Set verbosity level to LEVEL.  Default=1.
+=item -notime
+
+Do/don't report operation timing (default=do).
+
+=item -iters NITERS
+
+Benchmark NITERS iterations of query (default=1).
 
 =back
 
 =cut
 
-
 ###############################################################
-# Other Options
-###############################################################
+# Query Options
 =pod
 
-=head2 Other Options
+=head2 Query Options
 
 =over 4
 
-=item -someoptions ARG
+=item -col
 
-Example option.
+Request "collocation" profiling via L<DiaColloDB::Relation::Cofreqs|DiaColloDB::Relation::Cofreqs> (default).
+
+=item -ug
+
+Request "unigram" profiling via L<DiaColloDB::Relation::Unigrams|DiaColloDB::Relation::Unigrams>
+
+=item -ddc
+
+Request profiling via L<DiaColloDB::Relation::DDC|DiaColloDB::Relation::DDC>.
+Slow and generally inefficient, but very flexible.
+Requires that the underlying DB be associated with a DDC server,
+e.g. by means of the L<C<ddcServer>|DiaColloDB/new> DB key.
+
+=item -tdf
+
+Request (term x document) matrix profiling via L<DiaColloDB::Relation::TDF|DiaColloDB::Relation::TDF>.
+Requires TDF support in the underlying DB.
+
+=item -date DATES
+
+=item -adate DATES
+
+Set L<primary target|/QUERY1> date C<DATE> or C</REGEX/> or date-range C<MIN:MAX>.
+Either C<MIN> or or C<MAX> may be an asterisk (C<*>) to indicate the
+minimum rsp. maximum date indexed in the corpus.
+
+=item -bdate DATES
+
+As for L<-adate|/-adate DATES>, but specifies date for the
+L<comparison target|/QUERY2>.
+
+=item -slice SLICE
+
+=item -aslice SLICE
+
+Set the L<primary target|/QUERY1> date slice (default=1).
+
+=item -bslice SLICE
+
+Set the L<comparison target|/QUERY2> date slice (default=1).
+
+=item -groupby GROUPBY
+
+Aggregate collocates by the attributes specified in
+I<GROUPBY>, which should be a list of indexed attributes
+with optional restriction clauses as accepted by
+L<DiaColloDB-E<gt>parseQuery|DiaColloDB/parseQuery>,
+or (in L<-ddc|/-ddc> mode only) a DDC L<count-by list|http://odo.dwds.de/~moocow/software/ddc/ddc_query.html#rule_l_countkeys>
+enclosed in square brackets C<[ I<l_countkeys> ]>.
+
+=item -kbest KBEST
+
+Return only KBEST items per date-slice (default=10).
+
+=item -nokbest
+
+Disable k-best pruning.
+
+=item -cutoff CUTOFF
+
+Set minimum score for returned items (unary profiles only; default=none).
+
+=item -nocutoff
+
+Disable cutoff pruning.
+
+
+=item -[no]global
+
+Do/don't trim profiles globally (vs. locally by date-slice; default=don't).
+
+=item -[no]strings
+
+Debug: do/don't stringify returned profile (default=do).
+
+=item -O KEY=VALUE
+
+Set a L<DiaColloDB::Client|DiaColloDB::Client> option.
 
 =back
 
 =cut
 
+
+###############################################################
+# Scoring Options
+=pod
+
+=head2 Scoring Options
+
+See L<DiaColloDB::Profile|DiaColloDB::Profile> for supported scoring functions.
+
+=over 4
+
+=item -f
+
+score by raw frequency
+
+=item -lf
+
+score by log-frequency
+
+=item -fm
+
+score by frequency per million tokens
+
+=item -lfm
+
+score by log-frequency per million tokens
+
+=item -mi
+
+score by pointwise mutual information x log-frequency product
+
+=item -mi3
+
+score by pointwise mutual information^3 (Rychlý 2008)
+
+=item -ld
+
+score by scaled log-Dice coefficient (Rychlý 2008; default)
+
+=item -ll
+
+score by 1-sided log-likelihood ratio (Evert 2008)
+
+=item -eps EPS
+
+score function smoothing constant  (default=0.5)
+
+=item -diff DIFFOP
+
+diff operation to use for
+L<comparison profiles|/QUERY2>.
+Known values:
+
+ adiff  # absolute score difference (default)
+ diff   # raw score difference
+ sum    # sum
+ min    # minimum
+ max    # maximum
+ avg    # average
+ havg   # pseudo-harmonic average
+ gavg   # pseudo-geometric average
+
+=back
+
+=cut
+
+###############################################################
+# I/O and Logging Options
+=pod
+
+=head2 I/O and Logging Options
+
+=over 4 
+
+=item -user USER[:PASSWD]
+
+Specify user credentials for HTTP queries
+
+=item -text
+
+generate text output (default).
+
+=item -json
+
+generate json output.
+
+=item -html
+
+generate HTML output.
+
+=item -null
+
+don't output profile data at all (for timing and debugging).
+
+=item -[no]pretty
+
+do/don't pretty-print json output (default=do)
+
+=item -score-format FORMAT
+
+L<sprintf|perlfunc/sprintf>-format for score formatting,
+used by text and HTML output modes.
+
+=item -log-level LEVEL
+
+set minimum L<DiaColloDB::Logger|DiaColloDB::Logger> log-level.
+
+=back
+
+=cut
 
 ###############################################################
 # Bugs and Limitations
@@ -362,6 +602,10 @@ Bryan Jurish E<lt>moocow@cpan.orgE<gt>
 
 =head1 SEE ALSO
 
+L<DiaColloDB(3pm)|DiaColloDB>,
+L<dcdb-create.perl(1)|dcdb-create.perl>,
+L<dcdb-info.perl(1)|dcdb-info.perl>,
+L<dcdb-export.perl(1)|dcdb-export.perl>,
 perl(1).
 
 =cut

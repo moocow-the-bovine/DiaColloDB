@@ -78,7 +78,7 @@ __END__
 
 =head1 NAME
 
-dcdb-info.perl - get administrative info from a DiaColloDB database
+dcdb-info.perl - get administrative info from a DiaColloDB diachronic collocation database
 
 =head1 SYNOPSIS
 

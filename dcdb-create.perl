@@ -151,7 +151,7 @@ __END__
 
 =head1 NAME
 
-dcdb-create.perl - create a DiaColloDB collocation database from a corpus dump
+dcdb-create.perl - create a DiaColloDB diachronic collocation database
 
 =head1 SYNOPSIS
 

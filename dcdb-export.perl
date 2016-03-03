@@ -83,7 +83,7 @@ __END__
 
 =head1 NAME
 
-dcdb-export.perl - export a text representation of a DiaColloDB index
+dcdb-export.perl - export a text representation of a DiaColloDB diachronic collocation database
 
 =head1 SYNOPSIS
 
