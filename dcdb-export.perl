@@ -102,14 +102,50 @@ dcdb-export.perl - export a text representation of a DiaColloDB index
 
 =cut
 
+
 ###############################################################
-## OPTIONS
+## DESCRIPTION
 ###############################################################
 =pod
 
-=head1 OPTIONS
+=head1 DESCRIPTION
+
+dcdb-export.perl
+exports the L<DiaColloDB|DiaColloDB> database directory specified
+in the L<DBDIR|/DBDIR> argument as text to the
+output directory specified by the
+L<-output|/-output DIR> option.
+Mainly useful for debugging.
 
 =cut
+
+
+###############################################################
+## OPTIONS AND ARGUMENTS
+###############################################################
+=pod
+
+=head1 OPTIONS AND ARGUMENTS
+
+=cut
+
+###############################################################
+# Arguments
+###############################################################
+=pod
+
+=head2 Arguments
+
+=over 4
+
+=item DBDIR
+
+L<DiaColloDB|DiaColloDB> database directory to be exported.
+
+=back
+
+=cut
+
 
 ###############################################################
 # General Options
@@ -128,27 +164,38 @@ Display a brief help message and exit.
 
 Display version information and exit.
 
-=item -verbose LEVEL
-
-Set verbosity level to LEVEL.  Default=1.
-
 =back
 
 =cut
 
-
 ###############################################################
-# Other Options
+# Export Options
 ###############################################################
 =pod
 
-=head2 Other Options
+=head2 Export Options
 
 =over 4
 
-=item -someoptions ARG
+=item -raw
 
-Example option.
+=item -noraw
+
+Don't/do export stringified tuples (inverse of -[no]sdat; default=do):
+
+=item -sdat
+
+=item -sdat
+
+Do/don't export stringified tuples (*.sdat; default=do).
+
+=item -[no]cof
+
+Do/don't export co-frequency files (cof.*; default=do).
+
+=item -output DIR
+
+Export to directory I<DIR> (default=L<DBDIR|/DBDIR>.export)
 
 =back
 
@@ -182,6 +229,10 @@ Bryan Jurish E<lt>moocow@cpan.orgE<gt>
 
 =head1 SEE ALSO
 
+L<DiaColloDB(3pm)|DiaColloDB>,
+L<dcdb-create.perl(1)|dcdb-create.perl>,
+L<dcdb-info.perl(1)|dcdb-info.perl>,
+L<dcdb-query.perl(1)|dcdb-query.perl>,
 perl(1).
 
 =cut
