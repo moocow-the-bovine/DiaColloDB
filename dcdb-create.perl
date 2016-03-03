@@ -168,7 +168,7 @@ dcdb-create.perl - create a DiaColloDB diachronic collocation database
    -union , -nounion    ##-- do/don't trate INPUT(s) as DB directories to be merged (default=don't)
    -dclass CLASS        ##-- set corpus document class (default=DDCTabs)
    -dopt OPT=VAL        ##-- set corpus document option, e.g.
-                        ##   eosre=EOSRE        # eos regex (default='^$'; alt. '^%%\$DDC:PAGE=' or '^%%\$DDC:BREAK\.p=')
+                        ##   eosre=EOSRE  # eos regex (default='^$') 
    -bysent              ##-- track collocations by sentence (default)
    -byparagraph         ##-- track collocations by paragraph
    -bypage              ##-- track collocations by page
