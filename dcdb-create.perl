@@ -72,23 +72,23 @@ GetOptions(##-- general
 
 	   ##-- coldb options
 	   'index-attributes|attributes|attrs|a=s' => \$coldb{attrs},
+	   'nofilters|F' => sub {
+	     $coldb{$_}=undef foreach (qw(pgood pbad wgood wbad lgood lbad mgood mbad));
+	     $coldb{tdfopts}{$_}=undef foreach (qw(mgood mbad));
+	   },
+	   '64bit|64|quad|Q!'   => sub { pack64( $_[1]); },
+	   '32bit|32|long|L|N!' => sub { pack64(!$_[1]); },
 	   'max-distance|maxd|dmax|n=i' => \$coldb{dmax},
-	   'min-cofrequency|min-cf|mincf|cfmin=i' => \$coldb{cfmin},
 	   'min-term-frequency|min-tf|mintf|tfmin|min-frequency|min-f|minf|fmin=i' => \$coldb{tfmin},
 	   'min-lemma-frequency|min-lf|minlf|lfmin=i' => \$coldb{fmin_l},
+	   'min-cofrequency|min-cf|mincf|cfmin=i' => \$coldb{cfmin},
 	   'index-tdf|index-tdm|tdf|tdm!' => \$coldb{index_tdf},
 	   'tdf-dbreak|tdf-break|dbreak|db|vbreak|vb=s' => \$coldb{dbreak},
 	   'tdf-break-min-size|tdf-break-min|tdf-nmin|vbnmin|vbmin=s' => \$coldb{tdfopts}{minDocSize},
 	   'tdf-break-max-size|tdf-break-max|tdf-nmax|vbnmax|vbmax=s' => \$coldb{tdfopts}{maxDocSize},
 	   'tdf-option|tdm-option|tdfopt|tdmopt|tdmo|tdfo|to|tO=s%' => \$coldb{tdfopts},
 	   'keeptmp|keep' => \$coldb{keeptmp},
-	   'nofilters|F' => sub {
-	     $coldb{$_}=undef foreach (qw(pgood pbad wgood wbad lgood lbad mgood mbad));
-	     $coldb{tdfopts}{$_}=undef foreach (qw(mgood mbad));
-	   },
 	   'option|O=s%' => \%coldb,
-	   '64bit|64|quad|Q!'   => sub { pack64( $_[1]); },
-	   '32bit|32|long|L|N!' => sub { pack64(!$_[1]); },
 
 	   ##-- I/O and logging
 	   'timing|times|time|t!' => \$dotime,
@@ -97,12 +97,11 @@ GetOptions(##-- general
 	   'output|outdir|od|o=s' => \$dbdir,
 	  );
 
-pod2usage({-exitval=>0,-verbose=>0}) if ($help);
-
 if ($version) {
   print STDERR "$prog version $DiaColloDB::VERSION by Bryan Jurish\n";
   exit 0 if ($version);
 }
+pod2usage({-exitval=>0,-verbose=>0}) if ($help);
 
 
 ##----------------------------------------------------------------------
@@ -166,6 +165,7 @@ dcdb-create.perl - create a DiaColloDB collocation database from a corpus dump
  Corpus Options:
    -list , -nolist      ##-- INPUT(s) are/aren't file-lists (default=no)
    -glob , -noglob      ##-- do/don't glob INPUT(s) argument(s) (default=do)
+   -union , -nounion    ##-- do/don't trate INPUT(s) as DB directories to be merged (default=don't)
    -dclass CLASS        ##-- set corpus document class (default=DDCTabs)
    -dopt OPT=VAL        ##-- set corpus document option, e.g.
                         ##   eosre=EOSRE        # eos regex (default='^$'; alt. '^%%\$DDC:PAGE=' or '^%%\$DDC:BREAK\.p=')
@@ -177,11 +177,10 @@ dcdb-create.perl - create a DiaColloDB collocation database from a corpus dump
  Indexing Options:
    -attrs ATTRS         ##-- select index attributes (default=l,p)
                         ##   known attributes: l, p, w, doc.title, ...
-   -[no]keep            ##-- do/ton't keep temporary files (default=don't)
    -nofilters           ##-- disable default regex-filters
    -64bit               ##-- use 64-bit quads where available
    -32bit               ##-- use 32-bit integers where available
-   -dmax DIST           ##-- maximum distance for collocation-frequencies (default=5)
+   -dmax DIST           ##-- maximum distance for indexed co-occurrences (default=5)
    -tfmin TFMIN         ##-- minimum global term frequency (default=5)
    -lfmin TFMIN         ##-- minimum global lemma frequency (default=undef:tfmin)
    -cfmin CFMIN         ##-- minimum relation co-occurrence frequency (default=5)
@@ -208,16 +207,59 @@ dcdb-create.perl - create a DiaColloDB collocation database from a corpus dump
  I/O and Logging Options:
    -log-level LEVEL     ##-- set log-level (default=TRACE)
    -log-option OPT=VAL  ##-- set log option (e.g. logdate, logtime, file, syslog, stderr, ...)
+   -[no]keep            ##-- do/don't keep temporary files (default=don't)
+   -[no]times           ##-- do/don't report operating timing (default=do)
    -output DIR          ##-- output directory (required)
 
 =cut
 
 ###############################################################
-## OPTIONS
+## DESCRIPTION
 ###############################################################
 =pod
 
-=head1 OPTIONS
+=head1 DESCRIPTION
+
+dcdb-create.perl
+compiles a L<DiaColloDB|DiaColloDB> diachronic collocation database
+from a tokenized and annotated input corpus,
+or merges multiple existing L<DiaColloDB|DiaColloDB> databases
+into a single database directory.
+The resulting database can be queried with
+the
+L<dcdb-query.perl(1)|dcdb-query.perl> script,
+or wrapped into a web-service with
+the help of the L<DiaColloDB::WWW|DiaColloDB::WWW> utilities,
+which see for details.
+
+=cut
+
+
+###############################################################
+## OPTIONS AND ARGUMENTS
+###############################################################
+=pod
+
+=head1 OPTIONS AND ARGUMENTS
+
+=cut
+
+###############################################################
+# Arguments
+###############################################################
+=pod
+
+=head2 Arguments
+
+=over 4
+
+=item INPUT(s)
+
+File(s), glob(s), file-list(s) to be indexed or existing indices to be merged.
+Interpretation depends on the L<-glob|/-glob>, L<-list|/-list> and L<-union|/-union>
+options.
+
+=back
 
 =cut
 
@@ -238,9 +280,67 @@ Display a brief help message and exit.
 
 Display version information and exit.
 
-=item -verbose LEVEL
+=back
 
-Set verbosity level to LEVEL.  Default=1.
+=cut
+
+
+###############################################################
+# Corpus Options
+=pod
+
+=head2 Corpus Options
+
+=over 4
+
+=item -list
+
+=item -nolist
+
+Do/don't treat INPUT(s) as file-lists rather than corpus data files.
+Default=don't.
+
+=item -glob
+
+=item -noglob
+
+Do/don't expand wildcards in INPUT(s).
+Default=do.
+
+=item -union
+
+=item -nounion
+
+Do/don't trate INPUT(s) as DB directories to be merged.
+Default=don't.
+
+=item -dclass CLASS
+
+Set corpus document class (default=DDCTabs).
+See L<DiaColloDB::Document/SUBCLASSES> for a list
+of known input formats.
+
+=item -dopt OPT=VAL
+
+Set corpus document option, e.g.
+C<-dopt eosre=EOSRE> sets the end-of-sentence regex
+for the default L<DDCTabs|DiaColloDB::Document::DDCTabs> document class.
+
+=item -bysent
+
+Track collocations by sentence (default).
+
+=item -byparagraph
+
+Track collocations by paragraph.
+
+=item -bypage
+
+Track collocations by page.
+
+=item -bydoc
+
+Track collocations by document.
 
 =back
 
@@ -248,17 +348,118 @@ Set verbosity level to LEVEL.  Default=1.
 
 
 ###############################################################
-# Other Options
-###############################################################
+# Indexing Options
 =pod
 
-=head2 Other Options
+=head2 Indexing Options
 
 =over 4
 
-=item -someoptions ARG
+=item -attrs ATTRS
 
-Example option.
+Select attributes to be indexed (default=l,p).
+Known attributes include C<l, p, w, doc.title, doc.author>, etc.
+
+=item -nofilters
+
+Disable default regex-filters.
+
+=item -64bit
+
+Use 64-bit quads to index integer IDs where available.
+
+=item -32bit
+
+Use 32-bit integers where available (default).
+
+=item -dmax DIST
+
+Specify maximum distance for indexed co-occurrences (default=5).
+
+=item -tfmin TFMIN
+
+Specify minimum global term frequency (default=5).
+A "term" in this sense is an n-tuple of indexed attributes
+B<not including> the "date" component.
+
+=item -lfmin TFMIN
+
+Specify minimum global lemma frequency (default=undef:tfmin).
+
+=item -cfmin CFMIN
+
+Specify minimum relation co-occurrence frequency (default=5).
+
+=item -[no]tdf
+
+Do/don't create (term x document) index relation (default=if available).
+
+=item -tdf-dbreak BREAK
+
+Set tdf matrix "document" granularity (e.g. s,p,page,file; default=file).
+
+=item -tdf-nmin VNMIN
+
+Set minimum number of content tokens per tdf "document" (default=8).
+
+=item -tdf-nmax VNMAX
+
+Set maximum number of content tokens per tdf "document" (default=inf).
+
+=item -tdf-option OPT=VAL
+
+Set arbitrary L<tdf matrixDiaColloDB|DiaColloDB::Relation::TDF> option, e.g.
+
+ minFreq=INT            # minimum term frequency (default=undef: use TFMIN)
+ minDocFreq=INT         # minimum term document-"frequency" (default=4)
+ minDocSize=INT         # minimum document size (#/terms) (default=4)
+ maxDocSize=INT         # maximum document size (#/terms) (default=inf)
+ mgood=REGEX            # positive regex for document-level metatdata
+ mbad=REGEX             # negative regex for document-level metatdata
+
+=item -option OPT=VAL
+
+Set arbitrary L<DiaColloDB|DiaColloDB> index option, e.g.
+
+ pack_id=PACKFMT        # pack-format for IDs
+ pack_f=PACKFMT         # pack-format for frequencies
+ pack_date=PACKFMT      # pack-format for dates
+ (p|w|l)good=REGEX      # positive regex for (postags|words|lemmata)
+ (p|w|l)bad=REGEX       # negative regex for (postags|words|lemmata)
+ ddcServer=HOST:PORT    # server for ddc relations
+ ddcTimeout=SECONDS     # timeout for ddc relations
+
+=back
+
+=cut
+
+###############################################################
+# I/O and Logging Options
+=pod
+
+=head2 I/O and Logging Options
+
+=over 4
+
+=item -log-level LEVEL
+
+Set L<DiaColloDB::Logger|DiaColloDB::Logger> log-level (default=TRACE).
+
+=item -log-option OPT=VAL
+
+Set arbitrary L<DiaColloDB::Logger|DiaColloDB::Logger> option (e.g. logdate, logtime, file, syslog, stderr, ...).
+
+=item -[no]keep
+
+Do/don't keep temporary files (default=don't)
+
+=item -[no]times
+
+Do/don't report operating timing (default=do)
+
+=item -output DIR
+
+Output directory (required).
 
 =back
 
@@ -292,6 +493,10 @@ Bryan Jurish E<lt>moocow@cpan.orgE<gt>
 
 =head1 SEE ALSO
 
-perl(1).
+L<DiaColloDB(3pm)|DiaColloDB>,
+L<dcdb-info.perl(1)|dcdb-info.perl>,
+L<dcdb-query.perl(1)|dcdb-query.perl>,
+L<dcdb-export.perl(1)|dcdb-export.perl>,
+L<perl(1)|perl>.
 
 =cut

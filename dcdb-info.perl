@@ -78,24 +78,56 @@ __END__
 
 =head1 NAME
 
-dcdb-info.perl - get administrative info from a DiaColloDB object
+dcdb-info.perl - get administrative info from a DiaColloDB database
 
 =head1 SYNOPSIS
 
  dcdb-info.perl [OPTIONS] DBDIR
 
- General Options:
+ Options:
    -help
    -version
 
 =cut
 
 ###############################################################
-## OPTIONS
+## DESCRIPTION
 ###############################################################
 =pod
 
-=head1 OPTIONS
+=head1 DESCRIPTION
+
+dcdb-info.perl
+prints some basic information about the
+L<DiaColloDB|DiaColloDB> database directory specified
+in the L<DBDIR|/DBDIR> argument.
+Output is in L<JSON|http://json.org> format.
+
+=cut
+
+###############################################################
+## OPTIONS AND ARGUMENTS
+###############################################################
+=pod
+
+=head1 OPTIONS AND ARGUMENTS
+
+=cut
+
+###############################################################
+# Arguments
+###############################################################
+=pod
+
+=head2 Arguments
+
+=over 4
+
+=item DBDIR
+
+L<DiaColloDB|DiaColloDB> database directory to be scanned.
+
+=back
 
 =cut
 
@@ -115,28 +147,6 @@ Display a brief help message and exit.
 =item -version
 
 Display version information and exit.
-
-=item -verbose LEVEL
-
-Set verbosity level to LEVEL.  Default=1.
-
-=back
-
-=cut
-
-
-###############################################################
-# Other Options
-###############################################################
-=pod
-
-=head2 Other Options
-
-=over 4
-
-=item -someoptions ARG
-
-Example option.
 
 =back
 
@@ -170,6 +180,10 @@ Bryan Jurish E<lt>moocow@cpan.orgE<gt>
 
 =head1 SEE ALSO
 
+L<DiaColloDB(3pm)|DiaColloDB>,
+L<dcdb-create.perl(1)|dcdb-create.perl>,
+L<dcdb-query.perl(1)|dcdb-query.perl>,
+L<dcdb-export.perl(1)|dcdb-export.perl>,
 perl(1).
 
 =cut
