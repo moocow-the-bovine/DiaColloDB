@@ -555,7 +555,7 @@ This package is free software; you can redistribute it and/or modify
 it under the same terms as Perl itself, either Perl version 5.14.2 or,
 at your option, any later version of Perl 5 you may have available.
 
-=head1 SEE ALSO
+=head1 REFERENCES
 
 Didakowski, J. and  Geyken, A. (2013). "From DWDS corpora to a German Word Profile – methodological problems and solutions.
 In: Network Strategies, Access Structures and Automatic Extraction of Lexicographical Information". 2nd Work Report of the
@@ -576,10 +576,15 @@ Rychlý, P. (2008). "A lexicographer-friendly association score". In P. Sojka an
 Advances in Slavonic Natural Language Processing. RASLAN 2008, 6­9.
 URL L<http://www.muni.cz/research/publications/937193 , http://www.fi.muni.cz/usr/sojka/download/raslan2008/13.pdf>
 
+=head1 SEE ALSO
+
+L<DiaColloDB::Persistent(3pm)|DiaColloDB::Persistent>,
+L<DiaColloDB::Profile::Diff(3pm)|DiaColloDB::Profile::Diff>,
+L<DiaColloDB::Profile::Multi(3pm)|DiaColloDB::Profile::Multi>,
+L<DiaColloDB::Profile::MultiDiff(3pm)|DiaColloDB::Profile::MultiDiff>,
+L<DiaColloDB::Relation(3pm)|DiaColloDB::Relation>,
 L<DiaColloDB(3pm)|DiaColloDB>,
 L<perl(1)|perl>,
 ...
-
-
 
 =cut

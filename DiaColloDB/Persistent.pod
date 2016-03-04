@@ -331,6 +331,11 @@ at your option, any later version of Perl 5 you may have available.
 
 =head1 SEE ALSO
 
+L<DiaColloDB::Logger(3pm)|DiaColloDB::Logger>,
+L<DiaColloDB::EnumFile(3pm)|DiaColloDB::EnumFile>,
+L<DiaColloDB::MultiMapFile(3pm)|DiaColloDB::MultiMapFile>,
+L<DiaColloDB::PackedFile(3pm)|DiaColloDB::PackedFile>,
+L<DiaColloDB::Relation(3pm)|DiaColloDB::Relation>,
 L<DiaColloDB(3pm)|DiaColloDB>,
 L<perl(1)|perl>,
 ...
