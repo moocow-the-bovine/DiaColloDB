@@ -476,6 +476,11 @@ at your option, any later version of Perl 5 you may have available.
 
 =head1 SEE ALSO
 
+L<DiaColloDB::EnumFile::MMap(3pm)|DiaColloDB::EnumFile::MMap>,
+L<DiaColloDB::EnumFile::FixedLen(3pm)|DiaColloDB::EnumFile::FixedLen>,
+L<DiaColloDB::EnumFile::FixedMap(3pm)|DiaColloDB::EnumFile::FixedMap>,
+L<DiaColloDB::EnumFile::Tied(3pm)|DiaColloDB::EnumFile::Tied>,
+L<DiaColloDB::Persistent(3pm)|DiaColloDB::Persistent>,
 L<DiaColloDB(3pm)|DiaColloDB>,
 L<perl(1)|perl>,
 ...
