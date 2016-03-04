@@ -177,6 +177,8 @@ at your option, any later version of Perl 5 you may have available.
 
 =head1 SEE ALSO
 
+L<PDL(3pm)|PDL>,
+L<PDL::IO::FastRaw(3pm)|PDL::IO::FastRaw>,
 L<DiaColloDB(3pm)|DiaColloDB>,
 L<perl(1)|perl>,
 ...
