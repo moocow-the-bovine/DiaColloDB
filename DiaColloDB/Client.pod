@@ -329,6 +329,9 @@ at your option, any later version of Perl 5 you may have available.
 
 =head1 SEE ALSO
 
+L<DiaColloDB::Client::file(3pm)|DiaColloDB::Client::file(3pm)>,
+L<DiaColloDB::Client::http(3pm)|DiaColloDB::Client::http(3pm)>,
+L<DiaColloDB::Client::list(3pm)|DiaColloDB::Client::list(3pm)>,
 L<DiaColloDB(3pm)|DiaColloDB>,
 L<perl(1)|perl>,
 ...

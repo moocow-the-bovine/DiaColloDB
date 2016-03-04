@@ -57,6 +57,7 @@ at your option, any later version of Perl 5 you may have available.
 
 =head1 SEE ALSO
 
+L<DiaColloDB::Client(3pm)|DiaColloDB::Client>,
 L<DiaColloDB(3pm)|DiaColloDB>,
 L<perl(1)|perl>,
 ...
