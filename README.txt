@@ -125,8 +125,8 @@ SEE ALSO
 
     *   The CLARIN-D DiaCollo Showcase at
         <http://clarin-d.de/de/kollokationsanalyse-in-diachroner-perspektive
-        > contains a brief example-driven tutorial on using the
-        DiaColloDB::WWW wrappers (in German).
+        > contains a brief example-driven tutorial on using the web-services
+        provided by the DiaColloDB::WWW distribution (in German).
 
 AUTHOR
     Bryan Jurish <moocow@cpan.org>
