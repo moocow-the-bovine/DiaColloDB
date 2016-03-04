@@ -95,6 +95,7 @@ sub saveTextHeader {
 ##    (
 ##     table  => $bool,     ##-- include <table>..</table> ? (default=1)
 ##     body   => $bool,     ##-- include <html><body>..</html></body> ? (default=1)
+##     verbose => $bool,    ##-- include verbose output? (default=1)
 ##     qinfo  => $varname,  ##-- include <script> for qinfo data? (default='qinfo')
 ##     header => $bool,     ##-- include header-row? (default=1)
 ##     format => $fmt,      ##-- printf score formatting (default="%.2f")
@@ -109,6 +110,7 @@ sub saveHtmlFile {
   $fh->print("<table><tbody>\n") if ($opts{table}//1);
   $fh->print("<tr>",(
 		     map {"<th>".htmlesc($_)."</th>"}
+		     ($opts{verbose} ? (map {("${_}a","${_}b")} qw(N f1 f2 f12)) : qw()),
 		     qw(ascore bscore diff label),
 		     @{$mp->{titles}//[qw(item2)]},
 		    ),

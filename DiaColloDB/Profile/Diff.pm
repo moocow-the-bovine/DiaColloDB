@@ -173,6 +173,7 @@ sub saveTextFh {
 ##     table  => $bool,     ##-- include <table>..</table> ? (default=1)
 ##     body   => $bool,     ##-- include <html><body>..</html></body> ? (default=1)
 ##     header => $bool,     ##-- include header-row? (default=1)
+##     verbose => $bool,    ##-- include verbose output? (default=1)
 ##     hlabel => $hlabel,   ##-- prefix header item-cells with $hlabel (used by Profile::Multi), no '<th>..</th>' required
 ##     label => $label,     ##-- prefix item-cells with $label (used by Profile::Multi), no '<td>..</td>' required
 ##     format => $fmt,      ##-- printf score formatting (default="%.4f")
@@ -188,6 +189,7 @@ sub saveHtmlFile {
   $fh->print("<table><tbody>\n") if ($opts{table}//1);
   $fh->print("<tr>",(
 		     map {"<th>".htmlesc($_)."</th>"}
+		     ($opts{verbose} ? (map {("${_}a","${_}b")} qw(N f1 f2 f12)) : qw()),
 		     qw(ascore bscore diff),
 		     (defined($opts{hlabel}) ? $opts{hlabel} : qw()),
 		     @{$dprf->{titles}//[qw(item2)]},
@@ -204,6 +206,14 @@ sub saveHtmlFile {
   my $label  = exists($opts{label}) ? $opts{label} : $dprf->{label};
   foreach (sort {$scored->{$b} <=> $scored->{$a}} keys %$scored) {
     $fh->print("<tr>", (map {"<td>".htmlesc($_)."</td>"}
+			($opts{verbose}
+			 ? (map {($_//0)}
+			    $pa->{N}, $pb->{N},
+			    $pa->{f1}, $pb->{f1},
+			    $pa->{f2}{$_}, $pb->{f2}{$_},
+			    $pa->{f12}{$_}, $pb->{f12}{$_},
+			   )
+			 : qw()),
 			sprintf($fmt,$scorea->{$_}//'nan'),
 			sprintf($fmt,$scoreb->{$_}//'nan'),
 			sprintf($fmt,$scored->{$_}//'nan'),

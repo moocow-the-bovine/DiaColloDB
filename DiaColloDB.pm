@@ -1778,7 +1778,6 @@ sub parseQuery {
 		       })
     if ($opts{mapand} || (!defined($opts{mapand}) && $req0 !~ /\&\&/));
 
-  print STDERR "parsed query $req = ", $q->toStringFull, "\n";
   return $q;
 }
 
