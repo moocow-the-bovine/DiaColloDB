@@ -114,11 +114,6 @@ at your option, any later version of Perl 5 you may have available.
 
 =head1 SEE ALSO
 
-L<dcdb-create.per(1)|dcdb-create.perl>,
-L<dcdb-query.perl(1)|dcdb-query.perl>,
-L<dcdb-info.perl(1)|dcdb-info.perl>,
-L<dcdb-export.perl(1)|dcdb-export.perl>,
-L<dcdb-dump.perl(1)|dcdb-dump.perl>,
 L<DiaColloDB(3pm)|DiaColloDB>,
 L<perl(1)|perl>,
 ...
