@@ -144,7 +144,7 @@ and provides the low-level basis for the L<DiaColloDB::Client|DiaColloDB::Client
 =item Variable: $PGOOD_DEFAULT
 
 Default positive pos regex for document parsing --
-don't use qr// here, since Storable doesn't like pre-compiled Regexps.
+don't use C<qr//> here, since L<Storable|Storable> doesn't like pre-compiled Regexps.
 Default = C<q/^(?:N|TRUNC|VV|ADJ)/>.
 
 =item Variable: $PBAD_DEFAULT
@@ -160,7 +160,7 @@ Default = C<q/[[:alpha:]]/>
 =item Variable: $WBAD_DEFAULT
 
 Default negative word regex for document parsing.
-Default = q/[\.]/
+Default = C<q/[\.]/>.
 
 =item Variable: $LGOOD_DEFAULT
 
@@ -171,6 +171,16 @@ Default = undef (none).
 
 Default negative lemma regex for document parsing.
 Default = undef (none).
+
+=item Variable: $TDF_MGOOD_DEFAULT
+
+Default positive meta-field regex for document parsing (tdf only).
+Default = C<q/^(?:author|pnd|title|basename|collection|flags|textClass|genre)$/>.
+
+=item Variable: $TDF_MBAD_DEFAULT
+
+Fefault negative meta-field regex for document parsing (tdf only).
+Default = C<q/_$/>.
 
 =item Variable: $ECLASS
 
@@ -186,6 +196,22 @@ Default = 'DiaColloDB::EnumFile::FixedLen'
 
 multimap class.
 Default = 'DiaColloDB::MultiMapFile'
+
+=item Variable: %TDF_OPTS
+
+Default options for L<DiaColloDB::Relation::TDF-E<gt>new()|DiaColloDB::Relation::TDF/new>.
+Default:
+
+ mgood => $TDF_MGOOD_DEFAULT, ##-- positive filter regex for metadata attributes
+ mbad  => $TDF_MBAD_DEFAULT,  ##-- negative filter regex for metadata attributes
+ ##
+ minFreq=>undef,    ##-- minimum total term-frequency for model inclusion (default=from $coldb->{tfmin})
+ minDocFreq=>4,     ##-- minimim "doc-frequency" (#/docs per term) for model inclusion
+ minDocSize=>4,     ##-- minimum doc size (#/tokens per doc) for model inclusion (default=8; formerly $coldb->{vbnmin})
+ maxDocSize=>'inf', ##-- maximum doc size (#/tokens per doc) for model inclusion (default=inf; formerly $coldb->{vbnmax})
+ ##
+ vtype=>'float',    ##-- store compiled values as 32-bit floats
+ itype=>'long',     ##-- store compiled indices as 32-bit integers
 
 =back
 
@@ -213,8 +239,6 @@ Default = 'DiaColloDB::MultiMapFile'
                         ##    + each attribute can be token-attribute qw(w p l) or a document metadata attribute "doc.ATTR"
                         ##    + document "date" attribute is always indexed
     info => \%info,     ##-- additional data to return in info() method (e.g. collection, maintainer)
-    bos => $bos,        ##-- special string to use for BOS, undef or empty for none (default=undef)
-    eos => $eos,        ##-- special string to use for EOS, undef or empty for none (default=undef)
     pack_id => $fmt,    ##-- pack-format for IDs (default='N')
     pack_f  => $fmt,    ##-- pack-format for frequencies (default='N')
     pack_date => $fmt,  ##-- pack-format for dates (default='n')
@@ -222,7 +246,13 @@ Default = 'DiaColloDB::MultiMapFile'
     pack_len => $len,   ##-- pack-format for string lengths (default='n')
     dmax  => $dmax,     ##-- maximum distance for collocation-frequencies and implicit ddc near() queries (default=5)
     cfmin => $cfmin,    ##-- minimum co-occurrence frequency for Cofreqs and ddc queries (default=2)
+    tfmin => $tfmin,    ##-- minimum global term-frequency WITHOUT date component (default=2)
+    fmin_${a} => $fmin, ##-- minimum independent frequency for value of attribute ${a} (default=undef:from $tfmin)
     keeptmp => $bool,   ##-- keep temporary files? (default=0)
+    index_tdf => $bool, ##-- tdf: create/use (term x document) frequency matrix index? (default=undef: if available)
+    index_cof => $bool, ##-- cof: create/use co-frequency index (default=1)
+    dbreak => $dbreak,  ##-- tdf: use break-type $break for tdf index (default=undef: files)
+    tdfopts => \%tdfopts, ##-- tdf: options for DocClassify::Mapper->new(); default=undef (all inherited from %TDF_OPTS)
     ##
     ##-- runtime ddc relation options
     ddcServer => "$host:$port", ##-- server for ddc relation
@@ -268,6 +298,7 @@ Default = 'DiaColloDB::MultiMapFile'
     xf    => $xf,       ##-- ug: $xi => $f($xi) : N=>N
     cof   => $cof,      ##-- cf: [$xi1,$xi2] => $f12
     ddc   => $ddc,      ##-- ddc client relation
+    tdf   => $tdf,      ##-- tdf: (term x document) frequency matrix relation
    )
 
 =item promote
@@ -545,6 +576,12 @@ otherwise heuristically parses $relationName /xf|f?1|ug/ or /f1?2|c/
 returns an appropriate relation-like object for profile() and friends;
 really just wraps C<$coldb-E<gt>{$coldb-E<gt>relname($rel)}>.
 
+=item relations
+
+ @relnames = $coldb->relations();
+
+gets list of relation names supported by $coldb.
+
 =item enumIds
 
  \@ids = $coldb->enumIds($enum,$req,%opts);
@@ -584,7 +621,40 @@ another string   : space-, comma-, or |-separated list of literal values
 
  ($dfilter,$sliceLo,$sliceHi,$dateLo,$dateHi) = $coldb->parseDateRequest($dateRequest='', $sliceRequest=0, $fill=0, $ddcMode=0);
 
-low-level parsing for date (slice) requests.
+low-level parsing for date (slice) requests. Accepted formats for C<$dateRequest>:
+
+=over 4
+
+=item Empty Date
+
+An empty string or a string containing only whitespace and asterisk (C<*>) characters
+is ignored (C<$dlo=$dhi=undef>); this
+should be interepreted by the caller as requesting the full indexed date range.
+
+=item Date Regex
+
+A date request C</REGEX/> enclosed in slashes is treated as a regular expression
+matching all and only the desired dates.  Throws an error if
+C<$ddcMode> is true, since DDC currently does not support date regexes.
+
+=item Date Range
+
+A date request of the form C<MIN:MAX> matches all dates in the range
+I<[MIN..MAX]> (inclusive).  For convenience, either or both of I<MIN>
+and I<MAX> may be an asterisk (C<*>) to indicate the minimum (rsp. maximum)
+date stored in the index.
+
+=item Date List
+
+A whitespace-, comma-, or C<|>-separated list of values is treated as a literal list of target dates.
+Throws an error if C<$ddcMode> is true.
+
+=item Date Value
+
+Any other value is treated as a literal single target date.
+
+=back
+
 
 =item xidsByDate
 
@@ -615,7 +685,7 @@ wraps parse in an eval {...} block and sets $coldb-E<gt>{error} on failure
  $cquery = $coldb->parseQuery($ddcQueryString, %opts)      ##-- ddc string (with shorthand ","->WITH, "&&"->WITH)
 
 Guts for parsing user target and groupby requests;
-returns a DDC::XS::CQuery object representing the request.
+returns a L<DDC::XS::CQuery|DDC::XS::CQuery> object representing the request.
 Index-only items "$l" are mapped to $l=*
 
 %opts:
@@ -626,14 +696,54 @@ Index-only items "$l" are mapped to $l=*
  mapand  => $bool,      ##-- map CQAnd to CQWith? (default=true unless '&&' occurs in query string)
  ddcmode => $bool,      ##-- force ddc query mode? (default=false)
 
+If the first argument is a reference, it is parsed as a native query request.
+Otherwise, it is assumed to be a string either in the "native" (backwards-compatible)
+single-token request-notation
+or a valid L<DDC query|http://odo.dwds.de/~moocow/software/ddc/ddc_query.html>.
+If the request looks like a simple request, it is parsed into a L<DDC::XS::CQuery|DDC::XS::CQuery> object
+using local heuristics; DDC queries are parsed directly.  The query syntax for "native"
+DiaColloDB queries is:
+
+ q_native  ::= qn_clause ((" "|",") qn_clause)*
+ qn_clause ::= ("$"? qn_attr "=")? qn_value
+ qn_attr   ::= STRING
+ qn_value  ::= qn_regex | qn_words
+ qn_regex  ::= "/" REGEX "/" qn_regmod
+ qn_regmod ::= ("g"|"i"|"m"|"s"|"a"|"l"|"u"|"x")*
+ qn_words  ::= qn_word ("|" qn_word)*
+ qn_word   ::= STRING
+
+Native request clauses are parsed into queries of type
+L<CQTokSet|DDC::XS::CQuery>,
+L<CQTokExact|DDC::XS::CQuery>,
+L<CQTokRegex|DDC::XS::CQuery>,
+or L<CQTokAny|DDC::XS::CQuery>,
+and the returned query object conjoins multiple native request clauses
+using L<CQTokWith|DDC::XS::CQuery>.
+
+DDC queries are much more flexible,
+but not all L<DiaColloDB::Relation|DiaColloDB::Relation> types support the full range
+of the DDC query syntax.
+In particular, the default relation classes
+L<DiaColloDB::Relation::Cofreqs|DiaColloDB::Relation::Cofreqs>
+and
+L<DiaColloDB::Relation::Unigrams|DiaColloDB::Relation::Unigrams>
+support only those query types
+accepted by
+the L<queryAttributes()|/queryAttributes> method.
+
 =item queryAttributes
 
  \@aqs = $coldb->queryAttributes($cquery,%opts);
 
 Utility for decomposing DDC queries into attribute-wise requests;
 returns an ARRAY-ref [[$attr1,$val1], ...].
-Each value $vali is empty or undef (all values), a CQTokSet, a CQTokExact, CQTokRegex, or CQTokAny.
-Chokes on unsupported query types or filters
+Each value $vali is empty or undef (all values),
+a L<CQTokSet|DDC::XS::CQuery>,
+a L<CQTokExact|DDC::XS::CQuery>,
+a L<CQTokRegex|DDC::XS::CQuery>,
+or a L<CQTokAny|DDC::XS::CQuery>.
+Chokes on unsupported query types or filters.
 
 %opts:
 
@@ -646,10 +756,10 @@ Chokes on unsupported query types or filters
 
  \@aqs = $coldb->parseRequest($request, %opts);
 
-Guts for parsing user target and groupby requests into attribute-wise ARRAY-ref [[$attr1,$val1], ...],
+Guts for parsing user target and groupby requests into attribute-wise ARRAY-ref C<[[$attr1,$val1], ...]>,
 used by native profiling methods.
-See parseQuery() method for supported $request formats and %opts.
-Wraps $coldb-E<gt>queryAttributes($coldb-E<gt>parseQuery($request,%opts)).
+See L<parseQuery()|/parseQuery> method for supported C<$request> formats and C<%opts>.
+Wraps C<$coldb-E<gt>queryAttributes($coldb-E<gt>parseQuery($request,%opts))>.
 
 =item groupby
 
@@ -657,7 +767,14 @@ Wraps $coldb-E<gt>queryAttributes($coldb-E<gt>parseQuery($request,%opts)).
  \%groupby = $coldb->groupby(\%groupby,        %opts);
 
 Parse a user groupby request, used by native profiling methods.
-See parseRequest() for details on syntax of $groupby_request.
+See L<parseRequest()|/parseRequest> for details on syntax of C<$groupby_request>.
+Unlike "query" request parsing, native query-request B<attributes> are obligatory and B<values> are optional
+in "groupby" parsing mode:
+
+ q_groupby ::= qg_clause ((" "|",") qg_clause)*
+ qg_clause ::= "$"? qn_attr ("=" qn_value)?
+
+
 Returns a HASH-ref of the form:
 
  req => $request,    ##-- save request
@@ -686,12 +803,27 @@ Converts a CQToken to a CQFilter, for ddc parsing.
 
  ($CQCountKeyExprs,\$CQRestrict,\@CQFilters) = $coldb->parseGroupBy($groupby_string_or_request,%opts);
 
-ddc-mode groupby parsing utility.
 %opts:
 
  date => $date,
  slice => $slice,
  matchid => $matchid,    ##-- default match-id
+
+ddc-mode groupby parsing utility.
+In addition to the native groupby syntax supported by
+the L<groupby()|/groupby> method,
+ddc-mode parsing
+also allows specification of a literal DDC L<count-ley list|http://odo.dwds.de/~moocow/software/ddc/ddc_query.html#rule_l_countkeys>
+by enclosing it in square brackets:
+
+ ddc_groupby ::= q_group | ("#BY"? "[" l_countkeys "]")
+
+This is mainly useful in conjunction with
+user-defined L<match-ids|http://odo.dwds.de/~moocow/software/ddc/ddc_query.html#rule_matchid>
+in the corresponding parsed L<query|DDC::XS::CQuery>,
+document metadata attributes,
+and/or server-side regex key transformations;
+see L<http://odo.dwds.de/~moocow/software/ddc/ddc_query.html#rule_count_key> for details.
 
 =back
 
@@ -709,7 +841,7 @@ ddc-mode groupby parsing utility.
 
  $mprf = $coldb->profile($relation, %opts);
 
-Get a relation profile for selected items as a DiaColloDB::Profile::Multi object.
+Get a relation profile for selected items as a L<DiaColloDB::Profile::Multi|DiaColloDB::Profile::Multi> object.
 %opts:
 
  ##-- selection parameters
@@ -731,7 +863,7 @@ Get a relation profile for selected items as a DiaColloDB::Profile::Multi object
  strings => $bool,          ##-- do/don't stringify (default=do)
  fill    => $bool,          ##-- if true, returned multi-profile will have null profiles inserted for missing slices
 
-Sets default %opts and wraps $coldb-E<gt>relation($rel)-E<gt>profile($coldb, %opts).
+Sets default %opts and wraps $coldb-E<gt>L<relation|/relation>($rel)-E<gt>L<profile|DiaColloDB::Relation/profile>($coldb, %opts).
 
 =back
 
@@ -749,7 +881,7 @@ Sets default %opts and wraps $coldb-E<gt>relation($rel)-E<gt>profile($coldb, %op
 
  $mprf = $coldb->compare($relation, %opts);
 
-Get a relation comparison profile for selected items as a DiaColloDB::Profile::MultiDiff object.
+Get a relation comparison profile for selected items as a L<DiaColloDB::Profile::MultiDiff|DiaColloDB::Profile::MultiDiff> object.
 %opts:
 
  ##-- selection parameters
@@ -771,7 +903,7 @@ Get a relation comparison profile for selected items as a DiaColloDB::Profile::M
  ##-- profiling and debugging parameters
  strings => $bool,            ##-- do/don't stringify (default=do)
 
-Sets default %opts and wraps $coldb-E<gt>relation($rel)-E<gt>compare($coldb, %opts)
+Sets default %opts and wraps $coldb-E<gt>L<relation|/relation>($rel)-E<gt>L<compare|DiaColloDB::Relation/compare>($coldb, %opts)
 
 =back
 
@@ -796,12 +928,13 @@ at your option, any later version of Perl 5 you may have available.
 
 =head1 SEE ALSO
 
+L<DiaColloDB::Relation(3pm)|DiaColloDB::Relation>,
+L<DiaColloDB::WWW(3pm)|DiaColloDB::WWW>,
 L<dcdb-create.per(1)|dcdb-create.perl>,
 L<dcdb-query.perl(1)|dcdb-query.perl>,
 L<dcdb-info.perl(1)|dcdb-info.perl>,
 L<dcdb-export.perl(1)|dcdb-export.perl>,
 L<dcdb-dump.perl(1)|dcdb-dump.perl>,
-L<DiaColloDB(3pm)|DiaColloDB>,
 L<perl(1)|perl>,
 ...
 

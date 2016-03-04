@@ -72,7 +72,7 @@ our $TDF_MGOOD_DEFAULT = q/^(?:author|pnd|title|basename|collection|flags|textCl
 
 ## $TDF_MBAD_DEFAULT
 ##  + default negative meta-field regex for document parsing (tdf only)
-##  + don't use qr// here, since Storable doesn't like pre-compiled Regexps
+##  + don't use qr// here, since Storable doesn't like pre-compiled Regexps.
 our $TDF_MBAD_DEFAULT = q/_$/;
 
 ## $ECLASS
@@ -136,7 +136,7 @@ our %TDF_OPTS = (
 ##    index_tdf => $bool, ##-- tdf: create/use (term x document) frequency matrix index? (default=undef: if available)
 ##    index_cof => $bool, ##-- cof: create/use co-frequency index (default=1)
 ##    dbreak => $dbreak,  ##-- tdf: use break-type $break for tdf index (default=undef: files)
-##    tdfopts => \%tdfopts, ##-- tdf: options for DocClassify::Mapper->new(); default={} (all inherited from %TDF_OPTS)
+##    tdfopts => \%tdfopts, ##-- tdf: options for DocClassify::Mapper->new(); default=undef (all inherited from %TDF_OPTS)
 ##    ##
 ##    ##-- runtime ddc relation options
 ##    ddcServer => "$host:$port", ##-- server for ddc relation
@@ -149,8 +149,6 @@ our %TDF_OPTS = (
 ##    wbad   => $regex,   ##-- negative filter regex for word text
 ##    lgood  => $regex,   ##-- positive filter regex for lemma text
 ##    lbad   => $regex,   ##-- negative filter regex for lemma text
-##    #vsmgood => $regex,  ##-- positive filter regex for metadata attributes (tdf only) --> use {tdfopts}{mgood}
-##    #vsmbad  => $regex,  ##-- negative filter regex for metadata attributes (tdf only) --> use {tdfopts}{mbad}
 ##    ##
 ##    ##-- logging
 ##    logOpen => $level,        ##-- log-level for open/close (default='info')
@@ -168,7 +166,6 @@ our %TDF_OPTS = (
 ##    ${a}enum => $aenum,   ##-- attribute enum: $aenum : ($dbdir/${a}_enum.*) : $astr<=>$ai : A*<=>N
 ##                          ##    e.g.  lemmata: $lenum : ($dbdir/l_enum.*   )  : $lstr<=>$li : A*<=>N
 ##    ${a}2x   => $a2x,     ##-- attribute multimap: $a2x : ($dbdir/${a}_2x.*) : $ai=>@xis  : N=>N*
-##    #${a}2w   => $a2w,     ##-- attribute multimap: $a2w : ($dbdir/${a}_2w.*) : $ai=>@wis  : N=>N*
 ##    pack_x$a => $fmt      ##-- pack format: extract attribute-id $ai from a packed tuple-string $xs ; $ai=unpack($coldb->{"pack_x$a"},$xs)
 ##    ##
 ##    ##-- tuple data (+dates)
@@ -181,7 +178,7 @@ our %TDF_OPTS = (
 ##    xf    => $xf,       ##-- ug: $xi => $f($xi) : N=>N
 ##    cof   => $cof,      ##-- cf: [$xi1,$xi2] => $f12
 ##    ddc   => $ddc,      ##-- ddc: ddc client relation
-##    tdf   => $tdf,      ##-- tdf: (term x document) frequency matrix model
+##    tdf   => $tdf,      ##-- tdf: (term x document) frequency matrix relation
 ##   )
 sub new {
   my $that = shift;
@@ -1543,8 +1540,8 @@ sub parseDateRequest {
   my ($coldb,$date,$slice,$fill,$ddcmode) = @_;
   my ($dfilter,$slo,$shi,$dlo,$dhi);
   $date //= '';
-  if ($date =~ /^\s*$/) {
-    ##-- empty date request: ignore
+  if ($date =~ /^[\s\*]*$/) {
+    ##-- empty date request or universal wildcard: ignore
     $dlo = $dhi = undef;
   }
   elsif (UNIVERSAL::isa($date,'Regexp') || $date =~ /^\//) {
@@ -1564,6 +1561,7 @@ sub parseDateRequest {
   }
   elsif ($date =~ /[\s\,\|]+/) {
     ##-- date request: list
+    $coldb->logconfess("parseDateRequest(): can't handle date list '$date' in ddc mode") if ($ddcmode);
     my %dwant = map {($_=>undef)} grep {($_//'') ne ''} split(/[\s\,\|]+/,$date);
     $dfilter  = sub { exists($dwant{$_[0]}) };
   }
@@ -1780,6 +1778,7 @@ sub parseQuery {
 		       })
     if ($opts{mapand} || (!defined($opts{mapand}) && $req0 !~ /\&\&/));
 
+  print STDERR "parsed query $req = ", $q->toStringFull, "\n";
   return $q;
 }
 
