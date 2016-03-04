@@ -284,6 +284,8 @@ at your option, any later version of Perl 5 you may have available.
 
 =head1 SEE ALSO
 
+L<DiaColloDB::Profile::Diff(3pm)|DiaColloDB::Profile::Diff>,
+L<DiaColloDB::Profile::Multi(3pm)|DiaColloDB::Profile::Multi>,
 L<DiaColloDB(3pm)|DiaColloDB>,
 L<perl(1)|perl>,
 ...
