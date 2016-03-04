@@ -150,6 +150,13 @@ DiaColloDB::EnumFile inherits from L<DiaColloDB::Persistent|DiaColloDB::Persiste
 
 destructor implicitly calls close().
 
+=item promote
+
+ $enum = $enum->promote($class,$force)
+
+Promotes C<$enum> to class C<$class>.
+If $force is false (default), promotion via C<ref($enum)."::MMap"> will be disabled.
+
 =back
 
 =cut
