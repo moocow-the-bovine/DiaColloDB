@@ -928,13 +928,20 @@ at your option, any later version of Perl 5 you may have available.
 
 =head1 SEE ALSO
 
+L<DiaColloDB::Client(3pm)|DiaColloDB::Client>,
+L<DiaColloDB::Corpus(3pm)|DiaColloDB::Corpus>,
+L<DiaColloDB::Document(3pm)|DiaColloDB::Document>,
+L<DiaColloDB::Persistent(3pm)|DiaColloDB::Persistent>,
+L<DiaColloDB::Profile(3pm)|DiaColloDB::Profile>,
 L<DiaColloDB::Relation(3pm)|DiaColloDB::Relation>,
-L<DiaColloDB::WWW(3pm)|DiaColloDB::WWW>,
+L<DiaColloDB::Temp(3pm)|DiaColloDB::Temp>,
+L<DiaColloDB::Utils(3pm)|DiaColloDB::Utils>,
 L<dcdb-create.per(1)|dcdb-create.perl>,
 L<dcdb-query.perl(1)|dcdb-query.perl>,
 L<dcdb-info.perl(1)|dcdb-info.perl>,
 L<dcdb-export.perl(1)|dcdb-export.perl>,
 L<dcdb-dump.perl(1)|dcdb-dump.perl>,
+L<DiaColloDB::WWW(3pm)|DiaColloDB::WWW>,
 L<perl(1)|perl>,
 ...
 
