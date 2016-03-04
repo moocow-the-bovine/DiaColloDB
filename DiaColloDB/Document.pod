@@ -142,7 +142,8 @@ DiaColloDB::Document structure described above under L<new()|/new>.
 =item L<DiaColloDB::Document::TCF|DiaColloDB::Document::TCF>
 
 Basic handling for input files in
-L<CLARIN-D TCF format|http://weblicht.sfs.uni-tuebingen.de/weblichtwiki/index.php/The_TCF_Format>.
+L<CLARIN-D TCF format|http://weblicht.sfs.uni-tuebingen.de/weblichtwiki/index.php/The_TCF_Format>
+as used by L<WebLicht|http://weblicht.sfs.uni-tuebingen.de/>.
 
 =item L<DiaColloDB::Document::TEI|DiaColloDB::Document::TEI>
 
