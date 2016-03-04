@@ -338,6 +338,11 @@ at your option, any later version of Perl 5 you may have available.
 
 =head1 SEE ALSO
 
+L<DiaColloDB::Persistent(3pm)|DiaColloDB::Persistent>,
+L<DiaColloDB::Relation::Cofreqs(3pm)|DiaColloDB::Relation::Cofreqs>,
+L<DiaColloDB::Relation::Unigrams(3pm)|DiaColloDB::Relation::Unigrams>,
+L<DiaColloDB::Relation::TDF(3pm)|DiaColloDB::Relation::TDF>,
+L<DiaColloDB::Relation::DDC(3pm)|DiaColloDB::Relation::DDC>,
 L<DiaColloDB(3pm)|DiaColloDB>,
 L<perl(1)|perl>,
 ...

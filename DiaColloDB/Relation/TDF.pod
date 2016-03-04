@@ -721,6 +721,11 @@ at your option, any later version of Perl 5 you may have available.
 
 =head1 SEE ALSO
 
+L<DiaColloDB::Relation(3pm)|DiaColloDB::Relation>,
+L<DiaColloDB::Relation::TDF::Query(3pm)|DiaColloDB::Relation::TDF::Query>,
+L<DiaColloDB::Relation::Cofreqs(3pm)|DiaColloDB::Relation::Cofreqs>,
+L<DiaColloDB::Relation::Unigrams(3pm)|DiaColloDB::Relation::Unigrams>,
+L<DiaColloDB::Relation::DDC(3pm)|DiaColloDB::Relation::DDC>,
 L<DiaColloDB(3pm)|DiaColloDB>,
 L<perl(1)|perl>,
 ...
