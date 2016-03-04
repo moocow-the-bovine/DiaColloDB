@@ -59,7 +59,7 @@ DiaColloDB::Profile::Diff - diachronic collocation db, diff profiles
  
  $opname = $CLASS_OR_OBJECT->diffop($opNameOrAlias);
  $opsub  = $CLASS_OR_OBJECT->diffsub($opNameOrAlias);
- $bool   = $CLASS_OR_OBJECT->diffpretrim($opNameOrAlias);
+ $how    = $CLASS_OR_OBJECT->diffpretrim($opNameOrAlias);
  $key    = $CLASS_OR_OBJECT->diffkbest($opNameOrAlias);
  
  $diff   = diffop_diff($ascore,$bscore);
@@ -74,8 +74,9 @@ DiaColloDB::Profile::Diff - diachronic collocation db, diff profiles
  ##========================================================================
  ## Trimming
  
- \@keys = $dprf->which(%opts);
- $dprf  = $dprf->trim(%opts);
+ \@keys    = $dprf->which(%opts);
+ $dprf     = $dprf->trim(%opts);
+ ($pa,$pb) = $CLASS_OR_OJBECT->pretrim($pa,$pb,%opts);
  
  ##========================================================================
  ## Stringification
@@ -340,28 +341,33 @@ un-compiles all scores for $dprf
  $opname = $dprf->diffop();
  $opname = $CLASS_OR_OBJECT->diffop($opNameOrAlias);
 
-Returns canonical diff operation-name for $opNameOrAlias.
+Returns canonical diff operation-name for C<$opNameOrAlias>.
 
 =item diffsub
 
  \&FUNC = $dprf->diffsub();
  \&FUNC = $CLASS_OR_OBJECT->diffsub($opNameOrAlias);
 
-Returns low-level binary diff operation for diff-operation $opNameOrAlias (default=$dprf-E<gt>{diff}).
+Returns low-level binary diff operation for diff-operation C<$opNameOrAlias> (default=C<$dprf-E<gt>{diff}>).
 
 =item diffpretrim
 
- $bool = $dprf->diffpretrim()
- $bool = $CLASS_OR_OBJECT->diffpretrim($opNameOrAlias)
+ $how = $dprf->diffpretrim()
+ $how = $CLASS_OR_OBJECT->diffpretrim($opNameOrAlias)
 
-Returns true iff diff should pre-trim operand profiles (currently just for C<adiff> and C<min>).
+Returns whether and how a diff operation C<$opNameOrAlias> should pre-trim operand profiles.
+Returned value is one of:
+
+ 'restrict' # intersect defined collocates (min,avg,havg,gavg)
+ 'kbest'    # union of k-best collocates (diff,adiff,max)
+ 0          # don't pre-trim at all (everythiing else)
 
 =item diffkbest
 
  $selector = $dprf->diffkbest();
  $selector = $CLASS_OR_OBJECT->diffkbest($opNameOrAlias);
 
-Returns 'kbest' selector appropriate for which() or trim() methods.
+Returns 'kbest' selector appropriate for L<which()|/which> or L<trim()|/trim> methods.
 
 =item diffop_diff
 
@@ -406,6 +412,14 @@ trims profile and operands; %opts:
  cutoff => $cutoff,  ##-- retain only items with $prf->{$prf->{score}}{$item} >= $cutoff
  keep => $keep,      ##-- retain keys @$keep (ARRAY) or keys(%$keep) (HASH)
  drop => $drop,      ##-- drop keys @$drop (ARRAY) or keys(%$drop) (HASH)
+
+=item pretrim
+
+ ($pa,$pb) = $CLASS_OR_OBJECT->pretrim($pa,$pb,%opts);
+
+Perform pre-trimming on aligned profile pair ($pa,$pb)
+in the manner indicated by L<$CLASS_OR_OBJECT-E<gt>diffpretrim($opts{diff})>.
+
 
 =back
 
