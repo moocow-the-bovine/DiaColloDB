@@ -94,6 +94,10 @@ at your option, any later version of Perl 5 you may have available.
 
 =head1 SEE ALSO
 
+L<DiaColloDB::Logger(3pm)|DiaColloDB::Logger>,
+L<DiaColloDB::Temp::Array(3pm)|DiaColloDB::Temp::Array>,
+L<DiaColloDB::Temp::Hash(3pm)|DiaColloDB::Temp::Hash>,
+L<DiaColloDB::Temp::Vec(3pm)|DiaColloDB::Temp::Vec>,
 L<DiaColloDB(3pm)|DiaColloDB>,
 L<perl(1)|perl>,
 ...

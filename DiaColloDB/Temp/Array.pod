@@ -109,6 +109,7 @@ at your option, any later version of Perl 5 you may have available.
 L<DiaColloDB::Temp::Hash(3pm)|DiaColloDB::Temp::Hash>,
 L<DiaColloDB::Temp::Vec(3pm)|DiaColloDB::Temp::Vec>,
 L<DiaColloDB::PackedFile(3pm)|DiaColloDB::PackedFile>,
+L<DiaColloDB::Temp(3pm)|DiaColloDB::Temp>,
 L<DiaColloDB(3pm)|DiaColloDB>,
 L<Tie::File::Indexed::JSON(3pm)|Tie::File::Indexed::JSON>,
 L<perl(1)|perl>,
