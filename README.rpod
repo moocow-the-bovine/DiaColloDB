@@ -174,7 +174,7 @@ including various online visualizations.
 The CLARIN-D DiaCollo Showcase
 at L<http://clarin-d.de/de/kollokationsanalyse-in-diachroner-perspektive>
 contains a brief example-driven tutorial on using the
-L<DiaColloDB::WWW|DiaColloDB::WWW> wrappers
+web-services provided by the L<DiaColloDB::WWW|DiaColloDB::WWW> distribution
 (in German).
 
 =back

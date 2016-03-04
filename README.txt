@@ -79,12 +79,54 @@ INSTALLATION
      bash$ make test          # (optional): test module before installing
      bash$ make install       # install the module on your system
 
-SEE ALSO
-    *   <http://kaskade.dwds.de/dstar/dta/diacollo/> contains a live web
-        demo of a DiaCollo index on the *Deutsches Textarchiv* corpus of
-        historical German, including a user-oriented help page (in English).
+USAGE
+    Assuming you have a raw text corpus you'd like to access via this
+    module, the following steps will be required:
 
-        See <http://kaskade.dwds.de/dstar/dta/diacollo/>.
+  Corpus Annotation and Conversion
+    Your corpus must be tokenized and annotated with whatever word-level
+    attributes and/or document-level metadata you wish to be able to query;
+    in particular document date is required. See "SUBCLASSES" in
+    DiaColloDB::Document for a list of currently supported corpus formats.
+
+  DiaCollo Index Creation
+    You will need to compile a DiaColloDB index for your corpus. This can be
+    accomplished using the dcdb-create.perl(1) script from this
+    distribution.
+
+  Command-Line Queries
+    Once you have compiled a local index, you can query it from the
+    command-line using the dcdb-query.perl(1) script from this distribution.
+
+  (Optional) WWW Wrappers
+    If you want online visualization of a local index, consider installing
+    the DiaColloDB::WWW distribution (available on CPAN) and following the
+    instructions in its README.txt file.
+
+SEE ALSO
+    *   The DiaColloDB module documentation describes the API of the
+        underlying perl module; when in doubt, look here.
+
+    *   The dcdb-create.perl(1) script can be used to create a DiaColloDB
+        index for a corpus in one of the supported corpus formats.
+
+    *   The dcdb-query.perl(1) script can execute runtime queries over a
+        local DiaColloDB index or a remote web-service via the
+        DiaColloDB::Client interface.
+
+    *   <http://kaskade.dwds.de/dstar/dta/diacollo/> contains a live
+        web-service wrapper for a DiaCollo index over the *Deutsches
+        Textarchiv* corpus of historical German, including a user-oriented
+        help page (in English).
+
+    *   The DiaColloDB::WWW distribution contains scripts and utilities for
+        creating HTTP-based web-services for local DiaCollo indices,
+        including various online visualizations.
+
+    *   The CLARIN-D DiaCollo Showcase at
+        <http://clarin-d.de/de/kollokationsanalyse-in-diachroner-perspektive
+        > contains a brief example-driven tutorial on using the
+        DiaColloDB::WWW wrappers (in German).
 
 AUTHOR
     Bryan Jurish <moocow@cpan.org>
