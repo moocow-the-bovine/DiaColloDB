@@ -2,10 +2,11 @@
 ##
 ## Change log for perl distribution DiaColloDB
 
-pending Thu, 03 Mar 2016 16:52:19 +0100 moocow
+v0.08.004 Fri, 04 Mar 2016 13:25:20 +0100 moocow
 	* remove temporary PDL headers created by DiaColloDB::PackedFile::toPdl(), used by TDF::union()
 	* fixed buggy Profile::trim() call on undefined (empty) profiles in Profile::Diff::pretrim()
 	* updated PODs for command-line utilities
+	* updated & improved API module documentation
 
 v0.08.003 Fri, 26 Feb 2016 15:14:43 +0100 moocow
 	* added missing PODs to MANIFEST
