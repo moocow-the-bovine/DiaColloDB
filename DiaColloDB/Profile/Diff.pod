@@ -296,14 +296,19 @@ Save flat HTML table data with rows of the form
 
  SCOREa SCOREb DIFF PREFIX? ITEM2...
 
-%opts:
+If C<verbose> option is specified and true, saved table has the form
 
- table  => $bool,     ##-- include <table>..</table> ? (default=1)
- body   => $bool,     ##-- include <html><body>..</html></body> ? (default=1)
- header => $bool,     ##-- include header-row? (default=1)
- hlabel => $hlabel,   ##-- prefix header item-cells with $hlabel (used by Profile::Multi), no '<th>..</th>' required
- label => $label,     ##-- prefix item-cells with $label (used by Profile::Multi), no '<td>..</td>' required
- format => $fmt,      ##-- printf score formatting (default="%.4f")
+ Na Nb F1a F1b F2a F2b F12a F12b SCOREa SCOREb DIFF PREFIX? ITEM2...
+
+Options %opts:
+
+ table   => $bool,    ##-- include <table>..</table> ? (default=1)
+ body    => $bool,    ##-- include <html><body>..</html></body> ? (default=1)
+ header  => $bool,    ##-- include header-row? (default=1)
+ verbose => $bool,    ##-- include verbose output? (default=0)
+ hlabel  => $hlabel,  ##-- prefix header item-cells with $hlabel (used by Profile::Multi), no '<th>..</th>' required
+ label   => $label,   ##-- prefix item-cells with $label (used by Profile::Multi), no '<td>..</td>' required
+ format  => $fmt,     ##-- printf score formatting (default="%.4f")
 
 =back
 

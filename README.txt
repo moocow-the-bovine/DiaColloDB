@@ -4,9 +4,9 @@ ABSTRACT
     DiaColloDB - diachronic collocation database
 
 REQUIREMENTS
-    DB_File
-        For handling large temporary hashes during index construction.
-        Available from CPAN.
+  Perl Modules
+    The following non-core perl modules are required, and should be
+    available from CPAN <http://www.cpan.org>.
 
     DDC::Concordance (formerly ddc-perl)
         Perl module for DDC client connections. Available from CPAN, or via
@@ -19,50 +19,40 @@ REQUIREMENTS
         <https://svn.code.sf.net/p/ddc-concordance/code/ddc-perl-xs/trunk>
 
     File::Map
-        Available from CPAN.
-
-    File::Path
-        Available from CPAN.
-
     File::Temp
-        Available from CPAN.
-
     JSON
-        Available from CPAN.
-
     IPC::Run
-        Available from CPAN.
-
     Log::Log4perl
-        Available from CPAN.
+    LWP::UserAgent
+        For querying external servers via DiaColloDB::Client::http.
 
     PDL (optional)
 
         Perl Data Language for fast fixed-size numeric data structures, used
-        by the TDF (term-document frequency matrix) relation type, available
-        from CPAN.
-
-        It should still be possible to build, install, and run the
-        DiaColloDB distribution on a system without PDL installed, but use
-        of the the TDF (term x document) matrix relation type will be
-        disabled.
+        by the TDF (term-document frequency matrix) relation type. It should
+        still be possible to build, install, and run the DiaColloDB
+        distribution on a system without PDL installed, but use of the the
+        TDF (term x document) matrix relation type will be disabled.
 
     PDL::CCS
         (optional)
 
         PDL module for sparse index-encoded matrices, used by the TDF
-        (term-document frequency matrix) relation type, available from CPAN.
-        See the caveats under PDL.
+        (term-document frequency matrix) relation type. See the caveats
+        under PDL.
 
     Tie::File::Indexed
-        For handling large (temporary) arrays during index creation,
-        available from CPAN.
+        For handling large (temporary) arrays during index creation.
 
-    (a corpus to index or an existing index to query)
-        See "SUBCLASSES" in DiaColloDB::Document for a list of currently
-        supported document formats. Additional formats can be supported by
-        implementing a subclass of DiaColloDB::Document for parsing input
-        documents.
+    XML::LibXML
+        (optional)
+
+        Required for index compilation from TCF or TEI corpus sources.
+
+  Additional Requirements
+    In order to make use of this module, you will also need either a corpus
+    to index or an existing index to query. See "SUBCLASSES" in
+    DiaColloDB::Document for a list of supported corpus input formats.
 
 DESCRIPTION
     The DiaColloDB package provides a set of object-oriented Perl modules
@@ -78,6 +68,8 @@ INSTALLATION
      bash$ make               # build the module
      bash$ make test          # (optional): test module before installing
      bash$ make install       # install the module on your system
+
+    See perlmodinstall for details.
 
 USAGE
     Assuming you have a raw text corpus you'd like to access via this

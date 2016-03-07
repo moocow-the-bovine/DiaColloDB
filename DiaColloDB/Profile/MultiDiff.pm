@@ -95,10 +95,10 @@ sub saveTextHeader {
 ##    (
 ##     table  => $bool,     ##-- include <table>..</table> ? (default=1)
 ##     body   => $bool,     ##-- include <html><body>..</html></body> ? (default=1)
-##     verbose => $bool,    ##-- include verbose output? (default=1)
+##     verbose => $bool,    ##-- include verbose output? (default=0)
 ##     qinfo  => $varname,  ##-- include <script> for qinfo data? (default='qinfo')
 ##     header => $bool,     ##-- include header-row? (default=1)
-##     format => $fmt,      ##-- printf score formatting (default="%.2f")
+##     format => $fmt,      ##-- printf score formatting (default="%.4f")
 ##    )
 sub saveHtmlFile {
   my ($mp,$file,%opts) = @_;

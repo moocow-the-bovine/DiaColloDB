@@ -173,7 +173,7 @@ sub saveTextFh {
 ##     table  => $bool,     ##-- include <table>..</table> ? (default=1)
 ##     body   => $bool,     ##-- include <html><body>..</html></body> ? (default=1)
 ##     header => $bool,     ##-- include header-row? (default=1)
-##     verbose => $bool,    ##-- include verbose output? (default=1)
+##     verbose => $bool,    ##-- include verbose output? (default=0)
 ##     hlabel => $hlabel,   ##-- prefix header item-cells with $hlabel (used by Profile::Multi), no '<th>..</th>' required
 ##     label => $label,     ##-- prefix item-cells with $label (used by Profile::Multi), no '<td>..</td>' required
 ##     format => $fmt,      ##-- printf score formatting (default="%.4f")

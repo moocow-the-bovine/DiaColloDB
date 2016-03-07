@@ -195,7 +195,7 @@ foreach my $iter (1..$niters) {
   }
   elsif ($outfmt eq 'html') {
     $mp->trace("saveHtmlFile()");
-    $mp->saveHtmlFile($outfile,%save);
+    $mp->saveHtmlFile($outfile,verbose=>!$pretty,%save);
   }
 }
 

@@ -9,18 +9,19 @@ DiaColloDB - diachronic collocation database
 
 =head1 REQUIREMENTS
 
+
+=head2 Perl Modules
+
+The following non-core perl modules are required,
+and should be available from L<CPAN|http://www.cpan.org>.
+
 =over 4
-
-=item DB_File
-
-For handling large temporary hashes during index construction.
-Available from CPAN.
 
 =item DDC::Concordance (formerly ddc-perl)
 
 Perl module for DDC client connections.
 Available from CPAN,
-or via SVN from L<https://svn.code.sf.net/p/ddc-concordance/code/ddc-perl/trunk>
+or via SVN from <https://svn.code.sf.net/p/ddc-concordance/code/ddc-perl/trunk>
 
 =item DDC::XS (formerly ddc-perl-xs)
 
@@ -30,36 +31,24 @@ or via SVN from L<https://svn.code.sf.net/p/ddc-concordance/code/ddc-perl-xs/tru
 
 =item File::Map
 
-Available from CPAN.
-
-=item File::Path
-
-Available from CPAN.
-
 =item File::Temp
-
-Available from CPAN.
 
 =item JSON
 
-Available from CPAN.
-
 =item IPC::Run
-
-Available from CPAN.
 
 =item Log::Log4perl
 
-Available from CPAN.
+=item LWP::UserAgent
+
+For querying external servers via L<DiaColloDB::Client::http>.
 
 =item PDL
 
 (optional)
 
 Perl Data Language for fast fixed-size numeric data structures,
-used by the TDF (term-document frequency matrix) relation type,
-available from CPAN.
-
+used by the TDF (term-document frequency matrix) relation type.
 It should still be possible to build, install, and run the DiaColloDB distribution
 on a system without PDL installed, but use of the
 the TDF (term x document) matrix relation type will be disabled.
@@ -69,23 +58,32 @@ the TDF (term x document) matrix relation type will be disabled.
 (optional)
 
 PDL module for sparse index-encoded matrices,
-used by the TDF (term-document frequency matrix) relation type,
-available from CPAN.
+used by the TDF (term-document frequency matrix) relation type.
 See the caveats under L<PDL|/PDL>.
 
 =item Tie::File::Indexed
 
-For handling large (temporary) arrays during index creation,
-available from CPAN.
+For handling large (temporary) arrays during index creation.
 
-=item (a corpus to index or an existing index to query)
+=item XML::LibXML
 
-See L<DiaColloDB::Document/SUBCLASSES> for a list of currently supported document formats.
-Additional formats can be supported by
-implementing a subclass of L<DiaColloDB::Document|DiaColloDB::Document> for
-parsing input documents.
+(optional)
+
+Required for index compilation from
+L<TCF|DiaColloDB::Document::TCF> or
+L<TEI|DiaColloDB::Document::TEI>
+corpus sources.
 
 =back
+
+=head2 Additional Requirements
+
+In order to make use of this module,
+you will also need either a corpus to index
+or an existing index to query.
+See L<DiaColloDB::Document/SUBCLASSES> for
+a list of supported corpus input formats.
+
 
 
 =head1 DESCRIPTION
@@ -105,6 +103,7 @@ Issue the following commands to the shell:
  bash$ make test          # (optional): test module before installing
  bash$ make install       # install the module on your system
 
+See L<perlmodinstall> for details.
 
 =head1 USAGE
 

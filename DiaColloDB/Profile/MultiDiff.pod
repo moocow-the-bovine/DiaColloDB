@@ -181,11 +181,18 @@ Save flat HTML table data with rows of the form
 
  SCOREa SCOREb DIFF LABEL ITEM2...
 
- table  => $bool,     ##-- include <table>..</table> ? (default=1)
- body   => $bool,     ##-- include <html><body>..</html></body> ? (default=1)
- qinfo  => $varname,  ##-- include <script> for qinfo data? (default='qinfo')
- header => $bool,     ##-- include header-row? (default=1)
- format => $fmt,      ##-- printf score formatting (default="%.2f")
+If C<verbose> option is specified and true, saved table has the form
+
+ Na Nb F1a F1b F2a F2b F12a F12b SCOREa SCOREb DIFF PREFIX? ITEM2...
+
+Options %opts:
+
+ table   => $bool,     ##-- include <table>..</table> ? (default=1)
+ body    => $bool,     ##-- include <html><body>...</html></body> ? (default=1)
+ qinfo   => $varname,  ##-- include <script> for qinfo data? (default='qinfo')
+ verbose => $bool,     ##-- include verbose output? (default=0)
+ header  => $bool,     ##-- include header-row? (default=1)
+ format  => $fmt,      ##-- printf score formatting (default="%.2f")
 
 =back
 
