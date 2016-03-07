@@ -1,6 +1,7 @@
 ~$
 ^todo\.txt$
 ^reversion\.sh$
+^svntag\.sh$
 ^kant\b
 \b_Inline\b
 ^lda\b
