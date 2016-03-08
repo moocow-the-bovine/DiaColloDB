@@ -124,6 +124,7 @@ sub shadow {
 ##==============================================================================
 ## Basic Access
 
+
 ## $label = $prf->label()
 ##  + get label
 sub label {
@@ -148,8 +149,15 @@ sub empty {
   my $p = shift;
   #return 0 if ($p->{f1}); ##-- do we want to keep nonzero $f1 even if there are no collocates? i think not... moocow 2015-11-02
   return 1 if (!$p->{f1});
+  return !$p->size;
+}
+
+## $size = $prf->size()
+##  + returns total number of collocates defined in profile
+sub size {
+  my $p = shift;
   my $f = (grep {defined($p->{$_})} qw(f2 f12),$p->scoreKeys)[0];
-  return !$f || !scalar(keys(%{$p->{$f}}));
+  return $f ? scalar(keys %{$p->{$f}}) : 0;
 }
 
 ##==============================================================================

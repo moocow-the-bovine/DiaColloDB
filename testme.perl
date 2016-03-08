@@ -1898,7 +1898,31 @@ sub test_pfpdl {
   print "got pdl: $pdl\n";
   exit 0;
 }
-test_pfpdl(@ARGV);
+#test_pfpdl(@ARGV);
+
+##==============================================================================
+## test: list-clients urls
+
+sub test_client_list {
+  DiaColloDB->ensureLog(level=>'INFO');
+  my $dburl = shift || 'list://kern01-1ka.d kern01-1kb.d ?fudge=0';
+  my $cli = DiaColloDB::Client->new($dburl)
+    or die("$0: failed to create client for DB-URL '$dburl'");
+
+  my %q = (
+	   query=>'Kaffee',
+	   slice=>0,
+	   kbest=>10,
+	   strings=>1,
+	   score=>'ld',
+	   groupby=>'l,p=NN',
+	  );
+  my $mp = $cli->profile('cof',%q);
+  $mp->saveTextFile('-');
+  exit 0;
+}
+test_client_list @ARGV;
+
 
 ##==============================================================================
 ## MAIN

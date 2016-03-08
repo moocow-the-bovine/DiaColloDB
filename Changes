@@ -2,6 +2,10 @@
 ##
 ## Change log for perl distribution DiaColloDB
 
+pending Tue, 08 Mar 2016 14:26:41 +0100
+	* added dbexport() support for TDF relations
+	* allow option pass-through for Profile::Multi::compile()
+
 v0.08.005 Mon, 07 Mar 2016 10:02:12 +0100 moocow
 	* fixed pod =encoding typo in Profile.pod
 	* added 'verbose' option to Profile::(Multi)Diff::saveHtmlFile

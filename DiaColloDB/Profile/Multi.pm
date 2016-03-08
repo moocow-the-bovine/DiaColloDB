@@ -61,6 +61,15 @@ sub clone {
 	      );
 }
 
+## $size = $mp->size()
+##  + returns total number of collocates in any sub-profile
+sub size {
+  my $mp   = shift;
+  my $size = 0;
+  $size += $_->size foreach (grep {defined($_)} @{$mp->{profiles}});
+  return $size;
+}
+
 ##==============================================================================
 ## I/O
 
@@ -147,11 +156,12 @@ sub saveHtmlFile {
 ##==============================================================================
 ## Compilation and Trimming
 
-## $mp_or_undef = $mp->compile($func)
+## $mp_or_undef = $mp->compile($func,%opts)
 ##  + compile all sub-profiles for score-function $func, one of qw(f mi ld); default='f'
+##  + %opts are passed to sub-profile compile()
 sub compile {
-  my ($mp,$func) = @_;
-  $_->compile($func) or return undef foreach (@{$mp->{profiles}});
+  my ($mp,$func,%opts) = @_;
+  $_->compile($func,%opts) or return undef foreach (@{$mp->{profiles}});
   return $mp;
 }
 

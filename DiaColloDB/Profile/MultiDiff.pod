@@ -63,7 +63,7 @@ DiaColloDB::Profile::MultiDiff - diachronic collocation db, (co-)frequency profi
  ##========================================================================
  ## Compilation
  
-  @ppairs = $CLASS_OR_OBJECT->align($mp1,$mp2);
+ @ppairs = $CLASS_OR_OBJECT->align($mp1,$mp2);
  $mpd = $mpd->populate($mp1,$mp2);
  $class = $CLASS_OR_OBJECT->pclass();
  $mp_or_undef = $CLASS_OR_OBJECT->trimPairs(\@pairs, %opts);

@@ -849,6 +849,53 @@ sub union {
   return $vs;
 }
 
+
+##==============================================================================
+## Relation API: export
+
+## $bool = $rel->export($outbase, $coldb, %opts)
+sub export {
+  my ($vs,$outbase,$coldb,%opts) = @_;
+  $vs->logconfess("export() called as a class method") if (!ref($vs));
+
+  my $outdir = "$outbase.d";
+  my $logLocal = $coldb->{logExport};
+
+  ##-- create export directory
+  -d $outdir
+    or make_path($outdir)
+    or $vs->logconfess("export(): could not create export directory $outdir: $!");
+
+  ##-- export: header
+  $vs->saveHeader("$outbase.hdr")
+    or $vs->logconfess("export(): could not export header to $outbase.hdr: $!");
+
+  ##-- export: meta-enums
+  foreach my $mattr (@{$vs->{meta}}) {
+    $vs->vlog($logLocal,"exporting enum $outdir/meta_e_$mattr.dat");
+    $vs->{"meta_e_$mattr"}->saveTextFile("$outdir/meta_e_$mattr.dat")
+      or $vs->logconfess("export() failed for $outdir/meta_e_$mattr.dat: $!");
+  }
+
+  ##-- export: PDLs: dense (mm format)
+  require 'PDL/CCS/IO/MatrixMarket.pm'
+    or $vs->logconfess("export(): failed to load PDL::CCS::IO::MatrixMarket");
+  foreach my $key (qw(tvals tsorti mvals msorti cf c2date c2d d2c)) {
+    $vs->vlog($logLocal,"exporting $outdir/$key.mm");
+    $vs->{$key}->writemm("$outdir/$key.mm")
+      or $vs->logconfess("export() failed for $outdir/$key.mm: $!");
+  }
+
+  ##-- export: PDLs: sparse (mm format)
+  foreach my $key (qw(tdm tym)) {
+    $vs->vlog($logLocal,"exporting $outdir/$key.mm");
+    $vs->{$key}->writemm("$outdir/$key.mm")
+      or $vs->logconfess("export() failed for $outdir/$key.mm: $!");
+  }
+
+  return $vs;
+}
+
 ##==============================================================================
 ## Relation API: dbinfo
 

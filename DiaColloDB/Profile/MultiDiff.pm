@@ -176,8 +176,8 @@ sub populate {
   return $mpd;
 }
 
-## $mp_or_undef = $mp->compile($func)
-##  + compile all sub-profiles for score-function $func, one of qw(f mi ld); default='f'
+## $mp_or_undef = $mp->compile($func,%opts)
+##  + compile all sub-profiles for score-function $func; default='f'
 ##  + INHERITED from DiaColloDB::Profile::Multi
 
 ## $mp = $mp->uncompile()

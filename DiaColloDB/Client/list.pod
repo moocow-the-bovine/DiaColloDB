@@ -33,10 +33,19 @@ new() options and object structure:
  ##-- DiaColloDB::Client::list
  urls  => \@urls,     ##-- sub-urls
  opts  => \%opts,     ##-- sub-client options
- fudge => $coef,      ##-- get ($coef*$kbest) items from sub-clients (default=1)
+ fudge => $coef,      ##-- get ($coef*$kbest) items from sub-clients (0:all; default=10)
+ logFudge => $level,  ##-- log-level for fudge-coefficient debugging (default='debug')
  ##
  ##-- guts
  clis => \@clis,      ##-- per-url clients
+
+The most important client parameter is the C<fudge=E<gt>$coef> option, which requests
+that up to C<$coef*$kbest> items be retrieved from sub-clients for each L<profile()|profile>
+call.  If C<$coef E<lt>= 0>, all collocates will be retrieved from each sub-client,
+and trimming will be performed exclusively by the superordinate DiaColloDB::Client::list object.
+The default value of 10 should return reasonable results without too large of
+a performance penalty in most cases, but be aware that the results may not be strictly correct
+due to sub-client local pruning.
 
 Needs work for use in production environments, since the pruning semantics
 for the C<kbest> request parameter are applied both by sub-clients

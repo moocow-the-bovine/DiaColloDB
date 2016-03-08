@@ -47,7 +47,7 @@ DiaColloDB::Profile::Multi - diachronic collocation db, (co-)frequency profile, 
  ##========================================================================
  ## Compilation and Trimming
  
- $mp_or_undef = $mp->compile($func);
+ $mp_or_undef = $mp->compile($func,%opts);
  $mp = $mp->uncompile();
  $class = $CLASS_OR_OBJECT->pclass();
  $prf = $mp->sumover();
@@ -216,10 +216,10 @@ save flat HTML table representation to a file.
 
 =item compile
 
- $mp_or_undef = $mp->compile($func);
+ $mp_or_undef = $mp->compile($func,%opts);
 
 compile all sub-profiles for score-function $func;
-just calls $prf-E<gt>compile($func) for each sub-profile $prf.
+just calls C<$prf-E<gt>L<compile|DiaColloDB::Profile/compile>($func,%opts)> for each sub-profile C<$prf>.
 
 =item uncompile
 

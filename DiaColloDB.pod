@@ -101,12 +101,14 @@ DiaColloDB - diachronic collocation database, top-level
  ##========================================================================
  ## Profiling: Generic
  
- $mprf = $coldb->profile($relation, %opts);
+ $mprf  = $coldb->profile($relation, %opts);
+ \%opts = $CLASS_OR_OBJECT->profileOptions(\%opts);
  
  ##========================================================================
  ## Profiling: Comparison (diff)
  
- $mprf = $coldb->compare($relation, %opts);
+ $mprf  = $coldb->compare($relation, %opts);
+ \%opts = $CLASS_OR_OBJECT->compareOptions(\%opts);
  
 
 =cut
@@ -865,6 +867,13 @@ Get a relation profile for selected items as a L<DiaColloDB::Profile::Multi|DiaC
 
 Sets default %opts and wraps $coldb-E<gt>L<relation|/relation>($rel)-E<gt>L<profile|DiaColloDB::Relation/profile>($coldb, %opts).
 
+=item profileOptions
+
+ \%opts = $CLASS_OR_OBJECT->profileOptions(\%opts);
+
+Instantiates default options for L<profile()|/profile> method.
+May be used e.g. by L<DiaColloDB::Client|DiaColloDB::Client> subclasses.
+
 =back
 
 =cut
@@ -904,6 +913,13 @@ Get a relation comparison profile for selected items as a L<DiaColloDB::Profile:
  strings => $bool,            ##-- do/don't stringify (default=do)
 
 Sets default %opts and wraps $coldb-E<gt>L<relation|/relation>($rel)-E<gt>L<compare|DiaColloDB::Relation/compare>($coldb, %opts)
+
+=item compareOptions
+
+ \%opts = $CLASS_OR_OBJECT->compareOptions(\%opts);
+
+Instantiates default options for L<compare()|/compare> method.
+May be used e.g. by L<DiaColloDB::Client|DiaColloDB::Client> subclasses.
 
 =back
 

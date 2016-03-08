@@ -26,7 +26,8 @@ our @ISA = qw(DiaColloDB::Client);
 ##    ##-- DiaColloDB::Client::list
 ##    urls  => \@urls,     ##-- db urls
 ##    opts  => \%opts,     ##-- sub-client options
-##    fudge => $coef,      ##-- get ($coef*$kbest) items from sub-clients (default=1)
+##    fudge => $coef,      ##-- get ($coef*$kbest) items from sub-clients (0:all, default=10)
+##    logFudge => $level,  ##-- log-level for fudge-factor debugging (default='debug')
 ##    ##
 ##    ##-- guts
 ##    clis => \@clis,      ##-- per-url clients
@@ -39,7 +40,8 @@ sub defaults {
 	  #urls=>[],
 	  #clis=>[],
 	  opts=>{},
-	  fudge=>1,
+	  fudge=>10,
+	  logFudge => 'debug',
 	 );
 }
 
@@ -50,6 +52,7 @@ sub defaults {
 ## $cli_or_undef = $cli->open_list($list_url, %opts)
 ## $cli_or_undef = $cli->open_list()
 ##  + creates new client for each url, passing %opts to DiaColloDB::Client->new()
+##  + component URLs beginning with '?' are treated as options to $cli itself
 sub open_list {
   my ($cli,$url) = (shift,shift);
 
@@ -63,12 +66,23 @@ sub open_list {
     ($urls=$url) =~ s{^list://}{};
     $urls        = [split(' ',$urls)];
   }
-  @$cli{qw(url urls)} = ($url,$urls);
+
+  ##-- parse list-client options (query-only URLs)
+  my $curls = [];
+  foreach (@$urls) {
+    if (/^\?/) {
+      my %form = URI->new($_)->query_form;
+      @$cli{keys %form} = values %form;
+    } else {
+      push(@$curls,$_);
+    }
+  }
+  @$cli{qw(url urls)} = ($url,$curls);
 
   ##-- open sub-clients
   my ($c);
   my $clis = $cli->{clis} = [];
-  foreach (@$urls) {
+  foreach (@$curls) {
     $c = DiaColloDB::Client->new($_,%{$cli->{opts}//{}},@_)
       or $cli->logconfess("open(): failed to create client for URL '$_': $!");
     push(@$clis, $c);
@@ -125,17 +139,31 @@ sub dbinfo {
 ##  + sets $cli->{error} on error
 sub profile {
   my ($cli,$rel,%opts) = @_;
-  my ($mp,$mpi);
+
+  ##-- defualts
+  DiaColloDB->profileOptions(\%opts);
+
+  ##-- fudge coefficient
   my $kbest  = $opts{kbest} // 0;
-  my $kfudge = ($cli->{fudge} || 1)*$kbest;
+  my $kfudge = ($cli->{fudge} // 1)*$kbest;
+  $cli->vlog($cli->{logFudge}, "profile(): querying ", scalar(@{$cli->{clis}}), " client(s) with fudge=", ($cli->{fudge}//1), " * kbest=$kbest = $kfudge");
+
+  ##-- query clients
+  my ($mp,$mpi);
   foreach (@{$cli->{clis}}) {
-    $mpi = $_->profile($rel,%opts,kbest=>$kfudge)
+    $mpi = $_->profile($rel,%opts,strings=>1,kbest=>$kfudge,cutoff=>0)
       or $cli->logconfess("profile() failed for client URL $_->{url}: $_->{error}");
     $mp  = defined($mp) ? $mp->_add($mpi) : $mpi;
   }
+  $cli->vlog($cli->{logFudge}, "profile(): collected fudged profile of size ", $mp->size)
+    if (($cli->{logFudge}//'off') !~ /^(?:off|none)$/);
 
   ##-- re-compile and -trim
-  $mp->compile($opts{score})->trim(kbest=>$kbest, cutoff=>$opts{cutoff});
+  $mp->compile($opts{score}, eps=>$opts{eps})->trim(kbest=>$kbest, cutoff=>$opts{cutoff}, empty=>!$opts{fill});
+
+  $cli->vlog($cli->{logFudge}, "profile(): trimmed final profile to size ", $mp->size)
+    if (($cli->{logFudge}//'off') !~ /^(?:off|none)$/);
+
   return $mp;
 }
 
@@ -144,22 +172,32 @@ sub profile {
 
 ## $mprf = $cli->compare($relation, %opts)
 ##  + get a relation comparison profile for selected items as a DiaColloDB::Profile::MultiDiff object
+##  + adpated from generic DiaColloDB::Relation::profile()
 ##  + %opts: as for DiaColloDB::compare()
 ##  + sets $cli->{error} on error
 sub compare {
   my ($cli,$rel,%opts) = @_;
-  my ($mp,$mpi);
-  my $kbest  = $opts{kbest} // 0;
-  my $kfudge = ($cli->{fudge} || 1)*$kbest;
-  foreach (@{$cli->{clis}}) {
-    $mpi = $_->compare($rel,%opts,kbest=>$kfudge)
-      or $cli->logconfess("profile() failed for client URL $_->{url}: $!");
-    $mp  = defined($mp) ? $mp->_add($mpi) : $mpi;
-  }
 
-  ##-- re-compile and -trim
-  $mp->compile($opts{score})->trim(kbest=>$kbest, cutoff=>$opts{cutoff});
-  return $mp;
+  ##-- defaults ::: CONTINUE HERE
+  DiaColloDB->compareOptions(\%opts);
+
+  ##-- common variables
+  my %aopts = map {exists($opts{"a$_"}) ? ($_=>$opts{"a$_"}) : qw()} (qw(query date slice), @{$opts{_abkeys}//[]});
+  my %bopts = map {exists($opts{"b$_"}) ? ($_=>$opts{"b$_"}) : qw()} (qw(query date slice), @{$opts{_abkeys}//[]});
+  my %popts = (kbest=>-1,cutoff=>'',global=>0,strings=>0,fill=>1);
+
+  ##-- get profiles to compare
+  my $mpa = $cli->profile($rel,%opts, %aopts,%popts) or return undef;
+  my $mpb = $cli->profile($rel,%opts, %bopts,%popts) or return undef;
+
+  ##-- alignment and trimming
+  my $ppairs = DiaColloDB::Profile::MultiDiff->align($mpa,$mpb);
+  DiaColloDB::Profile::MultiDiff->trimPairs($ppairs, %opts);
+  my $diff = DiaColloDB::Profile::MultiDiff->new($mpa,$mpb, titles=>$mpa->{titles}, diff=>$opts{diff});
+  $diff->trim( DiaColloDB::Profile::Diff->diffkbest($opts{diff})=>$opts{kbest} ) if (!$opts{global});
+
+  ##-- return
+  return $diff;
 }
 
 ##==============================================================================

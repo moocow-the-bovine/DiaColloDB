@@ -1228,6 +1228,7 @@ sub loadHeaderData {
 ##  + %opts:
 ##     export_sdat => $bool,  ##-- whether to export *.sdat (stringified tuple files for debugging; default=0)
 ##     export_cof  => $bool,  ##-- do/don't export cof.* (default=do)
+##     export_tdf  => $bool,  ##-- do/don't export tdf.* (default=do)
 sub dbexport {
   my ($coldb,$outdir,%opts) = @_;
   $coldb->logconfess("cannot dbexport() an un-opened DB") if (!$coldb->opened);
@@ -1238,6 +1239,7 @@ sub dbexport {
   ##-- options
   my $export_sdat = exists($opts{export_sdat}) ? $opts{export_sdat} : 0;
   my $export_cof  = exists($opts{export_cof}) ? $opts{export_cof} : 1;
+  my $export_tdf  = exists($opts{export_tdf}) ? $opts{export_tdf} : 1;
 
   ##-- create export directory
   -d $outdir
@@ -1343,6 +1345,13 @@ sub dbexport {
       $coldb->{cof}->saveTextFile("$outdir/cof.sdat", i2s=>$xi2txt)
 	or $coldb->logconfess("export failed for $outdir/cof.sdat");
     }
+  }
+
+  ##-- dump: tdf
+  if ($coldb->{tdf} && $coldb->{index_tdf} && $export_tdf) {
+    $coldb->vlog($coldb->{logExport}, "dbexport(): exporting term-document index $outdir/tdf.*");
+    $coldb->{tdf}->export("$outdir/tdf", $coldb)
+      or $coldb->logconfess("export failed for $outdir/tdf.*");
   }
 
   ##-- all done
@@ -2086,17 +2095,7 @@ sub profile {
   my ($coldb,$rel,%opts) = @_;
 
   ##-- defaults
-  $opts{query}     = (grep {defined($_)} @opts{qw(query q lemma lem l)})[0] // '';
-  $opts{date}    //= '';
-  $opts{slice}   //= 1;
-  $opts{groupby} ||= join(',', map {quotemeta($_)} @{$coldb->attrs});
-  $opts{score}   //= 'f';
-  $opts{eps}     //= 0;
-  $opts{kbest}   //= -1;
-  $opts{cutoff}  //= '';
-  $opts{global}  //= 0;
-  $opts{strings} //= 1;
-  $opts{fill}    //= 0;
+  $coldb->profileOptions(\%opts);
 
   ##-- debug
   $coldb->vlog($coldb->{logRequest},
@@ -2119,6 +2118,27 @@ sub profile {
 
   ##-- delegate
   return $reldb->profile($coldb,%opts);
+}
+
+## \%opts = $CLASS_OR_OBJECT->profileOptions(\%opts)
+##  + instantiates default options for profile() method
+sub profileOptions {
+  my ($that,$opts) = @_;
+
+  ##-- defaults
+  $opts->{query}     = (grep {defined($_)} @$opts{qw(query q lemma lem l)})[0] // '';
+  $opts->{date}    //= '';
+  $opts->{slice}   //= 1;
+  $opts->{groupby} ||= join(',', map {quotemeta($_)} @{$that->attrs}) if (ref($that));
+  $opts->{score}   //= 'f';
+  $opts->{eps}     //= 0;
+  $opts->{kbest}   //= -1;
+  $opts->{cutoff}  //= '';
+  $opts->{global}  //= 0;
+  $opts->{strings} //= 1;
+  $opts->{fill}    //= 0;
+
+  return $opts;
 }
 
 ##--------------------------------------------------------------
@@ -2154,30 +2174,7 @@ sub compare {
   $rel //= 'cof';
 
   ##-- defaults and '[ab]OPTION' parsing
-  foreach my $ab (qw(a b)) {
-    $opts{"${ab}query"} = ((grep {defined($_)} @opts{map {"${ab}$_"} qw(query q lemma lem l)}),
-			   (grep {defined($_)} @opts{qw(query q lemma lem l)})
-			  )[0]//'';
-  }
-  foreach my $attr (qw(date slice)) {
-    $opts{"a$attr"} = ((map {defined($opts{"a$_"}) ? $opts{"a$_"} : qw()} @{$ATTR_RALIAS{$attr}}),
-		       (map {defined($opts{$_})    ? $opts{$_}    : qw()} @{$ATTR_RALIAS{$attr}}),
-		      )[0]//'';
-    $opts{"b$attr"} = ((map {defined($opts{"b$_"}) ? $opts{"b$_"} : qw()} @{$ATTR_RALIAS{$attr}}),
-		       (map {defined($opts{$_})    ? $opts{$_}    : qw()} @{$ATTR_RALIAS{$attr}}),
-		      )[0]//'';
-  }
-  delete @opts{keys %ATTR_ALIAS};
-
-  ##-- common defaults
-  $opts{groupby} ||= join(',', map {quotemeta($_)} @{$coldb->attrs});
-  $opts{score}   //= 'f';
-  $opts{eps}     //= 0;
-  $opts{kbest}   //= -1;
-  $opts{cutoff}  //= '';
-  $opts{global}  //= 0;
-  $opts{diff}    //= 'adiff';
-  $opts{strings} //= 1;
+  $coldb->compareOptions(\%opts);
 
   ##-- debug
   $coldb->vlog($coldb->{logRequest},
@@ -2201,6 +2198,37 @@ sub compare {
 
   ##-- delegate
   return $reldb->compare($coldb,%opts);
+}
+
+## \%opts = $CLASS_OR_OBJECT->compareOptions(\%opts)
+##  + instantiates default options for compare() method
+sub compareOptions {
+  my ($that,$opts) = @_;
+
+  ##-- defaults and '[ab]OPTION' parsing
+  foreach my $ab (qw(a b)) {
+    $opts->{"${ab}query"} = ((grep {defined($_)} @$opts{map {"${ab}$_"} qw(query q lemma lem l)}),
+			     (grep {defined($_)} @$opts{qw(query q lemma lem l)}),
+			    )[0]//'';
+  }
+  foreach my $attr (qw(date slice)) {
+    $opts->{"a$attr"} = ((map {defined($opts->{"a$_"}) ? $opts->{"a$_"} : qw()} @{$ATTR_RALIAS{$attr}}),
+			 (map {defined($opts->{$_})    ? $opts->{$_}    : qw()} @{$ATTR_RALIAS{$attr}}),
+			)[0]//'';
+    $opts->{"b$attr"} = ((map {defined($opts->{"b$_"}) ? $opts->{"b$_"} : qw()} @{$ATTR_RALIAS{$attr}}),
+			 (map {defined($opts->{$_})    ? $opts->{$_}    : qw()} @{$ATTR_RALIAS{$attr}}),
+			)[0]//'';
+  }
+  delete @$opts{keys %ATTR_ALIAS};
+
+  ##-- diff defaults
+  $opts->{diff} //= 'adiff';
+  $opts->{fill} //= 1;
+
+  ##-- common defaults
+  $that->profileOptions($opts);
+
+  return $opts;
 }
 
 ##==============================================================================

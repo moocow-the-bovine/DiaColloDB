@@ -18,7 +18,7 @@ our ($help,$version);
 our $dbdir      = undef;
 our $outdir     = undef;
 our %coldb      = (flags=>'r');
-our %export     = (export_sdat=>1, export_cof=>1);
+our %export     = (export_sdat=>1, export_cof=>1, export_tdf=>1);
 our $dotime     = 1; ##-- report timing?
 
 ##----------------------------------------------------------------------
@@ -34,6 +34,7 @@ GetOptions(##-- general
 	   'export-sdat|sdat|strings|s!' => \$export{export_sdat},
 	   'export-raw|raw!' => sub { $export{export_sdat}=!$_[1]; },
 	   'export-cof|cof|c!' => \$export{export_cof},
+	   'export-tdf|tdf!' => \$export{export_tdf},
 	   'output-directory|outdir|odir|od|o=s' => \$outdir
 	  );
 
@@ -98,6 +99,7 @@ dcdb-export.perl - export a text representation of a DiaColloDB diachronic collo
    -[no]raw             ##-- inverse of -[no]sdat
    -[no]sdat            ##-- do/don't export stringified tuples (*.sdat; default=do)
    -[no]cof             ##-- do/don't export co-frequency files (cof.*; default=do)
+   -[no]tdf             ##-- do/don't export term-document files (tdf.*; default=do)
    -output DIR          ##-- dump directory (default=DBDIR.export)
 
 =cut
@@ -192,6 +194,10 @@ Do/don't export stringified tuples (*.sdat; default=do).
 =item -[no]cof
 
 Do/don't export co-frequency files (cof.*; default=do).
+
+=item -[no]tdf
+
+Do/don't export term-document files (tdf.*; default=do).
 
 =item -output DIR
 
