@@ -2,7 +2,7 @@
 ##
 ## Change log for perl distribution DiaColloDB
 
-pending Tue, 08 Mar 2016 14:26:41 +0100
+v0.08.006 Thu, 10 Mar 2016 16:52:19 +0100 moocow
 	* added dbexport() support for TDF relations
 	* allow option pass-through for Profile::Multi::compile()
 	* fixed utf8 handling in TDF::qinfo() query templates
