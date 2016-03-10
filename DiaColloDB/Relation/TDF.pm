@@ -1526,10 +1526,12 @@ sub qinfo {
 	       : ($q2->isa('DDC::XS::CQTokAny') ? $q1
 		  : DDC::XS::CQAnd->new($q1,$q2)));
   $qboth->setOptions($qo);
+  my $qtemplate = $qboth->toStringFull;
+  utf8::decode($qtemplate) if (!utf8::is_utf8($qtemplate));
 
   return {
 	  fcoef => 1,
-	  qtemplate => $qboth->toStringFull,
+	  qtemplate => $qtemplate,
 	 };
 }
 
