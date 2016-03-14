@@ -397,7 +397,6 @@ sub create {
     while (($mattr,$mval) = each %{$doc->{meta}//{}}) {
       next if ((defined($mgood) && $mattr !~ $mgood) || (defined($mbad) && $mattr =~ $mbad));
       if (!defined($mdata=$meta{$mattr})) {
-	#$mdata = $meta{$mattr} = {n=>1, s2i=>{''=>0}, vals=>mmtemp("$vsdir/mvals_$mattr.tmp",$itype,$NC)} ;
 	$mdata = $meta{$mattr} = {
 				  n=>1,
 				  s2i=>tmphash("$vsdir/ms2i_${mattr}", utf8keys=>1, %tmpargs),
@@ -678,7 +677,10 @@ sub create {
     $mattr = $vs->{meta}[$_];
     $mdata = $meta{$mattr};
     $menum = $vs->{"meta_e_$mattr"} = $DiaColloDB::ECLASS->new(%efopts);
-    tied(@{$mdata->{vals}})->flush if ($mdata->{vals});
+    if ($mdata->{vals}) {
+      $#{$mdata->{vals}} = ($NC-1);   ##-- ensure correct size for toPdl(), avoid 'bus error' trying to mmap() beyond file boundaries
+      tied(@{$mdata->{vals}})->flush; ##-- ensure data has been flushed to disk
+    }
     defined(my $mmvals = readPdlFile("$vsdir/mvals_$mattr.pf", ReadOnly=>1,Dims=>[$NC],Datatype=>$itype))
       or $vs->logconfess("$logas: failed to mmap $vsdir/mvals_$mattr.pf");
     ($tmp=$mvals->slice("($_),")) .= $mmvals;

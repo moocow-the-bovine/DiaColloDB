@@ -5,6 +5,10 @@
 pending Mon, 14 Mar 2016 12:23:15 +0100
 	* fixed -nokeep option to dcdb-create.perl
 	* TDF union: avoid storage of non-persistent object keys qw(docmeta wdmfile logas reusedir)
+	* TDF union: fixed 'bus error' resulting from attempt to mmap() temporary data beyond EOF
+	  - arose in dta+dwds trying to include 'pnd' metadata only indexed in dta
+	  - temporary PackedFile tdf.d/mvals_pnd.pf had no entries for dwds data (pnd not indexed)
+	  - readPdlFile(...,Dims=>[$NC]) choked with 'bus error'
 	* Client::list overhaul
 	  - new default fudge=>10 should be safe (but rather expensive)
 	  - re-factored Client::list::profile() and compare() methods
