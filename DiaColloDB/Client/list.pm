@@ -146,7 +146,7 @@ sub profile {
   ##-- fudge coefficient
   my $kbest  = $opts{kbest} // 0;
   my $kfudge = ($cli->{fudge} // 1)*$kbest;
-  $cli->vlog($cli->{logFudge}, "profile(): querying ", scalar(@{$cli->{clis}}), " client(s) with fudge=", ($cli->{fudge}//1), " * kbest=$kbest = $kfudge");
+  $cli->vlog($cli->{logFudge}, "profile(): querying ", scalar(@{$cli->{clis}}), " client(s) with (fudge=", ($cli->{fudge}//1), ") * (kbest=$kbest) = $kfudge");
 
   ##-- query clients
   my ($mp,$mpi);
