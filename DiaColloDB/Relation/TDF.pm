@@ -298,6 +298,9 @@ sub create {
   $vs->logconfess("$logas: wdmfile=$wdmfile specified but unreadable") if ($wdmfile && !-r $wdmfile);
   $vs->logconfess("$logas: no 'base' key defined") if (!$base);
 
+  ##-- non-persistent option keys
+  delete @$vs{grep {exists $opts{$_}} qw(docmeta wdmfile logas reusedir)}; #ivalmax
+
   ##-- open packed token-attribute file
   my $vtokfile = "$coldb->{dbdir}/vtokens.bin";
   my ($vtokfh);

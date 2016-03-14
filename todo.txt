@@ -1,3 +1,10 @@
+Mon, 14 Mar 2016 12:31:35 +0100
++ add dbinfo() (and dbheader()?) client method(s)
++ Client::list: allow parallel queries of sub-clients in (fork or thread)
++ DiaColloDB: allow metadata constants in local indices (for subcorpus selection via list clients)
++ Client::list: check/allow null-results in sub-clients (for subcorpus selection)
+
+
 Wed, 27 Jan 2016 11:11:56 +0100
 x+ rename Relation::Vsem -> Relation::TDM
   x- generate native-compatible profiles in vprofile() (wip)
@@ -10,19 +17,19 @@ x+ rename Relation::Vsem -> Relation::TDM
   x- add implicit 'genre' field to vsem meta-index (extract 1st component of textClass, since vsem groupby can't handle regex transformations)
   x- remove stale EnumFile::Identity
 
-+ re-build & re-publish dstar indices
-  - first: dta, kern, zeit (beta-test) [wip]
-  - next: dta+dwds (test union())
-  - later: others
+x+ re-build & re-publish dstar indices
+  x- first: dta, kern, zeit (beta-test) [wip]
+  x- next: dta+dwds (test union())
+  x- later: others
 
-+ debug/correct
-  - tdf create(): memory-optimize tym construction
-    + zeit.d-p on kira: mem usage spikes from 9G to 29G between tym and ptrs (first plateau at 15G, then spike)
-  - ?suppress target-term output in tdm cofreq profiles (tricky)?
-  - implement tdf union() method
-  - implement tdf export() method
-  - document, package, & upload to CPAN
-    + Alien::* module(s) for DDC, gfsm, moot?
+x+ debug/correct
+  x- tdf create(): memory-optimize tym construction
+    x+ zeit.d-p on kira: mem usage spikes from 9G to 29G between tym and ptrs (first plateau at 15G, then spike)
+  x- ?suppress target-term output in tdm cofreq profiles (tricky)?
+  x- implement tdf union() method
+  x- implement tdf export() method
+  x- document, package, & upload to CPAN
+    x+ Alien::* module(s) for DDC, gfsm, moot?
 
 + debug/fixed
   x- dstar: update "install" rule for dstar build/diacollo (see dta build dir)

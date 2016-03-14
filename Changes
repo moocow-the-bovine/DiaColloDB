@@ -2,6 +2,13 @@
 ##
 ## Change log for perl distribution DiaColloDB
 
+pending Mon, 14 Mar 2016 12:23:15 +0100
+	* fixed -nokeep option to dcdb-create.perl
+	* TDF union: avoid storage of non-persistent object keys qw(docmeta wdmfile logas reusedir)
+	* Client::list overhaul
+	  - new default fudge=>10 should be safe (but rather expensive)
+	  - re-factored Client::list::profile() and compare() methods
+
 v0.08.006 Thu, 10 Mar 2016 16:52:19 +0100 moocow
 	* added dbexport() support for TDF relations
 	* allow option pass-through for Profile::Multi::compile()

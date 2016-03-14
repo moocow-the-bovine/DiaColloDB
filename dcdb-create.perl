@@ -87,7 +87,7 @@ GetOptions(##-- general
 	   'tdf-break-min-size|tdf-break-min|tdf-nmin|vbnmin|vbmin=s' => \$coldb{tdfopts}{minDocSize},
 	   'tdf-break-max-size|tdf-break-max|tdf-nmax|vbnmax|vbmax=s' => \$coldb{tdfopts}{maxDocSize},
 	   'tdf-option|tdm-option|tdfopt|tdmopt|tdmo|tdfo|to|tO=s%' => \$coldb{tdfopts},
-	   'keeptmp|keep' => \$coldb{keeptmp},
+	   'keeptmp|keep!' => \$coldb{keeptmp},
 	   'option|O=s%' => \%coldb,
 
 	   ##-- I/O and logging
