@@ -164,7 +164,7 @@ sub loadTextFh {
   } else {
     @$cof{keys %opts} = values %opts;
   }
-  $cof->logconfess("loadTextFile(): cannot load unopened database!") if (!$cof->opened);
+  $cof->logconfess("loadTextFh(): cannot load unopened database!") if (!$cof->opened);
 
   ##-- common variables
   my $pack_f   = $cof->{pack_f};
@@ -198,7 +198,6 @@ sub loadTextFh {
       foreach (sort {$a<=>$b} keys %f12) {
 	$f    = $f12{$_};
 	$f1  += $f;
-	$N   += $f;
 	next if ($f < $fmin); ##-- skip here so we can track "real" marginal frequencies
 	$fh2->print(pack($pack_r2, $_,$f));
 	++$pos2;
@@ -206,6 +205,7 @@ sub loadTextFh {
       ##-- dump r1-record for $i1_cur
       $fh1->print(pack($pack_r1, $pos2,$f1));
       $pos1  = $i1_cur+1;
+      $N    += $f1;
     }
     $i1_cur = $i1;
     %f12    = qw();
@@ -278,6 +278,7 @@ sub loadTextFile_create {
       $pos1      = $i1_cur+1;
       $pos2_prev = $pos2;
     }
+    $N     += $f1_cur;
     $i1_cur = $i1;
     $f1_cur = 0;
   };
@@ -289,9 +290,8 @@ sub loadTextFile_create {
     #next if ($f12 < $fmin);  		##-- don't skip here so that we can track "real" marginal frequencies
     $insert1->() if ($i1 != $i1_cur);	##-- insert record for $i1_cur
 
-    ##-- track marginal f($i1) and N
+    ##-- track marginal f($i1)
     $f1_cur += $f12;
-    $N      += $f12;
     next if ($f12 < $fmin		##-- minimum co-occurrence frequency filter
 	     #|| $i1==$i2  		##-- suppress identity collocations (... but we can't eliminate e.g. lemma-identity if using complex tuples!)
 	    );
@@ -557,7 +557,7 @@ sub subprofile {
   my $pf1 = 0;
   my $pf2 = {};
   my $pf12 = {};
-  my ($i1,$i2,$key2, $beg2,$end2,$pos2, $f1,$f12, $buf);
+  my ($i1,$i2,$key2, $beg2,$end2,$pos2, $f1,$f12, $buf, %i2);
 
   foreach $i1 (@$ids) {
     next if ($i1 >= $size1);
@@ -571,8 +571,9 @@ sub subprofile {
       ($i2,$f12)    = unpack($pack2, $buf);
       $key2         = $groupby ? $groupby->($i2) : $i2;
       next if (!defined($key2)); ##-- item2 selection via groupby CODE-ref
-      $pf2->{$key2}  += unpack($pack1f, $r1->fetchraw($i2,\$buf));
+      $pf2->{$key2}  += unpack($pack1f, $r1->fetchraw($i2,\$buf)) if (!exists($i2{$i2}));
       $pf12->{$key2} += $f12;
+      $i2{$i2}        = undef;
     }
   }
   return DiaColloDB::Profile->new(

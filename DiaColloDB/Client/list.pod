@@ -20,7 +20,7 @@ DiaColloDB::Client::list - diachronic collocation db: client: distributed
 DiaColloDB::Client::list is a subclass of
 L<DiaColloDB::Client|DiaColloDB::Client> for
 accessing a set of distributed L<DiaColloDB|DiaColloDB> databases
-via a C<list://> URL whose path part is a space-separated list
+via a C<list://> URL whose path part is a space- or colon--separated list
 of sub-URLs supported by L<DiaColloDB::Client|DiaColloDB::Client>.
 It supports the L<DiaColloDB::Client|DiaColloDB::Client> API
 by calling the relevant methods on each of its sub-clients.
@@ -28,7 +28,7 @@ by calling the relevant methods on each of its sub-clients.
 new() options and object structure:
 
  ##-- DiaColloDB::Client: options
- url  => $url,       ##-- list url (space-separated sub-urls)
+ url  => $url,       ##-- list url (sub-urls, separated with whitespace or ":")
  ##
  ##-- DiaColloDB::Client::list
  urls  => \@urls,     ##-- sub-urls

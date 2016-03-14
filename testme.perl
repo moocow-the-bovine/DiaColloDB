@@ -1921,7 +1921,44 @@ sub test_client_list {
   $mp->saveTextFile('-');
   exit 0;
 }
-test_client_list @ARGV;
+#test_client_list @ARGV;
+
+##==============================================================================
+## test: "stark" f2 mismatch 1900:1919 in {kern01-1k.d,union} vs a+b list
+
+sub test_stark_union {
+  DiaColloDB->ensureLog(level=>'INFO');
+  my $dbdir = shift || 'kern01-1k.d';
+  my $coldb = DiaColloDB->new(dbdir=>$dbdir)
+    or die("open failed for $dbdir: $!");
+
+  my $lids = $coldb->enumIds($coldb->{lenum}, 'stark');
+  my $xids = [map {@{$coldb->{l2x}->fetch($_)}} @$lids];
+  my $cof  = $coldb->{cof};
+  my ($r1,$r2) = @$cof{qw(r1 r2)};
+  my $pack1i = $cof->{pack_i};
+  my $pack1f = "@".DiaColloDB::Utils::packsize($cof->{pack_i}).$cof->{pack_f};
+  my ($buf);
+  foreach my $xid (@$xids) {
+    my $xbuf = $coldb->{xenum}->i2s($xid);
+    my @aids = unpack($coldb->{pack_x}, $xbuf);
+    my $date = pop(@aids);
+    my @vals = map {$coldb->{$coldb->{attrs}[$_].'enum'}->i2s($aids[$_])} (0..$#aids);
+    next if (!grep {$_ eq 'ADJA'} @vals);
+    my $beg2 = ($xid==0 ? 0 : unpack($pack1i,$r1->fetchraw($xid-1,\$buf)));
+    my ($end2,$f1) = unpack($r1->{packas}, $r1->fetchraw($xid, \$buf));
+    my $f1c = 0;
+    for ($r2->seek($beg2), $pos2=$beg2; $pos2 < $end2; ++$pos2) {
+      $r2->getraw(\$buf) or last;
+      my ($i2,$f12) = unpack($r2->{packas},$buf);
+      $f1c += $f12;
+    }
+    print join("\t", $f1, @vals,$date,"=$xid")."\n";
+  }
+  exit 0;
+}
+test_stark_union(@ARGV);
+
 
 
 ##==============================================================================

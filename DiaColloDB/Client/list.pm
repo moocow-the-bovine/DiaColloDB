@@ -21,7 +21,7 @@ our @ISA = qw(DiaColloDB::Client);
 ## + %args, object structure:
 ##   (
 ##    ##-- DiaColloDB::Client: options
-##    url  => $url,       ##-- list url (space-separated sub-urls)
+##    url  => $url,       ##-- list url (space- or ":"-separated sub-urls)
 ##    ##
 ##    ##-- DiaColloDB::Client::list
 ##    urls  => \@urls,     ##-- db urls
@@ -64,7 +64,7 @@ sub open_list {
     $url  = "list://".join(' ',@$urls);
   } else {
     ($urls=$url) =~ s{^list://}{};
-    $urls        = [split(' ',$urls)];
+    $urls        = [grep {($_//'') ne ''} split(/[\s:]+/,$urls)];
   }
 
   ##-- parse list-client options (query-only URLs)

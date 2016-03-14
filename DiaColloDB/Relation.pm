@@ -162,7 +162,7 @@ sub profile {
   my @dprfs  = qw();
   my ($d,$prf);
   foreach $d (sort {$a<=>$b} keys %$d2xis) {
-    $prf = $reldb->subprofile($d2xis->{$d}, groupby=>$groupby->{x2g});
+    $prf = $reldb->subprofile($d2xis->{$d}, groupby=>$groupby->{x2g}, coldb=>$coldb);
     $prf->compile($opts{score}, eps=>$opts{eps});
     $prf->{label}  = $d;
     $prf->{titles} = $groupby->{titles};
@@ -263,6 +263,7 @@ sub diff {
 ##  + get frequency profile for @xids (db must be opened)
 ##  + %opts:
 ##     groupby => \&gbsub,  ##-- key-extractor $key2_or_undef = $gbsub->($i2)
+##     coldb   => $coldb,   ##-- parent DiaColloDB object (for shared data, debugging)
 sub subprofile {
   my ($rel,$ids,%opts) = @_;
   $rel->logconfess("subprofile(): abstract method called");
