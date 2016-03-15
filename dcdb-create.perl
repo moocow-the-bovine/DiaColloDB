@@ -158,9 +158,8 @@ dcdb-create.perl - create a DiaColloDB diachronic collocation database
  dcdb-create.perl [OPTIONS] [INPUT(s)...]
 
  General Options:
-   -help
-   -version
-   -[no]time            ##-- do/don't report execution time
+   -help                ##-- this help message
+   -version             ##-- report version information and exit
 
  Corpus Options:
    -list , -nolist      ##-- INPUT(s) are/aren't file-lists (default=no)
@@ -188,7 +187,7 @@ dcdb-create.perl - create a DiaColloDB diachronic collocation database
    -tdf-dbreak BREAK    ##-- set tdf matrix "document" granularity (e.g. s,p,page,file; default=file)
    -tdf-nmin VNMIN      ##-- set minimum number of content tokens per tdf "document" (default=8)
    -tdf-nmax VNMAX      ##-- set maximum number of content tokens per tdf "document" (default=inf)
-   -tdf-option OPT=VAL  ##-- set arbitrary vector-model option, e.g.
+   -tdf-option OPT=VAL  ##-- set arbitrary tdf matrix option, e.g.
                         ##   minFreq=INT            # minimum term frequency (default=undef: use TFMIN)
                         ##   minDocFreq=INT         # minimum term document-"frequency" (default=4)
                         ##   minDocSize=INT         # minimum document size (#/terms) (default=4)
@@ -318,7 +317,7 @@ Default=don't.
 
 Set corpus document class (default=DDCTabs).
 See L<DiaColloDB::Document/SUBCLASSES> for a list
-of known input formats.
+of supported input formats.
 
 =item -dopt OPT=VAL
 
