@@ -8,6 +8,20 @@ DEBUG: 'stark/ADJA' getting bogus counts in list mode for 'Mann'
  + looks like kern01-1ka.d "stark/ADJA/1915" isn't getting added to f2 (=30, xid=124823), src=Mann/NN/1915; id=124895
  + ... and it isn't! b/c "stark+Mann@1915" DOES NOT HAPPEN in kern01-1ka.d subcorpus
    ~ solution here for list-clients would seem to be an additional round-trip to get proper "f2" values
+ + see Client/list.pod section "Incorrect Independent Collocate Frequencies" for description of the situation
+   ~ in fact, it's worse than depicted there, since it's missing ($xid1,$xid2) pairs which cause item2 frequencies
+     to be ignored -- we don't have "real" item2 frequencies for the actual (projected) keys except in ddc mode
+     (and tdf mode too), since we do use a 2-phase lookup strategy in those relations; CoFreqs just looks at the
+     stored frequencies for the actual collocates, which are indexed BY FULL XID TUPLE, including year and
+     non-projected attributes.  best solution might be to chuck out $f2 storage in Cofreqs index and use
+     ddc-style $fcoef (computed via $dmax) to tweak $N, $f1, and $f2 values from Unigrams index.
+ + reformulation: milder form of this bug applies even to single native CoFreqs indices, since f2
+   are computed there by summing over $xid2 with nonzero f($xid1,$xid2), but
+   (a) we don't always project all $xid2 attributes, and
+   (b) we don't always project single-year slices, so
+   we're missing f2 counts within slices for $xid2 items which match some key
+   but don't always occur
+
 
 Wed, 27 Jan 2016 11:11:56 +0100
 x+ rename Relation::Vsem -> Relation::TDM

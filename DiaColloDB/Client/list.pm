@@ -21,7 +21,7 @@ our @ISA = qw(DiaColloDB::Client);
 ## + %args, object structure:
 ##   (
 ##    ##-- DiaColloDB::Client: options
-##    url  => $url,       ##-- list url (space- or ":"-separated sub-urls)
+##    url  => $url,       ##-- list url (sub-urls separated by whitespace, "+SCHEME://" or "+://"
 ##    ##
 ##    ##-- DiaColloDB::Client::list
 ##    urls  => \@urls,     ##-- db urls
@@ -61,19 +61,26 @@ sub open_list {
   my ($urls);
   if (UNIVERSAL::isa($url,'ARRAY')) {
     $urls = $url;
-    $url  = "list://".join(' ',@$urls);
+    $url  = "list://".join(' ', @$urls);
   } else {
     ($urls=$url) =~ s{^list://}{};
-    $urls        = [grep {($_//'') ne ''} split(/[\s:]+/,$urls)];
+    $urls        = [map {s{^://}{}; $_} grep {($_//'') ne ''} split(m{\s+|\+(?=[a-zA-Z0-9\+\-\.]*://)},$urls)];
   }
 
   ##-- parse list-client options (query-only URLs)
   my $curls = [];
   foreach (@$urls) {
-    if (/^\?/) {
+    if (UNIVERSAL::isa($_,'HASH')) {
+      ##-- HASH-ref: clobber local options
+      @$cli{keys %$_} = values %$_;
+    }
+    elsif (m{^(?:://)?\?}) {
+      ##-- query-string only: clobber local options
       my %form = URI->new($_)->query_form;
       @$cli{keys %form} = values %form;
-    } else {
+    }
+    else {
+      ##-- sub-URL
       push(@$curls,$_);
     }
   }

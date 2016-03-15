@@ -28,31 +28,101 @@ by calling the relevant methods on each of its sub-clients.
 new() options and object structure:
 
  ##-- DiaColloDB::Client: options
- url  => $url,       ##-- list url (sub-urls, separated with whitespace or ":")
+ url  => $url,       ##-- list url (sub-urls, separated by whitespace, "+SCHEME://", or "+://")
  ##
  ##-- DiaColloDB::Client::list
  urls  => \@urls,     ##-- sub-urls
  opts  => \%opts,     ##-- sub-client options
- fudge => $coef,      ##-- get ($coef*$kbest) items from sub-clients (0:all; default=10)
+ fudge => $fudge,     ##-- get ($fudge*$kbest) items from sub-clients (0:all; default=10)
  logFudge => $level,  ##-- log-level for fudge-coefficient debugging (default='debug')
  ##
  ##-- guts
  clis => \@clis,      ##-- per-url clients
 
-The most important client parameter is the C<fudge=E<gt>$coef> option, which requests
-that up to C<$coef*$kbest> items be retrieved from sub-clients for each L<profile()|profile>
-call.  If C<$coef E<lt>= 0>, all collocates will be retrieved from each sub-client,
+The most important client parameter is the fudge-coefficient option C<fudge=E<gt>$fudge>, which requests
+that up to C<$fudge*$kbest> items be retrieved from sub-clients for each L<profile()|profile>
+call.  If C<$fudge E<lt>= 0>, all collocates will be retrieved from each sub-client,
 and trimming will be performed exclusively by the superordinate DiaColloDB::Client::list object.
 The default value of 10 should return reasonable results without too large of
 a performance penalty in most cases, but be aware that the results may not be strictly correct
-due to sub-client local pruning.
+due to sub-client local pruning; see L<|/KNOWN BUGS> for details.
 
-Needs work for use in production environments, since the pruning semantics
-for the C<kbest> request parameter are applied both by sub-clients
-(modulo the C<fudge> client option) and must be re-evaluated after
-integrating data from all sub-clients.  The current strategy is not strictly
-correct, and should probably use the I<kbest(union(which(...)))> strategy
-used by comparison profiles.
+=head2 List URLs
+
+List URLs passed as the the C<url> option to the constructor can be either ARRAY-refs
+of sub-URLs or simple strings with an optional C<list://> scheme.
+In the latter case, sub-URLs in the argument string are separated by whitespace
+or by a plus character ("+") followed by the sub-URL scheme, e.g.:
+
+ ["file://a","file://b"]        ##-- ARRAY-ref of explicit file URLs
+ ["a"       , "b"      ]        ##-- ARRAY-ref of implicit file URLs
+ 
+ "list://file://a file://b"     ##-- string with space-separated explicit file URLs
+ "list://a b"                   ##-- string with space-separated implicit file URLs
+ 
+ "list://file://a+file://b"     ##-- list with "+"-separated explicit file URLs
+ "list://a+://b"                ##-- list with "+"-separated implicit file URLs
+
+Options can be passed to the appropriate sub-URLs via those URLs' query strings,
+as described in L<DiaColloDB::Client/open>.
+Options to the DiaColloDB::Client::list object itself can be passed in by using
+a sub-URL consisting of a HASH-ref or only a query string, e.g.:
+
+ ["a","b",{fudge=>0}]           ##-- ARRAY-ref with local options as HASH-ref
+ ["a","b","?fudge=0"]           ##-- ARRAY-ref with local options as query-string
+ 
+ "list://a b ?fudge=0"          ##-- space-sparated string with local options
+ "list://a+://b+://?fudge=0"    ##-- "+"-separated string with local options
+
+=cut
+
+##======================================================================
+## Footer
+##======================================================================
+=pod
+
+=head1 KNOWN BUGS
+
+=head2 Incorrect Independent Collocate Frequencies
+
+The evaluation strategy currently used by this package is not strictly correct,
+even when C<$fudge==0>.  Although the reported join frequencies I<f12>
+ought to be correct in this case, it can easily happen that the independent collocate
+frequencies I<f2> get mis-reported, leading to incorrect computations of I<f2>-sensitive
+association scores such as C<mi> (pointwise mutual information * log-frequency product),
+C<ll> (log likelihood), or the default C<ld> (log Dice).  Such errors occur whenever
+the list client accesses multiple sub-clients (e.g. C<$a> and C<$b>) and a candidate
+collocate C<$v> occurs in both of the subcorpora, but only occurs together with the target term C<$w>
+in one of the sub-clients' indices.
+
+Suppose C<$v> occurs in subcorpus C<$a> with frequency C<f_a($v)>
+and in subcorpus C<$b> with frequency C<f_b($v)>, but only occurs together with
+C<$w> in subcorpus C<$a> with frequency C<f_a($w,$v)> -- i.e. C<f_b($w,$v)==0>.
+Since only collocates with nonzero
+co-occurrence frequencies are collected in subcorpus profiles, the sub-profile for C<$w>
+over subcorpus C<$b> will not contain an entry for C<$v> at all.  This is fine if
+we are only interested in the total co-occurrence frequency C<f($w,$v) = f_a($w,$v) + f_b($w,$v)>,
+but if we are using an "interesting" association score, we also need to refer to the total
+independent collocate frequency C<f($v) = f_a($v) + f_b($v)>, but
+since C<f_b($v)> will not have been reported by the subprofile for corpus C<$b>,
+its value will be treated as 0 (zero), leading to an incorrect estimate of the
+association score.
+
+An adequate solution to this problem will probably require
+extending the C<DiaColloDB::Client|DiaColloDB::Client>
+and C<DiaColloDB::Relation|DiaColloDB::Relation>
+APIs with
+method(s) for acquiring correct independent collocate frequencies
+on a relation-dependent basis given a set of candidate collocates
+(e.g. in the form of a partial profile),
+and will necessarily involve an additional round-trip for each subcorpus to ensure
+correct I<f2> values in list-client profiles.
+Until these issues are addressed, it is recommended that you avoid using
+list-clients together with I<f2>-sensitive association scores.
+In the meantime,
+you can use the L<DiaColloDB::union()|DiaColloDB/union> method
+via the L<-union|dcdb-create.perl/union> option to L<dcdb-create.perl|dcdb-create.perl>
+to merge multiple local DiaCollo index directories into a single monolithic index.
 
 =cut
 

@@ -1676,7 +1676,7 @@ sub parseQuery {
 
   ##-- compat: parse into attribute-local requests $areqs=[[$attr1,$areq1],...]
   my $sepre  = qr{[\s\,]};
-  my $charre = qr{(?:\\[^ux0-9]|\w)};
+  my $charre = qr{(?:\\[^ux0-9]|[\w\x{80}-\x{ffff}])};
   my $attrre = qr{(?:\$?${charre}+)};
   my $setre  = qr{(?:${charre}|\|)+};			##-- value: |-separated barewords
   my $regre  = qr{(?:/(?:\\/|[^/]*)/(?:[gimsadlux]*))};	##-- value regexes

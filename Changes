@@ -13,6 +13,9 @@ pending Mon, 14 Mar 2016 12:23:15 +0100
 	  - new default fudge=>10 should be safe (but rather expensive)
 	  - re-factored Client::list::profile() and compare() methods
 	* fixed double-counting f2 for multiple item1 targets with shared item2 collocates in Cofreqs::subprofile()
+	* improved Client and Client::list documentation
+	  - added "incorrect independent collocate frequencies" section to Client::list documentation
+	  - milder form of this bug applies even to single native CoFreqs indices
 
 v0.08.006 Thu, 10 Mar 2016 16:52:19 +0100 moocow
 	* added dbexport() support for TDF relations

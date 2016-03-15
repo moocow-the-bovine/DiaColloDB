@@ -571,7 +571,7 @@ sub subprofile {
       ($i2,$f12)    = unpack($pack2, $buf);
       $key2         = $groupby ? $groupby->($i2) : $i2;
       next if (!defined($key2)); ##-- item2 selection via groupby CODE-ref
-      $pf2->{$key2}  += unpack($pack1f, $r1->fetchraw($i2,\$buf)) if (!exists($i2{$i2}));
+      $pf2->{$key2}  += unpack($pack1f, $r1->fetchraw($i2,\$buf)) if (!exists($i2{$i2})); ##-- avoid double-counting f2 for shared collocates
       $pf12->{$key2} += $f12;
       $i2{$i2}        = undef;
     }

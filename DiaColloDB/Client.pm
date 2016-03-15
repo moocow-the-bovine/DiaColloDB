@@ -69,20 +69,21 @@ sub DESTROY {
 
 ## $cli_or_undef = $cli->open($url,%opts)
 ## $cli_or_undef = $cli->open()
-##  + calls open_file() or open_http() as appropriate
+##  + calls open_file(), open_http(), or open_list() as appropriate
 sub open {
   my ($cli,$url) = (shift,shift);
-  $url //= $cli->{url};
-  if (UNIVERSAL::isa($url,'ARRAY') || $url =~ m{^list://}i) {
-    return $cli->open_list($url,@_);
-  }
-  elsif ($url =~ m{^http://}i) {
-    return $cli->open_http($url,@_);
-  }
-  elsif ($url =~ m{^file://}i || $url !~ m{^[a-zA-Z]+://}) {
+  $url     //= $cli->{url};
+  my $scheme = UNIVERSAL::isa($url,'ARRAY') ? 'list' : (URI->new($url)->scheme // 'file');
+  if ($scheme eq 'file') {
     return $cli->open_file($url,@_);
   }
-  $cli->logconfess("open(): unsupported URL scheme for $url");
+  elsif ($scheme =~ /^https?$/) {
+    return $cli->open_http($url,@_);
+  }
+  elsif ($scheme eq 'list') {
+    return $cli->open_list($url,@_);
+  }
+  $cli->logconfess("open(): unsupported URL scheme ".($scheme ? "'$scheme'" : '(undef)')." for $url");
   return undef;
 }
 
