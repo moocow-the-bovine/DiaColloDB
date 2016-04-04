@@ -136,7 +136,7 @@ our %TDF_OPTS = (
 ##    index_tdf => $bool, ##-- tdf: create/use (term x document) frequency matrix index? (default=undef: if available)
 ##    index_cof => $bool, ##-- cof: create/use co-frequency index (default=1)
 ##    dbreak => $dbreak,  ##-- tdf: use break-type $break for tdf index (default=undef: files)
-##    tdfopts => \%tdfopts, ##-- tdf: options for DocClassify::Mapper->new(); default=undef (all inherited from %TDF_OPTS)
+##    tdfopts=>\%tdfopts, ##-- tdf: options for DiaColloDB::Relation::TDF->new(); default=undef (all inherited from %TDF_OPTS)
 ##    ##
 ##    ##-- runtime ddc relation options
 ##    ddcServer => "$host:$port", ##-- server for ddc relation
@@ -1855,9 +1855,39 @@ sub queryAttributes {
     }
     elsif ($q->isa('DDC::XS::CQFilter')) {
       ##-- CQFilter
-      if ($q->isa('DDC::XS::CQFRandomSort') || $q->isa('DDC::XS::CQFRankSort')) {
+      if ($q->isa('DDC::XS::CQFHasField')) {
+	##-- CQFilter: CQFHasField
+	my $attr = $q->getArg0;
+	if ($q->isa('DDC::XS::CQFHasFieldValue')) {
+	  $aq = DDC::XS::CQTokExact->new($attr, $q->getArg1);
+	}
+	elsif ($q->isa('DDC::XS::CQFHasFieldSet')) {
+	  $aq = DDC::XS::CQTokSet->new($attr, $q->getArg1, $q->getValues);
+	}
+	elsif ($q->isa('DDC::XS::CQFHasFieldRegex')) {
+	  $aq = DDC::XS::CQTokRegex->new($attr, $q->getArg1);
+	}
+	elsif ($q->isa('DDC::XS::CQFHasFieldPrefix')) {
+	  $aq = DDC::XS::CQTokRegex->new($attr, '^'.quotemeta($q->getArg1));
+	}
+	elsif ($q->isa('DDC::XS::CQFHasFieldSuffix')) {
+	  $aq = DDC::XS::CQTokRegex->new($attr, quotemeta($q->getArg1).'$');
+	}
+	elsif ($q->isa('DDC::XS::CQFHasFieldInfix')) {
+	  $aq = DDC::XS::CQTokRegex->new($attr, quotemeta($q->getArg1));
+	}
+	else {
+	  $warnsub->("filter of type ".ref($q)." unsupported in native $logas request (".$q->toString.")");
+	}
+	$aq=undef if ($aq && $aq->isa('DDC::XS::CQTokAny')); ##-- empty value, e.g. for groupby
+	push(@$areqs, [$attr,$aq]);
+      }
+      elsif ($q->isa('DDC::XS::CQFRandomSort') || $q->isa('DDC::XS::CQFRankSort')) {
+	##-- CQFilter: CQFRandomSort, CQFRanksort: ignore
 	next;
-      } elsif ($q->isa('DDC::XS::CQFSort') && ($q->getArg1 ne '' || $q->getArg2 ne '')) {
+      }
+      elsif ($q->isa('DDC::XS::CQFSort') && ($q->getArg1 ne '' || $q->getArg2 ne '')) {
+	##-- CQFilter: CQFSort: other
 	$warnsub->("filter of type ".ref($q)." with nontrivial bounds in native $logas request (".$q->toString.")");
       }
     }

@@ -235,72 +235,68 @@ Default:
 
    (
     ##-- options
-    dbdir => $dbdir,    ##-- database directory; REQUIRED
-    flags => $fcflags,  ##-- fcntl flags or open()-style mode string; default='r'
-    attrs => \@attrs,   ##-- index attributes (input as space-separated or array; compiled to array); default=undef (==>['l'])
-                        ##    + each attribute can be token-attribute qw(w p l) or a document metadata attribute "doc.ATTR"
-                        ##    + document "date" attribute is always indexed
-    info => \%info,     ##-- additional data to return in info() method (e.g. collection, maintainer)
-    pack_id => $fmt,    ##-- pack-format for IDs (default='N')
-    pack_f  => $fmt,    ##-- pack-format for frequencies (default='N')
-    pack_date => $fmt,  ##-- pack-format for dates (default='n')
-    pack_off => $fmt,   ##-- pack-format for file offsets (default='N')
-    pack_len => $len,   ##-- pack-format for string lengths (default='n')
-    dmax  => $dmax,     ##-- maximum distance for collocation-frequencies and implicit ddc near() queries (default=5)
-    cfmin => $cfmin,    ##-- minimum co-occurrence frequency for Cofreqs and ddc queries (default=2)
-    tfmin => $tfmin,    ##-- minimum global term-frequency WITHOUT date component (default=2)
-    fmin_${a} => $fmin, ##-- minimum independent frequency for value of attribute ${a} (default=undef:from $tfmin)
-    keeptmp => $bool,   ##-- keep temporary files? (default=0)
-    index_tdf => $bool, ##-- tdf: create/use (term x document) frequency matrix index? (default=undef: if available)
-    index_cof => $bool, ##-- cof: create/use co-frequency index (default=1)
-    dbreak => $dbreak,  ##-- tdf: use break-type $break for tdf index (default=undef: files)
-    tdfopts => \%tdfopts, ##-- tdf: options for DocClassify::Mapper->new(); default=undef (all inherited from %TDF_OPTS)
+    dbdir => $dbdir,      ##-- database directory; REQUIRED
+    flags => $fcflags,    ##-- fcntl flags or open()-style mode string; default='r'
+      attrs => \@attrs,   ##-- index attributes (input as space-separated or array; compiled to array); default=undef (==>['l'])
+                          ##    + each attribute can be token-attribute qw(w p l) or a document metadata attribute "doc.ATTR"
+                          ##    + document "date" attribute is always indexed
+    info => \%info,       ##-- additional data to return in info() method (e.g. collection, maintainer)
+    pack_id => $fmt,      ##-- pack-format for IDs (default='N')
+    pack_f  => $fmt,      ##-- pack-format for frequencies (default='N')
+    pack_date => $fmt,    ##-- pack-format for dates (default='n')
+    pack_off => $fmt,     ##-- pack-format for file offsets (default='N')
+    pack_len => $len,     ##-- pack-format for string lengths (default='n')
+    dmax  => $dmax,       ##-- maximum distance for collocation-frequencies and implicit ddc near() queries (default=5)
+    cfmin => $cfmin,      ##-- minimum co-occurrence frequency for Cofreqs and ddc queries (default=2)
+    tfmin => $tfmin,      ##-- minimum global term-frequency WITHOUT date component (default=2)
+    fmin_${a} => $fmin,   ##-- minimum independent frequency for value of attribute ${a} (default=undef:from $tfmin)
+    keeptmp => $bool,     ##-- keep temporary files? (default=0)
+    index_tdf => $bool,   ##-- tdf: create/use (term x document) frequency matrix index? (default=undef: if available)
+    index_cof => $bool,   ##-- cof: create/use co-frequency index (default=1)
+    dbreak => $dbreak,    ##-- tdf: use break-type $break for tdf index (default=undef: files)
+    tdfopts => \%tdfopts, ##-- tdf: options for DiaColloDB::Relation::TDF->new(); default=undef (all inherited from %TDF_OPTS)
     ##
     ##-- runtime ddc relation options
-    ddcServer => "$host:$port", ##-- server for ddc relation
-    ddcTimeout => $seconds,     ##-- timeout for ddc relation
+    ddcServer => $server, ##-- server for ddc relation ("$host:$port")
+    ddcTimeout => $secs,  ##-- timeout for ddc relation
     ##
     ##-- source filtering (for create())
-    pgood  => $regex,   ##-- positive filter regex for part-of-speech tags
-    pbad   => $regex,   ##-- negative filter regex for part-of-speech tags
-    wgood  => $regex,   ##-- positive filter regex for word text
-    wbad   => $regex,   ##-- negative filter regex for word text
-    lgood  => $regex,   ##-- positive filter regex for lemma text
-    lbad   => $regex,   ##-- negative filter regex for lemma text
+    pgood  => $regex,     ##-- positive filter regex for part-of-speech tags
+    pbad   => $regex,     ##-- negative filter regex for part-of-speech tags
+    wgood  => $regex,     ##-- positive filter regex for word text
+    wbad   => $regex,     ##-- negative filter regex for word text
+    lgood  => $regex,     ##-- positive filter regex for lemma text
+    lbad   => $regex,     ##-- negative filter regex for lemma text
     ##
     ##-- logging
-    logOpen => $level,        ##-- log-level for open/close (default='info')
-    logCreate => $level,      ##-- log-level for create messages (default='info')
-    logCorpusFile => $level,  ##-- log-level for corpus file-parsing (default='trace')
-    logCorpusFileN => $N,     ##-- log corpus file-parsing only for every N files (0 for none; default:undef ~ $corpus->size()/100)
-    logExport => $level,      ##-- log-level for export messages (default='info')
-    logProfile => $level,     ##-- log-level for verbose profiling messages (default='trace')
-    logRequest => $level,     ##-- log-level for request-level profiling messages (default='debug')
+    logOpen => $level,       ##-- log-level for open/close (default='info')
+    logCreate => $level,     ##-- log-level for create messages (default='info')
+    logCorpusFile => $level, ##-- log-level for corpus file-parsing (default='trace')
+    logCorpusFileN => $N,    ##-- log corpus file-parsing only for every N files (0 for none; default:undef ~ $corpus->size()/100)
+    logExport => $level,     ##-- log-level for export messages (default='info')
+    logProfile => $level,    ##-- log-level for verbose profiling messages (default='trace')
+    logRequest => $level,    ##-- log-level for request-level profiling messages (default='debug')
     ##
     ##-- runtime limits
-    maxExpand => $size,       ##-- maximum number of elements in query expansions (default=65535)
+    maxExpand => $size,    ##-- maximum number of elements in query expansions (default=65535)
     ##
     ##-- attribute data
-    ${a}enum => $aenum,   ##-- attribute enum: $aenum : ($dbdir/${a}_enum.*) : $astr<=>$ai : A*<=>N
-                          ##    e.g.  lemmata: $lenum : ($dbdir/l_enum.*   )  : $lstr<=>$li : A*<=>N
-    ${a}2x   => $a2x,     ##-- attribute multimap: $a2x : ($dbdir/${a}_2x.*) : $ai=>@xis  : N=>N*
-    pack_x$a => $fmt      ##-- pack format: extract attribute-id $ai from a packed tuple-string $xs ; $ai=unpack($coldb->{"pack_x$a"},$xs)
+    ${a}enum => $aenum,    ##-- attribute enum: $aenum : ($dbdir/${a}_enum.*) : $astr<=>$ai : A*<=>N
+                           ##    e.g.  lemmata: $lenum : ($dbdir/l_enum.*   ) : $lstr<=>$li : A*<=>N
+    ${a}2x   => $a2x,      ##-- attribute multimap: $a2x : ($dbdir/${a}_2x.*) : $ai=>@xis   : N=>N*
+    pack_x$a => $fmt       ##-- pack format: extract attribute-id $ai from a packed tuple-string $xs ; $ai=unpack($coldb->{"pack_x$a"},$xs)
     ##
     ##-- tuple data (+dates)
-    xenum  => $xenum,     ##-- enum: tuples ($dbdir/xenum.*) : [@ais,$di]<=>$xi : N*n<=>N
-    pack_x => $fmt,       ##-- symbol pack-format for $xenum : "${pack_id}[Nattrs]${pack_date}"
-    xdmin => $xdmin,      ##-- minimum date
-    xdmax => $xdmax,      ##-- maximum date
-    ##
-    ##-- tuple data (-dates) : TODO
-    #tenum  => $tenum,     ##-- enum: attribute-tuples (no dates), only if $coldb->{indexAttrs}
-    #pack_t => $fmt,       ##-- symbol pack-format for $tenum : "${pack_id}[Nattrs]"
+    xenum  => $xenum,      ##-- enum: tuples ($dbdir/xenum.*) : [@ais,$di]<=>$xi : N*n<=>N
+    pack_x => $fmt,        ##-- symbol pack-format for $xenum : "${pack_id}[Nattrs]${pack_date}"
+    xdmin => $xdmin,       ##-- minimum date
+    xdmax => $xdmax,       ##-- maximum date
     ##
     ##-- relation data
-    xf    => $xf,       ##-- ug: $xi => $f($xi) : N=>N
-    cof   => $cof,      ##-- cf: [$xi1,$xi2] => $f12
-    ddc   => $ddc,      ##-- ddc client relation
-    tdf   => $tdf,      ##-- tdf: (term x document) frequency matrix relation
+    xf    => $xf,          ##-- ug: $xi => $f($xi) : N=>N
+    cof   => $cof,         ##-- cf: [$xi1,$xi2] => $f12
+    ddc   => $ddc,         ##-- ddc client relation
+    tdf   => $tdf,         ##-- tdf: (term x document) frequency matrix relation
    )
 
 =item promote
