@@ -61,7 +61,7 @@ our @ISA = qw(DiaColloDB::Persistent);
 ##    titles => \@titles, ##-- item group titles (default:undef: unknown)
 ##    #
 ##    eps => $eps,       ##-- smoothing constant (default=0.5)
-##    score => $func,    ##-- selected scoring function qw(f fm lf lfm mi ld ll)
+##    score => $func,    ##-- selected scoring function qw(f fm lf lfm mi mi3 ld ll)
 ##    mi => \%mi12,      ##-- score: mutual information * logFreq a la Wortprofil; requires compile_mi()
 ##    mi3 => \%mi312,    ##-- score: mutual information^3 a la Rychly (2008); requires compile_mi3()
 ##    ld => \%ld12,      ##-- score: log-dice a la Wortprofil; requires compile_ld()
