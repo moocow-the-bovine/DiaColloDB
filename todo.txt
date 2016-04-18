@@ -4,7 +4,7 @@ Mon, 14 Mar 2016 12:31:35 +0100
 + DiaColloDB: allow metadata constants in local indices (for subcorpus selection via list clients)
 + Client::list: check/allow null-results in sub-clients (for subcorpus selection)
 
-DEBUG: 'stark/ADJA' getting bogus counts in list mode for 'Mann'
+DEBUG: 'stark/ADJA' getting bogus counts in list mode for 'Mann' (url="list://kern01-1ka.d kern01-1kb.d ?fudge=0")
  + looks like kern01-1ka.d "stark/ADJA/1915" isn't getting added to f2 (=30, xid=124823), src=Mann/NN/1915; id=124895
  + ... and it isn't! b/c "stark+Mann@1915" DOES NOT HAPPEN in kern01-1ka.d subcorpus
    ~ solution here for list-clients would seem to be an additional round-trip to get proper "f2" values

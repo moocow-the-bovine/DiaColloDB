@@ -11,6 +11,7 @@ use Time::HiRes qw(gettimeofday tv_interval);
 use JSON;
 use Data::Dumper;
 use Benchmark qw(timethese cmpthese);
+use Fcntl qw(:seek);
 use utf8;
 
 #use DiaColloDB::Relation::TDF; ##-- DEBUG
@@ -1957,8 +1958,41 @@ sub test_stark_union {
   }
   exit 0;
 }
-test_stark_union(@ARGV);
+#test_stark_union(@ARGV);
 
+
+##==============================================================================
+## get expansion stats
+
+sub test_expand_stats {
+  DiaColloDB->ensureLog(level=>'INFO');
+  my $dbdir = shift || 'kern01-1k.d';
+  my $coldb = DiaColloDB->new(dbdir=>$dbdir)
+    or die("open failed for $dbdir: $!");
+  use PDL;
+  $|=1;
+
+  foreach my $attr (@{$coldb->{attrs}}) {
+    print "$attr: ";
+    my $a2x = $coldb->{"${attr}2x"};
+    my $a2b = $a2x->toArray;
+    my $len_i = $a2x->{len_i};
+    my $lens  = pdl(map {length($_)/$len_i} @$a2b);
+    my $N = $lens->nelem;
+    my ($mu,$prms,$med,$min,$max,$adev,$sigma) = $lens->statsover;
+    print "N=$N ; mu=$mu ; sigma=$sigma ; min/max/median=$min / $max / $med\n";
+  }
+
+  ##-- kern
+  # l: N=631799 ; mu=9.10426575540639 ; sigma=24.0569035379271 ; min/max/median=0 / 547 / 2
+  # p: N=12 ; mu=479338.833333333 ; sigma=757558.357989208 ; min/max/median=0 / 2849353 / 295066
+  ##
+  ##-- zeit
+
+  
+  exit 0;
+}
+test_expand_stats @ARGV;
 
 
 ##==============================================================================
