@@ -237,7 +237,7 @@ Default:
     ##-- options
     dbdir => $dbdir,      ##-- database directory; REQUIRED
     flags => $fcflags,    ##-- fcntl flags or open()-style mode string; default='r'
-      attrs => \@attrs,   ##-- index attributes (input as space-separated or array; compiled to array); default=undef (==>['l'])
+    attrs => \@attrs,     ##-- index attributes (input as space-separated or array; compiled to array); default=undef (==>['l'])
                           ##    + each attribute can be token-attribute qw(w p l) or a document metadata attribute "doc.ATTR"
                           ##    + document "date" attribute is always indexed
     info => \%info,       ##-- additional data to return in info() method (e.g. collection, maintainer)
@@ -279,6 +279,10 @@ Default:
     ##
     ##-- runtime limits
     maxExpand => $size,    ##-- maximum number of elements in query expansions (default=65535)
+    ##
+    ##-- administrivia
+    version => $version,   ##-- DiaColloDB version of stored db (==$DiaColloDB::VERSION)
+    upgraded=>\@upgraded,  ##-- optional administrative information about auto-magic upgrades
     ##
     ##-- attribute data
     ${a}enum => $aenum,    ##-- attribute enum: $aenum : ($dbdir/${a}_enum.*) : $astr<=>$ai : A*<=>N

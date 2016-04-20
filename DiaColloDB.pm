@@ -14,6 +14,7 @@ use DiaColloDB::EnumFile::FixedMap;
 use DiaColloDB::EnumFile::MMap;
 use DiaColloDB::EnumFile::Tied;
 use DiaColloDB::MultiMapFile;
+use DiaColloDB::MultiMapFile::MMap;
 use DiaColloDB::PackedFile;
 use DiaColloDB::Relation;
 use DiaColloDB::Relation::Unigrams;
@@ -37,7 +38,7 @@ use strict;
 ##==============================================================================
 ## Globals & Constants
 
-our $VERSION = "0.08.006";
+our $VERSION = "0.09.001";
 our @ISA = qw(DiaColloDB::Client);
 
 ## $PGOOD_DEFAULT
@@ -87,8 +88,8 @@ our $XECLASS = 'DiaColloDB::EnumFile::FixedLen::MMap';
 
 ## $MMCLASS
 ##  + multimap class
-our $MMCLASS = 'DiaColloDB::MultiMapFile';
-#our $MMCLASS = 'DiaColloDB::MultiMapFile::MMap'; ##-- TODO?
+#our $MMCLASS = 'DiaColloDB::MultiMapFile';
+our $MMCLASS = 'DiaColloDB::MultiMapFile::MMap';
 
 ## %TDF_OPTS : tdf: default options for DiaColloDB::Relation::TDF->new()
 our %TDF_OPTS = (
@@ -160,7 +161,11 @@ our %TDF_OPTS = (
 ##    logRequest => $level,     ##-- log-level for request-level profiling messages (default='debug')
 ##    ##
 ##    ##-- runtime limits
-##    maxExpand => $size,       ##-- maximum number of elements in query expansions (default=65535)
+##    maxExpand => $size,   ##-- maximum number of elements in query expansions (default=65535)
+##    ##
+##    ##-- administrivia
+##    version=>$version,    ##-- DiaColloDB version of stored db (==$DiaColloDB::VERSION)
+##    upgraded=>\@upgraded, ##-- optional administrative information about auto-magic upgrades
 ##    ##
 ##    ##-- attribute data
 ##    ${a}enum => $aenum,   ##-- attribute enum: $aenum : ($dbdir/${a}_enum.*) : $astr<=>$ai : A*<=>N
@@ -227,6 +232,7 @@ sub new {
 
 		      ##-- administrivia
 		      version => "$VERSION",
+		      #upgraded=>[],
 
 		      ##-- attributes
 		      #lenum => undef, #$ECLASS->new(pack_i=>$coldb->{pack_id}, pack_o=>$coldb->{pack_off}, pack_l=>$coldb->{pack_len}),
@@ -1198,7 +1204,7 @@ sub union {
 ## @keys = $coldb->headerKeys()
 ##  + keys to save as header
 sub headerKeys {
-  return (qw(attrs), grep {!ref($_[0]{$_}) && $_ !~ m{^(?:dbdir$|flags$|perms$|info$|tdfopts$|log)}} keys %{$_[0]});
+  return (qw(attrs upgraded), grep {!ref($_[0]{$_}) && $_ !~ m{^(?:dbdir$|flags$|perms$|info$|tdfopts$|log)}} keys %{$_[0]});
 }
 
 ## $bool = $coldb->loadHeaderData()
@@ -1381,7 +1387,7 @@ sub dbinfo {
   my $info  = {
 	       ##-- literals
 	       (map {exists($coldb->{$_}) ? ($_=>$coldb->{$_}) : qw()}
-		qw(dbdir bos eos dmax cfmin xdmin xdmax version label collection maintainer)),
+		qw(dbdir bos eos dmax cfmin xdmin xdmax version upgraded label collection maintainer)),
 
 	       ##-- disk usage
 	       du_b => $du,

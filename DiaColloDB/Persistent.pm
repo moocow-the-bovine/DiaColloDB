@@ -75,7 +75,13 @@ sub headerKeys {
 ## $hdr = $obj->headerData()
 ##  + returns reference to object header data; default returns anonymous HASH-ref for $obj->headerKeys()
 sub headerData {
-  return {(map {($_=>$_[0]->{$_})} $_[0]->headerKeys), class=>ref($_[0])};
+  return {(map {($_=>$_[0]->{$_})} $_[0]->headerKeys), %{$_[0]->headerDataExtra//{}}};
+}
+
+## $extra = $obj->headerDataExtra()
+##  + returns extra data for inclusion in default headerData() HASH-ref
+sub headerDataExtra {
+  return {class=>ref($_[0])};
 }
 
 ## $filename = $obj->headerFile()
@@ -133,22 +139,41 @@ sub loadHeaderString {
   return $_[0]->loadHeaderData(DiaColloDB::Utils::loadJsonString(@_[1..$#_]));
 }
 
+## $hdr = $CLASS_OR_OBJECT->readHeaderFh($fh, %opts)
+BEGIN {
+  *readHeaderFh = *readHeaderFile;
+}
+
+## $hdr = $CLASS_OR_OBJECT->readHeaderFile($filename_or_handle, %opts)
+##  + wraps DiaColloDB::Utils::loadJsonFile()
+sub readHeaderFile {
+  return DiaColloDB::Utils::loadJsonFile(@_[1..$#_]);
+}
+
+## $hdr = $CLASS_OR_OBJECT->readHeader()
+## $hdr = $CLASS_OR_OBJECT->readHeader($headerFile,%opts)
+##  + wraps $CLASS_OR_OBJECT->readHeaderFile($headerFile//$CLASS_OR_OBJ->headerFile())
+sub readHeader {
+  return $_[0]->readHeaderFile(($_[1]//$_[0]->headerFile), @_[2..$#_]);
+}
+
 ## $obj = $CLASS_OR_OBJECT->loadHeaderFh($fh, %opts)
 BEGIN {
   *loadHeaderFh = \&loadHeaderFile;
 }
 
+## $obj = $CLASS_OR_OBJECT->loadHeaderFile()
 ## $obj = $CLASS_OR_OBJECT->loadHeaderFile($filename_or_handle, %opts)
-##  + wraps $CLASS_OR_OBJECT->loadHeaderData()
+##  + wraps $CLASS_OR_OBJECT->loadHeaderData($CLASS_OR_OBJECT->readHeader($filename_or_handle, %opts))
 sub loadHeaderFile {
-  return $_[0]->loadHeaderData(DiaColloDB::Utils::loadJsonFile(@_[1..$#_]));
+  return $_[0]->loadHeaderData($_[0]->readHeader(@_[1..$#_]));
 }
 
 ## $bool = $CLASS_OR_OBJECT->loadHeader()
 ## $bool = $CLASS_OR_OBJECT->loadHeader($headerFile,%opts)
-##  + wraps $CLASS_OR_OBJECT->loadHeaderFile($headerFile//$CLASS_OR_OBJ->headerFile())
-sub loadHeader {
-  return $_[0]->loadHeaderFile(($_[1]//$_[0]->headerFile), @_[2..$#_]);
+##  + alias for loadHeaderFile()
+BEGIN {
+  *loadHeader = \&loadHeaderFile;
 }
 
 ##--------------------------------------------------------------

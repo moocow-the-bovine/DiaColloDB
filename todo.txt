@@ -1,3 +1,10 @@
+Wed, 20 Apr 2016 14:12:49 +0200
++ update MultiMapFile format on kaskade DBs
+  1) generate temporary "${ATTR}2xmm.*" with ./test-multimap-recode.perl DBDIR
+  2) update DiaCollo distribution to use new MultiMapFile (call it 0.09.001)
+     - prefer "${ATTR}2xmm" to "${ATTR}2x" in DiaColloDB::open()
+  3) at leisure, delete old "${ATTR}2x.*"
+
 Mon, 14 Mar 2016 12:31:35 +0100
 + add dbinfo() (and dbheader()?) client method(s)
 + Client::list: allow parallel queries of sub-clients in (fork or thread)

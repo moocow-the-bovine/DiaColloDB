@@ -93,5 +93,6 @@ dcdb-export.perl
 dcdb-info.perl
 dcdb-query.perl
 dcdb-dump.perl
+dcdb-upgrade.perl
 
 t/00_basic.t

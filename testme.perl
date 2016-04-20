@@ -12,6 +12,7 @@ use JSON;
 use Data::Dumper;
 use Benchmark qw(timethese cmpthese);
 use Fcntl qw(:seek);
+use Test::More;
 use utf8;
 
 #use DiaColloDB::Relation::TDF; ##-- DEBUG
@@ -1962,8 +1963,9 @@ sub test_stark_union {
 
 
 ##==============================================================================
-## get expansion stats
+## test: f2 expansion
 
+##----------------------------------------------------------------------
 sub test_expand_stats {
   DiaColloDB->ensureLog(level=>'INFO');
   my $dbdir = shift || 'kern01-1k.d';
@@ -1983,17 +1985,136 @@ sub test_expand_stats {
     print "N=$N ; mu=$mu ; sigma=$sigma ; min/max/median=$min / $max / $med\n";
   }
 
-  ##-- kern
+  ##-- kern@plato
   # l: N=631799 ; mu=9.10426575540639 ; sigma=24.0569035379271 ; min/max/median=0 / 547 / 2
   # p: N=12 ; mu=479338.833333333 ; sigma=757558.357989208 ; min/max/median=0 / 2849353 / 295066
   ##
-  ##-- zeit
+  ##-- kern@kira
+  # l: N=291287 ; mu=17.5979978509168 ; sigma=33.5284551256776 ; min/max/median=0 / 548 / 6
+  # p: N=12 ; mu=427172.333333333 ; sigma=650768.244694855 ; min/max/median=0 / 2449699 / 285423.5
+  ##
+  ##-- zeit@kaskade
+  # l: N=678642 ; mu=16.4264472284356 ; sigma=25.338426867474 ; min/max/median=0 / 400 / 7
+  # p: N=12 ; mu=928973.083333333 ; sigma=1683321.33617384 ; min/max/median=0 / 6235283 / 371018
+  ##
+  ##-- zeitungen@kaskade
+  # l: N=1788366 ; mu=14.3146783152889 ; sigma=21.3936860726719 ; min/max/median=0 / 414 / 7
+  # p: N=12 ; mu=2133323.66666667 ; sigma=4183780.06375304 ; min/max/median=1 / 15114307 / 509367
 
-  
   exit 0;
 }
-test_expand_stats @ARGV;
+#test_expand_stats @ARGV;
 
+##----------------------------------------------------------------------
+use Algorithm::BinarySearch::Vec;
+sub test_expand_intersect {
+  my ($dbdir,$l,$p) = @_;
+  $dbdir ||= 'kern.d';
+  $l     ||= 'Mann';
+  $p     ||= 'NN';
+
+  DiaColloDB->ensureLog(level=>'INFO');
+  my $coldb = DiaColloDB->new(dbdir=>$dbdir)
+    or die("open failed for $dbdir: $!");
+
+  ##-- get enum-ids
+  utf8::decode($l) if (!utf8::is_utf8($l));
+  utf8::decode($p) if (!utf8::is_utf8($p));
+  my $li = $coldb->{lenum}->s2i($l) or die("$0: unknown lemma '$l'");
+  my $pi = $coldb->{penum}->s2i($p) or die("$0: unknown postag '$p'");
+
+  ##-- get expansion-vectors
+  my ($l2x,$p2x) = @$coldb{qw(l2x p2x)};
+  my $lx = $l2x->fetchraw($li);
+  my $px = $p2x->fetchraw($pi);
+  my $len_i = $l2x->{len_i};
+  my $nbits = $l2x->{len_i}*8;
+
+  ##-- get multimap-variants
+  my $mmbase = $p2x->{base};
+  my $mmf    = $p2x;
+  my $mmf2   = DiaColloDB::MultiMapFile2->new(base=>"${mmbase}2")
+    or die("$0: failed to open MultiMapFile2 ${mmbase}2.*");
+  my $mmf2m  = DiaColloDB::MultiMapFile2::MMap->new(base=>"${mmbase}2")
+    or die("$0: failed to open MultiMapFile2::MMap ${mmbase}2.*");
+
+  ##-- test intersection
+  my $lpx = vintersect($lx,$px,$nbits);
+
+  ##-- report sizes
+  print "l=$l ; p=$p : Nl=".(length($lx)/$len_i)." ; Np=".(length($px)/$len_i)." ; N(l&p)=".(length($lpx)/$len_i)."\n";
+
+  ##-- time: fetch
+  timethese(-3,
+	       {
+		'fetch:l'     => sub { $lx = $l2x->fetchraw($li) },
+		'fetch:p'     => sub { $px = $p2x->fetchraw($pi) },
+	       },
+	   );
+
+  ##-- time: intersection (xs vs perl)
+  timethese(-3,
+	    {
+	     'vintersect:xs' => sub { $lpx=Algorithm::BinarySearch::Vec::XS::vintersect($lx,$px,$nbits) },
+	     'vintersect:perl' => sub { $lpx=Algorithm::BinarySearch::Vec::_vintersect($lx,$px,$nbits) },
+	     'vintersect+fetch' => sub { $lpx=vintersect($lx,$mmf->fetchraw($pi),$nbits) },
+	     'vintersect+fetch2' => sub { $lpx=vintersect($lx,$mmf2->fetchraw($pi),$nbits) },
+	     'vintersect+fetch2m' => sub { $lpx=vintersect($lx,$mmf2m->fetchraw($pi),$nbits) },
+	    });
+
+  print STDERR "test_expand_intersect() done\n";
+  exit 0;
+}
+test_expand_intersect @ARGV;
+
+##----------------------------------------------------------------------
+## test multimap variants
+use DiaColloDB::MultiMapFile2;
+use DiaColloDB::MultiMapFile2::MMap;
+sub bench_multimap_fetch {
+  my ($dbdir,$attr,$val) = @_;
+  $dbdir ||= 'kern.d';
+  $attr  ||= 'p';
+  $val   ||= 'NN';
+
+  DiaColloDB->ensureLog(level=>'INFO');
+  my $coldb = DiaColloDB->new(dbdir=>$dbdir)
+    or die("open failed for $dbdir: $!");
+
+  ##-- get enum-ids
+  utf8::decode($val) if (!utf8::is_utf8($val));
+  my $enum = $coldb->{"${attr}enum"} or die("$0: unknown attribute '$attr'");
+  my $vali = $enum->s2i($val) or die("$0: unknown value '$val' for attribute '$attr'");
+
+  ##-- get multimaps
+  my $mmf    = $coldb->{"${attr}2x"};
+  my $mmbase = $mmf->{base};
+
+  my $mmf2   = DiaColloDB::MultiMapFile2->new(base=>"${mmbase}2")
+    or die("$0: failed to open MultiMapFile2 ${mmbase}2.*");
+  my $mmf2m  = DiaColloDB::MultiMapFile2::MMap->new(base=>"${mmbase}2")
+    or die("$0: failed to open MultiMapFile2::MMap ${mmbase}2.*");
+
+  ##-- check consistency
+  my $buf  = $mmf->fetchraw($vali);
+  my $buf2 = $mmf2->fetchraw($vali);
+  my $buf2m = $mmf2m->fetchraw($vali);
+  ok($buf eq $buf2, "mmf~mmf2");
+  ok($buf eq $buf2m, "mmf~mmf2m");
+
+  ##-- bench: fetchraw
+  timethese(-3,
+	    {
+	     'mmf'       => sub { $buf = $mmf->fetchraw($vali) },
+	     'mmf2'      => sub { $buf = $mmf2->fetchraw($vali) },
+	     'mmf2:mmap' => sub { $buf = $mmf2m->fetchraw($vali) },
+	    },
+	   );
+
+  print STDERR "bench_multimap_fetch() done\n";
+  exit 0;
+}
+#bench_multimap_fetch @ARGV;
 
 ##==============================================================================
 ## MAIN
