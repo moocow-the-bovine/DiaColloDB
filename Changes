@@ -3,6 +3,11 @@
 ## Change log for perl distribution DiaColloDB
 
 pending Mon, 14 Mar 2016 12:23:15 +0100
+	* added auto-upgrade framework
+	  - DiaColloDB::Upgrade : API & base class, & currently only subclass
+	  - dcdb-upgrade.perl : top-level auto-upgrade script
+	  - added subclass ::v0_08_to_v0_09_multimap for v0.09.x multimap format change
+	* added compatiblity mode for multimaps as DiaColloDB::MultiMapFile::v0_08
 	* fixed -nokeep option to dcdb-create.perl
 	* TDF union: avoid storage of non-persistent object keys qw(docmeta wdmfile logas reusedir)
 	* TDF union: fixed 'bus error' resulting from attempt to mmap() temporary data beyond EOF
