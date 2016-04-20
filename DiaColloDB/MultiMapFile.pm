@@ -3,7 +3,7 @@
 ## Author: Bryan Jurish <moocow@cpan.org>
 ## Description: collocation db, integer->integer* multimap file, e.g. for expansion indices
 
-package DiaColloDB::MultiMapFile;
+package DiaColloDB::MultiMapFile2;
 use DiaColloDB::Logger;
 use DiaColloDB::Persistent;
 use DiaColloDB::Utils qw(:fcntl :json :pack);
@@ -21,25 +21,25 @@ our @ISA = qw(DiaColloDB::Persistent);
 ## $cldb = CLASS_OR_OBJECT->new(%args)
 ## + %args, object structure:
 ##   (
+##    ##-- basic options
 ##    base => $base,       ##-- database basename; use files "${base}.ma", "${base}.mb", "${base}.hdr"
 ##    perms => $perms,     ##-- default: 0666 & ~umask
 ##    flags => $flags,     ##-- default: 'r'
 ##    pack_i => $pack_i,   ##-- integer pack template (default='N')
-##    pack_o => $pack_o,   ##-- file offset pack template (default='N')
-##    pack_l => $pack_l,   ##-- set-length pack template (default='N')
 ##    size => $size,       ##-- number of mapped , like scalar(@data)
 ##    ##
 ##    ##-- in-memory construction
 ##    a2b => \@a2b,        ##-- maps source integers to (packed) target integer-sets: [$a] => pack("${pack_i}*", @bs)
 ##    ##
-##    ##-- pack lengths (after open())
+##    ##-- computed pack templates and lengths (after open())
+##    pack_a => $pack_a,   ##-- "($pack_i)[2]"
+##    pack_b => $pack_a,   ##-- "($pack_i)*"
 ##    len_i => $len_i,     ##-- bytes::length(pack($pack_i,0))
-##    len_o => $len_o,     ##-- bytes::length(pack($pack_o,0))
-##    len_l => $len_l,     ##-- bytes::length(pack($pack_l,0))
+##    len_a => $len_a,     ##-- bytes::length(pack($pack_a,0))
 ##    ##
 ##    ##-- filehandles (after open())
-##    afh => $afh,         ##-- $base.ma : [$a]      => pack(${pack_o}, $boff_a)
-##    bfh => $bfh,         ##-- $base.mb : $boff_a   :  pack("${pack_l}/(${pack_i}*)",  @targets_for_a)
+##    afh => $afh,         ##-- $base.ma : [$a]      => pack(${pack_a}, $bidx_a, $blen_a) : $byte_offset_in_bfh = $len_i*$bidx_a
+##    bfh => $bfh,         ##-- $base.mb : $bidx_a   :  pack(${pack_b}, @targets_for_a)   : $byte_length_in_bfh = $len_i*$blen_a
 ##   )
 sub new {
   my $that = shift;
@@ -49,15 +49,10 @@ sub new {
 		     flags => 'r',
 		     size => 0,
 		     pack_i => 'N',
-		     pack_o => 'N',
-		     pack_l => 'N',
 
 		     a2b=>[],
 
 		     #len_i => undef,
-		     #len_o => undef,
-		     #len_l => undef,
-		     #len_a => undef,
 
 		     #afh =>undef,
 		     #bfh =>undef,
@@ -102,10 +97,10 @@ sub open {
   binmode($_,':raw') foreach (@$mmf{qw(afh bfh)});
 
   ##-- pack lengths
-  $mmf->{len_i} = packsize($mmf->{pack_i});
-  $mmf->{len_o} = packsize($mmf->{pack_o});
-  $mmf->{len_l} = packsize($mmf->{pack_l});
-  $mmf->{len_a} = $mmf->{len_o} + $mmf->{len_l};
+  $mmf->{pack_a} = "($mmf->{pack_i})[2]";
+  $mmf->{pack_b} = "($mmf->{pack_i})*";
+  $mmf->{len_i}  = packsize($mmf->{pack_i});
+  $mmf->{len_a}  = packsize($mmf->{pack_a});
 
   return $mmf;
 }
@@ -159,21 +154,23 @@ sub flush {
   $afh->seek(0,SEEK_SET);
   $bfh->seek(0,SEEK_SET);
 
-  ##-- dump $base.ma
-  my ($a2b,$pack_o,$pack_l,$len_l,$pack_i,$len_i) = @$mmf{qw(a2b pack_o pack_l len_l pack_i len_i)};
-  my $off   = 0;
+  ##-- dump datafiles $base.ma, $base.mb
+  my ($a2b,$pack_a,$len_i) = @$mmf{qw(a2b pack_a len_i)};
+  my $bidx  = 0;
   my $ai    = 0;
-  my $bsz;
+  my ($blen);
   foreach (@$a2b) {
-    $_ //= '';
-    $bsz = length($_);
-    $afh->print(pack($pack_o, $off))
+    $_    //= '';
+    $blen   = length($_)/$len_i;
+    $afh->print(pack($pack_a, $bidx, $blen))
       or $mmf->logconfess("flush(): failed to write source record for a=$ai to $mmf->{base}.ma");
-    $bfh->print(pack($pack_l, $bsz/$len_i), $_)
+    $bfh->print($_)
       or $mmf->logconfess("flush(): failed to write targets for a=$ai to $mmf->{base}.mb");
-    $off += $len_l + $bsz;
     ++$ai;
+    $bidx += $blen;
   }
+
+  ##-- truncate datafiles at current position
   CORE::truncate($afh, $afh->tell());
   CORE::truncate($bfh, $bfh->tell());
 
@@ -193,18 +190,23 @@ sub toArray {
   return $mmf->{a2b} if (!$mmf->opened);
 
   #use bytes; ##-- deprecated in perl v5.18.2
-  my ($pack_l,$len_l,$pack_i,$len_i) = @$mmf{qw(pack_l len_l pack_i len_i)};
-  my $bfh    = $mmf->{bfh};
+  my ($afh,$bfh,$pack_a,$len_a,$pack_i,$len_i) = @$mmf{qw(afh bfh pack_a len_a pack_i len_i)};
   my @a2b    = qw();
-  my ($buf,$bsz);
-  for (CORE::seek($bfh,0,SEEK_SET); !eof($bfh); ) {
-    CORE::read($bfh, $buf, $len_l)==$len_l
-	or $mmf->logconfess("toArray(): read() failed on $mmf->{base}.mb for target-set size at offset ", tell($bfh), ", item ", scalar(@a2b));
-    $bsz = $len_i * unpack($pack_l, $buf);
 
-    CORE::read($bfh, $buf, $bsz)==$bsz
-	or $mmf->logconfess("toArray(): read() failed on $mmf->{base}.mb for target-set of $bsz bytes at offset ", tell($bfh), ", item ", scalar(@a2b));
-    push(@a2b, $buf);
+  ##-- ye olde loope
+  my ($bidx,$blen,$buf);
+  for (CORE::seek($afh,0,SEEK_SET); !eof($afh); ) {
+    ##-- get position, length
+    CORE::read($afh,$buf,$len_a)==$len_a
+	or $mmf->logconfess("toArray(): read() failed for $mmf->{base}.ma item ", scalar(@a2b));
+    ($bidx,$blen) = unpack($pack_a,$buf);
+
+    ##-- read targets
+    $blen *= $len_i;
+    CORE::seek($bfh,$bidx*$len_i,SEEK_SET);
+    CORE::read($bfh,$buf,$blen)==$blen
+	or $mmf->logconfess("toArray(): read() failed for $blen byte(s) on $mmf->{base}.mb at logical record $bidx, item ", scalar(@a2b));
+    push(@a2b,$buf);
   }
   push(@a2b, @{$mmf->{a2b}}[scalar(@a2b)..$#{$mmf->{a2b}}]) if ($mmf->dirty);
   return \@a2b;
@@ -281,7 +283,7 @@ sub loadTextFh {
   my ($mmf,$fh,%opts) = @_;
   $mmf = $mmf->new(%opts) if (!ref($mmf));
 
-  my $pack_b = "($mmf->{pack_i})*";
+  my $pack_b = $mmf->{pack_b};
   my @a2b  = qw();
   my ($a,@b);
   while (defined($_=<$fh>)) {
@@ -309,7 +311,7 @@ sub saveTextFh {
 
   my $a2s    = $opts{a2s};
   my $b2s    = $opts{b2s};
-  my $pack_b = "($mmf->{pack_i})*";
+  my $pack_b = $mmf->{pack_b};
   my $a2b    = $mmf->toArray;
   my $a      = 0;
   foreach (@$a2b) {
@@ -340,37 +342,40 @@ sub addPairs {
   my $mmf = shift;
   my $a   = shift;
   my $bs  = UNIVERSAL::isa($_[0],'ARRAY') ? $_[0] : \@_;
-  $mmf->{a2b}[$a] .= pack("$mmf->{pack_i}*", @$bs);
+  $mmf->{a2b}[$a] .= pack($mmf->{pack_b}, @$bs);
   return $mmf->{size} = scalar(@{$mmf->{a2b}});
 }
 
 ##==============================================================================
 ## Methods: lookup
 
+## $bs_packed = $mmf->fetchraw($a)
+sub fetchraw {
+  my ($mmf,$a) = @_;
+  return '' if (!defined($a));
+
+  my ($boff,$blen,$buf);
+  CORE::seek($mmf->{afh}, $a*$mmf->{len_a}, SEEK_SET)
+      or $mmf->logconfess("fetch(): seek() failed on $mmf->{base}.ma for a=$a");
+  CORE::read($mmf->{afh},$buf,$mmf->{len_a})==$mmf->{len_a}
+      or $mmf->logconfess("fetch(): read() failed on $mmf->{base}.ma for a=$a");
+  ($boff,$blen) = unpack($mmf->{pack_a}, $buf);
+
+  $boff *= $mmf->{len_i};
+  $blen *= $mmf->{len_i};
+  CORE::seek($mmf->{bfh}, $boff, SEEK_SET)
+      or $mmf->logconfess("fetch(): seek() failed on $mmf->{base}.mb to offset $boff for a=$a");
+  CORE::read($mmf->{bfh}, $buf, $blen)==$blen
+      or $mmf->logconfess("fetch(): read() failed on $mmf->{base}.mb for target-set of $blen byte(s) at offset $boff for a=$a");
+
+  return $buf;
+}
+
 ## \@bs_or_undef = $mmf->fetch($a)
 ##  + returns array \@bs of targets for $a, or undef if not found
 ##  + multimap must be opened
 sub fetch {
-  my ($mmf,$a) = @_;
-  return [] if (!defined($a));
-
-  my ($boff,$bsz,$buf);
-  CORE::seek($mmf->{afh}, $a*$mmf->{len_o}, SEEK_SET)
-      or $mmf->logconfess("fetch(): seek() failed on $mmf->{base}.ma for a=$a");
-  CORE::read($mmf->{afh},$buf,$mmf->{len_o})==$mmf->{len_o}
-      or $mmf->logconfess("fetch(): read() failed on $mmf->{base}.ma for a=$a");
-  $boff = unpack($mmf->{pack_o},$buf);
-
-  CORE::seek($mmf->{bfh}, $boff, SEEK_SET)
-      or $mmf->logconfess("fetch(): seek() failed on $mmf->{base}.mb to offset $boff for a=$a");
-  CORE::read($mmf->{bfh}, $buf,$mmf->{len_l})==$mmf->{len_l}
-      or $mmf->logconfess("fetch(): read() failed on $mmf->{base}.mb for target-set length at offset $boff for a=$a");
-  $bsz = $mmf->{len_i} * unpack($mmf->{pack_l},$buf);
-
-  CORE::read($mmf->{bfh}, $buf, $bsz)==$bsz
-      or $mmf->logconfess("fetch(): read() failed on $mmf->{base}.mb for target-set of size $bsz bytes at offset $boff for a=$a");
-
-  return [unpack("($mmf->{pack_i})*", $buf)];
+  return [unpack($_[0]{pack_b}, $_[0]->fetchraw(@_[1..$#_]))];
 }
 
 ##==============================================================================

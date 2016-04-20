@@ -512,7 +512,7 @@ sub s2timestr {
 ## $rfc_timestamp = PACAKGE->timestamp($time)
 sub timestamp {
   shift if (UNIVERSAL::isa($_[0],__PACKAGE__));
-  return POSIX::strftime("%Y-%m-%dT%H:%M:%SZ", gmtime(@_ ? $_[0] : qw()));
+  return POSIX::strftime("%Y-%m-%dT%H:%M:%SZ", (@_ ? gmtime($_[0]) : gmtime()));
 }
 
 ##==============================================================================
