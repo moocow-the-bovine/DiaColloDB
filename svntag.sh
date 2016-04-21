@@ -14,11 +14,13 @@ Options:
   -h           # this help message
   -r           # show tag root
   -l           # list tags
+  -L           # list branches
   -d           # dummy mode
   -v VERSION   # override tag version (default=$tagversion)
   -p PREFIX    # override tag prefix (default=$tagprefix)
   -t           # tag current version as PREFIX-VERSION
   -t TAG       # tag current version as TAG
+  -b TAG       # branch current version as TAG
 
 EOF
 }
@@ -34,13 +36,15 @@ list_tags() {
 }
 set_tag() {
     svntag="$1"
+    svnact="$2"
+    test -z "$svnact" && svnact="tagged"
     test -z "$svntag" && svntag="${tagprefix}-${tagversion}"
     if [ -z "$svntag" ] ; then
 	echo "$0: no TAG specified" >&2
 	show_help
 	exit 2
     fi
-    runcmd svn cp "$svnroot" "$svntags/$svntag" -m "+ tagged $svntag"
+    runcmd svn cp "$svnroot" "$svntags/$svntag" -m "+ $svnact $svntag"
 }
 
 while [ $# -gt 0 ] ; do
@@ -54,12 +58,26 @@ while [ $# -gt 0 ] ; do
 	-r|--root)
 	    echo "$svntags"
 	    ;;
-	-l|--list)
+	-l|--list-tags|--list)
+	    list_tags
+	    exit $?
+	    ;;
+	-L|--list-branches|--branches)
+	    svntags="${svntags%tags}branches"
 	    list_tags
 	    exit $?
 	    ;;
 	-t|--tag)
 	    set_tag "$2"
+	    exit $?
+	    ;;
+	-b|--branch)
+	    if test -z "$2"; then
+		echo "$0: TAG argument required for branch creation with --branch" >&2
+		exit 1
+	    fi
+	    svntags="${svntags%tags}branches"
+	    set_tag "$2" "created branch"
 	    exit $?
 	    ;;
 	*)
