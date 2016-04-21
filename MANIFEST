@@ -44,6 +44,8 @@ DiaColloDB/Logger.pm
 DiaColloDB/Logger.pod
 DiaColloDB/MultiMapFile.pm
 DiaColloDB/MultiMapFile.pod
+DiaColloDB/MultiMapFile/v0_08.pm
+DiaColloDB/MultiMapFile/MMap.pm
 DiaColloDB/PDL/MM.pm
 DiaColloDB/PDL/MM.pod
 DiaColloDB/PackedFile.pm
@@ -84,6 +86,7 @@ DiaColloDB/Timer.pm
 DiaColloDB/Timer.pod
 DiaColloDB/Utils.pm
 DiaColloDB/Utils.pod
+DiaColloDB/Upgrade.pm
 
 PDL-Utils/Makefile.PL
 PDL-Utils/pdlutils.pd
