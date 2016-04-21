@@ -1712,6 +1712,7 @@ sub parseQuery {
 	($attr,$areq) = %$_;
       } else {
 	##-- compat: attribute request: STRING (native)
+	next if (uc($_) eq 'WITH'); ##-- avoid ddc keyword
 	($attr,$areq) = m{^(${attrre})[:=](${valre})$} ? ($1,$2) : ($_,undef);
 	$attr =~ s/\\(.)/$1/g;
 	$areq =~ s/\\(.)/$1/g if (defined($areq));
