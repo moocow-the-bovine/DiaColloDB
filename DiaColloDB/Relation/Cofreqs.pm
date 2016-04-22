@@ -6,6 +6,7 @@
 package DiaColloDB::Relation::Cofreqs;
 use DiaColloDB::Relation;
 use DiaColloDB::PackedFile;
+use DiaColloDB::PackedFile::MMap;
 use DiaColloDB::Utils qw(:fcntl :env :run :json :pack);
 use Fcntl qw(:DEFAULT :seek);
 use strict;
@@ -14,6 +15,9 @@ use strict;
 ## Globals & Constants
 
 our @ISA = qw(DiaColloDB::Relation);
+
+## $PFCLASS : object class for nested PackedFile objects
+our $PFCLASS = 'DiaColloDB::PackedFile::MMap';
 
 ##==============================================================================
 ## Constructors etc.
@@ -51,8 +55,8 @@ sub new {
 		    fmin  =>0,
 		    pack_i=>'N',
 		    pack_f=>'N',
-		    r1 => DiaColloDB::PackedFile->new(),
-		    r2 => DiaColloDB::PackedFile->new(),
+		    r1 => $PFCLASS->new(),
+		    r2 => $PFCLASS->new(),
 		    N  => 0,
 		    @_
 		   }, (ref($that)||$that));
@@ -91,6 +95,9 @@ sub open {
     or $cof->logconfess("open failed for $base.dba2: $!");
   $cof->{size1} = $cof->{r1}->size;
   $cof->{size2} = $cof->{r2}->size;
+
+  $cof->info("open(): opened level-1 relation $cof->{r1}{file}.* as ", ref($cof->{r1}));
+  $cof->info("open(): opened level-2 relation $cof->{r2}{file}.* as ", ref($cof->{r2}));
   return $cof;
 }
 

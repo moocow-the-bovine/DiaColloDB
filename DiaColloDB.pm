@@ -16,6 +16,7 @@ use DiaColloDB::EnumFile::Tied;
 use DiaColloDB::MultiMapFile;
 use DiaColloDB::MultiMapFile::MMap;
 use DiaColloDB::PackedFile;
+use DiaColloDB::PackedFile::MMap;
 use DiaColloDB::Relation;
 use DiaColloDB::Relation::Unigrams;
 use DiaColloDB::Relation::Cofreqs;

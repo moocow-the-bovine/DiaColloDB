@@ -3,6 +3,7 @@ Wed, 20 Apr 2016 14:12:49 +0200
   MultiMapFile*
   Upgrade
   Persistent (added readHeader*)
+  PackedFile::MMap
   dcdb-upgrade.perl
 + update MultiMapFile format on kaskade DBs
   1) update DiaColloDB distribution
