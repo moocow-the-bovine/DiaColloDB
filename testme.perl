@@ -2065,12 +2065,12 @@ sub test_expand_intersect {
   print STDERR "test_expand_intersect() done\n";
   exit 0;
 }
-test_expand_intersect @ARGV;
+#test_expand_intersect @ARGV;
 
 ##----------------------------------------------------------------------
 ## test multimap variants
-use DiaColloDB::MultiMapFile2;
-use DiaColloDB::MultiMapFile2::MMap;
+#use DiaColloDB::MultiMapFile2;
+#use DiaColloDB::MultiMapFile2::MMap;
 sub bench_multimap_fetch {
   my ($dbdir,$attr,$val) = @_;
   $dbdir ||= 'kern.d';
@@ -2115,6 +2115,183 @@ sub bench_multimap_fetch {
   exit 0;
 }
 #bench_multimap_fetch @ARGV;
+
+##----------------------------------------------------------------------
+## bench group-extraction
+sub bench_group_extract {
+  my $pfile = shift || 'prf.json';
+
+  ##-- load profile
+  DiaColloDB->ensureLog(level=>'INFO');
+  my $logger = 'DiaColloDB';
+  $logger->info("loading $pfile and encoding");
+  my $mp = DiaColloDB::Utils::loadJsonFile($pfile)
+    or die("$0: failed to load multi-profile from '$pfile': $!");
+
+  ##-- get flat- and deep-encodings
+  my $f12_flat_s = {};
+  my $f12_flat_p = {};
+  my $f12_deep_s = {};
+  my $f12_deep_p = {};
+  my ($pack_g,$pack_date) = qw(N* n);
+  my ($f12,$pkey,$slice,$pslice,$sslice);
+  foreach my $prf (@{$mp->{profiles}}) {
+    $f12    = $prf->{f12};
+    $slice  = $prf->{label}+0;
+    $sslice = "\t".$slice;
+    $pslice = pack($pack_date,$prf->{label}+0);
+    foreach (keys %$f12) {
+      $f12_flat_s->{$_.$sslice} = $f12->{$_};
+      $pkey = pack($pack_g,split(' ',$_));
+      $f12_flat_p->{$pkey.$pslice} = $f12->{$_};
+      $f12_deep_p->{$slice}{$pkey} = $f12->{$_};
+    }
+    $f12_deep_s->{$slice} = $f12;
+  }
+
+  ##-- get list of all groups (packed)
+  my $len_date = DiaColloDB::Utils::packsize($pack_date);
+  my @items_p  = sort keys %$f12_flat_p;
+  my @items_s  = sort keys %$f12_flat_s;
+  my @groups_p = @{DiaColloDB::Utils::sluniq([map {substr($_,0,-$len_date)} @items_p])};
+  my @groups_s = @{DiaColloDB::Utils::luniq([map {keys %$_} values %$f12_deep_s])};
+  my @slices_s = sort keys %$f12_deep_s;
+  my @slices_p = map {pack($pack_date,$_)} @slices_s;
+  $logger->info("found ", scalar(@groups_p), " group(s) in ", scalar(@items_p), " item(s) over ", scalar(@slices_s), " slice(s)");
+
+  ##-- benchmark subs
+  my ($n,$item);
+  my $bench_flat_s = sub {
+    $n=0;
+    foreach $item (@items_s) {
+      foreach $slice (@slices_s) {
+	++$n if (exists $f12_flat_s->{"$item\t$slice"});
+      }
+    }
+    return $n;
+  };
+  my $bench_flat_p = sub {
+    $n = 0;
+    foreach $item (@items_p) {
+      foreach $slice (@slices_p) {
+	++$n if (exists $f12_flat_p->{$item.$slice});
+      }
+    }
+    return $n;
+  };
+  my $bench_deep_s = sub {
+    $n = 0;
+    foreach $item (@items_s) {
+      foreach $slice (@slices_s) {
+	++$n if (exists $f12_deep_s->{$slice}{$item});
+      }
+    }
+    return $n;
+  };
+  my $bench_deep_p = sub {
+    $n = 0;
+    foreach $item (@items_p) {
+      foreach $slice (@slices_s) {
+	++$n if (exists $f12_deep_p->{$slice}{$item});
+      }
+    }
+    return $n;
+  };
+
+  ##-- sanity check
+  my $n_flat_s = $bench_flat_s->();
+  my $n_flat_p = $bench_flat_p->();
+  my $n_deep_s = $bench_deep_s->();
+  my $n_deep_p = $bench_deep_p->();
+  is($n_flat_s,$n_flat_p, "n_flat_s==n_flat_p");
+  is($n_flat_p,$n_deep_s, "n_flat_p==n_deep_s");
+  is($n_deep_s,$n_deep_p, "n_deep_s==n_deep_p");
+
+  ##-- bench
+  cmpthese(-3,
+	   {
+	    flat_s => $bench_flat_s,
+	    flat_p => $bench_flat_p,
+	    deep_s => $bench_deep_s,
+	    deep_p => $bench_deep_p,
+	   });
+  ##          Rate flat_s flat_p deep_p deep_s
+  ## flat_s 9.78/s     --   -25%   -29%   -35%
+  ## flat_p 13.0/s    33%     --    -6%   -13%
+  ## deep_p 13.8/s    41%     6%     --    -7%
+  ## deep_s 14.9/s    53%    15%     8%     --
+
+
+  print STDERR "bench_group_extract() done\n";
+  exit 0;
+}
+#bench_group_extract @ARGV;
+
+##----------------------------------------------------------------------
+## bench pack vs split
+sub bench_pack_split {
+  my $pfile = shift || 'prf.json';
+
+  ##-- load profile
+  DiaColloDB->ensureLog(level=>'INFO');
+  my $logger = 'DiaColloDB';
+  $logger->info("loading $pfile and encoding");
+  my $mp = DiaColloDB::Utils::loadJsonFile($pfile)
+    or die("$0: failed to load multi-profile from '$pfile': $!");
+
+  ##-- get data
+  my @items_s = qw();
+  my @items_p = qw();
+  my ($pack_g,$pack_date) = qw(N* n);
+  foreach my $prf (@{$mp->{profiles}}) {
+    foreach (keys %{$prf->{f12}}) {
+      push(@items_s, $_);
+      push(@items_p, pack($pack_g,split(' ',$_)));
+    }
+  }
+
+
+  ##-- benchmark subs
+  my $project = 1;
+  my ($prf,@items);
+  my $bench_split = sub {
+    @items = qw();
+    foreach (@items_s) {
+      push(@items, (split(' ',$_))[$project]);
+    }
+    return \@items;
+  };
+
+  my $pack_item = '@'.($project*DiaColloDB::Utils::packsize('N')).'N';
+  my $bench_unpack = sub {
+    @items = qw();
+    foreach (@items_p) {
+      push(@items, unpack($pack_item,$_));
+    }
+    return \@items;
+  };
+
+  ##-- sanity check
+  my $items_s = join(' ', sort {$a<=>$b} @{$bench_split->()});
+  my $items_p = join(' ', sort {$a<=>$b} @{$bench_unpack->()});
+  ok($items_s eq $items_p, "items_s==items_p");
+
+  ##-- bench
+  cmpthese(-3,
+	   {
+	    split => $bench_split,
+	    unpack => $bench_unpack,
+	   });
+  ##          Rate  split unpack
+  ## split  60.3/s     --   -45%
+  ## unpack  110/s    82%     --
+
+
+  print STDERR "bench_group_extract() done\n";
+  exit 0;
+}
+bench_pack_split @ARGV;
+
 
 ##==============================================================================
 ## MAIN

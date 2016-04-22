@@ -8,6 +8,12 @@ Wed, 20 Apr 2016 14:12:49 +0200
   1) update DiaColloDB distribution
   2) run dcdb-upgrade.perl -u DBDIR
 
+work-in-progress Thu, 21 Apr 2016 16:56:00 +0200
++ implement cofreqs 2-phase lookup
+  -> refactor: move intermediate numeric groupby keys to pack()-strings rather than join()-strings
+  -> allow old join()-style strings in output a la tdf with relation-side recoding
+  -> allow groupby sub to work on pre-extracted $x tuple-string
+
 Mon, 14 Mar 2016 12:31:35 +0100
 + add dbinfo() (and dbheader()?) client method(s)
 + Client::list: allow parallel queries of sub-clients in (fork or thread)

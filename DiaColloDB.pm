@@ -322,7 +322,7 @@ sub open {
 
   ##-- open: common options
   my %efopts = (flags=>$flags, pack_i=>$coldb->{pack_id}, pack_o=>$coldb->{pack_off}, pack_l=>$coldb->{pack_len});
-  my %mmopts = (%efopts, pack_l=>$coldb->{pack_id});
+  my %mmopts = (flags=>$flags, pack_i=>$coldb->{pack_id});
 
   ##-- open: attributes
   my $attrs = $coldb->{attrs} = $coldb->attrs(undef,['l']);
@@ -621,7 +621,7 @@ sub create {
 
   ##-- initialize: common flags
   my %efopts = (flags=>$flags, pack_i=>$coldb->{pack_id}, pack_o=>$coldb->{pack_off}, pack_l=>$coldb->{pack_len});
-  my %mmopts = (%efopts, pack_l=>$coldb->{pack_id});
+  my %mmopts = (flags=>$flags, pack_i=>$coldb->{pack_id});
 
   ##-- initialize: attribute enums
   my $aconf = [];  ##-- [{a=>$attr, i=>$i, enum=>$aenum, pack_x=>$pack_xa, s2i=>\%s2i, ns=>$nstrings, ?i2j=>$pftmp, ...}, ]
