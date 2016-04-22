@@ -96,8 +96,8 @@ sub open {
   $cof->{size1} = $cof->{r1}->size;
   $cof->{size2} = $cof->{r2}->size;
 
-  $cof->info("open(): opened level-1 relation $cof->{r1}{file}.* as ", ref($cof->{r1}));
-  $cof->info("open(): opened level-2 relation $cof->{r2}{file}.* as ", ref($cof->{r2}));
+  #$cof->debug("open(): opened level-1 relation $cof->{r1}{file}.* as ", ref($cof->{r1}));
+  #$cof->debug("open(): opened level-2 relation $cof->{r2}{file}.* as ", ref($cof->{r2}));
   return $cof;
 }
 
@@ -623,6 +623,8 @@ sub subprofile2 {
   my $xenum = $coldb->{xenum};
   my $pack_xd = "@".(packsize($coldb->{pack_id}) * scalar(@{$coldb->{attrs}})).$coldb->{pack_date};
   my $xs2g    = $groupby->{xs2g};
+  my $debug_xp2g = join('',@{$groupby->{xpack}});
+  my $debug_gpack= "($coldb->{pack_id})*";
   my ($prf,$pf12, $mspvi,$i2,$x2,$d2,$ds2,$prf2,$key2, $buf,$f2);
   $prf2     = (values %$slice2prf)[0] if (!$slice);
   foreach $prf (values %$slice2prf) {
@@ -646,6 +648,8 @@ sub subprofile2 {
 
 	##-- get groupby-key from x-tuple string & check for item2 membership in the appropriate slice-profile
 	$key2 = $xs2g ? $xs2g->($x2) : pack($mspgpack, $i2);
+	#$key2 = pack($debug_gpack, unpack($debug_xp2g, $x2)); ##-- ca. 6% faster than $xs2g, no having-checks
+	#$key2 = pack($debug_gpack, $mspvi); ##-- ca. 12% faster than $xs2g, no having-checks, only valid for groupby single-attribute
 	next if (!defined($key2) || !exists($prf2->{f12}{$key2})); ##-- having()-failure or no item2 in target slice
 
 	##-- add item2 frequency
