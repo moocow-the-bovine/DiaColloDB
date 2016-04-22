@@ -178,7 +178,7 @@ sub profile {
   my @slices = sort {$a<=>$b} keys %$d2xis;
   my ($d,$prf);
   foreach $d (@slices) {
-    $prf = $reldb->subprofile($d2xis->{$d}, groupby=>$groupby->{x2g}, coldb=>$coldb);
+    $prf = $reldb->subprofile($d2xis->{$d}, groupby=>$groupby->{xi2g}, coldb=>$coldb);
     $prf->{label}  = $d;
     $prf->{titles} = $groupby->{titles};
     $d2prf{$d} = $prf;
@@ -200,7 +200,11 @@ sub profile {
   ##-- trim and stringify
   $reldb->vlog($logProfile, "profile(): trim and stringify");
   $mp->trim(%opts, empty=>!$opts{fill});
-  $mp->stringify($groupby->{g2s}) if ($opts{strings});
+  if ($opts{strings}) {
+    $mp->stringify($groupby->{g2s});
+  } else {
+    $mp->stringify($groupby->{g2txt});
+  }
 
   ##-- return
   return $mp;

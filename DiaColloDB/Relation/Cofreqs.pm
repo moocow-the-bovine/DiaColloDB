@@ -554,6 +554,7 @@ sub subprofile {
   my $size1  = $cof->{size1} // ($cof->{size1}=$r1->size);
   my $size2  = $cof->{size2} // ($cof->{size2}=$r2->size);
   my $groupby = $opts{groupby};
+  my $pack_id = $opts{coldb}{pack_id};
   my $pf1 = 0;
   my $pf12 = {};
   my ($i1,$i2,$key2, $beg2,$end2,$pos2, $f1,$f12, $buf);
@@ -568,7 +569,7 @@ sub subprofile {
     for ($r2->seek($beg2), $pos2=$beg2; $pos2 < $end2; ++$pos2) {
       $r2->getraw(\$buf) or last;
       ($i2,$f12)    = unpack($pack2, $buf);
-      $key2         = $groupby ? $groupby->($i2) : $i2;
+      $key2         = $groupby ? $groupby->($i2) : pack($pack_id,$i2);
       next if (!defined($key2)); ##-- item2 selection via groupby CODE-ref
       $pf12->{$key2} += $f12;
     }
@@ -605,25 +606,30 @@ sub subprofile2 {
   my $pack_r1f = '@'.packsize($cof->{pack_i}).$cof->{pack_f};
 
   ##-- get "most specific projected attribute" ("MSPA"): that projected attribute with largest enum
-  my $mspai = (sort {$b->[1]<=>$a->[1]} map {[$_,$a2data->{$groupby->{attrs}[$_]}{enum}->size]} (0..$#{$groupby->{attrs}}))[0][0];
-  my $mspa  = $groupby->{attrs}[$mspai];
+  #my $gb1      = scalar(@{$groupby->{attrs}})==1; ##-- are we grouping by a single attribute? -->optimize!
+  my $mspai    = (sort {$b->[1]<=>$a->[1]} map {[$_,$a2data->{$groupby->{attrs}[$_]}{enum}->size]} (0..$#{$groupby->{attrs}}))[0][0];
+  my $mspa     = $groupby->{attrs}[$mspai];
+  my $mspgpack = $groupby->{gpack}[$mspai];
+  my $mspxpack = $groupby->{xpack}[$mspai];
   my $msp2x = $a2data->{$mspa}{a2x};
   my %mspv  = qw(); ##-- checked MSPA-values ($mspvi)
   my $xenum = $coldb->{xenum};
   my $pack_xd = "@".(packsize($coldb->{pack_id}) * scalar(@{$coldb->{attrs}})).$coldb->{pack_date};
-  my $gbsub   = $groupby->{x2g};
+  my $xs2g    = $groupby->{xs2g};
   my ($prf,$pf12, $mspvi,$i2,$x2,$d2,$ds2,$prf2,$key2, $buf,$f2);
   $prf2     = (values %$slice2prf)[0] if (!$slice);
   foreach $prf (values %$slice2prf) {
     $pf12 = $prf->{f12};
     foreach (keys %$pf12) {
-      $mspvi = (split(/\t/,$_))[$mspai];	##-- compat: use split() to access groupby-element; TODO: use pack()+unpack() here & elsewhere
+      $mspvi = unpack($mspgpack,$_);
       next if (exists $mspv{$mspvi});
       $mspv{$mspvi} = undef;
       foreach $i2 (@{$msp2x->fetch($mspvi)}) {
+	##-- get item2 x-tuple
+	$x2  = $xenum->i2s($i2);
+
 	if ($slice) {
-	  ##-- get $x-tuple & extract item date slice
-	  $x2  = $xenum->i2s($i2);
+	  ##-- extract item2 date slice
 	  $d2  = unpack($pack_xd, $x2);
 	  $ds2 = $slice ? int($d2/$slice)*$slice : 0;
 
@@ -631,8 +637,8 @@ sub subprofile2 {
 	  next if (!defined($prf2=$slice2prf->{$ds2}));
 	}
 
-	##-- get groupby-key & check for item2 membership in the appropriate slice-profile
-	$key2 = $gbsub ? $gbsub->($i2) : $i2;
+	##-- get groupby-key from x-tuple string & check for item2 membership in the appropriate slice-profile
+	$key2 = $xs2g ? $xs2g->($x2) : pack($mspgpack, $i2);
 	next if (!defined($key2) || !exists($prf2->{f12}{$key2})); ##-- having()-failure or no item2 in target slice
 
 	##-- add item2 frequency
