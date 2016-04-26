@@ -545,11 +545,13 @@ sub f12 {
 ##==============================================================================
 ## Relation API: default: profiling
 
-## $prf = $cof->subprofile(\@xids, %opts)
+## $prf = $cof->subprofile1(\@xids, %opts)
 ##  + get joint co-frequency profile for @xids (db must be opened; f1 and f12 only)
 ##  + %opts:
 ##     groupby => \&gbsub,  ##-- key-extractor $key2_or_undef = $gbsub->($i2)
-sub subprofile {
+##     coldb   => $coldb,   ##-- for debugging
+##     onepass => $bool,    ##-- use fast but incorrect 1-pass method?
+sub subprofile1 {
   my ($cof,$ids,%opts) = @_;
   $ids   = [$ids] if (!UNIVERSAL::isa($ids,'ARRAY'));
   my $r1 = $cof->{r1};
@@ -562,9 +564,11 @@ sub subprofile {
   my $size2  = $cof->{size2} // ($cof->{size2}=$r2->size);
   my $groupby = $opts{groupby};
   my $pack_id = $opts{coldb}{pack_id};
+  my $onepass = $opts{onepass};
   my $pf1 = 0;
   my $pf12 = {};
-  my ($i1,$i2,$key2, $beg2,$end2,$pos2, $f1,$f12, $buf);
+  my $pf2  = {};
+  my ($i1,$i2,$key2, $beg2,$end2,$pos2, $f1,$f12, $buf, %i2);
 
   foreach $i1 (@$ids) {
     next if ($i1 >= $size1);
@@ -579,12 +583,16 @@ sub subprofile {
       $key2         = $groupby ? $groupby->($i2) : pack($pack_id,$i2);
       next if (!defined($key2)); ##-- item2 selection via groupby CODE-ref
       $pf12->{$key2} += $f12;
+      if ($onepass && !exists($i2{$i2})) {
+	$pf2->{$key2} += unpack($pack1f, $r1->fetchraw($i2,\$buf)); ##-- avoid double-counting f2 for shared collocates
+	$i2{$i2}       = undef;
+      }
     }
   }
   return DiaColloDB::Profile->new(
 				  N=>$cof->{N},
 				  f1=>$pf1,
-				  f2=>{}, #{map {($_=>0)} keys %$pf12},
+				  f2=>$pf2,
 				  f12=>$pf12,
 				 );
 }
@@ -607,6 +615,8 @@ sub subprofile2 {
   my $a2data  = $opts{a2data};
   my $slice   = $opts{slice};
   #my $slices  = $opts{slices} || [sort {$a<=>$b} keys %$slice2prf];
+  my ($dfilter,$slo,$shi,$dlo,$dhi) = $coldb->parseDateRequest(@opts{qw(date slice fill)});
+  my $filter_by_date = $slice || defined($dlo) || defined($dhi);
 
   ##-- vars: relation-wise
   my $r1       = $cof->{r1};
@@ -626,7 +636,7 @@ sub subprofile2 {
   my $debug_xp2g = join('',@{$groupby->{xpack}});
   my $debug_gpack= "($coldb->{pack_id})*";
   my ($prf,$pf12, $mspvi,$i2,$x2,$d2,$ds2,$prf2,$key2, $buf,$f2);
-  $prf2     = (values %$slice2prf)[0] if (!$slice);
+  $prf2     = (values %$slice2prf)[0] if (!$filter_by_date);
   foreach $prf (values %$slice2prf) {
     $pf12 = $prf->{f12};
     foreach (keys %$pf12) {
@@ -637,13 +647,15 @@ sub subprofile2 {
 	##-- get item2 x-tuple
 	$x2  = $xenum->i2s($i2);
 
-	if ($slice) {
+	if ($filter_by_date) {
 	  ##-- extract item2 date slice
 	  $d2  = unpack($pack_xd, $x2);
 	  $ds2 = $slice ? int($d2/$slice)*$slice : 0;
 
 	  ##-- ignore if item2 slice isn't in our target range
-	  next if (!defined($prf2=$slice2prf->{$ds2}));
+	  next if (!defined($prf2=$slice2prf->{$ds2})
+		   || (defined($dlo) && $d2 < $dlo)
+		   || (defined($dhi) && $d2 > $dhi));
 	}
 
 	##-- get groupby-key from x-tuple string & check for item2 membership in the appropriate slice-profile

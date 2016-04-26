@@ -96,10 +96,12 @@ sub dbinfo {
 ##     ##-- profiling and debugging parameters
 ##     strings => $bool,          ##-- do/don't stringify (default=do)
 ##     fill    => $bool,          ##-- if true, returned multi-profile will have null profiles inserted for missing slices
+##     onepass => $bool,          ##-- if true, use fast but incorrect 1-pass method
 ##    )
-##  + default implementation calls $rel->subprofile() for every requested date-slice,
-##    then calls $rel->subprofile2() to compute item2 frequencies, and finally
-##    collects the result in a DiaColloDB::Profile::Multi object
+##  + default implementation
+##    - calls $rel->subprofile1() for every requested date-slice, then
+##    - calls $rel->subprofile2() to compute item2 frequencies, and finally
+##    - collects the result in a DiaColloDB::Profile::Multi object
 ##  + default values for %opts should be set by higher-level call, e.g. DiaColloDB::profile()
 sub profile {
   my ($reldb,$coldb,%opts) = @_;
@@ -173,25 +175,28 @@ sub profile {
   my $d2xis = $coldb->xidsByDate($xis, @opts{qw(date slice fill)});
 
   ##-- profile: get relation profiles (by date-slice, pass 1: f12)
-  $reldb->vlog($logProfile, "profile(): get frequency profile(s): joint");
+  my $onepass = $opts{onepass} || ($reldb->can('subprofile2') eq \&subprofile2);
+  $reldb->vlog($logProfile, "profile(): get frequency profile(s): ".($onepass ? 'single-pass' : 'pass-1'));
   my %d2prf  = qw();
   my @slices = sort {$a<=>$b} keys %$d2xis;
   my ($d,$prf);
   foreach $d (@slices) {
-    $prf = $reldb->subprofile($d2xis->{$d}, groupby=>$groupby->{xi2g}, coldb=>$coldb);
+    $prf = $reldb->subprofile1($d2xis->{$d}, groupby=>$groupby->{xi2g}, coldb=>$coldb, onepass=>$onepass, opts=>\%opts);
     $prf->{label}  = $d;
     $prf->{titles} = $groupby->{titles};
     $d2prf{$d} = $prf;
   }
 
   ##-- profile: complete slice-wise profiles (pass 2: f2)
-  $reldb->vlog($logProfile, "profile(): get frequency profile(s): independent");
-  $reldb->subprofile2(\%d2prf, %opts, coldb=>$coldb, groupby=>$groupby, a2data=>$a2data);
+  if (!$onepass) {
+    $reldb->vlog($logProfile, "profile(): get frequency profile(s): pass-2");
+    $reldb->subprofile2(\%d2prf, %opts, coldb=>$coldb, groupby=>$groupby, a2data=>$a2data, opts=>\%opts);
+  }
+
+  ##-- compile & collect: multi-profile
   foreach $prf (values %d2prf) {
     $prf->compile($opts{score}, eps=>$opts{eps});
   }
-
-  ##-- collect: multi-profile
   my $mp = DiaColloDB::Profile::Multi->new(profiles=>[@d2prf{@slices}],
 					   titles=>$groupby->{titles},
 					   qinfo =>$reldb->qinfo($coldb, %opts, qreqs=>$areqs, gbreq=>$groupby),
@@ -283,14 +288,15 @@ sub diff {
 
 
 ##==============================================================================
-## Relation API: default: subprofile()
+## Relation API: default: subprofile1()
 
-## $prf = $rel->subprofile(\@xids, %opts)
-##  + get frequency profile for @xids (db must be opened)
+## $prf = $rel->subprofile1(\@xids, %opts)
+##  + get joint frequency profile for @xids (db must be opened)
 ##  + %opts:
 ##     groupby => \&gbsub,  ##-- key-extractor $key2_or_undef = $gbsub->($i2)
 ##     coldb   => $coldb,   ##-- parent DiaColloDB object (for shared data, debugging)
-sub subprofile {
+##     opts    => \%opts,   ##-- pass-through for options to top-level profile() method
+sub subprofile1 {
   my ($rel,$ids,%opts) = @_;
   $rel->logconfess("subprofile(): abstract method called");
 }
@@ -301,13 +307,12 @@ sub subprofile {
 ##     groupby => \%gbreq,  ##-- parsed groupby object
 ##     a2data  => \%a2data, ##-- maps indexed attributes to associated datastructures
 ##     coldb   => $coldb,   ##-- parent DiaColloDB object (for shared data, debugging)
-##     ...                  ##-- other options as for profile(), esp. qw(slice)
-##  + default implementation does nothing
+##     opts    => \%opts,   ##-- pass-through for options to top-level profile() method
+##  + default implementation just returns \%slice2prf
 sub subprofile2 {
   #my ($rel,$slice2prf,%opts) = @_;
   return $_[1];
 }
-
 
 ##==============================================================================
 ## Relation API: default: qinfo()

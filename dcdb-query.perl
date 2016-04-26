@@ -50,6 +50,7 @@ our %query = (
 	      cutoff =>undef,	##-- minimum score cutoff
 	      global =>0,       ##-- trim globally (vs. slice-locally)?
 	      strings => 1,	##-- debug: want strings?
+	      onepass => 0,     ##-- use fast but incorrect 1-pass method?
 	     );
 our %save = (format=>undef);
 
@@ -99,6 +100,8 @@ GetOptions(##-- general
 	   'global|G!' => \$query{global},
 	   'local|L!' => sub { $query{global}=!$_[1]; },
 	   'strings|S!' => \$query{strings},
+	   'one-pass|onepass|1-pass|1pass|1p|single-pass|singlepass|single!' => \$query{onepass},
+	   'two-pass|teopass|2-pass|2pass|2p|multi-pass|multipass|multi|mp!' => sub { $query{onepass}=!$_[1]; },
 
 	   ##-- I/O
 	   'user|U=s' => \$http_user,
@@ -245,6 +248,7 @@ dcdb-query.perl - query a DiaColloDB diachronic collocation database
    -nocutoff             # disable cutoff pruning
    -[no]global           # do/don't trim profiles globally (vs. locally by date-slice; default=don't)
    -[no]strings          # debug: do/don't stringify returned profile (default=do)
+   -1pass , -2pass       # do/don't use fast but incorrect 1-pass method (default=don't)
    -O KEY=VALUE          # set DiaColloDB::Client option
 
  Scoring Options:
@@ -456,6 +460,14 @@ Do/don't trim profiles globally (vs. locally by date-slice; default=don't).
 =item -[no]strings
 
 Debug: do/don't stringify returned profile (default=do).
+
+=item -1pass
+
+Use fast but incorrect single-pass frequency acquisition method.
+
+=item -2pass
+
+Use slower but correct 2-pass frequency acqusition method (default).
 
 =item -O KEY=VALUE
 

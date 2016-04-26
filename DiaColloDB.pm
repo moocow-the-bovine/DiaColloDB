@@ -2162,6 +2162,7 @@ sub parseGroupBy {
 ##     ##-- profiling and debugging parameters
 ##     strings => $bool,          ##-- do/don't stringify (default=do)
 ##     fill    => $bool,          ##-- if true, returned multi-profile will have null profiles inserted for missing slices
+##     onepass => $bool,          ##-- if true, use fast but incorrect 1-pass method
 ##    )
 ##  + sets default %opts and wraps $coldb->relation($rel)->profile($coldb, %opts)
 sub profile {
@@ -2178,7 +2179,7 @@ sub profile {
 		     ([rel=>$rel],
 		      [query=>$opts{query}],
 		      [groupby=>UNIVERSAL::isa($opts{groupby},'ARRAY') ? join(',', @{$opts{groupby}}) : $opts{groupby}],
-		      (map {[$_=>$opts{$_}]} qw(date slice score eps kbest cutoff global)),
+		      (map {[$_=>$opts{$_}]} qw(date slice score eps kbest cutoff global onepass)),
 		     ))
 	       .")");
 
@@ -2210,6 +2211,7 @@ sub profileOptions {
   $opts->{global}  //= 0;
   $opts->{strings} //= 1;
   $opts->{fill}    //= 0;
+  $opts->{onepass} //= 0;
 
   return $opts;
 }
