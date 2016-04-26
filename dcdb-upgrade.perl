@@ -16,26 +16,26 @@ BEGIN {
 ##======================================================================
 ## command-line
 my ($help);
-my $act = 'help';
+my $act = 'upgrade';
 my @upgrades = qw();
 GetOptions(
-	   'help|h' => \$help,
+	   'help|h' => sub { $act='help' },
 	   'list-available|list-all|la|list|all|available|a' => sub { $act='list' },
 	   'check|c' => => sub { $act='check' },
 	   'upgrade|u' => sub { $act='upgrade' },
 	   'force-upgrade|force|fu|f=s' => sub { $act='force'; @upgrades = grep {($_//'') ne ''} split(/[\s\,]+/,$_[1]) },
 	  );
-if ($help || ($act ne 'list' && @ARGV < 1)) {
+if ($act eq 'help' || ($act ne 'list' && @ARGV < 1)) {
   print STDERR <<EOF;
 
 Usage: $0 [OPTIONS] DBDIR
 
 Options:
-  -help       # this help message
-  -list       # list all available upgrade packages
-  -check      # check applicability of available upgrades
-  -upgrade    # apply any applicable upgrades
-  -force PKGS # force-apply comma-separated upgrade package(s)
+  -h, -help       # this help message
+  -l, -list       # list all available upgrade packages
+  -c, -check      # check applicability of available upgrades
+  -u, -upgrade    # apply any applicable upgrades
+  -f, -force PKGS # force-apply comma-separated upgrade package(s)
 
 EOF
   exit $help ? 0 : 1;
