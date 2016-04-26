@@ -38,7 +38,7 @@ Options:
   -f, -force PKGS # force-apply comma-separated upgrade package(s)
 
 EOF
-  exit $help ? 0 : 1;
+  exit ($act eq 'help' ? 0 : 1);
 }
 
 ##======================================================================
