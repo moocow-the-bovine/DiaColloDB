@@ -6,6 +6,7 @@
 package DiaColloDB::Relation::Cofreqs;
 use DiaColloDB::Relation;
 use DiaColloDB::PackedFile;
+use DiaColloDB::PackedFile::MMap;
 use DiaColloDB::Utils qw(:fcntl :env :run :json :pack);
 use Fcntl qw(:DEFAULT :seek);
 use strict;
@@ -14,6 +15,9 @@ use strict;
 ## Globals & Constants
 
 our @ISA = qw(DiaColloDB::Relation);
+
+## $PFCLASS : object class for nested PackedFile objects
+our $PFCLASS = 'DiaColloDB::PackedFile::MMap';
 
 ##==============================================================================
 ## Constructors etc.
@@ -51,8 +55,8 @@ sub new {
 		    fmin  =>0,
 		    pack_i=>'N',
 		    pack_f=>'N',
-		    r1 => DiaColloDB::PackedFile->new(),
-		    r2 => DiaColloDB::PackedFile->new(),
+		    r1 => $PFCLASS->new(),
+		    r2 => $PFCLASS->new(),
 		    N  => 0,
 		    @_
 		   }, (ref($that)||$that));
@@ -91,6 +95,9 @@ sub open {
     or $cof->logconfess("open failed for $base.dba2: $!");
   $cof->{size1} = $cof->{r1}->size;
   $cof->{size2} = $cof->{r2}->size;
+
+  #$cof->debug("open(): opened level-1 relation $cof->{r1}{file}.* as ", ref($cof->{r1}));
+  #$cof->debug("open(): opened level-2 relation $cof->{r2}{file}.* as ", ref($cof->{r2}));
   return $cof;
 }
 
@@ -538,11 +545,13 @@ sub f12 {
 ##==============================================================================
 ## Relation API: default: profiling
 
-## $prf = $cof->subprofile(\@xids, %opts)
-##  + get co-frequency profile for @xids (db must be opened)
+## $prf = $cof->subprofile1(\@xids, %opts)
+##  + get joint co-frequency profile for @xids (db must be opened; f1 and f12 only)
 ##  + %opts:
 ##     groupby => \&gbsub,  ##-- key-extractor $key2_or_undef = $gbsub->($i2)
-sub subprofile {
+##     coldb   => $coldb,   ##-- for debugging
+##     onepass => $bool,    ##-- use fast but incorrect 1-pass method?
+sub subprofile1 {
   my ($cof,$ids,%opts) = @_;
   $ids   = [$ids] if (!UNIVERSAL::isa($ids,'ARRAY'));
   my $r1 = $cof->{r1};
@@ -554,9 +563,11 @@ sub subprofile {
   my $size1  = $cof->{size1} // ($cof->{size1}=$r1->size);
   my $size2  = $cof->{size2} // ($cof->{size2}=$r2->size);
   my $groupby = $opts{groupby};
+  my $pack_id = $opts{coldb}{pack_id};
+  my $onepass = $opts{onepass};
   my $pf1 = 0;
-  my $pf2 = {};
   my $pf12 = {};
+  my $pf2  = {};
   my ($i1,$i2,$key2, $beg2,$end2,$pos2, $f1,$f12, $buf, %i2);
 
   foreach $i1 (@$ids) {
@@ -569,11 +580,13 @@ sub subprofile {
     for ($r2->seek($beg2), $pos2=$beg2; $pos2 < $end2; ++$pos2) {
       $r2->getraw(\$buf) or last;
       ($i2,$f12)    = unpack($pack2, $buf);
-      $key2         = $groupby ? $groupby->($i2) : $i2;
+      $key2         = $groupby ? $groupby->($i2) : pack($pack_id,$i2);
       next if (!defined($key2)); ##-- item2 selection via groupby CODE-ref
-      $pf2->{$key2}  += unpack($pack1f, $r1->fetchraw($i2,\$buf)) if (!exists($i2{$i2})); ##-- avoid double-counting f2 for shared collocates
       $pf12->{$key2} += $f12;
-      $i2{$i2}        = undef;
+      if ($onepass && !exists($i2{$i2})) {
+	$pf2->{$key2} += unpack($pack1f, $r1->fetchraw($i2,\$buf)); ##-- avoid double-counting f2 for shared collocates
+	$i2{$i2}       = undef;
+      }
     }
   }
   return DiaColloDB::Profile->new(
@@ -583,6 +596,84 @@ sub subprofile {
 				  f12=>$pf12,
 				 );
 }
+
+##  \%slice2prf = $rel->subprofile2(\%slice2prf, %opts)
+##  + populate f2 frequencies for profiles in \%slice2prf
+##  + %opts:
+##     groupby => \%gbreq,  ##-- parsed groupby object
+##     a2data  => \%a2data, ##-- maps indexed attributes to associated datastructures
+##     coldb   => $coldb,   ##-- parent DiaColloDB object (for shared data, debugging)
+##     #slices  => \@slices, ##-- slices (optional)
+##     ...                  ##-- other options as for profile(), esp. qw(slice)
+##  + default implementation does nothing
+sub subprofile2 {
+  my ($cof,$slice2prf,%opts) = @_;
+
+  ##-- vars: common
+  my $coldb   = $opts{coldb};
+  my $groupby = $opts{groupby};
+  my $a2data  = $opts{a2data};
+  my $slice   = $opts{slice};
+  #my $slices  = $opts{slices} || [sort {$a<=>$b} keys %$slice2prf];
+  my ($dfilter,$slo,$shi,$dlo,$dhi) = $coldb->parseDateRequest(@opts{qw(date slice fill)});
+  my $filter_by_date = $slice || defined($dlo) || defined($dhi);
+
+  ##-- vars: relation-wise
+  my $r1       = $cof->{r1};
+  my $pack_r1f = '@'.packsize($cof->{pack_i}).$cof->{pack_f};
+
+  ##-- get "most specific projected attribute" ("MSPA"): that projected attribute with largest enum
+  #my $gb1      = scalar(@{$groupby->{attrs}})==1; ##-- are we grouping by a single attribute? -->optimize!
+  my $mspai    = (sort {$b->[1]<=>$a->[1]} map {[$_,$a2data->{$groupby->{attrs}[$_]}{enum}->size]} (0..$#{$groupby->{attrs}}))[0][0];
+  my $mspa     = $groupby->{attrs}[$mspai];
+  my $mspgpack = $groupby->{gpack}[$mspai];
+  my $mspxpack = $groupby->{xpack}[$mspai];
+  my $msp2x = $a2data->{$mspa}{a2x};
+  my %mspv  = qw(); ##-- checked MSPA-values ($mspvi)
+  my $xenum = $coldb->{xenum};
+  my $pack_xd = "@".(packsize($coldb->{pack_id}) * scalar(@{$coldb->{attrs}})).$coldb->{pack_date};
+  my $xs2g    = $groupby->{xs2g};
+  my $debug_xp2g = join('',@{$groupby->{xpack}});
+  my $debug_gpack= "($coldb->{pack_id})*";
+  my ($prf,$pf12, $mspvi,$i2,$x2,$d2,$ds2,$prf2,$key2, $buf,$f2);
+  $prf2     = (values %$slice2prf)[0] if (!$filter_by_date);
+  foreach $prf (values %$slice2prf) {
+    $pf12 = $prf->{f12};
+    foreach (keys %$pf12) {
+      $mspvi = unpack($mspgpack,$_);
+      next if (exists $mspv{$mspvi});
+      $mspv{$mspvi} = undef;
+      foreach $i2 (@{$msp2x->fetch($mspvi)}) {
+	##-- get item2 x-tuple
+	$x2  = $xenum->i2s($i2);
+
+	if ($filter_by_date) {
+	  ##-- extract item2 date slice
+	  $d2  = unpack($pack_xd, $x2);
+	  $ds2 = $slice ? int($d2/$slice)*$slice : 0;
+
+	  ##-- ignore if item2 slice isn't in our target range
+	  next if (!defined($prf2=$slice2prf->{$ds2})
+		   || (defined($dlo) && $d2 < $dlo)
+		   || (defined($dhi) && $d2 > $dhi));
+	}
+
+	##-- get groupby-key from x-tuple string & check for item2 membership in the appropriate slice-profile
+	$key2 = $xs2g ? $xs2g->($x2) : pack($mspgpack, $i2);
+	#$key2 = pack($debug_gpack, unpack($debug_xp2g, $x2)); ##-- ca. 6% faster than $xs2g, no having-checks
+	#$key2 = pack($debug_gpack, $mspvi); ##-- ca. 12% faster than $xs2g, no having-checks, only valid for groupby single-attribute
+	next if (!defined($key2) || !exists($prf2->{f12}{$key2})); ##-- having()-failure or no item2 in target slice
+
+	##-- add item2 frequency
+	$f2 = unpack($pack_r1f, $r1->fetchraw($i2,\$buf));
+	$prf2->{f2}{$key2} += $f2;
+      }
+    }
+  }
+
+  return $slice2prf;
+}
+
 
 ##==============================================================================
 ## Relation API: default: query info

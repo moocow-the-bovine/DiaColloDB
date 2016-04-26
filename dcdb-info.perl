@@ -184,6 +184,7 @@ L<DiaColloDB(3pm)|DiaColloDB>,
 L<dcdb-create.perl(1)|dcdb-create.perl>,
 L<dcdb-query.perl(1)|dcdb-query.perl>,
 L<dcdb-export.perl(1)|dcdb-export.perl>,
+L<dcdb-upgrade.perl(1)|dcdb-upgrade.perl>,
 perl(1).
 
 =cut

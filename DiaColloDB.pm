@@ -16,6 +16,7 @@ use DiaColloDB::EnumFile::Tied;
 use DiaColloDB::MultiMapFile;
 use DiaColloDB::MultiMapFile::MMap;
 use DiaColloDB::PackedFile;
+use DiaColloDB::PackedFile::MMap;
 use DiaColloDB::Relation;
 use DiaColloDB::Relation::Unigrams;
 use DiaColloDB::Relation::Cofreqs;
@@ -322,7 +323,7 @@ sub open {
 
   ##-- open: common options
   my %efopts = (flags=>$flags, pack_i=>$coldb->{pack_id}, pack_o=>$coldb->{pack_off}, pack_l=>$coldb->{pack_len});
-  my %mmopts = (%efopts, pack_l=>$coldb->{pack_id});
+  my %mmopts = (flags=>$flags, pack_i=>$coldb->{pack_id});
 
   ##-- open: attributes
   my $attrs = $coldb->{attrs} = $coldb->attrs(undef,['l']);
@@ -379,7 +380,7 @@ sub open {
   ##-- open: tdf (if available)
   if ($coldb->{index_tdf}) {
     $coldb->{tdfopts}     //= {};
-    $coldb->{tdfopts}{$_} //= $TDF_OPTS{$_} foreach (keys %TDF_OPTS); ##-- tdf: default options
+    $coldb->{tdfopts}{$_} //= $TDF_OPTS{$_} foreach (keys %TDF_OPTS);                ##-- tdf: default options
     $coldb->{tdf} = DiaColloDB::Relation::TDF->new((-r "$dbdir/tdf.hdr" ? (base=>"$dbdir/tdf") : qw()),
 						   dbreak => $coldb->{dbreak},
 						   %{$coldb->{tdfopts}},
@@ -621,7 +622,7 @@ sub create {
 
   ##-- initialize: common flags
   my %efopts = (flags=>$flags, pack_i=>$coldb->{pack_id}, pack_o=>$coldb->{pack_off}, pack_l=>$coldb->{pack_len});
-  my %mmopts = (%efopts, pack_l=>$coldb->{pack_id});
+  my %mmopts = (flags=>$flags, pack_i=>$coldb->{pack_id});
 
   ##-- initialize: attribute enums
   my $aconf = [];  ##-- [{a=>$attr, i=>$i, enum=>$aenum, pack_x=>$pack_xa, s2i=>\%s2i, ns=>$nstrings, ?i2j=>$pftmp, ...}, ]
@@ -952,7 +953,7 @@ sub create {
   if ($coldb->{index_tdf}) {
     $coldb->info("creating (term x document) index $dbdir/tdf* [dbreak=$dbreak]");
     $coldb->{tdfopts}     //= {};
-    $coldb->{tdfopts}{$_} //= $TDF_OPTS{$_} foreach (keys %TDF_OPTS); ##-- tdf: default options
+    $coldb->{tdfopts}{$_} //= $TDF_OPTS{$_} foreach (keys %TDF_OPTS); 		     ##-- tdf: default options
     $coldb->{tdf} = DiaColloDB::Relation::TDF->create($coldb, undef, base=>"$dbdir/tdf", dbreak=>$dbreak);
   } else {
     $coldb->info("NOT creating (term x document) index, 'tdf' profiling relation disabled");
@@ -1937,12 +1938,17 @@ sub parseRequest {
 ##  + $grouby_request : see parseRequest()
 ##  + returns a HASH-ref:
 ##    (
-##     req => $request,    ##-- save request
-##     x2g => \&x2g,       ##-- group-id extraction code suitable for e.g. DiaColloDB::Relation::Cofreqs::profile(groupby=>\&x2g)
-##     g2s => \&g2s,       ##-- stringification object suitable for DiaColloDB::Profile::stringify() [CODE,enum, or undef]
-##     areqs => \@areqs,   ##-- parsed attribute requests ([$attr,$ahaving],...)
-##     attrs => \@attrs,   ##-- like $coldb->attrs($groupby_request), modulo "having" parts
-##     titles => \@titles, ##-- like map {$coldb->attrTitle($_)} @attrs
+##     req => $request,      ##-- save request
+##     #x2g => \&x2g,        ##-- group-tuple extraction code suitable for e.g. DiaColloDB::Relation::Cofreqs::profile(groupby=>\&x2g) ##--OLD
+##     xi2g => \&xi2g,       ##-- group-tuple extraction code ($xi => $gtuple) suitable for e.g. DiaColloDB::Relation::Cofreqs::profile(groupby=>\&x2g) ##--OLD
+##     xs2g => \&xs2g,       ##-- group-tuple extraction code ($xs => $gtuple)
+##     g2s => \&g2s,         ##-- stringification object suitable for DiaColloDB::Profile::stringify() [CODE,enum, or undef]
+##     g2txt => \&g2txt,     ##-- compatible join()-string stringifcation sub
+##     xpack => \@xpack,     ##-- group-attribute-wise pack-templates, given @xtuple
+##     gpack => \@gpack,     ##-- group-attribute-wise pack-templates, given @gtuple
+##     areqs => \@areqs,     ##-- parsed attribute requests ([$attr,$ahaving],...)
+##     attrs => \@attrs,     ##-- like $coldb->attrs($groupby_request), modulo "having" parts
+##     titles => \@titles,   ##-- like map {$coldb->attrTitle($_)} @attrs
 ##    )
 ##  + %opts:
 ##     warn  => $level,    ##-- log-level for unknown attributes (default: 'warn')
@@ -1966,8 +1972,13 @@ sub groupby {
   $gb->{titles} = [map {$coldb->attrTitle($_)} @$gbattrs];
 
   ##-- get groupby-sub
-  my $xenum = $opts{xenum} // $coldb->{xenum};
-  my $gbpack = join('',map {$coldb->{"pack_x$_"}} @$gbattrs);
+  my $xenum  = $opts{xenum} // $coldb->{xenum};
+  my $pack_id = $coldb->{pack_id};
+  my $pack_ids = "($pack_id)*";
+  my $len_id  = packsize($pack_id);
+  my @gbxpack = @{$gb->{xpack} = [map {$coldb->{"pack_x$_"}} @$gbattrs]};
+  my $gbxpack = join('',@gbxpack);
+  my @gbgpack = @{$gb->{gpack} = [map {'@'.($_*$len_id).$pack_id} (0..$#$gbattrs)]};
   my ($ids);
   my @gbids  = (
 		map {
@@ -1978,38 +1989,63 @@ sub groupby {
 		     }
 		   : undef)
 		} @$gbareqs);
-  my ($gbcode,@gi);
+
+  my (@gi,$xi2g_code,$xs2g_code);
   if (grep {$_} @gbids) {
     ##-- group-by code: with having-filters
-    $gbcode = (''
-	       .qq{ \@gi=unpack('$gbpack',\$xenum->i2s(\$_[0]));}
-	       .qq{ return undef if (}.join(' || ', map {"!exists(\$gbids[$_]{\$gi[$_]})"} grep {defined($gbids[$_])} (0..$#gbids)).qq{);}
-	       .qq{ return join("\t",\@gi);}
-	      );
+    $xs2g_code = (''
+		  .qq{ \@gi=unpack('$gbxpack',\$_[0]);}
+		  .qq{ return undef if (}.join(' || ', map {"!exists(\$gbids[$_]{\$gi[$_]})"} grep {defined($gbids[$_])} (0..$#gbids)).qq{);}
+		  .qq{ return pack('$pack_ids',\@gi); }
+		 );
   }
   else {
     ##-- group-by code: no filters
-    $gbcode = qq{join("\t",unpack('$gbpack',\$xenum->i2s(\$_[0])))};
+    $xs2g_code = qq{ pack('$pack_ids', unpack('$gbxpack', \$_[0])) };
   }
-  my $gbsub  = eval qq{sub {$gbcode}};
-  $coldb->logconfess($coldb->{error}="groupby(): could not compile aggregation code sub {$gbcode}: $@") if (!$gbsub);
+  my $xs2g_sub  = eval qq{sub {$xs2g_code}};
+  $coldb->logconfess($coldb->{error}="groupby(): could not compile tuple-based aggregation code sub {$xs2g_code}: $@") if (!$xs2g_sub);
   $@='';
-  $gb->{x2g} = $gbsub;
+  $gb->{xs2g} = $xs2g_sub;
+
+  ($xi2g_code = $xs2g_code) =~ s{\$_\[0\]}{\$xenum->i2s(\$_[0])};
+  my $xi2g_sub  = eval qq{sub {$xi2g_code}};
+  $coldb->logconfess($coldb->{error}="groupby(): could not compile id-base aggregation code sub {$xi2g_code}: $@") if (!$xi2g_sub);
+  $@='';
+  $gb->{xi2g} = $xi2g_sub;
 
   ##-- get stringification sub
+  my ($genum,@genums,$g2scode);
   if (@$gbattrs == 1) {
-    $gb->{g2s} = $coldb->{$gbattrs->[0]."enum"}; ##-- stringify a single attribute
+    ##-- stringify a single attribute
+    $genum   = $coldb->{$gbattrs->[0]."enum"};
+    $g2scode = qq{ \$genum->i2s(unpack('$pack_id',\$_[0])) };
   }
   else {
-    my @gbe = map {$coldb->{$_."enum"}} @$gbattrs;
-    my $g2scode = (q{@gi=split(/\t/,$_[0]);}
-		   .q{join("\t",}.join(', ', map {"\$gbe[$_]->i2s(\$gi[$_])"} (0..$#gbe)).q{)}
-		    );
-    my $g2s = eval qq{sub {$g2scode}};
-    $coldb->logconfess($coldb->{error}="groupby(): could not compile stringification code sub {$g2scode}: $@") if (!$g2s);
-    $@='';
-    $gb->{g2s} = $g2s;
+    @genums = map {$coldb->{$_."enum"}} @$gbattrs;
+    $g2scode = (''
+		.qq{ \@gi=unpack('$pack_ids', \$_[0]); }
+		.q{ join("\t",}.join(', ', map {"\$genums[$_]->i2s(\$gi[$_])"} (0..$#genums)).q{)}
+	       );
   }
+  my $g2s = eval qq{sub {$g2scode}};
+  $coldb->logconfess($coldb->{error}="groupby(): could not compile stringification code sub {$g2scode}: $@") if (!$g2s);
+  $@='';
+  $gb->{g2s} = $g2s;
+
+  ##-- get pseudo-stringification sub ("\t"-joined decimal integer ids)
+  my ($g2txt_code);
+  if (@$gbattrs == 1) {
+    ##-- stringify a single attribute
+    $g2txt_code = qq{ unpack('$pack_id',\$_[0]) };
+  }
+  else {
+    $g2txt_code = qq{ join("\t",unpack('$pack_ids', \$_[0])); };
+  }
+  my $g2txt = eval qq{sub {$g2txt_code}};
+  $coldb->logconfess($coldb->{error}="groupby(): could not compile pseudo-stringification code sub {$g2txt_code}: $@") if (!$g2txt);
+  $@='';
+  $gb->{g2txt} = $g2txt;
 
   return $gb;
 }
@@ -2126,6 +2162,7 @@ sub parseGroupBy {
 ##     ##-- profiling and debugging parameters
 ##     strings => $bool,          ##-- do/don't stringify (default=do)
 ##     fill    => $bool,          ##-- if true, returned multi-profile will have null profiles inserted for missing slices
+##     onepass => $bool,          ##-- if true, use fast but incorrect 1-pass method (Cofreqs profiling only)
 ##    )
 ##  + sets default %opts and wraps $coldb->relation($rel)->profile($coldb, %opts)
 sub profile {
@@ -2142,7 +2179,7 @@ sub profile {
 		     ([rel=>$rel],
 		      [query=>$opts{query}],
 		      [groupby=>UNIVERSAL::isa($opts{groupby},'ARRAY') ? join(',', @{$opts{groupby}}) : $opts{groupby}],
-		      (map {[$_=>$opts{$_}]} qw(date slice score eps kbest cutoff global)),
+		      (map {[$_=>$opts{$_}]} qw(date slice score eps kbest cutoff global onepass)),
 		     ))
 	       .")");
 
@@ -2174,6 +2211,7 @@ sub profileOptions {
   $opts->{global}  //= 0;
   $opts->{strings} //= 1;
   $opts->{fill}    //= 0;
+  $opts->{onepass} //= 0;
 
   return $opts;
 }

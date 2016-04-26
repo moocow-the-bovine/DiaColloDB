@@ -78,7 +78,7 @@ sub new {
 sub open {
   my ($enum,$base,$flags) = @_;
   $enum->SUPER::open($base,$flags) or return undef;
-  return $enum if (!$enum->isa(__PACKAGE__)); ##-- open() promoted us to another class
+  return $enum if (!$enum->isa(__PACKAGE__)); ##-- superclass open() promoted us to another class
 
   ##-- mmap handles
   my $mapmode = fcperl($enum->{flags});

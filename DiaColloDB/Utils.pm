@@ -33,7 +33,7 @@ our %EXPORT_TAGS =
      env   => [qw(env_set env_push env_pop)],
      pack  => [qw(packsize packFilterFetch packFilterStore)],
      math  => [qw($LOG2 log2 min2 max2 lmax lmin lsum)],
-     list  => [qw(luniq xluniq)],
+     list  => [qw(luniq sluniq xluniq)],
      regex => [qw(regex)],
      html  => [qw(htmlesc)],
      time  => [qw(s2hms s2timestr timestamp)],
@@ -418,10 +418,17 @@ sub lsum {
 ## Functions: lists
 
 ## \@l_uniq = luniq(\@l)
-##  + returns unique defined elements of @l
+##  + returns unique defined elements of @l; @l need not be sorted
 sub luniq {
   my ($tmp);
   return [map {defined($tmp) && $tmp eq $_ ? qw() : ($tmp=$_)} sort grep {defined($_)} @{$_[0]//[]}];
+}
+
+## \@l_sorted_uniq = sluniq(\@l_sorted)
+##  + returns unique defined elements of pre-sorted @l
+sub sluniq {
+  my ($tmp);
+  return [map {defined($tmp) && $tmp eq $_ ? qw() : ($tmp=$_)} grep {defined($_)} @{$_[0]//[]}];
 }
 
 ## \@l_uniq = xluniq(\@l,\&keyfunc)

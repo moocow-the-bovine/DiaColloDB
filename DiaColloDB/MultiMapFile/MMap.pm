@@ -17,7 +17,7 @@ our @ISA = qw(DiaColloDB::MultiMapFile);
 ##==============================================================================
 ## Constructors etc.
 
-## $cldb = CLASS_OR_OBJECT->new(%args)
+## $mmf = CLASS_OR_OBJECT->new(%args)
 ## + %args, object structure:
 ##   (
 ##    ##-- MultiMapFile: basic options

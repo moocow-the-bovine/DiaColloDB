@@ -49,9 +49,10 @@ DiaColloDB::Relation - diachronic collocation db, relation API (abstract & utili
  $mpdiff = $rel->diff($coldb, %opts);
  
  ##========================================================================
- ## Relation API: default: subprofile()
+ ## Relation API: default
  
- $prf = $rel->subprofile(\@xids, %opts);
+ $prf       = $rel->subprofile1(\@xids, %opts);
+ $slice2prf = $rel->subprofile2(\%slice2prf, %opts)
  
  ##========================================================================
  ## Relation API: default: qinfo()
@@ -204,11 +205,13 @@ object; called by L<DiaColloDB::profile()|DiaColloDB/profile>.
  ##-- profiling and debugging parameters
  strings => $bool,          ##-- do/don't stringify (default=do)
  fill    => $bool,          ##-- if true, returned multi-profile will have null profiles inserted for missing slices
+ onepass => $bool,          ##-- if true, use fast but incorrect 1-pass method (default=0; Cofreqs subclass only)
 
-The default implementation calls $rel-E<gt>subprofile() for every requested date-slice
-and collects the result in a L<DiaColloDB::Profile::Multi|DiaColloDB::Profile::Multi> object.
+The default implementation calls $rel-E<gt>L<subprofile1|/subprofile1>() for every requested date-slice,
+then calls $rel-E<gt>L<subprofile2|/subprofile2>() to compute item2 frequencies,
+and finally collects the result in a L<DiaColloDB::Profile::Multi|DiaColloDB::Profile::Multi> object.
 
-Default values for %opts should be set by a higher-level call, e.g. DiaColloDB::profile().
+Default values for %opts should be set by a higher-level call, e.g. L<DiaColloDB::profile|DiaColloDB/profile>().
 
 =back
 
@@ -250,6 +253,7 @@ object.
  ##
  ##-- profiling and debugging parameters
  strings => $bool,          ##-- do/don't stringify (default=do)
+ onepass => $bool,          ##-- if true, use fast but incorrect 1-pass profiling method (default=0)
  ##
  ##-- sublcass abstraction parameters
  _gbparse => $bool,         ##-- if true (default), 'groupby' clause will be parsed only once, using $coldb->groupby() method
@@ -269,19 +273,27 @@ alias for compare()
 =cut
 
 ##----------------------------------------------------------------
-## DESCRIPTION: DiaColloDB::Relation: Relation API: default: subprofile()
+## DESCRIPTION: DiaColloDB::Relation: Relation API: default
 =pod
 
-=head2 Relation API: default: subprofile()
+=head2 Relation API: default
 
 =over 4
 
-=item subprofile
+=item subprofile1
 
- $prf = $rel->subprofile(\@xids, %opts)
+ $prf = $rel->subprofile1(\@xids, %opts)
 
-Native index API low-level profiling function;
+Native index API low-level pass-1 profiling function for joint frequency acquisition (f12);
 default implementation just throws an error.
+
+=item subprofile2
+
+ \%slice2prf = $rel->subprofile2(\%slice2prf, %opts)
+
+Native index API low-level pass-2 profiling function for independent frequency acquisition (f2);
+default implementation just returns \%slice2prf, which is appropriate for relations which
+use a 1-pass strategy to populate C<$prf-E<gt>{f2}> in L<subprofile1|/subprofile1>().
 
 =back
 

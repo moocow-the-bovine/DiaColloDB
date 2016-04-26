@@ -1,14 +1,32 @@
 Wed, 20 Apr 2016 14:12:49 +0200
 + document new/changed modules:
-  MultiMapFile*
-  Upgrade
-  Persistent (added readHeader*)
-  dcdb-upgrade.perl
+  #MultiMapFile*
+  #Upgrade
+  #Persistent (added readHeader*)
+  #PackedFile::MMap
+  #dcdb-upgrade.perl
+  #DiaColloDB (onepass)
+  #Relation   (onepass)
 + update MultiMapFile format on kaskade DBs
   1) update DiaColloDB distribution
-  2) run dcdb-upgrade.perl -u DBDIR
+  2) run `dcdb-upgrade.perl -u DBDIR' (at your leisure)
+
+TODO Tue, 26 Apr 2016 08:59:52 +0200
++ f2 bug / optimization: try re-factoring db structure from xenum (+date) to tenum a la tdf (-date)
+  - reduces number of items for iteration in f2 loop --> reduce number of expensive calls
+    : nytprof.kern-f2bug-Mann-packed+mmap.d / DiaColloDB::Relation::Cofreqs::subprofile2()
+      -> 5.91s making 1357520 calls to ANON ($groupby->{xs2g})
+      -> 2.90s making 1357520 calls to DiaColloDB::PackedFile::MMap::fetchraw()
+
+work-in-progress Thu, 21 Apr 2016 16:56:00 +0200
+#+ implement cofreqs 2-phase lookup
+  #-> refactor: move intermediate numeric groupby keys to pack()-strings rather than join()-strings
+  #-> allow old join()-style strings in output a la tdf with relation-side recoding
+  #-> allow groupby sub to work on pre-extracted $x tuple-string
+#+ DONE Tue, 26 Apr 2016 13:54:31 +0200: better, but still ca. 10x slower than (old, incorrect) single-pass variant
 
 Mon, 14 Mar 2016 12:31:35 +0100
++ Client::list: get working correctly!
 + add dbinfo() (and dbheader()?) client method(s)
 + Client::list: allow parallel queries of sub-clients in (fork or thread)
 + DiaColloDB: allow metadata constants in local indices (for subcorpus selection via list clients)

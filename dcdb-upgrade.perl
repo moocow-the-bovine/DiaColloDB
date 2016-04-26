@@ -4,7 +4,9 @@ use lib qw(. dclib);
 use version;
 use DiaColloDB;
 use DiaColloDB::Upgrade;
+use File::Basename qw(basename);
 use Getopt::Long qw(:config no_ignore_case);
+use Pod::Usage;
 use utf8;
 use strict;
 
@@ -14,32 +16,26 @@ BEGIN {
 }
 
 ##======================================================================
+## Globals
+
+##-- program vars
+our $prog  = basename($0);
+
+##======================================================================
 ## command-line
-my ($help);
-my $act = 'help';
+my $act = 'upgrade';
 my @upgrades = qw();
 GetOptions(
-	   'help|h' => \$help,
+	   'help|h' => sub { $act='help' },
 	   'list-available|list-all|la|list|all|available|a' => sub { $act='list' },
 	   'check|c' => => sub { $act='check' },
 	   'upgrade|u' => sub { $act='upgrade' },
 	   'force-upgrade|force|fu|f=s' => sub { $act='force'; @upgrades = grep {($_//'') ne ''} split(/[\s\,]+/,$_[1]) },
 	  );
-if ($help || ($act ne 'list' && @ARGV < 1)) {
-  print STDERR <<EOF;
 
-Usage: $0 [OPTIONS] DBDIR
-
-Options:
-  -help       # this help message
-  -list       # list all available upgrade packages
-  -check      # check applicability of available upgrades
-  -upgrade    # apply any applicable upgrades
-  -force PKGS # force-apply comma-separated upgrade package(s)
-
-EOF
-  exit $help ? 0 : 1;
-}
+pod2usage({-exitval=>0,-verbose=>0}) if ($act eq 'help');
+pod2usage({-exitval=>1,-verbose=>0,-msg=>"$prog: ERROR: no DBDIR specified!"}) if ($act ne 'list' && @ARGV < 1);
+pod2usage({-exitval=>1,-verbose=>0,-msg=>"$prog: ERROR: too many arguments for -list mode!"}) if ($act eq 'list' && @ARGV);
 
 ##======================================================================
 ## MAIN
@@ -81,3 +77,143 @@ elsif ($act eq 'force') {
 
 ##-- all done
 $up->info("operation completed in ", $timer->timestr);
+
+__END__
+
+###############################################################
+## pods
+###############################################################
+
+=pod
+
+=head1 NAME
+
+dcdb-upgrade.perl - upgrade a DiaColloDB directory in-place
+
+=head1 SYNOPSIS
+
+ dcdb-upgrade.perl -list
+ dcdb-upgrade.perl [OPTIONS] DBDIR
+
+ Options:
+   -h, -help       # this help message
+   -l, -list       # list all available upgrade packages
+   -c, -check      # check applicability of available upgrades for DBDIR
+   -u, -upgrade    # apply any applicable upgrades to DBDIR (default)
+   -f, -force PKGS # force-apply comma-separated upgrade package(s) to DBDIR
+
+=cut
+
+###############################################################
+## DESCRIPTION
+###############################################################
+=pod
+
+=head1 DESCRIPTION
+
+dcdb-upgrade.perl
+checks for & applies automatic upgrades to a L<DiaColloDB|DiaColloDB>
+database directory, using the L<DiaColloDB::Upgrade|DiaColloDB::Upgrade> API.
+The DBDIR database is altered in-place, so it is safest
+to make a backup of DBDIR before upgrading.
+
+=cut
+
+###############################################################
+## OPTIONS AND ARGUMENTS
+###############################################################
+=pod
+
+=head1 OPTIONS AND ARGUMENTS
+
+=cut
+
+###############################################################
+# Arguments
+###############################################################
+=pod
+
+=head2 Arguments
+
+=over 4
+
+=item DBDIR
+
+L<DiaColloDB|DiaColloDB> database directory to be checked and/or upgraded.
+
+=back
+
+=cut
+
+###############################################################
+# Options
+###############################################################
+=pod
+
+=head2 Options
+
+=over 4
+
+=item -h, -help
+
+Display a brief help message and exit.
+
+=item -l, -list
+
+List all known L<DiaColloDB::Upgrade|DiaColloDB::Upgrade> packages.
+
+=item -c, -check
+
+Check applicability of available upgrades to C<DBDIR>.
+
+=item -u, -upgrade
+
+Apply any applicable upgrades to F<DBDIR>;
+this is the default mode of operation.
+It is safest to make a backup of F<DBDIR> before upgrading.
+
+=item -f, -force PKGS
+
+Force-apply the comma- or space-separated list of
+L<DiaColloDB::Upgrade|DiaColloDB::Upgrade>-compliant packages
+C<PKGS> to F<DBDIR>.
+Use with caution.
+
+=back
+
+=cut
+
+
+###############################################################
+# Bugs and Limitations
+###############################################################
+=pod
+
+=head1 BUGS AND LIMITATIONS
+
+Probably many.
+
+=cut
+
+
+###############################################################
+# Footer
+###############################################################
+=pod
+
+=head1 ACKNOWLEDGEMENTS
+
+Perl by Larry Wall.
+
+=head1 AUTHOR
+
+Bryan Jurish E<lt>moocow@cpan.orgE<gt>
+
+=head1 SEE ALSO
+
+L<DiaColloDB::Upgrade(3pm)|DiaColloDB::Upgrade>,
+L<DiaColloDB(3pm)|DiaColloDB>,
+L<dcdb-info.perl(1)|dcdb-info.perl>,
+perl(1).
+
+=cut
