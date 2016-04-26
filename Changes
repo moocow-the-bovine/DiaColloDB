@@ -3,10 +3,12 @@
 ## Change log for perl distribution DiaColloDB
 
 pending Mon, 14 Mar 2016 12:23:15 +0100
+	* fixed double-counting f2 for multiple item1 targets with shared item2 collocates in Cofreqs::subprofile1() 1-pass mode
 	* added auto-upgrade framework
-	  - DiaColloDB::Upgrade : API & base class, & currently only subclass
-	  - dcdb-upgrade.perl : top-level auto-upgrade script
+	  - DiaColloDB::Upgrade - top-level API
+	  - DiaColloDB::Upgrade::Base - subclass API & defaults
 	  - added subclass ::v0_08_to_v0_09_multimap for v0.09.x multimap format change
+	  - dcdb-upgrade.perl : top-level auto-upgrade script
 	* added compatiblity mode for multimaps as DiaColloDB::MultiMapFile::v0_08
 	* fixed -nokeep option to dcdb-create.perl
 	* TDF union: avoid storage of non-persistent object keys qw(docmeta wdmfile logas reusedir)
@@ -17,10 +19,18 @@ pending Mon, 14 Mar 2016 12:23:15 +0100
 	* Client::list overhaul
 	  - new default fudge=>10 should be safe (but rather expensive)
 	  - re-factored Client::list::profile() and compare() methods
-	* fixed double-counting f2 for multiple item1 targets with shared item2 collocates in Cofreqs::subprofile()
 	* improved Client and Client::list documentation
 	  - added "incorrect independent collocate frequencies" section to Client::list documentation
-	  - milder form of this bug applies even to single native CoFreqs indices
+	  - milder form of this bug applies even to single native CoFreqs indices ("f2 bug", see above)
+	* workaround for incorrect independent collocate frequency acquisition code in Cofreqs ("f2 bug")
+	  - f2 were computed as marginals only over those (x1,x2,date) triples with f(x1,x2,date) > 0,
+	    rather than over all (*,x2,date \in slice)
+	  - result were in general underestimates of f2
+	  - fix uses 2-pass acquisition strategy, ca. 10x slower for frequent targets (e.g. 'Mann')
+	    ~ old subprofile() method refactored into subprofile1() and subprofile2()
+	  - todo: possibly re-factor db structure to use tdf-style {tenum} rather than {xenum},
+	    minimize group-key lookup & optimize for serial cofreqs dba2 file access
+	  - added 'onepass' query option for fast, old, incorrect f2 frequency acquisition (Cofreqs only)
 
 v0.08.006 Thu, 10 Mar 2016 16:52:19 +0100 moocow
 	* added dbexport() support for TDF relations
