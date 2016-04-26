@@ -864,6 +864,7 @@ Get a relation profile for selected items as a L<DiaColloDB::Profile::Multi|DiaC
  ##-- profiling and debugging parameters
  strings => $bool,          ##-- do/don't stringify (default=do)
  fill    => $bool,          ##-- if true, returned multi-profile will have null profiles inserted for missing slices
+ onepass => $bool,          ##-- if true, use old, fast, incorrect 1-pass method (default=0)
 
 Sets default %opts and wraps $coldb-E<gt>L<relation|/relation>($rel)-E<gt>L<profile|DiaColloDB::Relation/profile>($coldb, %opts).
 

@@ -21,7 +21,7 @@ our @ISA = qw(DiaColloDB::Persistent);
 ##==============================================================================
 ## Constructors etc.
 
-## $cldb = CLASS_OR_OBJECT->new(%args)
+## $mmf = CLASS_OR_OBJECT->new(%args)
 ## + %args, object structure:
 ##   (
 ##    ##-- basic options
@@ -42,7 +42,7 @@ our @ISA = qw(DiaColloDB::Persistent);
 ##    ##
 ##    ##-- filehandles (after open())
 ##    afh => $afh,         ##-- $base.ma : [$a]      => pack(${pack_a}, $bidx_a, $blen_a) : $byte_offset_in_bfh = $len_i*$bidx_a
-##    bfh => $bfh,         ##-- $base.mb : $bidx_a   :  pack(${pack_b}, @targets_for_a)   : $byte_length_in_bfh = $len_i*$blen_a
+##    bfh => $bfh,         ##-- $base.mb : [$bidx_a] => pack(${pack_b}, @targets_for_a)   : $byte_length_in_bfh = $len_i*$blen_a
 ##   )
 sub new {
   my $that = shift;
@@ -367,6 +367,7 @@ sub addPairs {
 ## Methods: lookup
 
 ## $bs_packed = $mmf->fetchraw($a)
+##  + returns packed array \@bs of targets for $a, or undef if not found
 sub fetchraw {
   my ($mmf,$a) = @_;
   return '' if (!defined($a));

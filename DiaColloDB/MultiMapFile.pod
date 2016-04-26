@@ -25,7 +25,7 @@ DiaColloDB::MultiMapFile - diachronic collocation db, integer->integer* multimap
  ##========================================================================
  ## Constructors etc.
  
- $cldb = CLASS_OR_OBJECT->new(%args);
+ $mmf = $CLASS_OR_OBJECT->new(%args);
  
  ##========================================================================
  ## I/O: open/close (file)
@@ -60,6 +60,7 @@ DiaColloDB::MultiMapFile - diachronic collocation db, integer->integer* multimap
  ##========================================================================
  ## Methods: lookup
  
+ $bs_packed    = $mmf->fetchraw($a);
  \@bs_or_undef = $mmf->fetch($a);
 
 =cut
@@ -112,21 +113,24 @@ L<DiaColloDB::Persistent|DiaColloDB::Persistent>.
  perms => $perms,     ##-- default: 0666 & ~umask
  flags => $flags,     ##-- default: 'r'
  pack_i => $pack_i,   ##-- integer pack template (default='N')
- pack_o => $pack_o,   ##-- file offset pack template (default='N')
- pack_l => $pack_l,   ##-- set-length pack template (default='N')
  size => $size,       ##-- number of mapped , like scalar(@data)
  ##
  ##-- in-memory construction
  a2b => \@a2b,        ##-- maps source integers to (packed) target integer-sets: [$a] => pack("${pack_i}*", @bs)
  ##
- ##-- pack lengths (after open())
+ ##-- computed pack templates and lengths (after open())
+ pack_a => $pack_a,   ##-- "($pack_i)[2]"
+ pack_b => $pack_a,   ##-- "($pack_i)*"
  len_i => $len_i,     ##-- bytes::length(pack($pack_i,0))
- len_o => $len_o,     ##-- bytes::length(pack($pack_o,0))
- len_l => $len_l,     ##-- bytes::length(pack($pack_l,0))
+ len_a => $len_a,     ##-- bytes::length(pack($pack_a,0))
  ##
  ##-- filehandles (after open())
- afh => $afh,         ##-- $base.ma : [$a]      => pack(${pack_o}, $boff_a)
- bfh => $bfh,         ##-- $base.mb : $boff_a   :  pack("${pack_l}/(${pack_i}*)",  @targets_for_a)
+ afh => $afh,         ##-- $base.ma : [$a]      => pack(${pack_a}, $bidx_a, $blen_a) : $byte_offset_in_bfh = $len_i*$bidx_a
+ bfh => $bfh,         ##-- $base.mb : [$bidx_a] => pack(${pack_b}, @targets_for_a)   : $byte_length_in_bfh = $len_i*$blen_a
+
+B<NOTE>: underlying file format changed from DiaColloDB v0.08.006 to v0.09.001; old-format files should be
+autodetected and a backwards-compatible API is offered by the
+L<DiaColloDB::MultiMapFile::v0_08|DiaColloDB::MultiMapFile::v0_08> class.
 
 =item DESTROY
 
@@ -151,6 +155,8 @@ Destructor implicitly calls close().
  $mmf_or_undef = $mmf->open();
 
 Open underlying files.
+Attempts to autodetect obsolete file formats and may re-bless C<$mmf> into
+an appropriate compatibility package.
 
 =item close
 
@@ -314,6 +320,16 @@ multimap must be loaded to memory.
 
 =over 4
 
+=item fetchraw
+
+ $bs_packed = $mmf->fetchraw($a);
+
+Returns a packed array
+C<$bs_packed = pack($mmf-E<gt>{pack_b}, @bs)>
+of targets for $a, or undef if not found.
+multimap must be opened.
+
+
 =item fetch
 
  \@bs_or_undef = $mmf->fetch($a);
@@ -322,16 +338,6 @@ Returns array \@bs of targets for $a, or undef if not found.
 multimap must be opened.
 
 =back
-
-=cut
-
-##========================================================================
-## TODO
-=pod
-
-=head1 TODO
-
-write mmap subclass
 
 =cut
 
@@ -358,6 +364,8 @@ at your option, any later version of Perl 5 you may have available.
 
 =head1 SEE ALSO
 
+L<DiaColloDB::MultiMapFile::MMap(3pm)|DiaColloDB::MultiMapFile::MMap>,
+L<DiaColloDB::MultiMapFile::v0_08(3pm)|DiaColloDB::MultiMapFile::v0_08>,
 L<DiaColloDB::Persistent(3pm)|DiaColloDB::Persistent>,
 L<DiaColloDB(3pm)|DiaColloDB>,
 L<perl(1)|perl>,

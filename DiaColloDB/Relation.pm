@@ -96,7 +96,7 @@ sub dbinfo {
 ##     ##-- profiling and debugging parameters
 ##     strings => $bool,          ##-- do/don't stringify (default=do)
 ##     fill    => $bool,          ##-- if true, returned multi-profile will have null profiles inserted for missing slices
-##     onepass => $bool,          ##-- if true, use fast but incorrect 1-pass method
+##     onepass => $bool,          ##-- if true, use fast but incorrect 1-pass method (Cofreqs subclass only)
 ##    )
 ##  + default implementation
 ##    - calls $rel->subprofile1() for every requested date-slice, then

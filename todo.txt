@@ -5,8 +5,8 @@ Wed, 20 Apr 2016 14:12:49 +0200
   Persistent (added readHeader*)
   PackedFile::MMap
   dcdb-upgrade.perl
-  DiaColloDB (onepass)
-  Relation   (onepass)
+  #DiaColloDB (onepass)
+  #Relation   (onepass)
 + update MultiMapFile format on kaskade DBs
   1) update DiaColloDB distribution
   2) run dcdb-upgrade.perl -u DBDIR
