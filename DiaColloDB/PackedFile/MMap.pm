@@ -165,7 +165,7 @@ sub eof {
 ##  + read a raw record into \$buf
 sub read {
   ${$_[1]} = substr(${$_[0]{bufr}}, $_[0]{bufp}*$_[0]{reclen}, $_[0]{reclen});
-  $_[0]{bufp} += $_[0]{reclen};
+  ++$_[0]{bufp};
   return length(${$_[1]})==$_[0]{reclen};
 }
 
@@ -173,7 +173,7 @@ sub read {
 ##  + batch-reads $nrecords into \$buf
 sub readraw {
   ${$_[1]} = substr(${$_[0]{bufr}}, $_[0]{bufp}*$_[0]{reclen}, $_[2]*$_[0]{reclen});
-  $_[0]{bufp} += $_[2]*$_[0]{reclen};
+  $_[0]{bufp} += $_[2];
   return length(${$_[1]})==$_[2]*$_[0]{reclen};
 }
 
@@ -182,7 +182,7 @@ sub readraw {
 sub get {
   local $_ = substr(${$_[0]{bufr}}, $_[0]{bufp}*$_[0]{reclen}, $_[0]{reclen});
   return undef if (length($_) != $_[0]{reclen});
-  $_[0]{bufp} += $_[0]{reclen};
+  ++$_[0]{bufp};
   $_[0]{filter_fetch}->() if ($_[0]{filter_fetch});
   return $_;
 }
@@ -191,7 +191,7 @@ sub get {
 ##  + get (packed) value of current record, increments filehandle position to next record
 sub getraw {
   ${$_[1]} = substr(${$_[0]{bufr}}, $_[0]{bufp}*$_[0]{reclen}, $_[0]{reclen});
-  $_[0]{bufp} += $_[0]{reclen};
+  ++$_[0]{bufp};
   return undef if (length(${$_[1]}) != $_[0]{reclen});
   return $_[1];
 }
@@ -200,7 +200,7 @@ sub getraw {
 ##  + get (unpacked) value of record $index
 sub fetch {
   local $_ = substr(${$_[0]{bufr}}, $_[1]*$_[0]{reclen}, $_[0]{reclen});
-  $_[0]{bufp} += $_[0]{reclen};
+  ++$_[0]{bufp};
   return undef if (length($_) != $_[0]{reclen});
   $_[0]{filter_fetch}->() if ($_[0]{filter_fetch});
   return $_;
@@ -210,7 +210,7 @@ sub fetch {
 ##  + get (packed) value of record $index
 sub fetchraw {
   ${$_[2]} = substr(${$_[0]{bufr}}, $_[1]*$_[0]{reclen}, $_[0]{reclen});
-  $_[0]{bufp} += $_[0]{reclen};
+  ++$_[0]{bufp};
   return undef if (length(${$_[2]}) != $_[0]{reclen});
   return ${$_[2]};
 }
