@@ -90,6 +90,11 @@ DiaColloDB/Timer.pod
 DiaColloDB/Utils.pm
 DiaColloDB/Utils.pod
 DiaColloDB/Upgrade.pm
+DiaColloDB/Upgrade.pod
+DiaColloDB/Upgrade/Base.pm
+DiaColloDB/Upgrade/Base.pod
+DiaColloDB/Upgrade/v0_08_to_v0_09_multimap.pm
+DiaColloDB/Upgrade/v0_08_to_v0_09_multimap.pod
 
 PDL-Utils/Makefile.PL
 PDL-Utils/pdlutils.pd
