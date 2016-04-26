@@ -53,9 +53,8 @@ DiaColloDB/PDL/MM.pod
 DiaColloDB/PackedFile.pm
 DiaColloDB/PackedFile.pod
 DiaColloDB/PackedFile/MMap.pm
+DiaColloDB/PackedFile/MMap.pod
 DiaColloDB/Persistent.pm
-DiaColloDB/Persistent.pod
-DiaColloDB/Persistent.pod
 DiaColloDB/Persistent.pod
 DiaColloDB/Profile.pm
 DiaColloDB/Profile.pod

@@ -37,10 +37,15 @@ DiaColloDB::Persistent - diachronic collocation db, generic persistent objects
  @keys = $obj->headerKeys();
  $hdr = $obj->headerData();
  $filename = $obj->headerFile();
+ 
  $str = $obj->saveHeaderString(%opts);
  $bool = $obj->saveHeaderFile($filename_or_handle, %opts);
  $bool = $obj->saveHeader();
+ 
+ $hdr = $CLASS_OR_OBJECT->readHeaderFile($filename_or_handle, %opts);
+ $hdr = $CLASS_OR_OBJECT->readHeader();
  $obj = $CLASS_OR_OBJECT->loadHeaderData($data_or_undef);
+ $obj = $CLASS_OR_OBJECT->loadHeaderString($string,%opts);
  $obj = $CLASS_OR_OBJECT->loadHeaderFile($filename_or_handle, %opts);
  $bool = $CLASS_OR_OBJECT->loadHeader();
  
@@ -192,6 +197,24 @@ Save object JSON header to $fh.
 
 wraps $obj-E<gt>saveHeaderFile($headerFile//$obj-E<gt>headerFile(), %opts)
 
+=item readHeaderFile
+
+ $hdr = $CLASS_OR_OBJECT->readHeaderFile($filename_or_handle, %opts);
+ $hdr = $CLASS_OR_OBJECT->readHeaderFh  ($filename_or_handle, %opts);
+
+wraps L<DiaColloDB::Utils::loadJsonFile|DiaColloDB::Utils/loadJsonFile>($filename_or_handle, %opts):
+reads and decodes JSON header data from C<$filename_or_handle> and returns the resulting structure
+without loading any data into the calling object.
+
+=item readHeader
+
+ $hdr = $CLASS_OR_OBJECT->readHeader();
+ $hdr = $CLASS_OR_OBJECT->readHeader($headerFile,%opts);
+
+wraps $CLASS_OR_OBJECT-E<gt>L<readHeaderFile|/readHeaderFile>($headerFile//$CLASS_OR_OBJ-E<gt>L<headerFile|/headerFile>()):
+reads and decodes JSON header data from the default header-file and returns the result
+without loading any data into the calling object.
+
 =item loadHeaderData
 
  $obj = $CLASS_OR_OBJECT->loadHeaderData($data_or_undef);
@@ -205,20 +228,26 @@ default just sets @$obj{keys %$data} = values %$data and clobbers $obj-E<gt>{cla
  $obj = $CLASS_OR_OBJECT->loadHeaderString(\$string,%opts)
 
 loads header data from JSON string $string;
-wraps $CLASS_OR_OBJECT->loadHeaderData().
+wraps the L<loadHeaderData|/loadHeaderData>()
+and L<readHeader|/readHeader>() methods.
 
 =item loadHeaderFile
 
  $obj = $CLASS_OR_OBJECT->loadHeaderFile($filename_or_handle, %opts);
 
-wraps $CLASS_OR_OBJECT-E<gt>loadHeaderData().
+loads header data from C<$filename_or_handle>;
+wraps the L<loadHeaderData|/loadHeaderData>()
+and L<readHeader|/readHeader>() methods.
+
 
 =item loadHeader
 
  $bool = $CLASS_OR_OBJECT->loadHeader();
  $bool = $CLASS_OR_OBJECT->loadHeader($headerFile,%opts);
 
-wraps $CLASS_OR_OBJECT-E<gt>loadHeaderFile($headerFile//$CLASS_OR_OBJ-E<gt>headerFile())
+loads header data from the default header file or C<$headerFile>;
+wraps the L<loadHeaderData|/loadHeaderData>()
+and L<readHeader|/readHeader>() methods.
 
 =back
 
