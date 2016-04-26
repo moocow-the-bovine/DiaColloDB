@@ -94,7 +94,8 @@ sub dbinfo {
 ##     global  => $bool,          ##-- trim profiles globally (vs. locally for each date-slice?) (default=0)
 ##     ##
 ##     ##-- profiling and debugging parameters
-##     strings => $bool,          ##-- do/don't stringify (default=do)
+##     strings => $bool,          ##-- do/don't stringify item keys (default=do)
+##     packed  => $bool,          ##-- leave item keys packed (default=don't)
 ##     fill    => $bool,          ##-- if true, returned multi-profile will have null profiles inserted for missing slices
 ##     onepass => $bool,          ##-- if true, use fast but incorrect 1-pass method (Cofreqs subclass only)
 ##    )
@@ -205,10 +206,12 @@ sub profile {
   ##-- trim and stringify
   $reldb->vlog($logProfile, "profile(): trim and stringify");
   $mp->trim(%opts, empty=>!$opts{fill});
-  if ($opts{strings}) {
-    $mp->stringify($groupby->{g2s});
-  } else {
-    $mp->stringify($groupby->{g2txt});
+  if (!$opts{packed}) {
+    if ($opts{strings}//1) {
+      $mp->stringify($groupby->{g2s});
+    } else {
+      $mp->stringify($groupby->{g2txt});
+    }
   }
 
   ##-- return
@@ -240,7 +243,8 @@ sub profile {
 ##     diff    => $diff,          ##-- low-level score-diff operation (adiff|diff|sum|min|max|avg|havg); default='adiff'
 ##     ##
 ##     ##-- profiling and debugging parameters
-##     strings => $bool,          ##-- do/don't stringify (default=do)
+##     strings => $bool,          ##-- do/don't stringify item keys (default=do)
+##     packed  => $bool,          ##-- leave item keys packed (override stringification; default=don't)
 ##     ##
 ##     ##-- sublcass abstraction parameters
 ##     _gbparse => $bool,         ##-- if true (default), 'groupby' clause will be parsed only once, using $coldb->groupby() method
@@ -257,7 +261,7 @@ sub compare {
   $groupby       = $coldb->groupby($groupby) if ($opts{_gbparse}//1);
   my %aopts      = map {exists($opts{"a$_"}) ? ($_=>$opts{"a$_"}) : qw()} (qw(query date slice), @{$opts{_abkeys}//[]});
   my %bopts      = map {exists($opts{"b$_"}) ? ($_=>$opts{"b$_"}) : qw()} (qw(query date slice), @{$opts{_abkeys}//[]});
-  my %popts      = (kbest=>-1,cutoff=>'',global=>0,strings=>0,fill=>1, groupby=>$groupby);
+  my %popts      = (kbest=>-1,cutoff=>'',global=>0,strings=>0,packed=>1,fill=>1, groupby=>$groupby);
 
   ##-- get profiles to compare
   my $mpa = $reldb->profile($coldb,%opts, %aopts,%popts) or return undef;
@@ -271,9 +275,12 @@ sub compare {
   $diff->trim( DiaColloDB::Profile::Diff->diffkbest($opts{diff})=>$opts{kbest} ) if (!$opts{global});
 
   ##-- finalize: stringify
-  if ($opts{strings}//1) {
-    $reldb->vlog($logProfile, "compare(): stringify");
-    $diff->stringify($groupby->{g2s});
+  if (!$opts{packed}) {
+    if ($opts{strings}//1) {
+      $diff->stringify($groupby->{g2s});
+    } else {
+      $diff->stringify($groupby->{g2txt});
+    }
   }
 
   return $diff;

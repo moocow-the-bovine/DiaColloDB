@@ -2,7 +2,10 @@
 ##
 ## Change log for perl distribution DiaColloDB
 
-pending Mon, 14 Mar 2016 12:23:15 +0100
+v0.09.002 Tue, 26 Apr 2016 15:46:17 +0200 moocow
+	* fixed comparison profile stringification for new pack()-encoded profiles
+
+v0.09.001 Tue, 26 Apr 2016 14:49:29 +0200 moocow
 	* fixed double-counting f2 for multiple item1 targets with shared item2 collocates in Cofreqs::subprofile1() 1-pass mode
 	* added auto-upgrade framework
 	  - DiaColloDB::Upgrade - top-level API
