@@ -26,6 +26,7 @@ WriteMakefile
    LICENSE      => 'perl',
 
    PREREQ_PM    => {
+		    'Algorithm::BinarySearch::Vec' => '0.07', ##-- for fast integer-set operations
 		    'DB_File' => 0,  ##-- for temporary hashes; 1.831
 		    'DDC::Concordance' => 0.18, ##-- no functional changes from v0.18 to v0.20
 		    'DDC::XS'       => 0.05,
