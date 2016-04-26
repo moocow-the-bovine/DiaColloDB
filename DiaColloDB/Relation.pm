@@ -145,12 +145,12 @@ sub profile {
   my $xivec = undef;
   my $nbits = undef;
   my $pack_xv = undef;
-  my $test_xv = undef; ##-- test value via vec()
+  my $test_xv = undef;    ##-- test value via vec()
   foreach $ac (grep {$_->{reqids}} @$adata) {
     ##-- sanity checks
     $nbits   //= $ac->{a2x}{len_i}*8;
     $pack_xv //= "$ac->{a2x}{pack_i}*";
-    vec($test_xv,0,$nbits) = 0x12345678 if (!defined($test_xv));
+    vec($test_xv='',0,$nbits) = 0x12345678 if (!defined($test_xv));
     $reldb->logconfess("profile(): multimap pack-size mismatch: nbits($ac->{a2x}{base}.*) != $nbits")
       if ($ac->{a2x}{len_i} != $nbits/8);
     $reldb->logconfess("profile(): multimap pack-template '$ac->{a2x}{pack_i}' for $ac->{a2x}{base}.* is not big-endian")
