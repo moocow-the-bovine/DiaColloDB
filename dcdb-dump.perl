@@ -77,6 +77,7 @@ $obj->open($infile)
   or die("$0: could not open '$infile' via object of class '$class': $!");
 
 ##-- dump
+$obj->info("saving object to '$outfile'");
 $obj->saveTextFile($outfile)
   or die("$0: saveTextFile() failed for object of class '$class' from '$infile': $!");
 
