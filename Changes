@@ -2,6 +2,9 @@
 ##
 ## Change log for perl distribution DiaColloDB
 
+v0.09.003 Wed, 27 Apr 2016 09:55:14 +0200 moocow
+	* fixed 'undefined value in vec' warning in DiaColloDB/Relation.pm
+
 v0.09.002 Tue, 26 Apr 2016 15:46:17 +0200 moocow
 	* fixed comparison profile stringification for new pack()-encoded profiles,
 	  regression for v0.09.001 "f2 bug" fix
@@ -25,7 +28,7 @@ v0.09.001 Tue, 26 Apr 2016 14:49:29 +0200 moocow
 	  - re-factored Client::list::profile() and compare() methods
 	* improved Client and Client::list documentation
 	  - added "incorrect independent collocate frequencies" section to Client::list documentation
-	  - milder form of this bug applies even to single native CoFreqs indices ("f2 bug", see above)
+	  - milder form of this bug applies even to single native CoFreqs indices ("f2 bug", see below)
 	* workaround for incorrect independent collocate frequency acquisition code in Cofreqs ("f2 bug")
 	  - f2 were computed as marginals only over those (x1,x2,date) triples with f(x1,x2,date) > 0,
 	    rather than over all (*,x2,date \in slice)
