@@ -51,13 +51,13 @@ if ($act eq 'list') {
 
 my $timer = DiaColloDB::Timer->start();
 my $dbdir = shift;
-my $coldb = DiaColloDB->new(dbdir=>$dbdir) or die("$0: failed to open $dbdir/: $!");
+$dbdir    =~ s{/+$}{};
 my (@needed);
 
 if ($act =~ /^(?:check|upgrade)$/) {
   ##-- list required upgrades
   $up->info("checking applicable upgrades for $dbdir");
-  @needed = $up->needed($coldb, $up->available);;
+  @needed = $up->needed($dbdir, $up->available);;
   print map {"\t$_\n"} @needed;
   if (!@needed) {
     $up->info("no upgrades applicable for $dbdir");
@@ -66,12 +66,12 @@ if ($act =~ /^(?:check|upgrade)$/) {
 
 if ($act eq 'upgrade') {
   ##-- apply available upgrades
-  $up->upgrade($coldb,@needed)
-    or die("$0: upgrade failed");
+  $up->upgrade($dbdir,@needed)
+    or die("$0: upgrade failed for $dbdir");
 }
 elsif ($act eq 'force') {
   ##-- force-apply selected upgrades
-  $up->upgrade($coldb,@upgrades)
+  $up->upgrade($dbdir,@upgrades)
     or die("$0: force-upgrade failed");
 }
 

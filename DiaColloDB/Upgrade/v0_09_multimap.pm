@@ -19,10 +19,14 @@ sub toversion {
   return '0.09.001';
 }
 
-## $bool = $CLASS_OR_OBJECT->_upgrade($coldb, \%info)
+## $bool = $CLASS_OR_OBJECT->_upgrade($dbdir, \%info)
 ##  + performs upgrade
 sub upgrade {
-  my ($that,$coldb) = @_;
+  my ($that,$dbdir) = @_;
+
+  ##-- open db
+  my $coldb = DiaColloDB->new(dbdir=>$dbdir)
+    or $that->logconfess("failed to open local DiaColloDB index directory $dbdir: $!");
 
   ##-- convert by attribute
   foreach my $attr (@{$coldb->{attrs}}) {
@@ -43,7 +47,8 @@ sub upgrade {
   }
 
   ##-- update header
-  return $that->updateHeader($coldb);
+  $coldb->close();
+  return $that->updateHeader($dbdir);
 }
 
 

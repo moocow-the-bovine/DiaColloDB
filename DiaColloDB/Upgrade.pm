@@ -8,7 +8,7 @@ package DiaColloDB::Upgrade;
 use DiaColloDB;
 use DiaColloDB::Upgrade::Base;
 use DiaColloDB::Upgrade::v0_09_multimap;
-#use DiaColloDB::Upgrade::v0_10_x2t;
+use DiaColloDB::Upgrade::v0_10_x2t;
 use Carp;
 use strict;
 
@@ -32,29 +32,29 @@ sub available {
   return @upgrades;
 }
 
-## @needed = $CLASS_OR_OBJECT->needed($coldb, @upgrades)
-##  + returns list of those upgrades in @upgrades which are needed for $coldb
+## @needed = $CLASS_OR_OBJECT->needed($dbdir, @upgrades)
+##  + returns list of those upgrades in @upgrades which are needed for DB in $dbdir
 sub needed {
-  my ($that,$coldb,@upgrades) = @_;
+  my ($that,$dbdir,@upgrades) = @_;
   return grep {
     my $pkg = $_;
     $pkg = "DiaColloDB::Upgrade::$pkg" if (!$pkg->can('needed'));
     $that->warn("unknown upgrade package $_") if (!$pkg->can('needed'));
-    $pkg->can('needed') && $pkg->needed($coldb)
+    $pkg->can('needed') && $pkg->needed($dbdir)
   } @upgrades;
 }
 
-## $bool = $CLASS_OR_OBJECT->upgrade($coldb, @upgrades)
-##  + applies upgrades in @upgrades to $coldb
+## $bool = $CLASS_OR_OBJECT->upgrade($dbdir, @upgrades)
+##  + applies upgrades in @upgrades to DB in $dbdir
 sub upgrade {
-  my ($that,$coldb,@upgrades) = @_;
+  my ($that,$dbdir,@upgrades) = @_;
   foreach (@upgrades) {
     my $pkg = $_;
     $pkg = "DiaColloDB::Upgrade::$pkg" if (!$pkg->can('needed'));
     $that->logconfess("unknown upgrade package $_") if (!$pkg->can('upgrade'));
-    $that->info("applying upgrade package $_");
-    $pkg->upgrade($coldb)
-      or $that->logconfess("upgrade via package $pkg failed");
+    $that->info("applying upgrade package $_ to $dbdir/");
+    $pkg->upgrade($dbdir)
+      or $that->logconfess("upgrade via package $pkg failed for $dbdir/");
   }
   return $that;
 }

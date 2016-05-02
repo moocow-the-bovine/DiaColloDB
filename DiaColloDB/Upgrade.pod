@@ -26,8 +26,9 @@ DiaColloDB::Upgrade - DiaColloDB utilities: auto-magic upgrades: top level
  ## Top-level
  
  @upgrades = $CLASS_OR_OBJECT->available();
- @needed = $CLASS_OR_OBJECT->needed($coldb, @upgrades);
- $bool = $CLASS_OR_OBJECT->upgrade($coldb, @upgrades);
+ $header = $CLASS_OR_OBJECT->dbheader($dbdir);
+ @needed = $CLASS_OR_OBJECT->needed($dbdir, @upgrades);
+ $bool = $CLASS_OR_OBJECT->upgrade($dbdir, @upgrades);
  
 
 =cut
@@ -83,17 +84,25 @@ An ARRAY of available automagic upgrade sub-packages
 
 Returns list of available upgrade-packages (C<DiaColloDB::Upgrade::> suffixes).
 
+=item dbheader
+
+ \%header = $CLASS_OR_OBJECT->dbheader($dbdir);
+
+Loads, parses, and returns C<$dbdir/header.json>, wrapper for
+L<DiaColloDB::Persistent::readHeaderFile()|DiaColloDB::Persistent/readHeaderFile>.
+
 =item needed
 
- @needed = $CLASS_OR_OBJECT->needed($coldb, @upgrades);
+ @needed = $CLASS_OR_OBJECT->needed($dbdir, @upgrades);
 
-Returns list of those upgrades in C<@upgrades> which are applicable to C<$coldb>.
+Returns list of those upgrades in C<@upgrades> which are applicable to the
+local DiaColloDB index in C<$dbdir>.
 
 =item upgrade
 
- $bool = $CLASS_OR_OBJECT->upgrade($coldb, @upgrades);
+ $bool = $CLASS_OR_OBJECT->upgrade($dbdir, @upgrades);
 
-Force-applies upgrades in C<@upgrades> to C<$coldb>.
+Force-applies upgrades in C<@upgrades> to the local DiaColloDB index in C<d$bdir>.
 
 =back
 
