@@ -1,30 +1,22 @@
 ## -*- Mode: CPerl -*-
 ##
-## File: DiaColloDB::Upgrade::v0_08_to_v0_09_multimap.pm
+## File: DiaColloDB::Upgrade::v0_09_multimap.pm
 ## Author: Bryan Jurish <moocow@cpan.org>
 ## Description: DiaColloDB utilities: auto-magic upgrade: v0.08.x -> v0.09.x: MultiMapFile format
 
-package DiaColloDB::Upgrade::v0_08_to_v0_09_multimap;
+package DiaColloDB::Upgrade::v0_09_multimap;
 use DiaColloDB::Upgrade::Base;
-use version;
 use strict;
 our @ISA = qw(DiaColloDB::Upgrade::Base);
 
 ##==============================================================================
 ## API
-## + Upgrade: v0_08_to_v0_09_multimap: v0.08.x -> v0.09.x : MultiMapFile format change
+## + Upgrade: v0_09_multimap: v0.08.x -> v0.09.x : MultiMapFile format change
 
 ## $version = $CLASS_OR_OBJECT->toversion()
 ##  + returns default target version; default just returns $DiaColloDB::VERSION
 sub toversion {
   return '0.09.001';
-}
-
-## $bool = $CLASS_OR_OBJECT->_needed($coldb)
-##  + returns true iff $coldb needs upgrade
-sub needed {
-  my ($that,$coldb) = @_;
-  return version->parse($coldb->{version}) < version->parse($that->toversion);
 }
 
 ## $bool = $CLASS_OR_OBJECT->_upgrade($coldb, \%info)

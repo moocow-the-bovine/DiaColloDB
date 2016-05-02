@@ -67,6 +67,8 @@ Returns default target version; default just returns C<$DiaColloDB::VERSION>.
  $bool = $CLASS_OR_OBJECT->needed($coldb);
 
 Returns true iff C<$coldb> needs upgrade from the current package.
+Default implementation returns true iff C<$coldb-E<gt>{version} E<lt> C<$CLASS_OR_OBJECT-E<gt>toversion()>,
+using the L<version|version> package to parse and compare version strings.
 
 =item upgrade
 

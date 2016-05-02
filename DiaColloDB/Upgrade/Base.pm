@@ -8,6 +8,7 @@ package DiaColloDB::Upgrade::Base;
 use DiaColloDB::Logger;
 use DiaColloDB::Utils qw(:time);
 use Carp;
+use version;
 use strict;
 our @ISA = qw(DiaColloDB::Logger);
 
@@ -22,8 +23,10 @@ sub toversion {
 
 ## $bool = $CLASS_OR_OBJECT->needed($coldb)
 ##  + returns true iff $coldb needs upgrade
+##  + default implementation returns true iff $coldb->{version} is less than $CLASS_OR_OBJECT->toversion()
 sub needed {
-  $_[0]->logconfess("needed() method not implemented");
+  my ($that,$coldb) = @_;
+  return version->parse($coldb->{version}) < version->parse($that->toversion);
 }
 
 ## $bool = $CLASS_OR_OBJECT->upgrade($coldb, \%info)
