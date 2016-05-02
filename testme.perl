@@ -2290,7 +2290,80 @@ sub bench_pack_split {
   print STDERR "bench_group_extract() done\n";
   exit 0;
 }
-bench_pack_split @ARGV;
+#bench_pack_split @ARGV;
+
+##----------------------------------------------------------------------
+## bench date-check vs group-check
+sub bench_dx_vs_gx {
+  my ($pfile,$dlo,$dhi,$dslice) = @_;
+  $pfile //= 'prf.json';
+
+  ##-- load profile
+  DiaColloDB->ensureLog(level=>'INFO');
+  my $logger = 'DiaColloDB';
+  $logger->info("loading $pfile and encoding");
+  my $mp = DiaColloDB::Utils::loadJsonFile($pfile)
+    or die("$0: failed to load multi-profile from '$pfile': $!");
+
+  ##-- items
+  my @titems = qw();
+  my @ditems = qw();
+  my ($pack_g,$pack_date) = qw(N[2] n);
+  my $pack_x = $pack_g.$pack_date;
+  my %f12 = qw();
+  my (@key);
+  foreach my $prf (@{$mp->{profiles}}) {
+    my $slice = $prf->{label}+0;
+    foreach (keys %{$prf->{f12}}) {
+      push(@titems, pack($pack_g, split(' ',$_)));
+      push(@ditems, $slice);
+    }
+  }
+  my @pditems = map {pack($pack_date,$_)} @ditems;
+
+  $dlo = undef if (($dlo//'-') eq '-');
+  $dhi = undef if (($dhi//'-') eq '-');
+  $dslice = 0  if (!$dslice || $dslice eq '-');
+  DiaColloDB->info("dlo=".($dlo//'-undef-')." ; dhi=".($dhi//'-undef-')." ; dslice=$dslice");
+  my ($d);
+  my $dlimits_code = join(' && ',
+			  (defined($dlo) ? "\$_[0]>=$dlo" : qw()),
+			  (defined($dhi) ? "\$_[0]<=$dhi" : qw()));
+  my $dslice_code  = $dslice ? "int(\$_[0]/$dslice)*$dslice" : "0";
+  my $d2slice_code = $dlimits_code . ($dlimits_code ? " ? ($dslice_code) : undef" : $dslice_code);
+  my $d2slice = eval "sub {$d2slice_code}";
+  (my $p2slice_code = $d2slice_code) =~ s{\$_\[0\]}{\$d}g;
+  my $p2slice = eval "sub { \$d=unpack('n',\$_[0]); $p2slice_code }";
+  my $t2group = sub { pack('N*', unpack('@0N@4N', $_[0])) };
+
+  cmpthese(-3, {
+		d2slice => sub { $d2slice->($_) foreach (@ditems); },
+		p2slice => sub { $p2slice->($_) foreach (@pditems); },
+		t2group => sub { $t2group->($_) foreach (@titems); },
+	       });
+  print STDERR "$0: dx_vs_gx done\n";
+  exit 0;
+}
+#bench_dx_vs_gx(@ARGV);
+
+##----------------------------------------------------------------------
+## bench v0.10 Cofreqs load
+sub test_cofreqs_load {
+  my $dbdir = shift // 'kern01-1k.d';
+  my $file  = "$dbdir/cof.x2t";
+
+  my $tcof = DiaColloDB::Relation::Cofreqs->new(base=>"$dbdir/tcof", flags=>'rw', version=>'0.10.000',
+						fmin=>1, dmax=>5,
+						pack_i=>'N', pack_f=>'N', pack_d=>'n',
+					       );
+  $tcof->loadTextFile($file)
+    or die("loadTextFile failed: $!");
+
+  print STDERR "$0: text_cofreqs_load done\n";
+  exit 0;
+}
+test_cofreqs_load(@ARGV);
+
 
 
 ##==============================================================================

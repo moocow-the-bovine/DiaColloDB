@@ -1,17 +1,14 @@
 ## -*- Mode: CPerl -*-
-## File: DiaColloDB::Relation::Cofreqs.pm
+## File: DiaColloDB::Relation::Cofreqs::v0_09.pm
 ## Author: Bryan Jurish <moocow@cpan.org>
-## Description: collocation db, profiling relation: co-frequency database (using pair of DiaColloDB::PackedFile)
+## Description: collocation db, profiling relation: co-frequency database (v0.9x format)
 
-package DiaColloDB::Relation::Cofreqs;
-use DiaColloDB::Relation::Cofreqs::v0_09; ##-- compatibility package
+package DiaColloDB::Relation::Cofreqs::v0_09;
 use DiaColloDB::Relation;
 use DiaColloDB::PackedFile;
 use DiaColloDB::PackedFile::MMap;
 use DiaColloDB::Utils qw(:fcntl :env :run :json :pack);
 use Fcntl qw(:DEFAULT :seek);
-use File::Basename qw(dirname);
-use version;
 use strict;
 
 ##==============================================================================
@@ -36,21 +33,17 @@ our $PFCLASS = 'DiaColloDB::PackedFile::MMap';
 ##    dmax     => $dmax,       ##-- maximum distance for co-occurrences (default=5)
 ##    fmin     => $fmin,       ##-- minimum pair frequency (default=0)
 ##    pack_i   => $pack_i,     ##-- pack-template for IDs (default='N')
-##    pack_f   => $pack_f,     ##-- pack-template for frequencies (default='N')
-##    pack_d   => $pack_d,     ##-- pack-tempalte for dates (default='n')
+##    pack_f   => $pack_f,     ##-- pack-template for IDs (default='N')
 ##    keeptmp  => $bool,       ##-- keep temporary files? (default=false)
 ##    ##
 ##    ##-- size info (after open() or load())
 ##    size1    => $size1,      ##-- == $r1->size()
 ##    size2    => $size2,      ##-- == $r2->size()
-##    size3    => $size3,      ##-- == $r3->size()
 ##    ##
 ##    ##-- low-level data
-##    r1 => $r1,               ##-- pf: [$end2]            @ $i1				: constant (logical index)
-##    r2 => $r2,               ##-- pf: [$end3,$d1,$f1]*   @ end2($i1-1)..(end2($i1+1)-1)	: sorted by $d1 for each $i1
-##    r3 => $r3,               ##-- pf: [$i2,$f12]*        @ end3($d1-1)..(end3($d1+1)-1)	: sorted by $i2 for each ($i1,$d1)
+##    r1 => $r1,               ##-- pf: [$end2,$f1] @ $i1
+##    r2 => $r2,               ##-- pf: [$i2,$f12]  @ end2($i1-1)..(end2($i1)-1)
 ##    N  => $N,                ##-- sum($f12)
-##    version => $version,     ##-- file version, for compatibility checks
 ##   )
 sub new {
   my $that = shift;
@@ -62,12 +55,9 @@ sub new {
 		    fmin  =>0,
 		    pack_i=>'N',
 		    pack_f=>'N',
-		    pack_d=>'n',
 		    r1 => $PFCLASS->new(),
 		    r2 => $PFCLASS->new(),
-		    r3 => $PFCLASS->new(),
 		    N  => 0,
-		    version => $DiaColloDB::VERSION,
 		    @_
 		   }, (ref($that)||$that));
   $cof->{class} = ref($cof);
@@ -95,34 +85,19 @@ sub open {
   $cof->close() if ($cof->opened);
   $cof->{base}  = $base;
   $cof->{flags} = $flags = fcflags($flags);
-  my ($hdr); ##-- save header, for version-checking
   if (fcread($flags) && !fctrunc($flags)) {
-    $hdr = $cof->readHeader()
-      or $cof->logconess("failed to read header data from '$cof->{base}.hdr': $!");
-    $cof->loadHeaderData($hdr)
-      or $cof->logconess("failed to load header data from '$cof->{base}.hdr': $!");
+    $cof->loadHeader()
+      or $cof->logconess("failed to load header from '$cof->{base}.hdr': $!");
   }
-
-  ##-- check compatibility
-  my $min_version = qv(0.10.000);
-  if ($hdr && (!defined($hdr->{version}) || version->parse($hdr->{version}) < $min_version)) {
-    $cof->warn("using compatibility mode for $cof->{base}.*; consider running \`dcdb-upgrade.perl ", dirname($cof->{base}), "\'");
-    bless($cof, 'DiaColloDB::Relation::Cofreqs::v0_09');
-    $cof->{version} = $hdr->{version};
-    return $cof->open($base,$flags);
-  }
-
-  ##-- open low-level data structures
-  $cof->{r1}->open("$base.dba1", $flags, perms=>$cof->{perms}, packas=>"$cof->{pack_i}")
+  $cof->{r1}->open("$base.dba1", $flags, perms=>$cof->{perms}, packas=>"$cof->{pack_i}$cof->{pack_f}")
     or $cof->logconfess("open failed for $base.dba1: $!");
-  $cof->{r2}->open("$base.dba2", $flags, perms=>$cof->{perms}, packas=>"$cof->{pack_i}$cof->{pack_d}$cof->{pack_f}")
+  $cof->{r2}->open("$base.dba2", $flags, perms=>$cof->{perms}, packas=>"$cof->{pack_i}$cof->{pack_f}")
     or $cof->logconfess("open failed for $base.dba2: $!");
-  $cof->{r3}->open("$base.dba3", $flags, perms=>$cof->{perms}, packas=>"$cof->{pack_i}$cof->{pack_f}")
-    or $cof->logconfess("open failed for $base.dba3: $!");
   $cof->{size1} = $cof->{r1}->size;
   $cof->{size2} = $cof->{r2}->size;
-  $cof->{size3} = $cof->{r3}->size;
 
+  #$cof->debug("open(): opened level-1 relation $cof->{r1}{file}.* as ", ref($cof->{r1}));
+  #$cof->debug("open(): opened level-2 relation $cof->{r2}{file}.* as ", ref($cof->{r2}));
   return $cof;
 }
 
@@ -134,7 +109,6 @@ sub close {
   }
   $cof->{r1}->close() or return undef;
   $cof->{r2}->close() or return undef;
-  $cof->{r3}->close() or return undef;
   undef $cof->{base};
   return $cof;
 }
@@ -145,9 +119,7 @@ sub opened {
   return
     (defined($cof->{base})
      && defined($cof->{r1}) && $cof->{r1}->opened
-     && defined($cof->{r2}) && $cof->{r2}->opened
-     && defined($cof->{r3}) && $cof->{r3}->opened
-    );
+     && defined($cof->{r2}) && $cof->{r2}->opened);
 }
 
 ##--------------------------------------------------------------
@@ -187,9 +159,9 @@ sub loadHeaderData {
 
 ## $cof = $cof->loadTextFh($fh,%opts)
 ##  + loads from text file as saved by saveTextFh()
-##  + supports semi-sorted input: input fh must be sorted by $i1,$d1
-##    and all $i2 for each $i1,$d1 must be adjacent (i.e. no intervening ($j1,$e1) with $j1 != $i1 or $e1 != $d1)
-##  + supports multiple lines for pairs ($i1,$d1,$i2) provided the above conditions hold
+##  + supports semi-sorted input: input fh must be sorted by $i1,
+##    and all $i2 for each $i1 must be adjacent (i.e. no intervening $j1 != $i1)
+##  + supports multiple lines for pairs ($i1,$i2) provided the above conditions hold
 ##  + supports loading of $cof->{N} from single-value lines
 ##  + %opts: clobber %$cof
 sub loadTextFh {
@@ -202,59 +174,47 @@ sub loadTextFh {
   $cof->logconfess("loadTextFh(): cannot load unopened database!") if (!$cof->opened);
 
   ##-- common variables
-  my ($pack_i,$pack_d,$pack_f) = @$cof{qw(pack_i pack_d pack_f)};
-  my $pack_r1  = "${pack_i}";			##-- $r1 : [$end2]            @ $i1
-  my $pack_r2  = "${pack_i}${pack_d}${pack_f}";	##-- $r2 : [$end3,$d1,$f1]*   @ end2($i1-1)..(end2($i1+1)-1)
-  my $pack_r3  = "${pack_i}${pack_f}";		##-- $r3 : [$i2,$f12]*        @ end3($d1-1)..(end3($d1+1)-1)
+  my $pack_f   = $cof->{pack_f};
+  my $pack_i   = $cof->{pack_i};
+  my $pack_r1  = "${pack_i}${pack_f}"; ##-- $r1 : [$end2,$f1] @ $i1
+  my $pack_r2  = "${pack_i}${pack_f}"; ##-- $r2 : [$i2,$f12]  @ end2($i1-1)..(end2($i1)-1)
+  my $len_r2   = packsize($pack_r2);
   my $fmin     = $cof->{fmin} // 0;
-  my ($r1,$r2,$r3) = @$cof{qw(r1 r2 r3)};
+  my ($r1,$r2) = @$cof{qw(r1 r2)};
   $r1->truncate();
   $r2->truncate();
-  $r3->truncate();
-  my ($fh1,$fh2,$fh3) = ($r1->{fh},$r2->{fh},$r3->{fh});
+  my ($fh1,$fh2) = ($r1->{fh},$r2->{fh});
 
   ##-- iteration variables
-  my ($pos1,$pos2,$pos3) = (0,0,0);
-  my ($i1_cur,$d1_cur,$f1) = (-1,undef,0);
-  my ($f12,$i1,$d1,$i2,$f);
+  my ($pos1,$pos2) = (0,0);
+  my ($i1_cur,$f1) = (-1,0);
+  my ($f12,$i1,$i2,$f);
   my $N  = 0;	  ##-- total marginal frequency as extracted from %f12
   my $N1 = 0;     ##-- total N as extracted from single-element records
   my %f12 = qw(); ##-- ($i2=>$f12, ...) for $i1_cur
 
-  ##-- guts for inserting records from $i1_cur,$d1_cur,%f12,$pos1,$pos2 : call on changed ($i1_cur,$d1_cur)
+  ##-- guts for inserting records from $i1_cur,%f12,$pos1,$pos2
   my $insert = sub {
     if ($i1_cur >= 0) {
       if ($i1_cur != $pos1) {
 	##-- we've skipped one or more $i1 because it had no collocates (e.g. kern01 i1=287123="Untier/1906")
-	$fh1->print( pack($pack_r1,$pos2) x ($i1_cur-$pos1) );
-	$pos1 = $i1_cur;
+	$fh1->print( pack($pack_r1,$pos2,0) x ($i1_cur-$pos1) );
       }
-
-      ##-- dump r3-records for ($i1_cur,$d1_cur,*)
+      ##-- dump r2-records for $i1_cur
       $f1 = 0;
       foreach (sort {$a<=>$b} keys %f12) {
 	$f    = $f12{$_};
 	$f1  += $f;
 	next if ($f < $fmin); ##-- skip here so we can track "real" marginal frequencies
-	$fh3->print(pack($pack_r3, $_,$f));
-	++$pos3;
-      }
-
-      ##-- dump r2-record for ($i1_cur,$d1_cur)
-      if (defined($d1_cur)) {
-	$fh2->print(pack($pack_r2, $pos3,$d1_cur,$f1));
+	$fh2->print(pack($pack_r2, $_,$f));
 	++$pos2;
       }
-
-      ##-- maybe dump r1-record for $i1_cur
-      if ($i1 != $i1_cur) {
-	$fh1->print(pack($pack_r1, $pos2));
-	$pos1  = $i1_cur+1;
-      }
-      $N += $f1;
+      ##-- dump r1-record for $i1_cur
+      $fh1->print(pack($pack_r1, $pos2,$f1));
+      $pos1  = $i1_cur+1;
+      $N    += $f1;
     }
     $i1_cur = $i1;
-    $d1_cur = $d1;
     %f12    = qw();
   };
 
@@ -262,29 +222,22 @@ sub loadTextFh {
   binmode($infh,':raw');
   while (defined($_=<$infh>)) {
     chomp;
-    ($f12,$i1,$d1,$i2) = split(' ',$_,4);
+    ($f12,$i1,$i2) = split(' ',$_,3);
     if (!defined($i1)) {
       #$cof->debug("N1 += $f12");
       $N1 += $f12;		      ##-- load N values
       next;
     }
-    elsif (!defined($i2)) {
-      $cof->logconfess("loadTextFh(): failed to parse input line ", $infh->input_line_number);
-    }
-    $insert->()			      ##-- insert record(s) for ($i1_cur,$d1_cur)
-      if ($i1 != $i1_cur || $d1 != $d1_cur);
-    $f12{$i2} += $f12;                ##-- buffer co-frequencies for ($i1_cur,$d1_cur)
+    $insert->() if ($i1 != $i1_cur);  ##-- insert record(s) for $i1_cur
+    $f12{$i2} += $f12;                ##-- buffer co-frequencies for $i1_cur
   }
-  $i1 = -1;
-  $insert->();                        ##-- write record(s) for final ($i1_cur,$d1_cur)
+  $insert->();                        ##-- write record(s) for final $i1_cur
 
   ##-- adopt final $N and sizes
   #$cof->debug("FINAL: N1=$N1, N=$N");
   $cof->{N} = $N1>$N ? $N1 : $N;
-  foreach (qw(1 2 3)) {
-    $cof->{"r$_"}->remap() if ($cof->{"r$_"}->can('remap'));
-    $cof->{"size$_"} = $cof->{"r$_"}->size;
-  }
+  $cof->{size1} = $r1->size;
+  $cof->{size2} = $r2->size;
 
   return $cof;
 }
@@ -292,10 +245,77 @@ sub loadTextFh {
 ## $cof = $cof->loadTextFile_create($fh,%opts)
 ##  + old version of loadTextFile() which doesn't support N, semi-sorted input, or multiple ($i1,$i2) entries
 ##  + not useable by union() method
-##  + obsolete; now just an alias for loadTextFile()
 sub loadTextFile_create {
-  my $cof = shift;
-  return $cof->loadTextFile(@_);
+  my ($cof,$infile,%opts) = @_;
+  my $infh = ref($infile) ? $infile : IO::File->new("<$infile");
+  if (!ref($cof)) {
+    $cof = $cof->new(%opts);
+  } else {
+    @$cof{keys %opts} = values %opts;
+  }
+  $cof->logconfess("loadTextFile_create(): cannot load unopened database!") if (!$cof->opened);
+
+  ##-- common variables
+  my $pack_f   = $cof->{pack_f};
+  my $pack_i   = $cof->{pack_i};
+  my $pack_r1  = "${pack_i}${pack_f}"; ##-- $r1 : [$end2,$f1] @ $i1
+  my $pack_r2  = "${pack_i}${pack_f}"; ##-- $r2 : [$i2,$f12]  @ end2($i1-1)..(end2($i1)-1)
+  my $len_r2   = packsize($pack_r2);
+  my $fmin     = $cof->{fmin} // 0;
+  my ($r1,$r2) = @$cof{qw(r1 r2)};
+  $r1->truncate();
+  $r2->truncate();
+  my ($fh1,$fh2) = ($r1->{fh},$r2->{fh});
+
+  ##-- iteration variables
+  my ($pos1,$pos2,$pos2_prev) = (0,0,0);
+  my ($i1_cur,$f1_cur) = (-1,0);
+  my ($f12,$i1,$i2);
+  my $N = 0;
+
+  ##-- guts for inserting records from $i1_cur,%f12,$pos1,$pos2
+  my $insert1 = sub {
+    if ($i1_cur >= 0) {
+      ##-- dump record for $i1_cur
+      if ($i1_cur != $pos1) {
+	##-- we've skipped one or more $i1 because it had no collocates (e.g. kern01 i1=287123="Untier/1906")
+	$fh1->print( pack($pack_r1,$pos2_prev,0) x ($i1_cur-$pos1) );
+      }
+      $fh1->print(pack($pack_r1, $pos2,$f1_cur));
+      $pos1      = $i1_cur+1;
+      $pos2_prev = $pos2;
+    }
+    $N     += $f1_cur;
+    $i1_cur = $i1;
+    $f1_cur = 0;
+  };
+
+  ##-- ye olde loope
+  binmode($infh,':raw');
+  while (defined($_=<$infh>)) {
+    ($f12,$i1,$i2) = split(' ',$_,3);
+    #next if ($f12 < $fmin);  		##-- don't skip here so that we can track "real" marginal frequencies
+    $insert1->() if ($i1 != $i1_cur);	##-- insert record for $i1_cur
+
+    ##-- track marginal f($i1)
+    $f1_cur += $f12;
+    next if ($f12 < $fmin		##-- minimum co-occurrence frequency filter
+	     #|| $i1==$i2  		##-- suppress identity collocations (... but we can't eliminate e.g. lemma-identity if using complex tuples!)
+	    );
+
+    ##-- dump record to $r2
+    $fh2->print(pack($pack_r2, $i2,$f12));
+    ++$pos2;
+  }
+  $insert1->(); 			##-- dump final record for $i1_cur
+
+  ##-- adopt final $N and sizes
+  $cof->{N} = $N;
+  $cof->{size1} = $r1->size;
+  $cof->{size2} = $r2->size;
+
+  $infh->close() if (!ref($infile));
+  return $cof;
 }
 
 ## $bool = $obj->saveTextFile($filename_or_handle, %opts)
@@ -305,7 +325,7 @@ sub loadTextFile_create {
 ## $bool = $cof->saveTextFh($fh,%opts)
 ##  + save from text file with lines of the form "N", "FREQ ID1 ID2"*
 ##  + %opts:
-##      i2s => \&CODE,    ##-- code-ref for formatting indices; called as $s=CODE($i)
+##      i2s  => \&CODE,   ##-- code-ref for formatting indices; called as $s=CODE($i)
 ##      i2s1 => \&CODE,   ##-- code-ref for formatting item1 indices (overrides 'i2s')
 ##      i2s2 => \&CODE,   ##-- code-ref for formatting item2 indices (overrides 'i2s')
 sub saveTextFh {
@@ -313,37 +333,31 @@ sub saveTextFh {
   $cof->logconfess("saveTextFile(): cannot save unopened DB") if (!$cof->opened);
 
   ##-- common variables
-  my ($r1,$r2,$r3) = @$cof{qw(r1 r2 r3)};
+  my ($r1,$r2)   = @$cof{qw(r1 r2)};
   my $pack_r1    = $r1->{packas};
   my $pack_r2    = $r2->{packas};
-  my $pack_r3    = $r3->{packas};
   my $i2s        = $opts{i2s};
   my $i2s1       = exists($opts{i2s1}) ? $opts{i2s1} : $i2s;
   my $i2s2       = exists($opts{i2s2}) ? $opts{i2s2} : $i2s;
+  my ($fh1,$fh2) = ($r1->{fh},$r2->{fh});
 
   ##-- iteration variables
-  my ($buf1,$i1,$s1,$end2);
-  my ($buf2,$off2,$end3,$d1,$f1);
-  my ($buf3,$off3,$i2,$s2,$f12);
+  my ($buf1,$i1,$s1,$f1,$end2);
+  my ($buf2,$off2,$i2,$s2,$f12);
 
   ##-- ye olde loope
   binmode($outfh,':raw');
   $outfh->print($cof->{N}, "\n");
-  for ($r1->seek($i1=0), $r2->seek($off2=0), $r3->seek($off3=0); !$r1->eof(); ++$i1) {
+  for ($r1->seek($i1=0), $r2->seek($off2=0); !$r1->eof(); ++$i1) {
     $r1->read(\$buf1) or $cof->logconfess("saveTextFile(): failed to read record $i1 from $r1->{file}: $!");
-    $end2 = unpack($pack_r1,$buf1);
+    ($end2,$f1) = unpack($pack_r1,$buf1);
     $s1 = $i2s1 ? $i2s1->($i1) : $i1;
 
     for ( ; $off2 < $end2 && !$r2->eof(); ++$off2) {
       $r2->read(\$buf2) or $cof->logconfess("saveTextFile(): failed to read record $off2 from $r2->{file}: $!");
-      ($end3,$d1) = unpack($pack_r2,$buf2);
-
-      for ( ; $off3 < $end3 && !$r3->eof(); ++$off3) {
-	$r3->read(\$buf3) or $cof->logconfess("saveTextFile(): failed to read record $off3 from $r3->{file}: $!");
-	($i2,$f12) = unpack($pack_r3,$buf3);
-	$s2 = $i2s2 ? $i2s2->($i2) : $i2;
-	$outfh->print(join("\t", $f12, $i1, $d1, $i2), "\n");
-      }
+      ($i2,$f12) = unpack($pack_r2,$buf2);
+      $s2 = $i2s2 ? $i2s2->($i2) : $i2;
+      $outfh->print(join("\t", $f12, $s1,$s2), "\n");
     }
   }
 
@@ -351,7 +365,7 @@ sub saveTextFh {
 }
 
 ##==============================================================================
-## Relation API: create : TODO
+## Relation API: create
 
 ## $rel = $CLASS_OR_OBJECT->create($coldb,$tokdat_file,%opts)
 ##  + populates current database from $tokdat_file,
@@ -533,14 +547,15 @@ sub f12 {
 ##==============================================================================
 ## Relation API: default: profiling
 
-## $prf = $cof->subprofile1(\@xids, %opts)
+## $prf = $cof->subprofile1(%opts)
 ##  + get joint co-frequency profile for @xids (db must be opened; f1 and f12 only)
 ##  + %opts:
 ##     groupby => \&gbsub,  ##-- key-extractor $key2_or_undef = $gbsub->($i2)
 ##     coldb   => $coldb,   ##-- for debugging
 ##     onepass => $bool,    ##-- use fast but incorrect 1-pass method?
 sub subprofile1 {
-  my ($cof,$ids,%opts) = @_;
+  my ($cof,%opts) = @_;
+
   $ids   = [$ids] if (!UNIVERSAL::isa($ids,'ARRAY'));
   my $r1 = $cof->{r1};
   my $r2 = $cof->{r2};
@@ -690,13 +705,6 @@ sub qinfo {
 	  qtemplate => $qstr,
 	 };
 }
-
-
-##==============================================================================
-## Pacakge Alias(es)
-package DiaColloDB::Cofreqs;
-use strict;
-our @ISA = qw(DiaColloDB::Relation::Cofreqs);
 
 
 ##==============================================================================

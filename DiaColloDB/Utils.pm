@@ -31,7 +31,7 @@ our %EXPORT_TAGS =
      sort  => [qw(csort_to csortuc_to)],
      run   => [qw(crun opencmd)],
      env   => [qw(env_set env_push env_pop)],
-     pack  => [qw(packsize packFilterFetch packFilterStore)],
+     pack  => [qw(packsize packsingle packFilterFetch packFilterStore)],
      math  => [qw($LOG2 log2 min2 max2 lmax lmin lsum)],
      list  => [qw(luniq sluniq xluniq)],
      regex => [qw(regex)],
@@ -321,7 +321,17 @@ sub csortuc_to {
 sub packsize {
   use bytes; #use bytes; ##-- deprecated in perl v5.18.2
   no warnings;
+  shift if (UNIVERSAL::isa($_[0],__PACKAGE__));
   return bytes::length(pack($_[0],@_[1..$#_]));
+}
+
+## $bool = PACKAGE::packsingle($packfmt)
+## $bool = PACKAGE::packsingle($packfmt,@args)
+##  + guess whether $packfmt is a single-element (scalar) format
+sub packsingle {
+  shift if (UNIVERSAL::isa($_[0],__PACKAGE__));
+  return (packsize($_[0],0)==packsize($_[0],0,0)
+	  && $_[0] !~ m{\*|(?:\[(?:[2-9]|[0-9]{2,})\])|(?:[[:alpha:]].*[[:alpha:]])});
 }
 
 ## \&filter_sub = PACKAGE::packFilterStore($pack_template)
@@ -334,7 +344,7 @@ sub packFilterStore {
   $packas    = $packas->[0] if (UNIVERSAL::isa($packas,'ARRAY'));
   return $packas  if (UNIVERSAL::isa($packas,'CODE'));
   return undef    if (!$packas || $packas eq 'raw');
-  if (packsize($packas,0)==packsize($packas,0,0)) {
+  if ($that->packsingle($packas)) {
     return sub {
       $_ = pack($packas,$_) if (defined($_));
     };
@@ -355,7 +365,7 @@ sub packFilterFetch {
   $packas    = $packas->[1] if (UNIVERSAL::isa($packas,'ARRAY'));
   return $packas  if (UNIVERSAL::isa($packas,'CODE'));
   return undef    if (!$packas || $packas eq 'raw');
-  if (packsize($packas,0)==packsize($packas,0,0)) {
+  if ($that->packsingle($packas)) {
     return sub {
       $_ = unpack($packas,$_);
     };

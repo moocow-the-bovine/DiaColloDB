@@ -297,14 +297,14 @@ sub diff {
 ##==============================================================================
 ## Relation API: default: subprofile1()
 
-## $prf = $rel->subprofile1(\@xids, %opts)
+## \%slice2prf = $rel->subprofile1(%opts)
 ##  + get joint frequency profile for @xids (db must be opened)
 ##  + %opts:
 ##     groupby => \&gbsub,  ##-- key-extractor $key2_or_undef = $gbsub->($i2)
 ##     coldb   => $coldb,   ##-- parent DiaColloDB object (for shared data, debugging)
 ##     opts    => \%opts,   ##-- pass-through for options to top-level profile() method
 sub subprofile1 {
-  my ($rel,$ids,%opts) = @_;
+  my ($rel,%opts) = @_;
   $rel->logconfess("subprofile(): abstract method called");
 }
 

@@ -6,7 +6,7 @@
 
 package DiaColloDB::Upgrade::v0_10_x2t;
 use DiaColloDB::Upgrade::Base;
-use DiaColloDB::Utils qw(:pack);
+use DiaColloDB::Utils qw(:pack :env :run);
 use version;
 use strict;
 our @ISA = qw(DiaColloDB::Upgrade::Base);
@@ -87,10 +87,35 @@ sub upgrade {
   }
 
   ##-- TODO: convert relations: unigrams
+  $that->vlog("creating new unigrams index $dbdir/tf.* from $dbdir/xf.*: TODO");
 
-  ##-- TODO: convert relations: cofreqs
+  ##-- convert relations: cofreqs
+  $that->vlog("creating new co-frequency index $dbdir/tcof.* from $dbdir/cof.*: TODO");
+  my $cof = DiaColloDB::Relation::Cofreqs->new(base=>"$dbdir/cof")
+    or $that->logconfess("failed to open co-frequency index $dbdir/cof.*: $!");
+  my $i2s1 = sub { join("\t", vec($xi2t,$_[0],$nbits_t), vec($xi2d,$_[0],$nbits_d)) };
+  my $i2s2 = sub { vec($xi2t,$_[0],$nbits_t) };
+  env_push('LC_ALL'=>'C');
+  my $sortfh = opencmd("| sort -nk2 -nk3 -nk4 -o \"$dbdir/cof.x2t\"")
+    or $that->logconfess("open failed for pipe from sort for $dbdir/cof.x2t: $!");
+  binmode($sortfh,':raw');
+  $cof->saveTextFh($sortfh, i2s1=>$i2s1, i2s2=>$i2s2)
+    or $that->logconfess("failed to create temporary file $dbdir/cof.x2t");
+  $sortfh->close()
+    or $that->logconfess("failed to close pipe to sort: $!");
+  env_pop();
+
+  my $tcof = DiaColloDB::Relation::Cofreqs->new(base=>"$dbdir/tcof", flags=>'rw', version=>$that->toversion,
+						(map {($_=>$cof->{$_})} qw(pack_i pack_f fmin dmax)),
+						pack_d => $hdr->{pack_date});
+  $tcof->loadTextFile("$dbdir/cof.x2t")
+    or $that->logconfess("failed to load co-frequency data from $dbdir/cof.x2t: $!");
+
 
   $that->logdie("what now?");
+
+  ##-- cleanup
+  #CORE::unlink("$dbdir/cof.x2t");
 
   ##-- update header
   return $that->updateHeader($dbdir);

@@ -68,6 +68,7 @@ DiaColloDB/Relation.pm
 DiaColloDB/Relation.pod
 DiaColloDB/Relation/Cofreqs.pm
 DiaColloDB/Relation/Cofreqs.pod
+DiaColloDB/Relation/Cofreqs/v0_09.pm
 DiaColloDB/Relation/DDC.pm
 DiaColloDB/Relation/DDC.pod
 DiaColloDB/Relation/Unigrams.pm
