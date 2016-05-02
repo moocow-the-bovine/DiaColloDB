@@ -93,8 +93,9 @@ DiaColloDB/Upgrade.pm
 DiaColloDB/Upgrade.pod
 DiaColloDB/Upgrade/Base.pm
 DiaColloDB/Upgrade/Base.pod
-DiaColloDB/Upgrade/v0_08_to_v0_09_multimap.pm
-DiaColloDB/Upgrade/v0_08_to_v0_09_multimap.pod
+DiaColloDB/Upgrade/v0_09_multimap.pm
+DiaColloDB/Upgrade/v0_09_multimap.pod
+DiaColloDB/Upgrade/v0_10_x2t.pm
 
 PDL-Utils/Makefile.PL
 PDL-Utils/pdlutils.pd

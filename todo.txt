@@ -2,6 +2,7 @@ Wed, 20 Apr 2016 14:12:49 +0200
 + document new/changed modules:
   Cofreqs
   Cofreqs/v0_09
+  Upgrade/Base : extra header data
   Upgrade/v0_10_x2t
   Relation (subprofile[12] calling conventions changed)
 + update db & relation create() methods

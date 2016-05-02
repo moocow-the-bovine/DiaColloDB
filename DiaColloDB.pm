@@ -33,13 +33,14 @@ use DiaColloDB::Timer;
 use DDC::XS; ##-- for query parsing
 use Fcntl;
 use File::Path qw(make_path remove_tree);
+use version;
 use strict;
 
 
 ##==============================================================================
 ## Globals & Constants
 
-our $VERSION = "0.09.003";
+our $VERSION = "0.10.000";
 our @ISA = qw(DiaColloDB::Client);
 
 ## $PGOOD_DEFAULT
@@ -175,14 +176,18 @@ our %TDF_OPTS = (
 ##    pack_x$a => $fmt      ##-- pack format: extract attribute-id $ai from a packed tuple-string $xs ; $ai=unpack($coldb->{"pack_x$a"},$xs)
 ##    ##
 ##    ##-- tuple data (+dates)
-##    xenum  => $xenum,     ##-- enum: tuples ($dbdir/xenum.*) : [@ais,$di]<=>$xi : N*n<=>N
-##    pack_x => $fmt,       ##-- symbol pack-format for $xenum : "${pack_id}[Nattrs]${pack_date}"
+##    #xenum  => $xenum,     ##-- enum: tuples ($dbdir/xenum.*) : [@ais,$di]<=>$xi : N*n<=>N	  : OBSOLETE in v0.10.x
+##    #pack_x => $fmt,       ##-- symbol pack-format for $xenum : "${pack_id}[Nattrs]${pack_date}": OBSOLETE in v0.10.x
+##    tenum  => $tenum,     ##-- enum: tuples ($dbdir/xenum.*) : \@ais<=>$ti : N*<=>N
+##    pack_t => $fmt,       ##-- symbol pack-format for $tenum : "${pack_id}[Nattrs]"
 ##    xdmin => $xdmin,      ##-- minimum date
 ##    xdmax => $xdmax,      ##-- maximum date
 ##    ##
 ##    ##-- relation data
-##    xf    => $xf,       ##-- ug: $xi => $f($xi) : N=>N
-##    cof   => $cof,      ##-- cf: [$xi1,$xi2] => $f12
+##    #xf    => $xf,       ##-- ug: $xi => $f($xi) : N=>N
+##    #cof   => $cof,      ##-- cf: [$xi1,$xi2] => $f12
+##    tf    => $tf,       ##-- ug: [$ti,$date]       => f($ti,$date) : N=>N
+##    tcof  => $tcof,     ##-- cf: [$ti1,$date,$ti2] => f($ti1,$date,$ti2)
 ##    ddc   => $ddc,      ##-- ddc: ddc client relation
 ##    tdf   => $tdf,      ##-- tdf: (term x document) frequency matrix relation
 ##   )
@@ -240,22 +245,21 @@ sub new {
 		      #l2x   => undef, #$MMCLASS->new(pack_i=>$coldb->{pack_id}, pack_o=>$coldb->{pack_off}, pack_l=>$coldb->{pack_id}),
 		      #pack_xl => 'N',
 
-		      ##-- tuples (+dates)
-		      #xenum  => undef, #$XECLASS::FixedLen->new(pack_i=>$coldb->{pack_id}, pack_s=>$coldb->{pack_x}),
-		      #pack_x => 'Nn',
+		      ##-- tuples (-dates)
+		      #tenum  => undef, #$XECLASS::FixedLen->new(pack_i=>$coldb->{pack_id}, pack_s=>$coldb->{pack_x}, pack_d=>$coldb->{pack_date}),
+		      #pack_t => 'N',
 
 		      ##-- relations
-		      #xf    => undef, #DiaColloDB::Relation::Unigrams->new(packas=>$coldb->{pack_f}),
-		      #cof   => undef, #DiaColloDB::Relation::Cofreqs->new(pack_f=>$pack_f, pack_i=>$pack_i, dmax=>$dmax, fmin=>$cfmin),
-		      #ddc   => undef, #DiaColloDB::Relation::DDC->new(),
-		      #tdf   => undef, #DiaColloDB::Relation::TDF->new(),
+		      #tf   => undef, #DiaColloDB::Relation::Unigrams->new(pack_f=>$coldb->{pack_f}, pack_date=>$coldb->{pack_date}),
+		      #tcof => undef, #DiaColloDB::Relation::Cofreqs->new(pack_f=>$pack_f, pack_i=>$pack_i, pack_d=>$pack_date, dmax=>$dmax, fmin=>$cfmin),
+		      #ddc  => undef, #DiaColloDB::Relation::DDC->new(),
+		      #tdf  => undef, #DiaColloDB::Relation::TDF->new(),
 
 		      @_,	##-- user arguments
 		     },
 		     ref($that)||$that);
   $coldb->{class}  = ref($coldb);
-  $coldb->{pack_w} = $coldb->{pack_id};
-  $coldb->{pack_x} = $coldb->{pack_w} . $coldb->{pack_date};
+  $coldb->{pack_t} = $coldb->{pack_id};
   if (defined($coldb->{dbdir})) {
     ##-- avoid initial close() if called with dbdir=>$dbdir argument
     my $dbdir = $coldb->{dbdir};
@@ -312,6 +316,15 @@ sub open {
     or $coldb->logconfess("open(): failed to load header file", $coldb->headerFile, ": $!");
   @$coldb{keys %opts} = values %opts; ##-- clobber header options with user-supplied values
 
+  ##-- open: check compatiblity
+  my $min_version_compat = '0.10.000';
+  if (!$coldb->{version} || version->parse($coldb->{version}) < version->parse($min_version_compat)) {
+    $coldb->logconfess("open(): cannot open old v$coldb->{version} index in $dbdir; try running \`dcdb-upgrade.perl $dbdir'");
+  }
+  elsif (!defined($coldb->{xdmin}) || !defined($coldb->{xdmax})) {
+    $coldb->logconfess("open(): no date-range keys {xdmin,xdmax} found in header; try running \`dcdb-upgrade.perl $dbdir'");
+  }
+
   ##-- open: tdf: require
   $coldb->{index_tdf} = 0 if (!-r "$dbdir/tdf.hdr");
   if ($coldb->{index_tdf}) {
@@ -341,23 +354,9 @@ sub open {
     $axat += packsize($coldb->{pack_id});
   }
 
-  ##-- open: xenum
-  $coldb->{xenum} = $XECLASS->new(base=>"$dbdir/xenum", %efopts, pack_s=>$coldb->{pack_x})
-      or $coldb->logconfess("open(): failed to open tuple-enum $dbdir/xenum.*: $!");
-  if (!defined($coldb->{xdmin}) || !defined($coldb->{xdmax})) {
-    ##-- hack: guess date-range if not specified
-    $coldb->vlog('warn', "Warning: extracting date-range from xenum: you should update $coldb->{dbdir}/header.json");
-    my $pack_xdate  = '@'.(packsize($coldb->{pack_id}) * scalar(@{$coldb->attrs})).$coldb->{pack_date};
-    my ($dmin,$dmax,$d) = ('inf','-inf');
-    foreach (@{$coldb->{xenum}->toArray}) {
-      next if (!$_);
-      next if (!defined($d = unpack($pack_xdate,$_))); ##-- strangeness: getting only 9-bytes in $_ for 10-byte values in file and toArray(): why?!
-      $dmin = $d if ($d < $dmin);
-      $dmax = $d if ($d > $dmax);
-    }
-    $coldb->vlog('warn', "extracted date-range \"xdmin\":$dmin, \"xdmax\":$dmax");
-    @$coldb{qw(xdmin xdmax)} = ($dmin,$dmax);
-  }
+  ##-- open: tenum
+  $coldb->{tenum} = $XECLASS->new(base=>"$dbdir/tenum", %efopts, pack_s=>$coldb->{pack_t})
+      or $coldb->logconfess("open(): failed to open tuple-enum $dbdir/tenum.*: $!");
 
   ##-- open: xf
   $coldb->{xf} = DiaColloDB::Relation::Unigrams->new(file=>"$dbdir/xf.dba", flags=>$flags, packas=>$coldb->{pack_f})
@@ -366,11 +365,11 @@ sub open {
 
   ##-- open: cof
   if ($coldb->{index_cof}//1) {
-    $coldb->{cof} = DiaColloDB::Relation::Cofreqs->new(base=>"$dbdir/cof", flags=>$flags,
-						       pack_i=>$coldb->{pack_id}, pack_f=>$coldb->{pack_f},
-						       dmax=>$coldb->{dmax}, fmin=>$coldb->{cfmin},
-						      )
-      or $coldb->logconfess("open(): failed to open co-frequency file $dbdir/cof.*: $!");
+    $coldb->{tcof} = DiaColloDB::Relation::Cofreqs->new(base=>"$dbdir/tcof", flags=>$flags,
+							pack_i=>$coldb->{pack_id}, pack_f=>$coldb->{pack_f}, pack_d=>$coldb->{pack_date},
+							dmax=>$coldb->{dmax}, fmin=>$coldb->{cfmin},
+						       )
+      or $coldb->logconfess("open(): failed to open co-frequency file $dbdir/tcof.*: $!");
   }
 
   ##-- open: ddc (undef if ddcServer isn't set in ddc.hdr or $coldb)
@@ -396,7 +395,7 @@ sub open {
 sub dbkeys {
   return (
 	  (ref($_[0]) ? (map {($_."enum",$_."2x")} @{$_[0]->attrs}) : qw()),
-	  qw(xenum xf cof tdf),
+	  qw(tenum xf cof tdf),
 	 );
 }
 
@@ -617,8 +616,8 @@ sub create {
   my $pack_f     = $coldb->{pack_f};
   my $pack_off   = $coldb->{pack_off};
   my $pack_len   = $coldb->{pack_len};
-  my $pack_w     = $coldb->{pack_w} = $pack_id."[".scalar(@$attrs)."]";
-  my $pack_x     = $coldb->{pack_x} = $pack_w.$pack_date;
+  my $pack_t     = $coldb->{pack_t} = $pack_id."[".scalar(@$attrs)."]";
+  my $pack_x     = $coldb->{pack_x} = $pack_t.$pack_date;
 
   ##-- initialize: common flags
   my %efopts = (flags=>$flags, pack_i=>$coldb->{pack_id}, pack_o=>$coldb->{pack_off}, pack_l=>$coldb->{pack_len});
@@ -809,7 +808,7 @@ sub create {
 
   ##-- filter: terms: populate $ws2w (map IDs)
   my $tfmin = $coldb->{tfmin}//0;
-  my $ws2w  = undef; ##-- join(' ',@ais) => pack($pack_w,i2j(@ais)) : includes attribute-id re-mappings
+  my $ws2w  = undef; ##-- join(' ',@ais) => pack($pack_t,i2j(@ais)) : includes attribute-id re-mappings
   if ($tfmin > 0 || grep {defined($_->{i2j})} @$aconf) {
     $coldb->vlog($coldb->{logCreate}, "create(): populating global term enum (tfmin=$tfmin)");
     my @ai2j  = map {defined($_->{i2j}) ? $_->{i2j} : undef} @$aconf;
@@ -832,7 +831,7 @@ sub create {
 	$ais[$_] = $ai2j[$_][$ais[$_]//0];
 	next FILTER_WTUPLES if ($ais[$_] == $ibad);
       }
-      $ws2w->{$aistr} = pack($pack_w,@ais);
+      $ws2w->{$aistr} = pack($pack_t,@ais);
       ++$nw;
     }
     $cmdfh->close();
@@ -854,7 +853,6 @@ sub create {
   CORE::open($atokfh, "<:raw", $atokfile)
       or $coldb->logconfess("$0: re-open failed for $atokfile: $!");
   $nx       = 0;
-  my $len_w = packsize($pack_w);
   my $ntok_in = $toki;
   my ($toki_in,$toki_out) = (0,0);
   my $doci_cur   = 0;
@@ -873,7 +871,7 @@ sub create {
       if (defined($ws2w)) {
 	next if (!defined($w=$ws2w->{$_}));
       } else {
-	$w = pack($pack_w, split(' ',$_));
+	$w = pack($pack_t, split(' ',$_));
       }
       $x  = $w.pack($pack_date,$date);
       $xi = $xs2i->{$x} = ++$nx if (!defined($xi=$xs2i->{$x}));
@@ -1604,6 +1602,7 @@ sub parseDateRequest {
 ##   + parse and filter \@xids by $dateRequest, $sliceRequest
 ##   + returns a HASH-ref from slice-ids to \@xids in that date-slice
 ##   + if $fill is true, returned HASH-ref has a key for each date-slice in range
+##   + v0.10.000 : should soon be OBSOLETE
 sub xidsByDate {
   my ($coldb,$xids,$date,$slice,$fill) = @_;
   my ($dfilter,$slo,$shi,$dlo,$dhi) = $coldb->parseDateRequest($date,$slice,$fill);

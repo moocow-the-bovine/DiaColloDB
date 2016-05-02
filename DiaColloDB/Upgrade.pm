@@ -7,6 +7,7 @@
 package DiaColloDB::Upgrade;
 use DiaColloDB;
 use DiaColloDB::Upgrade::Base;
+use DiaColloDB::Upgrade::v0_04_dlimits;
 use DiaColloDB::Upgrade::v0_09_multimap;
 use DiaColloDB::Upgrade::v0_10_x2t;
 use Carp;
@@ -19,6 +20,7 @@ our @ISA = qw(DiaColloDB::Logger);
 
 ## @upgrades : list of available auto-magic upgrade sub-packages (suffixes)
 our @upgrades = (
+		 'v0_04_dlimits',
 		 'v0_09_multimap',
 		 'v0_10_x2t',
 		);

@@ -112,7 +112,7 @@ sub upgrade {
     or $that->logconfess("failed to load co-frequency data from $dbdir/cof.x2t: $!");
 
 
-  $that->logdie("what now?");
+  $that->warn("what now?");
 
   ##-- cleanup
   #CORE::unlink("$dbdir/cof.x2t");

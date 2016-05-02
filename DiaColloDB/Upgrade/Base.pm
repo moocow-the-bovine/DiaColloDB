@@ -58,17 +58,18 @@ sub uinfo {
 	 };
 }
 
-## $bool = $CLASS_OR_OBJECT->updateHeader($dbdir, \%extra_uinfo)
+## $bool = $CLASS_OR_OBJECT->updateHeader($dbdir, \%extra_uinfo, \%extra_header)
 ##  + updates header $dbdir/header.json
 sub updateHeader {
-  my ($that,$dbdir,$xinfo) = @_;
-  my $uinfo = $that->uinfo($dbdir, %$xinfo);
+  my ($that,$dbdir,$xinfo,$xhdr) = @_;
+  my $uinfo = $that->uinfo($dbdir, %{$xinfo//{}});
   return if (!defined($uinfo)); ##-- silent upgrade
 
   my $header   = $that->dbheader($dbdir);
   my $upgraded = ($header->{upgraded} //= []);
   unshift(@$upgraded, $uinfo);
   $header->{version} = $uinfo->{version_to} if ($uinfo->{version_to});
+  @$header{keys %$xhdr} = values %$xhdr if ($xhdr);
   DiaColloDB::Utils::saveJsonFile($header, "$dbdir/header.json")
       or $that->logconfess("updateHeader(): failed to save header data to $dbdir/header.json: $!");
   return $that;

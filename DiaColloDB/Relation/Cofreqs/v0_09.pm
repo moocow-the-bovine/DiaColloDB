@@ -554,7 +554,8 @@ sub f12 {
 ##     coldb   => $coldb,   ##-- for debugging
 ##     onepass => $bool,    ##-- use fast but incorrect 1-pass method?
 sub subprofile1 {
-  my ($cof,%opts) = @_;
+  my ($cof,$ids,%opts) = @_;
+  $cof->logconfess("API changing, this code won't work");
 
   $ids   = [$ids] if (!UNIVERSAL::isa($ids,'ARRAY'));
   my $r1 = $cof->{r1};

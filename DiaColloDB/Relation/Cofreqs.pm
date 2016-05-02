@@ -497,7 +497,7 @@ sub union {
 sub dbinfo {
   my $cof = shift;
   my $info = $cof->SUPER::dbinfo();
-  @$info{qw(fmin dmax size1 size2 N)} = @$cof{qw(fmin dmax size1 size2 N)};
+  @$info{qw(fmin dmax size1 size2 size3 N)} = @$cof{qw(fmin dmax size1 size2 size3 N)};
   return $info;
 }
 
