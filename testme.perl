@@ -2290,7 +2290,39 @@ sub bench_pack_split {
   print STDERR "bench_group_extract() done\n";
   exit 0;
 }
-bench_pack_split @ARGV;
+#bench_pack_split @ARGV;
+
+##----------------------------------------------------------------------
+## test cof reload (trunk)
+sub test_cof_reload {
+  my ($dbdir,$cofdat) = @_;
+  $dbdir  //= 'kern.d_v0_09';
+  $cofdat //= 'kern.dump_v0_09/cof.dat2';
+
+  DiaColloDB->ensureLog(level=>'INFO');
+  my $logger = 'DiaColloDB';
+
+  $logger->info("loading $dbdir/cof.hdr");
+  my $hdr = DiaColloDB::Utils::loadJsonFile("$dbdir/cof.hdr")
+    or die("$0: failed to load $dbdir/cof.hdr");
+
+  $logger->info("creating cof object $dbdir/cof.*");
+  my $cof = DiaColloDB::Relation::Cofreqs->new(base=>"$dbdir/cof", flags=>'rw', map {($_=>$hdr->{$_})} grep {$_ !~ /^(?:N|class|size)/} keys %$hdr)
+    or die("$0: failed to create new cof object");
+
+  $logger->info("loading text data from $cofdat");
+  $cof->loadTextFile($cofdat)
+    or die("$0: failed to load text data from $cofdat: $!");
+
+  $logger->info("saving header");
+  $cof->saveHeader()
+    or die("$0: failed to save header $dbdir/cof.hdr: $!");
+  $cof->close;
+
+  $logger->info("done");
+  exit 0;
+}
+test_cof_reload(@ARGV);
 
 
 ##==============================================================================

@@ -188,7 +188,7 @@ sub loadTextFh {
   ##-- iteration variables
   my ($pos1,$pos2) = (0,0);
   my ($i1_cur,$f1) = (-1,0);
-  my ($f12,$i1,$i2,$f);
+  my ($f12,$i1,$i2,$f,$f1_extra);
   my $N  = 0;	  ##-- total marginal frequency as extracted from %f12
   my $N1 = 0;     ##-- total N as extracted from single-element records
   my %f12 = qw(); ##-- ($i2=>$f12, ...) for $i1_cur
@@ -201,7 +201,7 @@ sub loadTextFh {
 	$fh1->print( pack($pack_r1,$pos2,0) x ($i1_cur-$pos1) );
       }
       ##-- dump r2-records for $i1_cur
-      $f1 = 0;
+      $f1 = $f1_extra;
       foreach (sort {$a<=>$b} keys %f12) {
 	$f    = $f12{$_};
 	$f1  += $f;
@@ -214,8 +214,9 @@ sub loadTextFh {
       $pos1  = $i1_cur+1;
       $N    += $f1;
     }
-    $i1_cur = $i1;
-    %f12    = qw();
+    $i1_cur   = $i1;
+    $f1_extra = 0;
+    %f12      = qw();
   };
 
   ##-- ye olde loope
@@ -228,14 +229,20 @@ sub loadTextFh {
       $N1 += $f12;		      ##-- load N values
       next;
     }
-    $insert->() if ($i1 != $i1_cur);  ##-- insert record(s) for $i1_cur
-    $f12{$i2} += $f12;                ##-- buffer co-frequencies for $i1_cur
+    elsif (!defined($i2)) {
+      $f1_extra += $f12;	      ##-- track un-collocated $f1 values
+    }
+    $insert->() if ($i1 != $i1_cur);     ##-- insert record(s) for $i1_cur
+    $f12{$i2} += $f12 if (defined($i2)); ##-- buffer co-frequencies for $i1_cur
   }
   $insert->();                        ##-- write record(s) for final $i1_cur
 
   ##-- adopt final $N and sizes
   #$cof->debug("FINAL: N1=$N1, N=$N");
   $cof->{N} = $N1>$N ? $N1 : $N;
+  foreach (qw(1 2)) {
+    $cof->{"r$_"}->remap() if ($cof->{"r$_"}->can('remap'));
+  }
   $cof->{size1} = $r1->size;
   $cof->{size2} = $r2->size;
 
@@ -323,7 +330,10 @@ sub loadTextFile_create {
 ##  + INHERITED from DiaColloDB::Persistent
 
 ## $bool = $cof->saveTextFh($fh,%opts)
-##  + save from text file with lines of the form "N", "FREQ ID1 ID2"*
+##  + save from text file with lines of the form:
+##      N               ##-- 1 field: N
+##      FREQ ID1        ##-- 2 fields: un-collocated independent frequency portion
+##      FREQ ID1 ID2    ##-- 3 fields: co-frequency pair
 ##  + %opts:
 ##      i2s => \&CODE,   ##-- code-ref for formatting indices; called as $s=CODE($i)
 sub saveTextFh {
@@ -339,7 +349,7 @@ sub saveTextFh {
 
   ##-- iteration variables
   my ($buf1,$i1,$f1,$end2);
-  my ($buf2,$off2,$i2,$f12);
+  my ($buf2,$off2,$i2,$f12,$f12sum);
 
   ##-- ye olde loope
   binmode($outfh,':raw');
@@ -348,15 +358,19 @@ sub saveTextFh {
     $r1->read(\$buf1) or $cof->logconfess("saveTextFile(): failed to read record $i1 from $r1->{file}: $!");
     ($end2,$f1) = unpack($pack_r1,$buf1);
 
-    for ( ; $off2 < $end2 && !$r2->eof(); ++$off2) {
+    for ($f12sum=0 ; $off2 < $end2 && !$r2->eof(); ++$off2) {
       $r2->read(\$buf2) or $cof->logconfess("saveTextFile(): failed to read record $off2 from $r2->{file}: $!");
       ($i2,$f12) = unpack($pack_r2,$buf2);
+      $f12sum   += $f12;
       $outfh->print($f12, "\t",
 		    ($i2s
 		     ? ($i2s->($i1), "\t", $i2s->($i2))
 		     : ($i1, "\t", $i2)),
 		    "\n");
     }
+
+    ##-- track un-collocated portion of $f1, if any
+    $outfh->print(join("\t", $f1-$f12sum, ($i2s ? $i2s->($i1) : $i1)), "\n") if ($f12sum != $f1);
   }
 
   return $cof;
