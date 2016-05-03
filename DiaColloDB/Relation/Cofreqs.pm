@@ -566,7 +566,8 @@ sub subprofile1 {
   my ($r1,$r2,$r3)          = @$cof{qw(r1 r2 r3)};
   my ($pack1,$pack2,$pack3) = map {$_->{packas}} ($r1,$r2,$r3);
   my $pack2e = $cof->{pack_i};
-  #my $pack2f = '@'.packsize("$cof->{pack_i}.$cof->{pack_d}",0,0)."$cof->{pack_i}";
+  my $pack2d = '@'.packsize("$cof->{pack_i}").$cof->{pack_d};
+  my $pack2f = '@'.packsize("$cof->{pack_i}$cof->{pack_d}").$cof->{pack_f};
   my $size1  = $cof->{size1} // ($cof->{size1}=$r1->size);
   my $size2  = $cof->{size2} // ($cof->{size2}=$r2->size);
   my $size3  = $cof->{size3} // ($cof->{size3}=$r3->size);
@@ -578,6 +579,7 @@ sub subprofile1 {
 
   ##-- ye olde loope
   my ($i1,$beg2,$end2, $pos2,$beg3,$end3,$d1,$ds,$dprf,$f1, $pos3,$i2,$f12,$key2, $buf);
+  my ($blo,$bhi,$bi); ##-- one-pass guts
   foreach $i1 (@$tids) {
     next if ($i1 >= $size1);
     $beg2 = ($i1==0 ? 0 : unpack($pack1,$r1->fetchraw($i1-1,\$buf)));
@@ -600,13 +602,20 @@ sub subprofile1 {
 	$key2      = $groupby ? $groupby->($i2) : pack($pack_id,$i2);
 	next if (!defined($key2)); ##-- item2 selection via groupby CODE-ref
 	$dprf->{f12}{$key2} += $f12;
-	##-- onepass code disabled
+
+	if ($onepass) {
+	  ##-- search for ($i2,$date) offset in r2
+	  $blo = ($i2==0 ? 0 : unpack($pack1,$r1->fetchraw($i2-1,\$buf)));
+	  $bhi = unpack($pack1, $r1->fetchraw($i2,\$buf));
+	  $bi  = $r2->bsearch($d1,lo=>$blo,hi=>$bhi,packas=>$pack2d);
+	  $dprf->{f2}{$key2} += unpack($pack2f, $r2->fetchraw($bi,\$buf));
+	}
       }
     }
   }
 
   ##-- disable one-pass processing (for now)
-  $opts->{onepass} = 0;
+  #$opts->{onepass} = 0;
 
   return \%slice2prf;
 }
@@ -637,8 +646,10 @@ sub subprofile2 {
   my ($r1,$r2)  = @$cof{qw(r1 r2)};
   my $pack1   = $r1->{packas};
   my $pack2df = '@'.packsize("$cof->{pack_i}",0)."$cof->{pack_d}$cof->{pack_i}";
-  my $size1   = $cof->{size1} // ($cof->{size1}=$r1->size);
-  my $size2   = $cof->{size2} // ($cof->{size2}=$r2->size);
+
+  ##-- optimize tightest loop for direct mmap buffer access if available
+  my $bufr2 = UNIVERSAL::isa($r2,'DiaColloDB::PackedFile::MMap') ? $r2->{bufr} : undef;
+  my $len2  = $r2->{reclen};
 
   ##-- get "most specific projected attribute" ("MSPA"): that projected attribute with largest enum
   #my $gb1      = scalar(@{$groupby->{attrs}})==1; ##-- are we grouping by a single attribute? -->optimize!
@@ -668,8 +679,8 @@ sub subprofile2 {
 	##-- scan all dates for $i2
 	$beg2 = ($i2==0 ? 0 : unpack($pack1,$r1->fetchraw($i2-1,\$buf)));
 	$end2 = unpack($pack1, $r1->fetchraw($i2,\$buf));
-	for ($r2->seek($pos2=$beg2); $pos2 < $end2; ++$pos2) {
-	  ($d2,$f2) = unpack($pack2df, $r2->fetchraw($pos2,\$buf));
+	for ($pos2=$beg2; $pos2 < $end2; ++$pos2) {
+	  ($d2,$f2) = unpack($pack2df, $bufr2 ? substr($$bufr2, $pos2*$len2, $len2) : $r2->fetchraw($pos2,\$buf));
 
 	  ##-- check date-filter & get slice
 	  next if ($dfilter && !$dfilter->($d2));
