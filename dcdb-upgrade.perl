@@ -27,15 +27,15 @@ my $act = 'upgrade';
 my @upgrades = qw();
 GetOptions(
 	   'help|h' => sub { $act='help' },
-	   'list-available|list-all|la|list|all|available|a' => sub { $act='list' },
+	   'list-available|list-all|la|list|all|available' => sub { $act='list' },
 	   'check|c' => => sub { $act='check' },
 	   'upgrade|u' => sub { $act='upgrade' },
-	   'force-upgrade|force|fu|f=s' => sub { $act='force'; @upgrades = grep {($_//'') ne ''} split(/[\s\,]+/,$_[1]) },
+	   'force-apply|fa|apply|a=s' => sub { $act='apply'; @upgrades = grep {($_//'') ne ''} split(/[\s\,]+/,$_[1]) },
 	  );
 
 pod2usage({-exitval=>0,-verbose=>0}) if ($act eq 'help');
 pod2usage({-exitval=>1,-verbose=>0,-msg=>"$prog: ERROR: no DBDIR specified!"}) if ($act ne 'list' && @ARGV < 1);
-pod2usage({-exitval=>1,-verbose=>0,-msg=>"$prog: ERROR: too many arguments for -list mode!"}) if ($act eq 'list' && @ARGV);
+warn("$prog: WARNING: too many arguments for -list mode") if ($act eq 'list' && @ARGV);
 
 ##======================================================================
 ## MAIN
@@ -69,10 +69,10 @@ if ($act eq 'upgrade') {
   $up->upgrade($dbdir,@needed)
     or die("$0: upgrade failed for $dbdir");
 }
-elsif ($act eq 'force') {
+elsif ($act eq 'apply') {
   ##-- force-apply selected upgrades
   $up->upgrade($dbdir,@upgrades)
-    or die("$0: force-upgrade failed");
+    or die("$0: force-apply upgrade(s) failed");
 }
 
 ##-- all done
@@ -100,7 +100,7 @@ dcdb-upgrade.perl - upgrade a DiaColloDB directory in-place
    -l, -list       # list all available upgrade packages
    -c, -check      # check applicability of available upgrades for DBDIR
    -u, -upgrade    # apply any applicable upgrades to DBDIR (default)
-   -f, -force PKGS # force-apply comma-separated upgrade package(s) to DBDIR
+   -a, -apply PKGS # force-apply comma-separated upgrade package(s) to DBDIR
 
 =cut
 
@@ -172,12 +172,12 @@ Apply any applicable upgrades to F<DBDIR>;
 this is the default mode of operation.
 It is safest to make a backup of F<DBDIR> before upgrading.
 
-=item -f, -force PKGS
+=item -a, -apply PKGS
 
 Force-apply the comma- or space-separated list of
 L<DiaColloDB::Upgrade|DiaColloDB::Upgrade>-compliant packages
 C<PKGS> to F<DBDIR>.
-Use with caution.
+Use with caution, no applicability checking is performed in this mode.
 
 =back
 

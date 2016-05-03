@@ -202,12 +202,12 @@ sub loadTextFh {
   $cof->logconfess("loadTextFh(): cannot load unopened database!") if (!$cof->opened);
 
   ##-- common variables
-  my ($pack_i,$pack_d,$pack_f) = @$cof{qw(pack_i pack_d pack_f)};
-  my $pack_r1  = "${pack_i}";			##-- $r1 : [$end2]            @ $i1
-  my $pack_r2  = "${pack_i}${pack_d}${pack_f}";	##-- $r2 : [$end3,$d1,$f1]*   @ end2($i1-1)..(end2($i1+1)-1)
-  my $pack_r3  = "${pack_i}${pack_f}";		##-- $r3 : [$i2,$f12]*        @ end3($d1-1)..(end3($d1+1)-1)
-  my $fmin     = $cof->{fmin} // 0;
-  my ($r1,$r2,$r3) = @$cof{qw(r1 r2 r3)};
+  ##   $r1 : [$end2]            @ $i1
+  ##   $r2 : [$end3,$d1,$f1]*   @ end2($i1-1)..(end2($i1+1)-1)
+  ##   $r3 : [$i2,$f12]*        @ end3($d1-1)..(end3($d1+1)-1)
+  my $fmin  = $cof->{fmin} // 0;
+  my ($r1,$r2,$r3)                = @$cof{qw(r1 r2 r3)};
+  my ($pack_r1,$pack_r2,$pack_r3) = map {$_->{packas}} ($r1,$r2,$r3);
   $r1->truncate();
   $r2->truncate();
   $r3->truncate();
@@ -235,7 +235,7 @@ sub loadTextFh {
       foreach (sort {$a<=>$b} keys %f12) {
 	$f    = $f12{$_};
 	$f1  += $f;
-	next if ($f < $fmin); ##-- skip here so we can track "real" marginal frequencies
+	next if ($f < $fmin || $_ < 0); ##-- skip here so we can track "real" marginal frequencies
 	$fh3->print(pack($pack_r3, $_,$f));
 	++$pos3;
       }
@@ -268,12 +268,12 @@ sub loadTextFh {
       $N1 += $f12;		      ##-- load N values
       next;
     }
-    elsif (!defined($i2)) {
+    elsif (!defined($d1)) {
       $cof->logconfess("loadTextFh(): failed to parse input line ", $infh->input_line_number);
     }
     $insert->()			      ##-- insert record(s) for ($i1_cur,$d1_cur)
       if ($i1 != $i1_cur || $d1 != $d1_cur);
-    $f12{$i2} += $f12;                ##-- buffer co-frequencies for ($i1_cur,$d1_cur)
+    $f12{$i2//-1} += $f12;            ##-- buffer co-frequencies for ($i1_cur,$d1_cur); track un-collocated frequencies as $i2=-1
   }
   $i1 = -1;
   $insert->();                        ##-- write record(s) for final ($i1_cur,$d1_cur)
@@ -303,7 +303,10 @@ sub loadTextFile_create {
 ##  + INHERITED from DiaColloDB::Persistent
 
 ## $bool = $cof->saveTextFh($fh,%opts)
-##  + save from text file with lines of the form "N", "FREQ ID1 ID2"*
+##  + save from text file with lines of the form:
+##      N                 ##-- 1 field : N
+##      FREQ ID1 DATE     ##-- 3 fields: un-collocated portion of $f1
+##      FREQ ID1 DATE ID2 ##-- 4 fields: co-frequency pair (ID2 >= 0)
 ##  + %opts:
 ##      i2s => \&CODE,    ##-- code-ref for formatting indices; called as $s=CODE($i)
 ##      i2s1 => \&CODE,   ##-- code-ref for formatting item1 indices (overrides 'i2s')
@@ -313,38 +316,43 @@ sub saveTextFh {
   $cof->logconfess("saveTextFile(): cannot save unopened DB") if (!$cof->opened);
 
   ##-- common variables
+  ##   $r1 : [$end2]            @ $i1
+  ##   $r2 : [$end3,$d1,$f1]*   @ end2($i1-1)..(end2($i1+1)-1)
+  ##   $r3 : [$i2,$f12]*        @ end3($d1-1)..(end3($d1+1)-1)
   my ($r1,$r2,$r3) = @$cof{qw(r1 r2 r3)};
-  my $pack_r1    = $r1->{packas};
-  my $pack_r2    = $r2->{packas};
-  my $pack_r3    = $r3->{packas};
-  my $i2s        = $opts{i2s};
-  my $i2s1       = exists($opts{i2s1}) ? $opts{i2s1} : $i2s;
-  my $i2s2       = exists($opts{i2s2}) ? $opts{i2s2} : $i2s;
+  my ($pack1,$pack2,$pack3) = map {$_->{packas}} ($r1,$r2,$r3);
+  my $i2s  = $opts{i2s};
+  my $i2s1 = exists($opts{i2s1}) ? $opts{i2s1} : $i2s;
+  my $i2s2 = exists($opts{i2s2}) ? $opts{i2s2} : $i2s;
 
   ##-- iteration variables
   my ($buf1,$i1,$s1,$end2);
   my ($buf2,$off2,$end3,$d1,$f1);
-  my ($buf3,$off3,$i2,$s2,$f12);
+  my ($buf3,$off3,$i2,$s2,$f12,$f12sum);
 
   ##-- ye olde loope
   binmode($outfh,':raw');
   $outfh->print($cof->{N}, "\n");
   for ($r1->seek($i1=0), $r2->seek($off2=0), $r3->seek($off3=0); !$r1->eof(); ++$i1) {
     $r1->read(\$buf1) or $cof->logconfess("saveTextFile(): failed to read record $i1 from $r1->{file}: $!");
-    $end2 = unpack($pack_r1,$buf1);
+    $end2 = unpack($pack1,$buf1);
     $s1 = $i2s1 ? $i2s1->($i1) : $i1;
 
-    for ( ; $off2 < $end2 && !$r2->eof(); ++$off2) {
+    for ($f12sum=0; $off2 < $end2 && !$r2->eof(); ++$off2) {
       $r2->read(\$buf2) or $cof->logconfess("saveTextFile(): failed to read record $off2 from $r2->{file}: $!");
-      ($end3,$d1) = unpack($pack_r2,$buf2);
+      ($end3,$d1,$f1) = unpack($pack2,$buf2);
 
       for ( ; $off3 < $end3 && !$r3->eof(); ++$off3) {
 	$r3->read(\$buf3) or $cof->logconfess("saveTextFile(): failed to read record $off3 from $r3->{file}: $!");
-	($i2,$f12) = unpack($pack_r3,$buf3);
-	$s2 = $i2s2 ? $i2s2->($i2) : $i2;
-	$outfh->print(join("\t", $f12, $i1, $d1, $i2), "\n");
+	($i2,$f12) = unpack($pack3,$buf3);
+	$f12sum   += $f12;
+	$s2        = $i2s2 ? $i2s2->($i2) : $i2;
+	$outfh->print(join("\t", $f12, $s1, $d1, $s2), "\n");
       }
     }
+
+    ##-- track un-collocated portion of $f1, if any
+    $outfh->print(join("\t", $f1-$f12sum, $d1, $s1), "\n") if ($f12sum != $f1);
   }
 
   return $cof;
@@ -533,128 +541,147 @@ sub f12 {
 ##==============================================================================
 ## Relation API: default: profiling
 
-## $prf = $cof->subprofile1(\@xids, %opts)
-##  + get joint co-frequency profile for @xids (db must be opened; f1 and f12 only)
-##  + %opts:
-##     groupby => \&gbsub,  ##-- key-extractor $key2_or_undef = $gbsub->($i2)
-##     coldb   => $coldb,   ##-- for debugging
-##     onepass => $bool,    ##-- use fast but incorrect 1-pass method?
+## \%slice2prf = $rel->subprofile1(\@tids,\%opts)
+##  + get slice-wise joint co-frequency profile(s) for @tids (db must be opened; f1 and f12 only)
+##  + %opts: as for profile(), also:
+##     coldb => $coldb,   ##-- parent DiaColloDB object (for shared data, debugging)
+##     dreq  => \%dreq,   ##-- parsed date request
 sub subprofile1 {
-  my ($cof,$ids,%opts) = @_;
-  $ids   = [$ids] if (!UNIVERSAL::isa($ids,'ARRAY'));
-  my $r1 = $cof->{r1};
-  my $r2 = $cof->{r2};
-  my $pack1 = $r1->{packas};
-  my $pack2 = $r2->{packas};
-  my $pack1i = $cof->{pack_i};
-  my $pack1f = "@".packsize($cof->{pack_i}).$cof->{pack_f};
+  my ($cof,$tids,$opts) = @_;
+
+  ##-- common variables
+  $tids = [$tids] if (!UNIVERSAL::isa($tids,'ARRAY'));
+  my $coldb = $opts->{coldb};
+  my $slice = $opts->{slice};
+  my $dreq  = $opts->{dreq};
+  my $dfilter = $dreq->{dfilter};
+  my $groupby = $opts->{groupby}{ti2g};
+  my $onepass = $opts->{onepass};
+  my $pack_id = $coldb->{pack_id};
+
+  ##-- vars: relation-wise
+  ##   $r1 : [$end2]            @ $i1
+  ##   $r2 : [$end3,$d1,$f1]*   @ end2($i1-1)..(end2($i1+1)-1)
+  ##   $r3 : [$i2,$f12]*        @ end3($d1-1)..(end3($d1+1)-1)
+  my ($r1,$r2,$r3)          = @$cof{qw(r1 r2 r3)};
+  my ($pack1,$pack2,$pack3) = map {$_->{packas}} ($r1,$r2,$r3);
+  my $pack2e = $cof->{pack_i};
+  #my $pack2f = '@'.packsize("$cof->{pack_i}.$cof->{pack_d}",0,0)."$cof->{pack_i}";
   my $size1  = $cof->{size1} // ($cof->{size1}=$r1->size);
   my $size2  = $cof->{size2} // ($cof->{size2}=$r2->size);
-  my $groupby = $opts{groupby};
-  my $pack_id = $opts{coldb}{pack_id};
-  my $onepass = $opts{onepass};
-  my $pf1 = 0;
-  my $pf12 = {};
-  my $pf2  = {};
-  my ($i1,$i2,$key2, $beg2,$end2,$pos2, $f1,$f12, $buf, %i2);
+  my $size3  = $cof->{size3} // ($cof->{size3}=$r3->size);
 
-  foreach $i1 (@$ids) {
+  ##-- setup %slice2prf
+  my %slice2prf = map {
+    ($_ => DiaColloDB::Profile->new(f1=>0, N=>$cof->{N}))
+  } ($slice ? (map {$_*$slice} (($dreq->{slo}/$slice)..($dreq->{shi}/$slice))) : 0);
+
+  ##-- ye olde loope
+  my ($i1,$beg2,$end2, $pos2,$beg3,$end3,$d1,$ds,$dprf,$f1, $pos3,$i2,$f12,$key2, $buf);
+  foreach $i1 (@$tids) {
     next if ($i1 >= $size1);
-    $beg2       = ($i1==0 ? 0 : unpack($pack1i,$r1->fetchraw($i1-1,\$buf)));
-    ($end2,$f1) = unpack($pack1, $r1->fetchraw($i1,\$buf));
+    $beg2 = ($i1==0 ? 0 : unpack($pack1,$r1->fetchraw($i1-1,\$buf)));
+    $end2 = unpack($pack1, $r1->fetchraw($i1,\$buf));
 
-    $pf1       += $f1;
     next if ($beg2 >= $size2);
-    for ($r2->seek($beg2), $pos2=$beg2; $pos2 < $end2; ++$pos2) {
-      $r2->getraw(\$buf) or last;
-      ($i2,$f12)    = unpack($pack2, $buf);
-      $key2         = $groupby ? $groupby->($i2) : pack($pack_id,$i2);
-      next if (!defined($key2)); ##-- item2 selection via groupby CODE-ref
-      $pf12->{$key2} += $f12;
-      if ($onepass && !exists($i2{$i2})) {
-	$pf2->{$key2} += unpack($pack1f, $r1->fetchraw($i2,\$buf)); ##-- avoid double-counting f2 for shared collocates
-	$i2{$i2}       = undef;
+    for ($pos2=$beg2; $pos2 < $end2; ++$pos2) {
+      $beg3           = ($pos2==0 ? 0 : unpack($pack2e, $r2->fetchraw($pos2-1,\$buf)));
+      ($end3,$d1,$f1) = unpack($pack2, $r2->fetchraw($pos2,\$buf));
+
+      ##-- check date-filter & get slice-local profile $dprf
+      next if ($dfilter && !$dfilter->($d1));
+      $ds   = $slice ? int($d1/$slice)*$slice : 0;
+      $dprf = $slice2prf{$ds};
+      $dprf->{f1} += $f1;
+
+      next if ($beg3 >= $size3);
+      for ($pos3=$beg3; $pos3 < $end3; ++$pos3) {
+	($i2,$f12) = unpack($pack3, $r3->fetchraw($pos3,\$buf));
+	$key2      = $groupby ? $groupby->($i2) : pack($pack_id,$i2);
+	next if (!defined($key2)); ##-- item2 selection via groupby CODE-ref
+	$dprf->{f12}{$key2} += $f12;
+	##-- onepass code disabled
       }
     }
   }
-  return DiaColloDB::Profile->new(
-				  N=>$cof->{N},
-				  f1=>$pf1,
-				  f2=>$pf2,
-				  f12=>$pf12,
-				 );
+
+  ##-- disable one-pass processing (for now)
+  $opts->{onepass} = 0;
+
+  return \%slice2prf;
 }
 
-##  \%slice2prf = $rel->subprofile2(\%slice2prf, %opts)
+##  \%slice2prf = $rel->subprofile2(\%slice2prf, \%opts)
 ##  + populate f2 frequencies for profiles in \%slice2prf
-##  + %opts:
+##  + %opts: as sor subprofile1()
 ##     groupby => \%gbreq,  ##-- parsed groupby object
-##     a2data  => \%a2data, ##-- maps indexed attributes to associated datastructures
+##     a2data  => \%a2data, ##-- maps indexed attributes to associated data structures
 ##     coldb   => $coldb,   ##-- parent DiaColloDB object (for shared data, debugging)
 ##     #slices  => \@slices, ##-- slices (optional)
 ##     ...                  ##-- other options as for profile(), esp. qw(slice)
 ##  + default implementation does nothing
 sub subprofile2 {
-  my ($cof,$slice2prf,%opts) = @_;
+  my ($cof,$slice2prf,$opts) = @_;
 
   ##-- vars: common
-  my $coldb   = $opts{coldb};
-  my $groupby = $opts{groupby};
-  my $a2data  = $opts{a2data};
-  my $slice   = $opts{slice};
-  #my $slices  = $opts{slices} || [sort {$a<=>$b} keys %$slice2prf];
-  my ($dfilter,$slo,$shi,$dlo,$dhi) = $coldb->parseDateRequest(@opts{qw(date slice fill)});
-  my $filter_by_date = $slice || defined($dlo) || defined($dhi);
+  my $coldb   = $opts->{coldb};
+  my $groupby = $opts->{groupby};
+  my $a2data  = $opts->{a2data};
+  my $slice   = $opts->{slice};
+  my $dfilter = $opts->{dreq}{dfilter};
 
   ##-- vars: relation-wise
-  my $r1       = $cof->{r1};
-  my $pack_r1f = '@'.packsize($cof->{pack_i}).$cof->{pack_f};
+  ##   $r1 : [$end2]            @ $i1
+  ##   $r2 : [$end3,$d1,$f1]*   @ end2($i1-1)..(end2($i1+1)-1)
+  ##   #$r3 : [$i2,$f12]*        @ end3($d1-1)..(end3($d1+1)-1)
+  my ($r1,$r2)  = @$cof{qw(r1 r2)};
+  my $pack1   = $r1->{packas};
+  my $pack2df = '@'.packsize("$cof->{pack_i}",0)."$cof->{pack_d}$cof->{pack_i}";
+  my $size1   = $cof->{size1} // ($cof->{size1}=$r1->size);
+  my $size2   = $cof->{size2} // ($cof->{size2}=$r2->size);
 
   ##-- get "most specific projected attribute" ("MSPA"): that projected attribute with largest enum
   #my $gb1      = scalar(@{$groupby->{attrs}})==1; ##-- are we grouping by a single attribute? -->optimize!
   my $mspai    = (sort {$b->[1]<=>$a->[1]} map {[$_,$a2data->{$groupby->{attrs}[$_]}{enum}->size]} (0..$#{$groupby->{attrs}}))[0][0];
   my $mspa     = $groupby->{attrs}[$mspai];
   my $mspgpack = $groupby->{gpack}[$mspai];
-  my $mspxpack = $groupby->{xpack}[$mspai];
-  my $msp2x = $a2data->{$mspa}{a2x};
-  my %mspv  = qw(); ##-- checked MSPA-values ($mspvi)
-  my $xenum = $coldb->{xenum};
-  my $pack_xd = "@".(packsize($coldb->{pack_id}) * scalar(@{$coldb->{attrs}})).$coldb->{pack_date};
-  my $xs2g    = $groupby->{xs2g};
-  my $debug_xp2g = join('',@{$groupby->{xpack}});
-  my $debug_gpack= "($coldb->{pack_id})*";
-  my ($prf,$pf12, $mspvi,$i2,$x2,$d2,$ds2,$prf2,$key2, $buf,$f2);
-  $prf2     = (values %$slice2prf)[0] if (!$filter_by_date);
-  foreach $prf (values %$slice2prf) {
-    $pf12 = $prf->{f12};
-    foreach (keys %$pf12) {
+  my $msptpack = $groupby->{tpack}[$mspai];
+  my $msp2t    = $a2data->{$mspa}{a2t};
+  my %mspv     = qw(); ##-- checked MSPA-values ($mspvi)
+  my $tenum    = $coldb->{tenum};
+  my $ts2g     = $groupby->{ts2g};
+
+  my ($prf1, $mspvi,$i2,$t2,$key2, $beg2,$end2,$pos2, $d2,$f2,$ds2,$prf2, $buf);
+  foreach $prf1 (values %$slice2prf) {
+    foreach (keys %{$prf1->{f12}}) {
       $mspvi = unpack($mspgpack,$_);
       next if (exists $mspv{$mspvi});
       $mspv{$mspvi} = undef;
-      foreach $i2 (@{$msp2x->fetch($mspvi)}) {
-	##-- get item2 x-tuple
-	$x2  = $xenum->i2s($i2);
 
-	if ($filter_by_date) {
-	  ##-- extract item2 date slice
-	  $d2  = unpack($pack_xd, $x2);
+      foreach $i2 (@{$msp2t->fetch($mspvi)}) {
+	##-- get item2 t-tuple
+	$t2 = $tenum->i2s($i2);
+
+	##-- get groupby-key from tuple-string
+	next if (!defined($key2 = $ts2g ? $ts2g->($t2) : pack($mspgpack, $i2))); ##-- having() failure
+
+	##-- scan all dates for $i2
+	$beg2 = ($i2==0 ? 0 : unpack($pack1,$r1->fetchraw($i2-1,\$buf)));
+	$end2 = unpack($pack1, $r1->fetchraw($i2,\$buf));
+	for ($r2->seek($pos2=$beg2); $pos2 < $end2; ++$pos2) {
+	  ($d2,$f2) = unpack($pack2df, $r2->fetchraw($pos2,\$buf));
+
+	  ##-- check date-filter & get slice
+	  next if ($dfilter && !$dfilter->($d2));
 	  $ds2 = $slice ? int($d2/$slice)*$slice : 0;
 
-	  ##-- ignore if item2 slice isn't in our target range
-	  next if (!defined($prf2=$slice2prf->{$ds2})
-		   || (defined($dlo) && $d2 < $dlo)
-		   || (defined($dhi) && $d2 > $dhi));
+	  ##-- ignore if item2 isn't in target slice
+	  $prf2 = $slice2prf->{$ds2};
+	  next if (!exists($prf2->{f12}{$key2}));
+
+	  ##-- add independent f2
+	  $prf2->{f2}{$key2} += $f2;
 	}
-
-	##-- get groupby-key from x-tuple string & check for item2 membership in the appropriate slice-profile
-	$key2 = $xs2g ? $xs2g->($x2) : pack($mspgpack, $i2);
-	#$key2 = pack($debug_gpack, unpack($debug_xp2g, $x2)); ##-- ca. 6% faster than $xs2g, no having-checks
-	#$key2 = pack($debug_gpack, $mspvi); ##-- ca. 12% faster than $xs2g, no having-checks, only valid for groupby single-attribute
-	next if (!defined($key2) || !exists($prf2->{f12}{$key2})); ##-- having()-failure or no item2 in target slice
-
-	##-- add item2 frequency
-	$f2 = unpack($pack_r1f, $r1->fetchraw($i2,\$buf));
-	$prf2->{f2}{$key2} += $f2;
       }
     }
   }

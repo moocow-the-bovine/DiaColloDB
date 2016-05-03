@@ -59,7 +59,8 @@ sub upgrade {
   $tenum->fromHash($ts2i)->save("$dbdir/tenum")
     or $that->logconfess("failed to save $dbdir/tenum.*: $!");
 
-  ##-- convert attribute-wse multimaps
+  ##-- convert attribute-wise multimaps & pack-templates
+  my $xhdr = {};
   foreach my $attr (@{$hdr->{attrs}}) {
     $that->info("creating multimap $dbdir/${attr}_2t.* from $dbdir/${attr}_2x.*");
     my $xmm = $DiaColloDB::MMCLASS->new(flags=>'r', base=>"$dbdir/${attr}_2x")
@@ -84,7 +85,11 @@ sub upgrade {
       or $that->logconfess("failed to convert multimap data for attirbute '$attr'");
     $tmm->save("$dbdir/${attr}_2t")
       or $that->logconfess("failed to save multimap data for attrbute '$attr' to $dbdir/${attr}_2t.*: $!");
+
+    ##-- adopt pack template
+    $xhdr->{"pack_t${attr}"} = $hdr->{"pack_x${attr}"};
   }
+  $xhdr->{pack_t} = $hdr->{pack_id}."[".scalar(@{$hdr->{attrs}})."]";
 
   ##-- TODO: convert relations: unigrams
   $that->vlog("creating new unigrams index $dbdir/tf.* from $dbdir/xf.*: TODO");
@@ -118,7 +123,7 @@ sub upgrade {
   #CORE::unlink("$dbdir/cof.x2t");
 
   ##-- update header
-  return $that->updateHeader($dbdir);
+  return $that->updateHeader($dbdir,undef,$xhdr);
 }
 
 

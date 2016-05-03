@@ -191,7 +191,7 @@ sub loadTextFh {
   my ($f12,$i1,$i2,$f);
   my $N  = 0;	  ##-- total marginal frequency as extracted from %f12
   my $N1 = 0;     ##-- total N as extracted from single-element records
-  my %f12 = qw(); ##-- ($i2=>$f12, ...) for $i1_cur
+  my %f12 = qw(); ##-- ($i2=>$f12, ...) for $i1_cur; un-collocated f1 counts appear as $i2='-1'
 
   ##-- guts for inserting records from $i1_cur,%f12,$pos1,$pos2
   my $insert = sub {
@@ -205,7 +205,7 @@ sub loadTextFh {
       foreach (sort {$a<=>$b} keys %f12) {
 	$f    = $f12{$_};
 	$f1  += $f;
-	next if ($f < $fmin); ##-- skip here so we can track "real" marginal frequencies
+	next if ($f < $fmin || $_ < 0); ##-- skip here so we can track "real" marginal frequencies
 	$fh2->print(pack($pack_r2, $_,$f));
 	++$pos2;
       }
@@ -229,13 +229,14 @@ sub loadTextFh {
       next;
     }
     $insert->() if ($i1 != $i1_cur);  ##-- insert record(s) for $i1_cur
-    $f12{$i2} += $f12;                ##-- buffer co-frequencies for $i1_cur
+    $f12{($i2//-1)} += $f12;          ##-- buffer co-frequencies for $i1_cur; track un-collocated frequencies as $i2=-1
   }
   $insert->();                        ##-- write record(s) for final $i1_cur
 
   ##-- adopt final $N and sizes
   #$cof->debug("FINAL: N1=$N1, N=$N");
   $cof->{N} = $N1>$N ? $N1 : $N;
+  $_->remap() foreach (grep {$_->can('remap')} @$cof{qw(r1 r2)});
   $cof->{size1} = $r1->size;
   $cof->{size2} = $r2->size;
 
@@ -323,7 +324,10 @@ sub loadTextFile_create {
 ##  + INHERITED from DiaColloDB::Persistent
 
 ## $bool = $cof->saveTextFh($fh,%opts)
-##  + save from text file with lines of the form "N", "FREQ ID1 ID2"*
+##  + save from text file with lines of the form:
+##      N               ##-- 1 field : N
+##      FREQ ID1        ##-- 2 fields: un-collocated portion of $f1
+##      FREQ ID1 ID2    ##-- 3 fields: co-frequency pair (ID2 >= 0)
 ##  + %opts:
 ##      i2s  => \&CODE,   ##-- code-ref for formatting indices; called as $s=CODE($i)
 ##      i2s1 => \&CODE,   ##-- code-ref for formatting item1 indices (overrides 'i2s')
@@ -343,7 +347,7 @@ sub saveTextFh {
 
   ##-- iteration variables
   my ($buf1,$i1,$s1,$f1,$end2);
-  my ($buf2,$off2,$i2,$s2,$f12);
+  my ($buf2,$off2,$i2,$s2,$f12,$f12sum);
 
   ##-- ye olde loope
   binmode($outfh,':raw');
@@ -353,12 +357,16 @@ sub saveTextFh {
     ($end2,$f1) = unpack($pack_r1,$buf1);
     $s1 = $i2s1 ? $i2s1->($i1) : $i1;
 
-    for ( ; $off2 < $end2 && !$r2->eof(); ++$off2) {
+    for ($f12sum=0; $off2 < $end2 && !$r2->eof(); ++$off2) {
       $r2->read(\$buf2) or $cof->logconfess("saveTextFile(): failed to read record $off2 from $r2->{file}: $!");
       ($i2,$f12) = unpack($pack_r2,$buf2);
-      $s2 = $i2s2 ? $i2s2->($i2) : $i2;
+      $f12sum   += $f12;
+      $s2        = $i2s2 ? $i2s2->($i2) : $i2;
       $outfh->print(join("\t", $f12, $s1,$s2), "\n");
     }
+
+    ##-- track un-collocated portion of $f1, if any
+    $outfh->print(join("\t", $f1-$f12sum, $s1), "\n") if ($f12sum != $f1);
   }
 
   return $cof;

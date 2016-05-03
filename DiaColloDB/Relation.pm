@@ -108,13 +108,14 @@ sub profile {
   my ($reldb,$coldb,%opts) = @_;
 
   ##-- common variables
+  $opts{coldb}   = $coldb; ##-- pass-down to subprofile() methods
   my $logProfile = $coldb->{logProfile};
 
   ##-- variables: by attribute
-  my $groupby= $coldb->groupby($opts{groupby});
+  my $groupby= $opts{groupby} = $coldb->groupby($opts{groupby});
   my $attrs  = $coldb->attrs();
   my $adata  = $coldb->attrData($attrs);
-  my $a2data = {map {($_->{a}=>$_)} @$adata};
+  my $a2data = $opts{a2data} = {map {($_->{a}=>$_)} @$adata};
   my $areqs  = $coldb->parseRequest($opts{query}, logas=>'query', default=>$attrs->[0]);
   foreach (@$areqs) {
     $a2data->{$_->[0]}{req} = $_->[1];
@@ -142,63 +143,58 @@ sub profile {
 
   ##-- prepare: get tuple-ids (by attribute)
   $reldb->vlog($logProfile, "profile(): get target tuple IDs");
-  my $xivec = undef;
+  my $tivec = undef;
   my $nbits = undef;
-  my $pack_xv = undef;
-  my $test_xv = undef;    ##-- test value via vec()
+  my $pack_tv = undef;
+  my $test_tv = undef;    ##-- test value via vec()
   foreach $ac (grep {$_->{reqids}} @$adata) {
     ##-- sanity checks
-    $nbits   //= $ac->{a2x}{len_i}*8;
-    $pack_xv //= "$ac->{a2x}{pack_i}*";
-    vec($test_xv='',0,$nbits) = 0x12345678 if (!defined($test_xv));
-    $reldb->logconfess("profile(): multimap pack-size mismatch: nbits($ac->{a2x}{base}.*) != $nbits")
-      if ($ac->{a2x}{len_i} != $nbits/8);
-    $reldb->logconfess("profile(): multimap pack-template '$ac->{a2x}{pack_i}' for $ac->{a2x}{base}.* is not big-endian")
-      if (pack($ac->{a2x}{pack_i},0x12345678) ne $test_xv);
+    $nbits   //= $ac->{a2t}{len_i}*8;
+    $pack_tv //= "$ac->{a2t}{pack_i}*";
+    vec($test_tv='',0,$nbits) = 0x12345678 if (!defined($test_tv));
+    $reldb->logconfess("profile(): multimap pack-size mismatch: nbits($ac->{a2t}{base}.*) != $nbits")
+      if ($ac->{a2t}{len_i} != $nbits/8);
+    $reldb->logconfess("profile(): multimap pack-template '$ac->{a2t}{pack_i}' for $ac->{a2t}{base}.* is not big-endian")
+      if (pack($ac->{a2t}{pack_i},0x12345678) ne $test_tv);
 
     ##-- target set construction
-    my $axiset = '';
-    $axiset = vunion($axiset, $ac->{a2x}->fetchraw($_), $nbits) foreach (@{$ac->{reqids}});
-    $xivec  = defined($xivec) ? vintersect($xivec, $axiset, $nbits) : $axiset;
+    my $atiset = '';
+    $atiset = vunion($atiset, $ac->{a2t}->fetchraw($_), $nbits) foreach (@{$ac->{reqids}});
+    $tivec  = defined($tivec) ? vintersect($tivec, $atiset, $nbits) : $atiset;
   }
 
   ##-- check maxExpand
   $nbits //= packsize($coldb->{pack_id});
-  my $nxis = $xivec ? length($xivec)/($nbits/8) : 0;
-  if ($coldb->{maxExpand}>0 && $nxis > $coldb->{maxExpand}) {
-    $reldb->logwarn("profile(): Warning: target set exceeds max expansion size ($nxis > $coldb->{maxExpand}): truncating");
-    substr($xivec, -($nxis - $coldb->{maxExpand})*($nbits/8)) = '';
+  my $ntis = $tivec ? length($tivec)/($nbits/8) : 0;
+  if ($coldb->{maxExpand}>0 && $ntis > $coldb->{maxExpand}) {
+    $reldb->logwarn("profile(): Warning: target set exceeds max expansion size ($ntis > $coldb->{maxExpand}): truncating");
+    substr($tivec, -($ntis - $coldb->{maxExpand})*($nbits/8)) = '';
   }
-  my $xis = [$xivec ? unpack($pack_xv, $xivec) : qw()];
+  my $tis = [$tivec ? unpack($pack_tv, $tivec) : qw()];
 
   ##-- prepare: parse and filter tuples
-  $reldb->vlog($logProfile, "profile(): parse and filter target tuples (date=$opts{date}, slice=$opts{slice}, fill=$opts{fill})");
-  my $d2xis = $coldb->xidsByDate($xis, @opts{qw(date slice fill)});
+  $reldb->vlog($logProfile, "profile(): parse date request (date=$opts{date}, slice=$opts{slice}, fill=$opts{fill})");
+  my $dreq = $opts{dreq} = $coldb->parseDateRequest(@opts{qw(date slice fill)});
 
   ##-- profile: get relation profiles (by date-slice, pass 1: f12)
   my $onepass = $opts{onepass} || ($reldb->can('subprofile2') eq \&subprofile2);
   $reldb->vlog($logProfile, "profile(): get frequency profile(s): ".($onepass ? 'single-pass' : 'pass-1'));
-  my %d2prf  = qw();
-  my @slices = sort {$a<=>$b} keys %$d2xis;
-  my ($d,$prf);
-  foreach $d (@slices) {
-    $prf = $reldb->subprofile1($d2xis->{$d}, groupby=>$groupby->{xi2g}, coldb=>$coldb, onepass=>$onepass, opts=>\%opts);
-    $prf->{label}  = $d;
-    $prf->{titles} = $groupby->{titles};
-    $d2prf{$d} = $prf;
+  my $s2prf = $reldb->subprofile1($tis, \%opts);
+  foreach (keys %$s2prf) {
+    @{$s2prf->{$_}}{qw(label titles)} = ($_,$groupby->{titles});
   }
 
   ##-- profile: complete slice-wise profiles (pass 2: f2)
-  if (!$onepass) {
+  if (!$onepass || !$opts{onepass}) {
     $reldb->vlog($logProfile, "profile(): get frequency profile(s): pass-2");
-    $reldb->subprofile2(\%d2prf, %opts, coldb=>$coldb, groupby=>$groupby, a2data=>$a2data, opts=>\%opts);
+    $reldb->subprofile2($s2prf, \%opts);
   }
 
   ##-- compile & collect: multi-profile
-  foreach $prf (values %d2prf) {
-    $prf->compile($opts{score}, eps=>$opts{eps});
+  foreach (values %$s2prf) {
+    $_->compile($opts{score}, eps=>$opts{eps});
   }
-  my $mp = DiaColloDB::Profile::Multi->new(profiles=>[@d2prf{@slices}],
+  my $mp = DiaColloDB::Profile::Multi->new(profiles=>[@$s2prf{sort {$a<=>$b} keys %$s2prf}],
 					   titles=>$groupby->{titles},
 					   qinfo =>$reldb->qinfo($coldb, %opts, qreqs=>$areqs, gbreq=>$groupby),
 					  );
@@ -297,27 +293,23 @@ sub diff {
 ##==============================================================================
 ## Relation API: default: subprofile1()
 
-## \%slice2prf = $rel->subprofile1(%opts)
-##  + get joint frequency profile for @xids (db must be opened)
-##  + %opts:
-##     groupby => \&gbsub,  ##-- key-extractor $key2_or_undef = $gbsub->($i2)
-##     coldb   => $coldb,   ##-- parent DiaColloDB object (for shared data, debugging)
-##     opts    => \%opts,   ##-- pass-through for options to top-level profile() method
+## \%slice2prf = $rel->subprofile1(\@tids,\%opts)
+##  + get slice-wise joint frequency profile(s) for \@tids (db must be opened)
+##  + %opts: as for profile(), also:
+##     coldb => $coldb,    ##-- parent DiaColloDB object (for shared data, debugging)
+##     a2data => \%a2data, ##-- maps indexed attributes to associated data structures
+##     dreq  => \%dreq,    ##-- parsed date request
 sub subprofile1 {
-  my ($rel,%opts) = @_;
+  my ($rel,$tids,$opts) = @_;
   $rel->logconfess("subprofile(): abstract method called");
 }
 
-## \%slice2prf = $rel->subprofile2(\%slice2prf, %opts)
+## \%slice2prf = $rel->subprofile2(\%slice2prf,\%opts)
 ##  + populate f2 frequencies for profiles in \%slice2prf
-##  + %opts:
-##     groupby => \%gbreq,  ##-- parsed groupby object
-##     a2data  => \%a2data, ##-- maps indexed attributes to associated datastructures
-##     coldb   => $coldb,   ##-- parent DiaColloDB object (for shared data, debugging)
-##     opts    => \%opts,   ##-- pass-through for options to top-level profile() method
+##  + %opts: as for subprofile1()
 ##  + default implementation just returns \%slice2prf
 sub subprofile2 {
-  #my ($rel,$slice2prf,%opts) = @_;
+  #my ($rel,$slice2prf,$opts) = @_;
   return $_[1];
 }
 

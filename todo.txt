@@ -1,10 +1,16 @@
 Wed, 20 Apr 2016 14:12:49 +0200
++ update DB create() and union() methods: x->t
++ change Upgrade API: pass around $header and allow destructive changes in e.g. upgrade() method?
+  - no, but DO allow backup (& maybe revert?)
++ allow un-collocated f1 value pass-through for Cofreqs::(load|save)TextFh()
+  - idea: add 2-element lines "$f1x $i1" for $f1x = f1($i1)-sum(f12($i1,*)), analogous to handling for $N
 + document new/changed modules:
   Cofreqs
   Cofreqs/v0_09
   Upgrade/Base : extra header data
   Upgrade/v0_10_x2t
   Relation (subprofile[12] calling conventions changed)
+  DiaColloDB : parseDateRequest() conventions changed, x->t
 + update db & relation create() methods
   Cofreqs
   Unigrams
