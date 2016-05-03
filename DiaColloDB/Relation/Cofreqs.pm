@@ -162,7 +162,8 @@ sub loadHeaderData {
 ##  + supports semi-sorted input: input fh must be sorted by $i1,
 ##    and all $i2 for each $i1 must be adjacent (i.e. no intervening $j1 != $i1)
 ##  + supports multiple lines for pairs ($i1,$i2) provided the above conditions hold
-##  + supports loading of $cof->{N} from single-value lines
+##  + supports loading of $cof->{N} from single-component lines
+##  + supports loading of un-collocated portion of $f1 from 2-component lines
 ##  + %opts: clobber %$cof
 sub loadTextFh {
   my ($cof,$infh,%opts) = @_;
@@ -236,9 +237,7 @@ sub loadTextFh {
   ##-- adopt final $N and sizes
   #$cof->debug("FINAL: N1=$N1, N=$N");
   $cof->{N} = $N1>$N ? $N1 : $N;
-  foreach (qw(1 2)) {
-    $cof->{"r$_"}->remap() if ($cof->{"r$_"}->can('remap'));
-  }
+  $_->remap() foreach (grep {$_->can('remap')} @$cof{qw(r1 r2)});
   $cof->{size1} = $r1->size;
   $cof->{size2} = $r2->size;
 
@@ -632,6 +631,10 @@ sub subprofile2 {
   my $r1       = $cof->{r1};
   my $pack_r1f = '@'.packsize($cof->{pack_i}).$cof->{pack_f};
 
+  ##-- optimize tightest loop for direct mmap buffer access if available
+  my $bufr1 = UNIVERSAL::isa($r1,'DiaColloDB::PackedFile::MMap') ? $r1->{bufr} : undef;
+  my $len1  = $r1->{reclen};
+
   ##-- get "most specific projected attribute" ("MSPA"): that projected attribute with largest enum
   #my $gb1      = scalar(@{$groupby->{attrs}})==1; ##-- are we grouping by a single attribute? -->optimize!
   my $mspai    = (sort {$b->[1]<=>$a->[1]} map {[$_,$a2data->{$groupby->{attrs}[$_]}{enum}->size]} (0..$#{$groupby->{attrs}}))[0][0];
@@ -675,7 +678,7 @@ sub subprofile2 {
 	next if (!defined($key2) || !exists($prf2->{f12}{$key2})); ##-- having()-failure or no item2 in target slice
 
 	##-- add item2 frequency
-	$f2 = unpack($pack_r1f, $r1->fetchraw($i2,\$buf));
+	$f2  = unpack($pack_r1f, $bufr1 ? substr($$bufr1, $i2*$len1, $len1) : $r1->fetchraw($i2,\$buf));
 	$prf2->{f2}{$key2} += $f2;
       }
     }
