@@ -188,10 +188,10 @@ sub loadTextFh {
   ##-- iteration variables
   my ($pos1,$pos2) = (0,0);
   my ($i1_cur,$f1) = (-1,0);
-  my ($f12,$i1,$i2,$f,$f1_extra);
+  my ($f12,$i1,$i2,$f);
   my $N  = 0;	  ##-- total marginal frequency as extracted from %f12
   my $N1 = 0;     ##-- total N as extracted from single-element records
-  my %f12 = qw(); ##-- ($i2=>$f12, ...) for $i1_cur
+  my %f12 = qw(); ##-- ($i2=>$f12, ...) for $i1_cur; un-collocated f1 counts appear as $i2='-1'
 
   ##-- guts for inserting records from $i1_cur,%f12,$pos1,$pos2
   my $insert = sub {
@@ -201,11 +201,11 @@ sub loadTextFh {
 	$fh1->print( pack($pack_r1,$pos2,0) x ($i1_cur-$pos1) );
       }
       ##-- dump r2-records for $i1_cur
-      $f1 = $f1_extra;
+      $f1 = 0;
       foreach (sort {$a<=>$b} keys %f12) {
 	$f    = $f12{$_};
 	$f1  += $f;
-	next if ($f < $fmin); ##-- skip here so we can track "real" marginal frequencies
+	next if ($f < $fmin || $_ < 0); ##-- skip here so we can track "real" marginal frequencies
 	$fh2->print(pack($pack_r2, $_,$f));
 	++$pos2;
       }
@@ -214,9 +214,8 @@ sub loadTextFh {
       $pos1  = $i1_cur+1;
       $N    += $f1;
     }
-    $i1_cur   = $i1;
-    $f1_extra = 0;
-    %f12      = qw();
+    $i1_cur = $i1;
+    %f12    = qw();
   };
 
   ##-- ye olde loope
@@ -229,11 +228,8 @@ sub loadTextFh {
       $N1 += $f12;		      ##-- load N values
       next;
     }
-    elsif (!defined($i2)) {
-      $f1_extra += $f12;	      ##-- track un-collocated $f1 values
-    }
-    $insert->() if ($i1 != $i1_cur);     ##-- insert record(s) for $i1_cur
-    $f12{$i2} += $f12 if (defined($i2)); ##-- buffer co-frequencies for $i1_cur
+    $insert->() if ($i1 != $i1_cur);  ##-- insert record(s) for $i1_cur
+    $f12{($i2//-1)} += $f12;          ##-- buffer co-frequencies for $i1_cur; track un-collocated frequencies as $i2=-1
   }
   $insert->();                        ##-- write record(s) for final $i1_cur
 
@@ -250,7 +246,7 @@ sub loadTextFh {
 }
 
 ## $cof = $cof->loadTextFile_create($fh,%opts)
-##  + old version of loadTextFile() which doesn't support N, semi-sorted input, or multiple ($i1,$i2) entries
+##  + old version of loadTextFile() which doesn't support N, semi-sorted input, multiple ($i1,$i2) entries, or uncollocated $f1
 ##  + not useable by union() method
 sub loadTextFile_create {
   my ($cof,$infile,%opts) = @_;
@@ -332,8 +328,8 @@ sub loadTextFile_create {
 ## $bool = $cof->saveTextFh($fh,%opts)
 ##  + save from text file with lines of the form:
 ##      N               ##-- 1 field: N
-##      FREQ ID1        ##-- 2 fields: un-collocated independent frequency portion
-##      FREQ ID1 ID2    ##-- 3 fields: co-frequency pair
+##      FREQ ID1        ##-- 2 fields: un-collocated portion of $f1
+##      FREQ ID1 ID2    ##-- 3 fields: co-frequency pair (ID2 >= 0)
 ##  + %opts:
 ##      i2s => \&CODE,   ##-- code-ref for formatting indices; called as $s=CODE($i)
 sub saveTextFh {
