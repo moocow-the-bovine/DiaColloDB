@@ -377,7 +377,7 @@ sub saveTextFh {
     $outfh->print(($keys
 		   ? (($key2s ? $key2s->($i) : $i),"\t")
 		   : qw()),
-		  $val,
+		  (UNIVERSAL::isa($val,'ARRAY') ? join(' ',@$val) : $val),
 		  "\n");
   }
 
