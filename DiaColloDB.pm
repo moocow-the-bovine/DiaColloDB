@@ -5,6 +5,7 @@
 
 package DiaColloDB;
 require 5.10.0; ##-- for // operator
+use DiaColloDB::Compat;
 use DiaColloDB::Client;
 use DiaColloDB::Logger;
 use DiaColloDB::EnumFile;
@@ -161,6 +162,7 @@ our %TDF_OPTS = (
 ##    logExport => $level,      ##-- log-level for export messages (default='info')
 ##    logProfile => $level,     ##-- log-level for verbose profiling messages (default='trace')
 ##    logRequest => $level,     ##-- log-level for request-level profiling messages (default='debug')
+##    logCompat => $level,      ##-- log-level for compatibility warnings (default='warn')
 ##    ##
 ##    ##-- runtime limits
 ##    maxExpand => $size,   ##-- maximum number of elements in query expansions (default=65535)
@@ -233,6 +235,7 @@ sub new {
 		      logExport => 'info',
 		      logProfile => 'trace',
 		      logRequest => 'debug',
+		      logCompat => 'warn',
 
 		      ##-- limits
 		      maxExpand => 65535,
@@ -313,14 +316,26 @@ sub open {
   }
 
   ##-- open: header
-  $coldb->loadHeader()
-    or $coldb->logconfess("open(): failed to load header file", $coldb->headerFile, ": $!");
-  @$coldb{keys %opts} = values %opts; ##-- clobber header options with user-supplied values
+  my ($hdr);
+  if (fcread($flags) && !fctrunc($flags)) {
+    $hdr = $coldb->readHeader()
+      or $coldb->logconfess("open(): failed to read header file '", $coldb->headerFile, "': $!");
+    $coldb->loadHeaderData($hdr)
+      or $coldb->logconess("failed to instantiate header from '", $coldb->headerFile, "': $!");
+  }
+
+  ##-- clobber header options with user-supplied values
+  @$coldb{keys %opts} = values %opts;
 
   ##-- open: check compatiblity
   my $min_version_compat = '0.10.000';
   if (!$coldb->{version} || version->parse($coldb->{version}) < version->parse($min_version_compat)) {
-    $coldb->logconfess("open(): cannot open old v$coldb->{version} index in $dbdir; try running \`dcdb-upgrade.perl $dbdir'");
+    $coldb->vlog($coldb->{logCompat}, "using compatibility mode for DB directory '$dbdir'; consider running \`dcdb-upgrade.perl $dbdir\'");
+    DiaColloDB::Compat->usecompat('v0_09');
+    bless($coldb, 'DiaColloDB::Compat::v0_09::DiaColloDB');
+    $coldb->{version} = $hdr->{version};
+    delete $coldb->{dbdir};
+    return $coldb->open($dbdir,%opts);
   }
   elsif (!defined($coldb->{xdmin}) || !defined($coldb->{xdmax})) {
     $coldb->logconfess("open(): no date-range keys {xdmin,xdmax} found in header; try running \`dcdb-upgrade.perl $dbdir'");

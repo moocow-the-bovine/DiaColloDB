@@ -1,10 +1,10 @@
 ## -*- Mode: CPerl -*-
-## File: DiaColloDB::Relation::Cofreqs::v0_09.pm
+## File: DiaColloDB::Compat::v0_09::Relation::Cofreqs.pm
 ## Author: Bryan Jurish <moocow@cpan.org>
 ## Description: collocation db, profiling relation: co-frequency database (v0.9x format)
 
-package DiaColloDB::Relation::Cofreqs::v0_09;
-use DiaColloDB::Relation;
+package DiaColloDB::Compat::v0_09::Relation::Cofreqs;
+use DiaColloDB::Compat::v0_09::Relation;
 use DiaColloDB::PackedFile;
 use DiaColloDB::PackedFile::MMap;
 use DiaColloDB::Utils qw(:fcntl :env :run :json :pack);
@@ -14,7 +14,7 @@ use strict;
 ##==============================================================================
 ## Globals & Constants
 
-our @ISA = qw(DiaColloDB::Relation);
+our @ISA = qw(DiaColloDB::Compat::v0_09::Relation);
 
 ## $PFCLASS : object class for nested PackedFile objects
 our $PFCLASS = 'DiaColloDB::PackedFile::MMap';
@@ -246,77 +246,8 @@ sub loadTextFh {
 ## $cof = $cof->loadTextFile_create($fh,%opts)
 ##  + old version of loadTextFile() which doesn't support N, semi-sorted input, or multiple ($i1,$i2) entries
 ##  + not useable by union() method
-sub loadTextFile_create {
-  my ($cof,$infile,%opts) = @_;
-  my $infh = ref($infile) ? $infile : IO::File->new("<$infile");
-  if (!ref($cof)) {
-    $cof = $cof->new(%opts);
-  } else {
-    @$cof{keys %opts} = values %opts;
-  }
-  $cof->logconfess("loadTextFile_create(): cannot load unopened database!") if (!$cof->opened);
-
-  ##-- common variables
-  my $pack_f   = $cof->{pack_f};
-  my $pack_i   = $cof->{pack_i};
-  my $pack_r1  = "${pack_i}${pack_f}"; ##-- $r1 : [$end2,$f1] @ $i1
-  my $pack_r2  = "${pack_i}${pack_f}"; ##-- $r2 : [$i2,$f12]  @ end2($i1-1)..(end2($i1)-1)
-  my $len_r2   = packsize($pack_r2);
-  my $fmin     = $cof->{fmin} // 0;
-  my ($r1,$r2) = @$cof{qw(r1 r2)};
-  $r1->truncate();
-  $r2->truncate();
-  my ($fh1,$fh2) = ($r1->{fh},$r2->{fh});
-
-  ##-- iteration variables
-  my ($pos1,$pos2,$pos2_prev) = (0,0,0);
-  my ($i1_cur,$f1_cur) = (-1,0);
-  my ($f12,$i1,$i2);
-  my $N = 0;
-
-  ##-- guts for inserting records from $i1_cur,%f12,$pos1,$pos2
-  my $insert1 = sub {
-    if ($i1_cur >= 0) {
-      ##-- dump record for $i1_cur
-      if ($i1_cur != $pos1) {
-	##-- we've skipped one or more $i1 because it had no collocates (e.g. kern01 i1=287123="Untier/1906")
-	$fh1->print( pack($pack_r1,$pos2_prev,0) x ($i1_cur-$pos1) );
-      }
-      $fh1->print(pack($pack_r1, $pos2,$f1_cur));
-      $pos1      = $i1_cur+1;
-      $pos2_prev = $pos2;
-    }
-    $N     += $f1_cur;
-    $i1_cur = $i1;
-    $f1_cur = 0;
-  };
-
-  ##-- ye olde loope
-  binmode($infh,':raw');
-  while (defined($_=<$infh>)) {
-    ($f12,$i1,$i2) = split(' ',$_,3);
-    #next if ($f12 < $fmin);  		##-- don't skip here so that we can track "real" marginal frequencies
-    $insert1->() if ($i1 != $i1_cur);	##-- insert record for $i1_cur
-
-    ##-- track marginal f($i1)
-    $f1_cur += $f12;
-    next if ($f12 < $fmin		##-- minimum co-occurrence frequency filter
-	     #|| $i1==$i2  		##-- suppress identity collocations (... but we can't eliminate e.g. lemma-identity if using complex tuples!)
-	    );
-
-    ##-- dump record to $r2
-    $fh2->print(pack($pack_r2, $i2,$f12));
-    ++$pos2;
-  }
-  $insert1->(); 			##-- dump final record for $i1_cur
-
-  ##-- adopt final $N and sizes
-  $cof->{N} = $N;
-  $cof->{size1} = $r1->size;
-  $cof->{size2} = $r2->size;
-
-  $infh->close() if (!ref($infile));
-  return $cof;
+BEGIN {
+  *loadTextFile_create = DiaColloDB::Compat->nocompat("loadTextFile_create");
 }
 
 ## $bool = $obj->saveTextFile($filename_or_handle, %opts)
@@ -382,76 +313,10 @@ sub saveTextFh {
 ##    (
 ##     size=>$size,  ##-- set initial size (number of types)
 ##    )
-sub create {
-  my ($cof,$coldb,$tokfile,%opts) = @_;
-
-  ##-- create/clobber
-  $cof = $cof->new() if (!ref($cof));
-  @$cof{keys %opts} = values %opts;
-
-  ##-- ensure openend
-  $cof->opened
-    or $cof->open(undef,'rw')
-      or $cof->logconfess("create(): failed to open co-frequency database '", ($cof->{base}//'-undef-'), "': $!");
-
-  ##-- token reader fh
-  CORE::open(my $tokfh, "<$tokfile")
-    or $cof->logconfess("create(): open failed for token-file '$tokfile': $!");
-  binmode($tokfh,':raw');
-
-  ##-- sort filter
-  env_push(LC_ALL=>'C');
-  my $tmpfile = "$cof->{base}.dat";
-  my $sortfh = opencmd("| sort -nk1 -nk2 | uniq -c - $tmpfile")
-    or $cof->logconfess("create(): open failed for pipe to sort|uniq: $!");
-  binmode($sortfh,':raw');
-
-  ##-- stage1: generate pairs
-  my $n = $cof->{dmax} // 1;
-  $cof->vlog('trace', "create(): stage1: generate pairs (dmax=$n)");
-  my (@sent,$i,$j,$wi,$wj);
-  while (!eof($tokfh)) {
-    @sent = qw();
-    while (defined($_=<$tokfh>)) {
-      chomp;
-      last if (/^$/ );
-      push(@sent,$_);
-    }
-    next if (!@sent);
-
-    ##-- get pairs
-    foreach $i (0..$#sent) {
-      $wi = $sent[$i];
-      print $sortfh
-	(map {"$wi\t$sent[$_]\n"}
-	 grep {$_>=0 && $_<=$#sent && $_ != $i}
-	 (($i-$n)..($i+$n))
-	);
-    }
-  }
-  $sortfh->close()
-    or $cof->logconfess("create(): failed to close pipe to sort|uniq: $!");
-  env_pop();
-
-  ##-- stage2: load pair-frequencies
-  $cof->vlog('trace', "create(): stage2: load pair frequencies (fmin=$cof->{fmin})");
-  $cof->loadTextFile_create($tmpfile)
-    or $cof->logconfess("create(): failed to load pair frequencies from $tmpfile: $!");
-
-  ##-- stage3: header
-  $cof->saveHeader()
-    or $cof->logconfess("create(): failed to save header: $!");
-
-  ##-- unlink temp file
-  unlink($tmpfile) if (!$cof->{keeptmp});
-
-  ##-- done
-  return $cof;
-}
+##  + DISABLED
 
 ##==============================================================================
 ## Relation API: union
-
 
 ## $cof = CLASS_OR_OBJECT->union($coldb, \@pairs, %opts)
 ##  + merge multiple unigram unigram indices from \@pairs into new object
@@ -460,56 +325,7 @@ sub create {
 ##    - \@xi2u may also be a mapping object supporting a toArray() method
 ##  + %opts: clobber %$cof
 ##  + implicitly flushes the new index
-sub union {
-  my ($cof,$coldb,$pairs,%opts) = @_;
-
-  ##-- create/clobber
-  $cof = $cof->new() if (!ref($cof));
-  @$cof{keys %opts} = values %opts;
-
-  ##-- tempfile (input for sort)
-  my $tmpfile = "$cof->{base}.udat";
-  my $tmpfh   = IO::File->new(">$tmpfile")
-    or $cof->logconfess("union(): open failed for tempfile $tmpfile: $!");
-  binmode($tmpfh,':raw');
-
-  ##-- stage1: extract pairs and N
-  $cof->vlog('trace', "union(): stage1: extract pairs");
-  my ($pair,$pcof,$pi2u);
-  my $pairi=0;
-  foreach $pair (@$pairs) {
-    ($pcof,$pi2u) = @$pair;
-    $pi2u         = $pi2u->toArray() if (UNIVERSAL::can($pi2u,'toArray'));
-    $pcof->saveTextFh($tmpfh, i2s=>sub {$pi2u->[$_[0]]})
-      or $cof->logconfess("union(): failed to extract pairs for argument $pairi");
-    ++$pairi;
-  }
-  $tmpfh->close()
-    or $cof->logconfess("union(): failed to close tempfile $tmpfile: $!");
-
-  ##-- sort temp-file
-  env_push(LC_ALL=>'C');
-  my $sortfh = opencmd("sort -n -k2 -k3 $tmpfile |")
-    or $cof->logconfess("union(): open failed for pipe from sort: $!");
-  binmode($sortfh,':raw');
-
-  ##-- stage2: load pair-frequencies
-  $cof->vlog('trace', "union(): stage2: load pair frequencies (fmin=$cof->{fmin})");
-  $cof->loadTextFh($sortfh)
-    or $cof->logconfess("union(): failed to load pair frequencies from $tmpfile: $!");
-  $sortfh->close()
-    or $cof->logconfess("union(): failed to close pipe from sort: $!");
-  env_pop();
-
-  ##-- stage3: header
-  $cof->saveHeader()
-    or $cof->logconfess("union(): failed to save header: $!");
-
-  ##-- unlink temp file
-  CORE::unlink($tmpfile) if (!$cof->{keeptmp});
-
-  return $cof;
-}
+##  + DISABLED
 
 ##==============================================================================
 ## Relation API: dbinfo
@@ -555,7 +371,7 @@ sub f12 {
 ##==============================================================================
 ## Relation API: default: profiling
 
-## $prf = $cof->subprofile1(%opts)
+## $prf = $cof->subprofile1(\@xids,%opts)
 ##  + get joint co-frequency profile for @xids (db must be opened; f1 and f12 only)
 ##  + %opts:
 ##     groupby => \&gbsub,  ##-- key-extractor $key2_or_undef = $gbsub->($i2)
@@ -563,7 +379,6 @@ sub f12 {
 ##     onepass => $bool,    ##-- use fast but incorrect 1-pass method?
 sub subprofile1 {
   my ($cof,$ids,%opts) = @_;
-  $cof->logconfess("API changing, this code won't work");
 
   $ids   = [$ids] if (!UNIVERSAL::isa($ids,'ARRAY'));
   my $r1 = $cof->{r1};
@@ -615,9 +430,7 @@ sub subprofile1 {
 ##     groupby => \%gbreq,  ##-- parsed groupby object
 ##     a2data  => \%a2data, ##-- maps indexed attributes to associated datastructures
 ##     coldb   => $coldb,   ##-- parent DiaColloDB object (for shared data, debugging)
-##     #slices  => \@slices, ##-- slices (optional)
 ##     ...                  ##-- other options as for profile(), esp. qw(slice)
-##  + default implementation does nothing
 sub subprofile2 {
   my ($cof,$slice2prf,%opts) = @_;
 
@@ -715,6 +528,11 @@ sub qinfo {
 	 };
 }
 
+##==============================================================================
+## Pacakge Alias(es)
+package DiaColloDB::Compat::v0_09::Cofreqs;
+use strict;
+our @ISA = qw(DiaColloDB::Compat::v0_09::Relation::Cofreqs);
 
 ##==============================================================================
 ## Footer

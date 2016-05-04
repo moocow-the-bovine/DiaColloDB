@@ -7,7 +7,7 @@
 
 =head1 NAME
 
-DiaColloDB::MultiMapFile::v0_08 - diachronic collocation db, integer->integer* multimap file, backwards-compatible (v0.08.x)
+DiaColloDB::Compat::v0_08::MultiMapFile - diachronic collocation db, integer->integer* multimap file, backwards-compatible (v0.08.x)
 
 =cut
 
@@ -20,7 +20,7 @@ DiaColloDB::MultiMapFile::v0_08 - diachronic collocation db, integer->integer* m
  ##========================================================================
  ## PRELIMINARIES
  
- use DiaColloDB::MultiMapFile::v0_08;
+ use DiaColloDB::Compat::v0_08::MultiMapFile;
  
  ...
 
@@ -32,7 +32,7 @@ DiaColloDB::MultiMapFile::v0_08 - diachronic collocation db, integer->integer* m
 
 =head1 DESCRIPTION
 
-DiaColloDB::MultiMapFile::v0_08
+DiaColloDB::Compat::v0_08::MultiMapFile
 provides a backwards-compatible
 L<DiaColloDB::MultiMapFile|DiaColloDB::MultiMapFile> interface
 for multimap files created by DiaColloDB E<lt>= v0.08.006.

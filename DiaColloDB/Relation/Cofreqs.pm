@@ -4,7 +4,7 @@
 ## Description: collocation db, profiling relation: co-frequency database (using pair of DiaColloDB::PackedFile)
 
 package DiaColloDB::Relation::Cofreqs;
-use DiaColloDB::Relation::Cofreqs::v0_09; ##-- compatibility package
+use DiaColloDB::Compat;
 use DiaColloDB::Relation;
 use DiaColloDB::PackedFile;
 use DiaColloDB::PackedFile::MMap;
@@ -39,6 +39,7 @@ our $PFCLASS = 'DiaColloDB::PackedFile::MMap';
 ##    pack_f   => $pack_f,     ##-- pack-template for frequencies (default='N')
 ##    pack_d   => $pack_d,     ##-- pack-tempalte for dates (default='n')
 ##    keeptmp  => $bool,       ##-- keep temporary files? (default=false)
+##    logCompat => $level,     ##-- log-level for compatibility warnings (default='warn')
 ##    ##
 ##    ##-- size info (after open() or load())
 ##    size1    => $size1,      ##-- == $r1->size()
@@ -68,6 +69,7 @@ sub new {
 		    r3 => $PFCLASS->new(),
 		    N  => 0,
 		    version => $DiaColloDB::VERSION,
+		    logCompat => 'warn',
 		    @_
 		   }, (ref($that)||$that));
   $cof->{class} = ref($cof);
@@ -106,8 +108,9 @@ sub open {
   ##-- check compatibility
   my $min_version = qv(0.10.000);
   if ($hdr && (!defined($hdr->{version}) || version->parse($hdr->{version}) < $min_version)) {
-    $cof->warn("using compatibility mode for $cof->{base}.*; consider running \`dcdb-upgrade.perl ", dirname($cof->{base}), "\'");
-    bless($cof, 'DiaColloDB::Relation::Cofreqs::v0_09');
+    $cof->vlog($cof->{logCompat}, "using compatibility mode for $cof->{base}.*; consider running \`dcdb-upgrade.perl ", dirname($cof->{base}), "\'");
+    DiaColloDB::Compat->usecompat('v0_09');
+    bless($cof, 'DiaColloDB::Compat::v0_09::Relation::Cofreqs');
     $cof->{version} = $hdr->{version};
     return $cof->open($base,$flags);
   }

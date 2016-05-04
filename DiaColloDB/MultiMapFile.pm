@@ -4,7 +4,6 @@
 ## Description: collocation db, integer->integer* multimap file, e.g. for expansion indices
 
 package DiaColloDB::MultiMapFile;
-use DiaColloDB::MultiMapFile::v0_08; ##-- compat
 use DiaColloDB::Logger;
 use DiaColloDB::Persistent;
 use DiaColloDB::Utils qw(:fcntl :json :pack);
@@ -30,6 +29,7 @@ our @ISA = qw(DiaColloDB::Persistent);
 ##    flags => $flags,     ##-- default: 'r'
 ##    pack_i => $pack_i,   ##-- integer pack template (default='N')
 ##    size => $size,       ##-- number of mapped , like scalar(@data)
+##    logCompat => $level, ##-- log-level for compatibility warnings (default='warn')
 ##    ##
 ##    ##-- in-memory construction
 ##    a2b => \@a2b,        ##-- maps source integers to (packed) target integer-sets: [$a] => pack("${pack_i}*", @bs)
@@ -53,6 +53,7 @@ sub new {
 		    size => 0,
 		    pack_i => 'N',
 		    version => $DiaColloDB::VERSION,
+		    logCompat => 'warn',
 
 		    a2b=>[],
 
@@ -100,8 +101,9 @@ sub open {
   ##-- check compatibility
   my $min_version = qv(0.09.001);
   if ($hdr && (!defined($hdr->{version}) || version->parse($hdr->{version}) < $min_version)) {
-    $mmf->warn("using compatibility mode for $mmf->{base}.*; consider running \`dcdb-upgrade.perl ", dirname($mmf->{base}), "\'");
-    bless($mmf, 'DiaColloDB::MultiMapFile::v0_08');
+    $mmf->vlog($mmf->{logCompat}, "using compatibility mode for $mmf->{base}.*; consider running \`dcdb-upgrade.perl ", dirname($mmf->{base}), "\'");
+    DiaColloDB::Compat->usecompat('v0_08');
+    bless($mmf, 'DiaColloDB::Compat::v0_08::MultiMapFile');
     $mmf->{version} = $hdr->{version};
     return $mmf->open($base,$flags);
   }
@@ -114,8 +116,8 @@ sub open {
   binmode($_,':raw') foreach (@$mmf{qw(afh bfh)});
 
   ##-- computed pack-templates & lengths
-  $mmf->{pack_a} = "($mmf->{pack_i})[2]";
-  $mmf->{pack_b} = "($mmf->{pack_i})*";
+  $mmf->{pack_a} = $mmf->{pack_i}."[2]";
+  $mmf->{pack_b} = $mmf->{pack_i}."*";
   $mmf->{len_i}  = packsize($mmf->{pack_i});
   $mmf->{len_a}  = packsize($mmf->{pack_a});
 

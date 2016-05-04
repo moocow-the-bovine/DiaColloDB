@@ -4,6 +4,8 @@
 ## Description: collocation db, integer->integer* multimap file, e.g. for expansion indices (v0.08.x format)
 
 package DiaColloDB::Compat::v0_08::MultiMapFile;
+use DiaColloDB::MultiMapFile;
+use DiaColloDB::Compat;
 use DiaColloDB::Logger;
 use DiaColloDB::Persistent;
 use DiaColloDB::Utils qw(:fcntl :json :pack);
@@ -13,7 +15,7 @@ use strict;
 ##==============================================================================
 ## Globals & Constants
 
-our @ISA = qw(DiaColloDB::Persistent DiaColloDB::Compat);
+our @ISA = qw(DiaColloDB::MultiMapFile DiaColloDB::Compat);
 
 ##==============================================================================
 ## Constructors etc.
@@ -32,7 +34,9 @@ our @ISA = qw(DiaColloDB::Persistent DiaColloDB::Compat);
 ##    ##-- in-memory construction
 ##    a2b => \@a2b,        ##-- maps source integers to (packed) target integer-sets: [$a] => pack("${pack_i}*", @bs)
 ##    ##
-##    ##-- pack lengths (after open())
+##    ##-- computed pack-templates and -lengths (after open())
+##    pack_a => $pack_a,   ##-- "${pack_i}"
+##    pack_b => $pack_a,   ##-- "${pack_i}*"
 ##    len_i => $len_i,     ##-- bytes::length(pack($pack_i,0))
 ##    len_o => $len_o,     ##-- bytes::length(pack($pack_o,0))
 ##    len_l => $len_l,     ##-- bytes::length(pack($pack_l,0))
@@ -58,6 +62,8 @@ sub new {
 		     #len_o => undef,
 		     #len_l => undef,
 		     #len_a => undef,
+		     #pack_a => undef,
+		     #pack_b => undef,
 
 		     #afh =>undef,
 		     #bfh =>undef,
@@ -104,6 +110,8 @@ sub open {
   ##-- computed pack lengths & templates
   $mmf->{pack_o} //= $mmf->{pack_i};
   $mmf->{pack_l} //= $mmf->{pack_i};
+  $mmf->{pack_a} = $mmf->{pack_i};
+  $mmf->{pack_b} = $mmf->{pack_i}."*";
   $mmf->{len_i} = packsize($mmf->{pack_i});
   $mmf->{len_o} = packsize($mmf->{pack_o});
   $mmf->{len_l} = packsize($mmf->{pack_l});
@@ -113,34 +121,14 @@ sub open {
 }
 
 ## $mmf_or_undef = $mmf->close()
-sub close {
-  my $mmf = shift;
-  if ($mmf->opened && fcwrite($mmf->{flags})) {
-    $mmf->flush() or return undef;
-  }
-  !defined($mmf->{afh}) or $mmf->{afh}->close() or return undef;
-  !defined($mmf->{bfh}) or $mmf->{bfh}->close() or return undef;
-  $mmf->{a2b} //= [],
-  undef $mmf->{base};
-  return $mmf;
-}
+##  + INHERITED from MultiMapFile
 
 ## $bool = $mmf->opened()
-sub opened {
-  my $mmf = shift;
-  return
-    (
-     #defined($mmf->{base}) &&
-     defined($mmf->{afh})
-     && defined($mmf->{bfh})
-    );
-}
+##  + INHERITED from MultiMapFile
 
 ## $bool = $mmf->dirty()
 ##  + returns true iff some in-memory structures haven't been flushed to disk
-sub dirty {
-  return @{$_[0]{a2b}};
-}
+##  + INHERITED from MultiMapFile
 
 ## $bool = $mmf->flush()
 ##  + flush in-memory structures to disk
@@ -216,31 +204,16 @@ sub toArray {
 
 ## $mmf = $mmf->fromArray(\@a2b)
 ##  + clobbers $mmf contents, steals \@a2b
-sub fromArray {
-  my ($mmf,$a2b) = @_;
-  $mmf->{a2b}  = $a2b;
-  $mmf->{size} = scalar(@{$mmf->{a2b}});
-  return $mmf;
-}
+##  + INHERITED from MultiMapFile
 
 ## $bool = $mmf->load()
 ##  + loads files to memory; must be opened
-sub load {
-  my $mmf = shift;
-  return $mmf->fromArray($mmf->toArray);
-}
+##  + INHERITED from MultiMapFile
 
 ## $mmf = $mmf->save()
 ## $mmf = $mmf->save($base)
 ##  + saves multimap to $base; really just a wrapper for open() and flush()
-sub save {
-  my ($mmf,$base) = @_;
-  $mmf->open($base,'rw') if (defined($base));
-  $mmf->logconfess("save(): cannot save un-opened multimap") if (!$mmf->opened);
-  $mmf->flush() or $mmf->logconfess("save(): failed to flush to $mmf->{base}: $!");
-  return $mmf;
-}
-
+##  + INHERITED from MultiMapFile
 
 ##--------------------------------------------------------------
 ## I/O: header
@@ -248,25 +221,14 @@ sub save {
 
 ## @keys = $coldb->headerKeys()
 ##  + keys to save as header
-sub headerKeys {
-  return grep {!ref($_[0]{$_}) && $_ !~ m{^(?:flags|perms|base)$}} keys %{$_[0]};
-}
+##  + INHERITED from MultiMapFile
 
 ## $bool = $CLASS_OR_OBJECT->loadHeader()
 ##  + wraps $CLASS_OR_OBJECT->loadHeaderFile($CLASS_OR_OBJ->headerFile())
 ##  + INHERITED from DiaColloDB::Persistent
 
 ## $bool = $mmf->loadHeaderData($hdr)
-sub loadHeaderData {
-  my ($mmf,$hdr) = @_;
-  if (!defined($hdr) && (fcflags($mmf->{flags})&O_CREAT) != O_CREAT) {
-    $mmf->logconfess("loadHeader() failed to load '$mmf->{base}.hdr': $!");
-  }
-  elsif (defined($hdr)) {
-    return $mmf->SUPER::loadHeaderData($hdr);
-  }
-  return $mmf;
-}
+##  + INHERITED from MultiMapFile
 
 ## $bool = $enum->saveHeader()
 ##  + inherited from DiaColloDB::Persistent
@@ -281,23 +243,7 @@ sub loadHeaderData {
 ## $mmf = $CLASS_OR_OBJECT->loadTextFh($fh)
 ##  + loads from text file with lines of the form "A B1 B2..."
 ##  + clobbers multimap contents
-sub loadTextFh {
-  my ($mmf,$fh,%opts) = @_;
-  $mmf = $mmf->new(%opts) if (!ref($mmf));
-
-  my $pack_b = "($mmf->{pack_i})*";
-  my @a2b  = qw();
-  my ($a,@b);
-  while (defined($_=<$fh>)) {
-    chomp;
-    next if (/^%%/ || /^$/);
-    ($a,@b) = split(' ',$_);
-    $a2b[$a] = pack($pack_b, @b);
-  }
-
-  ##-- clobber multimap
-  return $mmf->fromArray(\@a2b);
-}
+##  + INHERITED from MultiMapFile
 
 ## $bool = $obj->saveTextFile($filename_or_handle, %opts)
 ##  + wraps saveTextFh()
@@ -308,30 +254,7 @@ sub loadTextFh {
 ##  + %opts:
 ##     a2s=>\&a2s  ##-- stringification code for A items, called as $s=$a2s->($bi)
 ##     b2s=>\&b2s  ##-- stringification code for B items, called as $s=$b2s->($bi)
-sub saveTextFh {
-  my ($mmf,$fh,%opts) = @_;
-
-  my $a2s    = $opts{a2s};
-  my $b2s    = $opts{b2s};
-  my $pack_b = "($mmf->{pack_i})*";
-  my $a2b    = $mmf->toArray;
-  my $a      = 0;
-  foreach (@$a2b) {
-    if (defined($_)) {
-      $fh->print(($a2s ? $a2s->($a) : $a),
-		 "\t",
-		 join(' ',
-		      ($b2s
-		       ? (map {$b2s->($_)} unpack($pack_b,$_))
-		       : unpack($pack_b, $_))),
-		 "\n");
-    }
-    ++$a;
-  }
-
-  return $mmf;
-}
-
+##  + INHERITED from MultiMapFile
 
 ##==============================================================================
 ## Methods: population (in-memory only)
@@ -340,13 +263,7 @@ sub saveTextFh {
 ## $newsize = $mmf->addPairs($a,\@bs)
 ##  + adds mappings $a=>$b foreach $b in @bs
 ##  + multimap must be loaded to memory
-sub addPairs {
-  my $mmf = shift;
-  my $a   = shift;
-  my $bs  = UNIVERSAL::isa($_[0],'ARRAY') ? $_[0] : \@_;
-  $mmf->{a2b}[$a] .= pack("$mmf->{pack_i}*", @$bs);
-  return $mmf->{size} = scalar(@{$mmf->{a2b}});
-}
+##  + INHERITED from MultiMapFile
 
 ##==============================================================================
 ## Methods: lookup
@@ -378,9 +295,7 @@ sub fetchraw {
 ## \@bs_or_undef = $mmf->fetch($a)
 ##  + returns array \@bs of targets for $a, or undef if not found
 ##  + multimap must be opened
-sub fetch {
-  return [unpack("($_[0]{pack_i})*", $_[0]->fetchraw(@_[1..$#_]))];
-}
+##  + INHERITED from MultiMapFile
 
 ##==============================================================================
 ## Footer

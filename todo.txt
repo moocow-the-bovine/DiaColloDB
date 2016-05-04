@@ -1,12 +1,25 @@
 Wed, 20 Apr 2016 14:12:49 +0200
 + update DB create() and union() methods: x->t
++ update Unigrams relation
 + change Upgrade API: pass around $header and allow destructive changes in e.g. upgrade() method?
   - no, but DO allow backup (& maybe revert?)
-+ allow un-collocated f1 value pass-through for Cofreqs::(load|save)TextFh()
-  - idea: add 2-element lines "$f1x $i1" for $f1x = f1($i1)-sum(f12($i1,*)), analogous to handling for $N
++ DONE: allow un-collocated f1 value pass-through for Cofreqs::(load|save)TextFh()
++ throw out or port unused f12(), f1() in Cofreqs
++ re-factor compatibility wrappers into DiaColloDB/Compat/vx_y_z/...
++ DEBUG: weird -1pass inconsistencies for ./dcdb-query.perl DBDIR Mann -ds=0 -1pass
+  v0.09.x e.g. (N f1 f2 f12 score slice lemma):
+    289801166	487461	463195	8513	8.196888	0	Frau
+    289801166	487461	485656	4666	7.295717	0	Mann
+  v0.10.x e.g. (N f1 f2 f12 score slice lemma):
+    289801166	487461	479230	8513	8.172757	0	Frau
+    289801166	487461	510840	4666	7.258855	0	Mann
+  - QUESTION: why are f2 values different across DiaColloDB versions?
+  - QUESTION: is f2(Mann) > f1 in v0.10.x ?
+    
 + document new/changed modules:
   Cofreqs
   Cofreqs/v0_09
+  PackedFile/MMap : added optimized bsearch
   Upgrade/Base : extra header data
   Upgrade/v0_10_x2t
   Relation (subprofile[12] calling conventions changed)
@@ -14,6 +27,7 @@ Wed, 20 Apr 2016 14:12:49 +0200
 + update db & relation create() methods
   Cofreqs
   Unigrams
+  TDF(?)
 + update kaskade DBs
   1) update DBs from not-yet-installed new DiaColloDB build dir
      ./dcdb-upgrade.perl -u ~/dstar/corpora/$corpus/web/diacollo/data
