@@ -512,10 +512,12 @@ sub dbinfo {
 
 ##==============================================================================
 ## Utilities: lookup
+##  + BROKEN in v0.10.000 (x(+date)->t(-date) db tuples)
 
 ## $f = $cof->f1( @ids)
 ## $f = $cof->f1(\@ids)
 ##  + get total marginal unigram frequency (db must be opened)
+##  + UNUSED
 sub f1 {
   my $cof = shift;
   my $ids = UNIVERSAL::isa($_[0],'ARRAY') ? @{$_[0]} : \@_;

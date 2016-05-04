@@ -1,9 +1,9 @@
 ## -*- Mode: CPerl -*-
-## File: DiaColloDB::MultiMapFile::v0_08.pm
+## File: DiaColloDB::Compat::v0_08::MultiMapFile
 ## Author: Bryan Jurish <moocow@cpan.org>
 ## Description: collocation db, integer->integer* multimap file, e.g. for expansion indices (v0.08.x format)
 
-package DiaColloDB::MultiMapFile::v0_08;
+package DiaColloDB::Compat::v0_08::MultiMapFile;
 use DiaColloDB::Logger;
 use DiaColloDB::Persistent;
 use DiaColloDB::Utils qw(:fcntl :json :pack);
@@ -13,7 +13,7 @@ use strict;
 ##==============================================================================
 ## Globals & Constants
 
-our @ISA = qw(DiaColloDB::Persistent);
+our @ISA = qw(DiaColloDB::Persistent DiaColloDB::Compat);
 
 ##==============================================================================
 ## Constructors etc.

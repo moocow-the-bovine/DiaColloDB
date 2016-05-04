@@ -299,6 +299,25 @@ sub fromArray {
 ##==============================================================================
 ## API: binary search
 
+## $nbits_or_undef = $pf->vnbits()
+##  + returns number of bits for using vec()-style search via Algorithm::BinarySearch::Vec, or undef if not supported
+##  + currently UNUSED
+sub vnbits {
+  my $pf     = shift;
+  my $packas = $pf->{packas};
+  my $reclen = $pf->{reclen};
+  if ($reclen==1) {
+    return 8;
+  } elsif ($reclen==2) {
+    return 16 if (unpack('n',pack($packas,0xfedc)) == 0xfedc);
+  } elsif ($reclen==4) {
+    return 32 if (unpack('N',pack($packas,0xfedca987)) == 0xfedca987);
+  } elsif ($reclen==8) {
+    return 64 if (unpack('Q>',pack($packas,0xfedca9876543210f)) == 0xfedca9876543210f);
+  }
+  return undef;
+}
+
 ## $index_or_undef = $pf->bsearch($key, %opts)
 ##  + %opts:
 ##    lo => $ilo,        ##-- index lower-bound for search (default=0)
@@ -308,6 +327,7 @@ sub fromArray {
 ##    or undef if no such $i exists.
 ##  + $key must be a numeric value, and records must be stored in ascending order
 ##    by numeric value of key (as unpacked by $packas) between $ilo and $ihi
+##  + TODO: optimize this to use Algorithm::BinarySearch::Vec (only applicable for scalar pack-templates)
 sub bsearch {
   my ($pf,$key,%opts) = @_;
   my $ilo    = $opts{lo} // 0;
