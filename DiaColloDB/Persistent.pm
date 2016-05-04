@@ -5,8 +5,11 @@
 
 
 package DiaColloDB::Persistent;
-use DiaColloDB::Utils qw(:file);
+use DiaColloDB::Utils qw(:file :list);
 use IO::File;
+use File::Basename qw(dirname basename);
+use File::Path qw(make_path);
+use File::Copy qw();
 use strict;
 
 ##==============================================================================
@@ -60,8 +63,68 @@ sub unlink {
   CORE::unlink(grep {-e $_} @files);
 }
 
+## $bool = $obj->copy($todir, %opts)
+##  + copies object file(s) from $fromdir to $todir, creating $todir if it doesn't already exist;
+##    options %opts:
+##    (
+##     from   => $from,      ##-- replace prefix $from in file(s) with $todir; default=undef: flat copy to $todir
+##     method => \&method,   ##-- use CORE-ref \&method to copy file(s); default=\&File::Copy::copy
+##     label  => $label,     ##-- report errors as '$label'
+##     close  => $bool,      ##-- implicitly close() object before operation? (default=0)
+##    )
+sub copy {
+  my ($obj,$todir,%opts) = @_;
+  my $method = $opts{method} || \&File::Copy::copy;
+  my $label  = $opts{label}  || 'copy';
+  my $from   = $opts{from};
+  my @files  = $obj->diskFiles();
+  $obj->close() if ($opts{close} && $obj->can('close'));
+  my ($src,$dst,$dstdir);
+  foreach $src (@files) {
+    if (defined($from)) {
+      ($dst = $src) =~ s{^\Q$from\E}{$todir};
+    } else {
+      $dst = "$todir/".basename($src);
+    }
+    $dstdir = dirname($dst);
+    -d $dstdir
+      or make_path($dstdir)
+      or $obj->logconfess("$label(): failed to create target (sub)directory '$dstdir': $!");
+    $method->($src,$dst)
+      or $obj->logconfess("$label(): failed to transfer file '$src' to to '$dst': $!");
+  }
+  return 1;
+}
+
+## $bool = $obj->move($todir, %opts)
+##  + wrapper for $obj->copy($todir, %opts,method=>\&File::Copy::move,label=>'move',close=>1)
+sub move {
+  return $_[0]->copy(@_[1..$#_], method=>\&File::Copy::move, label=>'move', close=>1);
+}
+
+## $bool = $obj->syscopy($todir, %opts)
+##  + wrapper for copy() which propagates source-file timestamps
+sub syscopy {
+  my $obj = shift;
+  if (File::Copy->can('syscopy') && File::Copy->can('syscopy') ne File::Copy->can('copy')) {
+    return $obj->copy(@_, method=>sub { File::Copy::syscopy($_[0],$_[1],3) }, label=>'syscopy');
+  } else {
+    return $obj->copy(@_,
+		      label=>'syscopy',
+		      method=> sub {
+			my ($src,$dst) = @_;
+			File::Copy::copy($src,$dst) or return undef;
+			$dst = "$dst/".basename($src) if (-d $dst);
+			my @stat = stat($src);
+			my ($atime,$mtime) = @stat[8,9];
+			CORE::utime($atime,$mtime,$dst)
+			    or $obj->warn("syscopy(): failed to propagate timestamps from '$src' to '$dst': $!");
+		      });
+  }
+}
+
 ##==============================================================================
-## I/O
+## IO
 
 ##--------------------------------------------------------------
 ## I/O: Header

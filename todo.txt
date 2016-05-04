@@ -17,13 +17,14 @@ Wed, 20 Apr 2016 14:12:49 +0200
   - QUESTION: is f2(Mann) > f1 in v0.10.x ?
     
 + document new/changed modules:
+  Compat/*
   Cofreqs
-  Cofreqs/v0_09
   PackedFile/MMap : added optimized bsearch
   Upgrade/Base : extra header data
   Upgrade/v0_10_x2t
   Relation (subprofile[12] calling conventions changed)
   DiaColloDB : parseDateRequest() conventions changed, x->t
+  Persistent::move
 + update db & relation create() methods
   Cofreqs
   Unigrams

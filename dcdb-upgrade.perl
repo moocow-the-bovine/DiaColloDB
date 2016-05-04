@@ -21,6 +21,12 @@ BEGIN {
 ##-- program vars
 our $prog  = basename($0);
 
+##-- upgrade options
+our %uopts = (
+	      backup=>1,
+	      keep=>0,
+	     );
+
 ##======================================================================
 ## command-line
 my $act = 'upgrade';
@@ -31,6 +37,9 @@ GetOptions(
 	   'check|c' => => sub { $act='check' },
 	   'upgrade|u' => sub { $act='upgrade' },
 	   'force-apply|fa|apply|a=s' => sub { $act='apply'; @upgrades = grep {($_//'') ne ''} split(/[\s\,]+/,$_[1]) },
+	   ##
+	   'backup|b!' => \$uopts{backup},
+	   'keep|k!'  => \$uopts{keep},
 	  );
 
 pod2usage({-exitval=>0,-verbose=>0}) if ($act eq 'help');
@@ -57,7 +66,7 @@ my (@needed);
 if ($act =~ /^(?:check|upgrade)$/) {
   ##-- list required upgrades
   $up->info("checking applicable upgrades for $dbdir");
-  @needed = $up->needed($dbdir, $up->available);;
+  @needed = $up->needed($dbdir, \%uopts, $up->available);
   print map {"\t$_\n"} @needed;
   if (!@needed) {
     $up->info("no upgrades applicable for $dbdir");
@@ -66,12 +75,12 @@ if ($act =~ /^(?:check|upgrade)$/) {
 
 if ($act eq 'upgrade') {
   ##-- apply available upgrades
-  $up->upgrade($dbdir,@needed)
+  $up->upgrade($dbdir, \%uopts, @needed)
     or die("$0: upgrade failed for $dbdir");
 }
 elsif ($act eq 'apply') {
   ##-- force-apply selected upgrades
-  $up->upgrade($dbdir,@upgrades)
+  $up->upgrade($dbdir,\%uopts, @upgrades)
     or die("$0: force-apply upgrade(s) failed");
 }
 
@@ -101,6 +110,8 @@ dcdb-upgrade.perl - upgrade a DiaColloDB directory in-place
    -c, -check      # check applicability of available upgrades for DBDIR
    -u, -upgrade    # apply any applicable upgrades to DBDIR (default)
    -a, -apply PKGS # force-apply comma-separated upgrade package(s) to DBDIR
+   -[no]backup     # do/don't create auto-backup (default=do)
+   -[no]keep       # do/don't keep temporary files created by upgrade (default=don't)
 
 =cut
 

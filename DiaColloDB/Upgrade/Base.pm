@@ -15,76 +15,134 @@ our @ISA = qw(DiaColloDB::Logger);
 ##==============================================================================
 ## API
 
-## $version = $CLASS_OR_OBJECT->toversion()
-##  + returns default target version; default just returns $DiaColloDB::VERSION
+## $up = $CLASS_OR_OBJECT->new($dbdir?, %opts)
+##  + create a new upgrader for local DB directory $dbdir
+##  + if $dbdir is specified, it is stored in $up->{dbdir} and its header is loaded to $up->{hdr}
+##  + common %opts, %$up:
+##    (
+##     backup=>$bool,     ##-- perform auto-backup? (default=1)
+##     keep => $bool,     ##-- keep temporary files? (default=0)
+##     timestamp=>$stamp, ##-- timestamp of this upgrade operation (default:DiaColloDB::Utils::timestamp(time))
+##    )
+sub new {
+  my $that  = shift;
+  my $dbdir = scalar(@_)%2==0 ? undef : shift;
+  my $up = bless({
+		  dbdir=>$dbdir,
+		  backup=>1,
+		  keep=>0,
+		  timestamp=>DiaColloDB::Utils::timestamp(time),
+		  @_,
+		 }, ref($that)||$that);
+
+  ##-- load header if available
+  $up->{hdr} = $up->dbheader($up->{dbdir}) if (defined($up->{dbdir}));
+  return $up;
+}
+
+## $pkg = $CLASS_OR_OBJECT->label()
+##  + returns upgrade package name
+sub label {
+  return ref($_[0])||$_[0];
+}
+
+## $version = $up->toversion()
+##  + (reccommonded): returns default target version; default just returns $DiaColloDB::VERSION
 sub toversion {
   return $DiaColloDB::VERSION;
 }
 
-## $bool = $CLASS_OR_OBJECT->needed($dbdir)
-##  + returns true iff local index in $dbdir needs upgrade
+## $bool = $up->needed()
+##  + returns true iff local index in $up->{dbdir} needs upgrade
 ##  + default implementation returns true iff $coldb->{version} is less than $CLASS_OR_OBJECT->toversion()
 sub needed {
-  my ($that,$dbdir) = @_;
-  my $header = $that->dbheader($dbdir);
-  return version->parse($header->{version}//'0.0.0') < version->parse($that->toversion);
+  my $up = shift;
+  my $header = $up->dbheader();
+  return version->parse($header->{version}//'0.0.0') < version->parse($up->toversion);
 }
 
-## $bool = $CLASS_OR_OBJECT->upgrade($coldb, \%info)
-##  + performs upgrade in-place on $coldb
+## $bool = $up->upgrade()
+##  + performs upgrade in-place on $up->{dbdir}
 sub upgrade {
   $_[0]->logconfess("ugprade() method not implemented");
 }
 
-## \%uinfo = $CLASS_OR_OBJECT->uinfo($dbdir?,%info)
+##==============================================================================
+## Backups
+
+## $bool = $up->backup()
+##  + perform backup any files we expect to change to $up->backupdir()
+##  + call this from $up->upgrade()
+sub backup {
+  $_[0]->warn("backup() method not implemented, no data will be backed up!");
+}
+
+## $dir = $up->backupdir()
+##  + returns name of a backup directory for this upgrade
+sub backupdir {
+  my $up = shift;
+  my ($dbdir,$stamp) = @$up{qw(dbdir timestamp)};
+  $stamp =~ s/\W//g;
+  $stamp =~ s/T/_/;
+  (my $suffix = $up->label."_$stamp") =~ s/^DiaColloDB::Upgrade:://;
+  return "$dbdir/upgrade_$suffix";
+}
+
+
+##==============================================================================
+## Utilities
+
+## \%hdr = $CLASS_OR_OBJECT->dbheader($dbdir?)
+##  + reads $dbdir/header.json
+##  + default uses cached $CLASS_OR_OBJECT->{hdr} if available
+sub dbheader {
+  my ($up,$dbdir) = @_;
+  $dbdir //= $up->{dbdir} if (ref($up));
+  return $up->{hdr}
+    if (ref($up) && defined($up->{hdr}) && ($up->{dbdir}//'') eq $dbdir);
+  my $hdr = DiaColloDB::Utils::loadJsonFile("$dbdir/header.json")
+      or $up->logconfess("dbheader(): failed to read header $dbdir/header.json: $!");
+  return $hdr;
+}
+
+## \%uinfo = $up->uinfo($dbdir?,%info)
 ##  + returns a default upgrade-info structure for %info
 ##  + conventional keys %uinfo =
 ##    (
 ##     version_from => $vfrom,    ##-- source version (default='unknown')
 ##     version_to   => $vto,      ##-- target version (default=$CLASS_OR_OBJECT->_toversion)
-##     timestamp    => $time,     ##-- timestamp (default=DiaColloDB::Utils::timestamp(time))
+##     timestamp    => $time,     ##-- timestamp (default=$up->{timestamp} || DiaColloDB::Utils::timestamp(time))
 ##     by           => $who,      ##-- user or script-name (default=$CLASS)
 ##    )
 sub uinfo {
-  my $that  = shift;
-  my $dbdir = ((scalar(@_)%2)==0 ? undef : shift);
-  my $header = $dbdir ? $that->dbheader($dbdir) : {};
+  my $up    = shift;
+  my $dbdir = ((scalar(@_)%2)==0 ? undef : shift) // $up->{hdr};
+  my $header = $up->{hdr} // ($dbdir ? $up->dbheader($dbdir) : {});
   return {
 	  version_from=>($header->{version} // 'unknown'),
-	  version_to=>$that->toversion,
-	  timestamp=>DiaColloDB::Utils::timestamp(time),
-	  by=>(ref($that)||$that),
+	  version_to=>$up->toversion,
+	  timestamp=>($up->{timestamp} || DiaColloDB::Utils::timestamp(time)),
+	  by=>$up->label,
 	  @_
 	 };
 }
 
-## $bool = $CLASS_OR_OBJECT->updateHeader($dbdir, \%extra_uinfo, \%extra_header)
+## $bool = $up->updateHeader(\%extra_uinfo, \%extra_header_data)
 ##  + updates header $dbdir/header.json
 sub updateHeader {
-  my ($that,$dbdir,$xinfo,$xhdr) = @_;
-  my $uinfo = $that->uinfo($dbdir, %{$xinfo//{}});
+  my ($up,$xinfo,$xhdr) = @_;
+  my $dbdir = $up->{dbdir};
+  my $uinfo = $up->uinfo($dbdir, %{$xinfo//{}});
   return if (!defined($uinfo)); ##-- silent upgrade
 
-  my $header   = $that->dbheader($dbdir);
+  my $header   = $up->dbheader($dbdir);
   my $upgraded = ($header->{upgraded} //= []);
   unshift(@$upgraded, $uinfo);
   $header->{version} = $uinfo->{version_to} if ($uinfo->{version_to});
   @$header{keys %$xhdr} = values %$xhdr if ($xhdr);
   DiaColloDB::Utils::saveJsonFile($header, "$dbdir/header.json")
-      or $that->logconfess("updateHeader(): failed to save header data to $dbdir/header.json: $!");
-  return $that;
-}
-
-##==============================================================================
-## Utils
-
-## \%hdr = $CLASS_OR_OBJECT->dbheader($dbdir)
-##  + reads $dbdir/header.json
-sub dbheader {
-  my ($that,$dbdir) = @_;
-  my $hdr = DiaColloDB::Utils::loadJsonFile("$dbdir/header.json")
-      or $that->logconfess("dbheader(): failed to read header $dbdir/header.json: $!");
-  return $hdr;
+      or $up->logconfess("updateHeader(): failed to save header data to $dbdir/header.json: $!");
+  return $up;
 }
 
 

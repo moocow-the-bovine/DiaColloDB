@@ -12,29 +12,29 @@ our @ISA = qw(DiaColloDB::Upgrade::Base);
 ##==============================================================================
 ## API
 
-## $version = $CLASS_OR_OBJECT->toversion()
+## $version = $up->toversion()
 ##  + returns default target version; default just returns $DiaColloDB::VERSION
 sub toversion {
   return '0.04';
 }
 
-## $bool = $CLASS_OR_OBJECT->needed($dbdir)
+## $bool = $up->needed()
 ##  + returns true iff local index in $dbdir needs upgrade
 sub needed {
-  my ($that,$dbdir) = @_;
-  my $header = $that->dbheader($dbdir);
-  return !defined($header->{xdmin}) || !defined($header->{xdmax});
+  my $up = shift;
+  return !defined($up->{hdr}{xdmin}) || !defined($up->{hdr}{xdmax});
 }
 
 ## $bool = $CLASS_OR_OBJECT->_upgrade($dbdir, \%info)
 ##  + performs upgrade
 sub upgrade {
-  my ($that,$dbdir) = @_;
+  my $up = shift;
 
   ##-- xdmin, xdmax: from xenum
-  my $hdr   = $that->dbheader($dbdir);
+  my $dbdir = $up->{dbdir};
+  my $hdr   = $up->dbheader;
   my $xenum = $DiaColloDB::XECLASS->new(base=>"$dbdir/xenum")
-    or $that->logconfess("failed to open (tuple+date) enum $dbdir/xenum.*: $!");
+    or $up->logconfess("failed to open (tuple+date) enum $dbdir/xenum.*: $!");
   my $pack_xdate  = '@'.(packsize($hdr->{pack_id}) * scalar(@{$hdr->attrs})).$hdr->{pack_date};
   my ($dmin,$dmax,$d) = ('inf','-inf');
   foreach (@{$xenum->toArray}) {
@@ -43,11 +43,15 @@ sub upgrade {
     $dmin = $d if ($d < $dmin);
     $dmax = $d if ($d > $dmax);
   }
-  $that->vlog('info', "extracted date-range \"xdmin\":$dmin, \"xdmax\":$dmax");
+  $up->vlog('info', "extracted date-range \"xdmin\":$dmin, \"xdmax\":$dmax");
 
   ##-- update header
-  return $that->updateHeader($dbdir,undef,{xdmin=>$dmin,xdmax=>$dmax});
+  @$hdr{qw(xdmin xdmax)} = ($dmin,$dmax);
+  return $up->updateHeader();
 }
+
+##==============================================================================
+## Utilities
 
 
 ##==============================================================================

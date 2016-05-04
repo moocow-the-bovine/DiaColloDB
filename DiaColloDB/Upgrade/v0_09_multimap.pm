@@ -6,6 +6,7 @@
 
 package DiaColloDB::Upgrade::v0_09_multimap;
 use DiaColloDB::Upgrade::Base;
+use DiaColloDB::Compat::v0_08;
 use strict;
 our @ISA = qw(DiaColloDB::Upgrade::Base);
 
@@ -13,42 +14,76 @@ our @ISA = qw(DiaColloDB::Upgrade::Base);
 ## API
 ## + Upgrade: v0_09_multimap: v0.08.x -> v0.09.x : MultiMapFile format change
 
-## $version = $CLASS_OR_OBJECT->toversion()
+## $version = $up->toversion()
 ##  + returns default target version; default just returns $DiaColloDB::VERSION
 sub toversion {
-  return '0.09.001';
+  return '0.09.000';
 }
 
-## $bool = $CLASS_OR_OBJECT->_upgrade($dbdir, \%info)
+## $bool = $up->backup()
+##  + perform backup any files we expect to change to $up->backupdir()
+##  + call this from $up->upgrade()
+sub backup {
+  my $up    = shift;
+  if (!$up->{backup}) {
+    $up->warn("backup disabled by user request");
+    return 1;
+  }
+
+  my $dbdir = $up->{dbdir};
+  my $hdr   = $up->dbheader;
+  my $backd = $up->backupdir;
+
+  ##-- backup: by attribute
+  foreach my $attr (@{$hdr->{attrs}}) {
+    my $base = "$dbdir/${attr}_2x";
+    my $mmf  = $DiaColloDB::MMCLASS->new(base=>$base, logCompat=>'off')
+      or $up->logconfess("failed to open attribute multimap $base.*");
+
+    ##-- backup
+    $up->info("backing up $base.* to $backd/");
+    $mmf->syscopy($backd, from=>$dbdir)
+      or $up->logconfess("backup failed for $base.*: $!");
+  }
+  return 1;
+}
+
+
+## $bool = $up->upgrade()
 ##  + performs upgrade
 sub upgrade {
-  my ($that,$dbdir) = @_;
+  my $up = shift;
 
-  ##-- open db
-  my $coldb = DiaColloDB->new(dbdir=>$dbdir)
-    or $that->logconfess("failed to open local DiaColloDB index directory $dbdir: $!");
+  ##-- backup
+  $up->backup() or $up->logconfess("backup failed");
+
+  ##-- open header
+  my $dbdir = $up->{dbdir};
+  my $hdr   = $up->dbheader;
 
   ##-- convert by attribute
-  foreach my $attr (@{$coldb->{attrs}}) {
-    my $mmf  = $coldb->{"${attr}2x"};
-    my $base = $mmf->{base};
-    $that->info("upgrading $base.*");
+  foreach my $attr (@{$hdr->{attrs}}) {
+    my $base = "$dbdir/${attr}_2x";
+    my $mmf  = $DiaColloDB::MMCLASS->new(base=>$base, logCompat=>'off')
+      or $up->logconfess("failed to open attribute multimap $base.*");
+
+    ##-- sanity check(s)
+    $up->info("upgrading $base.*");
+    $up->warn("multimap data in $base.* doesn't seem to be v0.08 format; trying to upgrade anyways")
+      if (!$mmf->isa('DiaColloDB::Compat::v0_08::MultiMapFile'));
 
     ##-- convert
-    my %mmopts = (pack_i=>$mmf->{pack_i});
-    my $tmp = $DiaColloDB::MMCLASS->new(flags=>'rw', %mmopts)
-      or $that->logconfess("upgrade(): failed to create new DiaColloDB::MultiMapFile object for $base.*");
+    my $tmp = $DiaColloDB::MMCLASS->new(flags=>'rw', pack_i=>$mmf->{pack_i})
+      or $up->logconfess("upgrade(): failed to create new DiaColloDB::MultiMapFile object for $base.*");
     $tmp->fromArray($mmf->toArray)
-      or $that->logconfess("upgrade(): failed to convert data for $base.*");
+      or $up->logconfess("upgrade(): failed to convert data for $base.*");
     $mmf->close();
     $tmp->save($base)
-      or $that->logconfess("upgrade(): failed to save new data for $base.*");
-    $coldb->{"${attr}2x"} = $tmp;
+      or $up->logconfess("upgrade(): failed to save new data for $base.*");
   }
 
   ##-- update header
-  $coldb->close();
-  return $that->updateHeader($dbdir);
+  return $up->updateHeader();
 }
 
 

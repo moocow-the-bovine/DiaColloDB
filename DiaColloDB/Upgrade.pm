@@ -28,34 +28,40 @@ our @upgrades = (
 ##==============================================================================
 ## Top-level
 
-## @upgrades = $CLASS_OR_OBJECT->available()
+## @upgrade_pkgs = $CLASS_OR_OBJECT->available()
 ##  + returns list of available upgrade-packages (suffixes)
 sub available {
   return @upgrades;
 }
 
-## @needed = $CLASS_OR_OBJECT->needed($dbdir, @upgrades)
-##  + returns list of those upgrades in @upgrades which are needed for DB in $dbdir
+## @needed = $CLASS_OR_OBJECT->needed($dbdir, \%opts?, @upgrade_pkgs)
+##  + returns list of those package-names in @upgrade_pkgs which are needed for DB in $dbdir
+##  + %opts are passed to upgrade-package new() methods
 sub needed {
-  my ($that,$dbdir,@upgrades) = @_;
+  my $that  = shift;
+  my $dbdir = shift;
+  my $opts  = UNIVERSAL::isa($_[0],'HASH') ? shift : {};
   return grep {
     my $pkg = $_;
-    $pkg = "DiaColloDB::Upgrade::$pkg" if (!$pkg->can('needed'));
-    $that->warn("unknown upgrade package $_") if (!$pkg->can('needed'));
-    $pkg->can('needed') && $pkg->needed($dbdir)
-  } @upgrades;
+    $pkg = "DiaColloDB::Upgrade::$pkg" if (!UNIVERSAL::can($pkg,'needed'));
+    $that->warn("unknown upgrade package $_") if (!UNIVERSAL::can($pkg,'needed'));
+    $pkg->new($dbdir,%$opts)->needed();
+  } @_;
 }
 
-## $bool = $CLASS_OR_OBJECT->upgrade($dbdir, @upgrades)
+## $bool = $CLASS_OR_OBJECT->upgrade($dbdir, \%opts?, \@upgrades_or_pkgs)
 ##  + applies upgrades in @upgrades to DB in $dbdir
+##  + %opts are passed to upgrade-package new() methods
 sub upgrade {
-  my ($that,$dbdir,@upgrades) = @_;
-  foreach (@upgrades) {
+  my $that  = shift;
+  my $dbdir = shift;
+  my $opts  = UNIVERSAL::isa($_[0],'HASH') ? shift : {};
+  foreach (@_) {
     my $pkg = $_;
-    $pkg = "DiaColloDB::Upgrade::$pkg" if (!$pkg->can('needed'));
-    $that->logconfess("unknown upgrade package $_") if (!$pkg->can('upgrade'));
+    $pkg = "DiaColloDB::Upgrade::$pkg" if (!UNIVERSAL::can($pkg,'upgrade'));
+    $that->logconfess("unknown upgrade package $_") if (!UNIVERSAL::can($pkg,'upgrade'));
     $that->info("applying upgrade package $_ to $dbdir/");
-    $pkg->upgrade($dbdir)
+    $pkg->new($dbdir,%$opts)->upgrade()
       or $that->logconfess("upgrade via package $pkg failed for $dbdir/");
   }
   return $that;

@@ -2347,7 +2347,7 @@ sub bench_dx_vs_gx {
 #bench_dx_vs_gx(@ARGV);
 
 ##----------------------------------------------------------------------
-## bench v0.10 Cofreqs load
+## test v0.10 Cofreqs load
 sub test_cofreqs_load {
   my $dbdir = shift // 'kern01-1k.d';
   my $file  = "$dbdir/cof.x2t";
@@ -2362,8 +2362,38 @@ sub test_cofreqs_load {
   print STDERR "$0: text_cofreqs_load done\n";
   exit 0;
 }
-test_cofreqs_load(@ARGV);
+#test_cofreqs_load(@ARGV);
 
+##----------------------------------------------------------------------
+## test v0.10 Persistent move
+sub test_move {
+  #my $base = shift || 'tmp/l_enum';
+  #my $fromdir = undef;
+  #my $todir = shift || 'tmp/e';
+  ##
+  #my $base    = shift || 'tmp/e/l_enum';
+  #my $fromdir = shift || 'tmp';
+  #my $todir   = shift || 'tmp2';
+  ##
+  my $base = shift || 'tmp2/e/l_enum';
+  my $fromdir = shift || 'tmp2/e/l_';
+  my $todir = shift || 'tmp/ll_';
+
+  DiaColloDB->ensureLog();
+  my $hdr = DiaColloDB::Utils::loadJsonFile("$base.hdr")
+    or die("$0: failed to load header $base.hdr: $!");
+  my $class = $hdr->{class}
+    or die("$0: no class in $base.hdr: $!");
+  my $obj = $class->new()
+    or die("$0: could not create object of class $class: $!");
+  $obj->open($base)
+    or die("$0: open failed for $base via class $class: $!");
+  $obj->move($todir,from=>$fromdir)
+    or die("$0: move() failed for $base via class $class to $todir: $!");
+  print STDERR "$0: test_move() done\n";
+  exit 0;
+}
+test_move @ARGV;
 
 
 ##==============================================================================
