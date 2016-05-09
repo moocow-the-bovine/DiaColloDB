@@ -146,6 +146,7 @@ sub dbinfo {
 ##  + get frequency profile for @xids (db must be opened)
 ##  + %opts:
 ##     groupby => \&gbsub,  ##-- key-extractor $key2_or_undef = $gbsub->($i2)
+##     coldb   => $coldb,   ##-- for debugging
 sub subprofile1 {
   my ($ug,$ids,%opts) = @_;
   $ids   = [$ids] if (!UNIVERSAL::isa($ids,'ARRAY'));
