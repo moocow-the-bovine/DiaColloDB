@@ -24,11 +24,9 @@ sub toversion {
 ##  + perform backup any files we expect to change to $up->backupdir()
 ##  + call this from $up->upgrade()
 sub backup {
-  my $up    = shift;
-  if (!$up->{backup}) {
-    $up->warn("backup disabled by user request");
-    return 1;
-  }
+  my $up = shift;
+  $up->SUPER::backup() or return undef;
+  return 1 if (!$up->{backup});
 
   my $dbdir = $up->{dbdir};
   my $hdr   = $up->dbheader;
@@ -41,8 +39,8 @@ sub backup {
       or $up->logconfess("failed to open attribute multimap $base.*");
 
     ##-- backup
-    $up->info("backing up $base.* to $backd/");
-    $mmf->syscopy($backd, from=>$dbdir)
+    $up->info("backing up $base.*");
+    $mmf->copyto_a($backd, from=>$dbdir)
       or $up->logconfess("backup failed for $base.*: $!");
   }
   return 1;

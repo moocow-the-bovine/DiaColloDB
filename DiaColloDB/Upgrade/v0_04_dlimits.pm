@@ -6,6 +6,7 @@
 
 package DiaColloDB::Upgrade::v0_04_dlimits;
 use DiaColloDB::Upgrade::Base;
+use DiaColloDB::Utils qw(:pack);
 use strict;
 our @ISA = qw(DiaColloDB::Upgrade::Base);
 
@@ -30,19 +31,24 @@ sub needed {
 sub upgrade {
   my $up = shift;
 
+  ##-- backup
+  $up->backup() or return undef;
+
   ##-- xdmin, xdmax: from xenum
   my $dbdir = $up->{dbdir};
   my $hdr   = $up->dbheader;
   my $xenum = $DiaColloDB::XECLASS->new(base=>"$dbdir/xenum")
     or $up->logconfess("failed to open (tuple+date) enum $dbdir/xenum.*: $!");
-  my $pack_xdate  = '@'.(packsize($hdr->{pack_id}) * scalar(@{$hdr->attrs})).$hdr->{pack_date};
-  my ($dmin,$dmax,$d) = ('inf','-inf');
+  my $pack_xdate  = '@'.(packsize($hdr->{pack_id}) * scalar(@{$hdr->{attrs}})).$hdr->{pack_date};
+  my ($dmin,$dmax) = (undef,undef);
+  my ($d);
   foreach (@{$xenum->toArray}) {
-    next if (!$_);
-    next if (!defined($d = unpack($pack_xdate,$_))); ##-- strangeness: getting only 9-bytes in $_ for 10-byte values in file and toArray(): why?!
-    $dmin = $d if ($d < $dmin);
-    $dmax = $d if ($d > $dmax);
+    next if (!$_ || !($d=unpack($pack_xdate,$_))); ##-- ignore null keys and dates
+    $dmin = $d if (!defined($dmin) || $d < $dmin);
+    $dmax = $d if (!defined($dmax) || $d > $dmax);
   }
+  $dmin //= 0;
+  $dmax //= 0;
   $up->vlog('info', "extracted date-range \"xdmin\":$dmin, \"xdmax\":$dmax");
 
   ##-- update header

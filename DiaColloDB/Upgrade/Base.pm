@@ -72,9 +72,27 @@ sub upgrade {
 
 ## $bool = $up->backup()
 ##  + perform backup any files we expect to change to $up->backupdir()
-##  + call this from $up->upgrade()
+##  + subclasses should call this from $up->upgrade()
+##  + default implementation just backs up "$dbdir/header.json", emitting a warning
+##    if $up->{backup} is false
 sub backup {
-  $_[0]->warn("backup() method not implemented, no data will be backed up!");
+  my $up = shift;
+
+  ##-- were backups requested?
+  if (!$up->{backup}) {
+    $up->warn("backup(): backups disabled by user request");
+    return 1;
+  }
+
+  ##-- backup db-header
+  my $dbdir  = $up->{dbdir};
+  my $backd  = $up->backupdir;
+  $up->info("using backup directory $backd/");
+  $up->info("backing up $dbdir/header.json");
+  DiaColloDB::Utils::copyto_a("$dbdir/header.json", $backd)
+      or $up->logconfess("updateHeader(): failed to backup header to $backd/: $!");
+
+  return 1;
 }
 
 ## $dir = $up->backupdir()
@@ -128,10 +146,17 @@ sub uinfo {
 }
 
 ## $bool = $up->updateHeader(\%extra_uinfo, \%extra_header_data)
-##  + updates header $dbdir/header.json
+##  + updates header $dbdir/header.json, creating backup if requested
 sub updateHeader {
   my ($up,$xinfo,$xhdr) = @_;
   my $dbdir = $up->{dbdir};
+
+  ##-- backup old header if requested
+  !$up->{backup}
+    or DiaColloDB::Utils::copyto("$dbdir/header.json", $up->backupdir)
+    or $up->logconfess("updateHeader(): failed to backup header to ".$up->backupdir.": $!");
+
+  ##-- get upgrade info
   my $uinfo = $up->uinfo($dbdir, %{$xinfo//{}});
   return if (!defined($uinfo)); ##-- silent upgrade
 
