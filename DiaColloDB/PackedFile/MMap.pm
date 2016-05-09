@@ -7,6 +7,7 @@ package DiaColloDB::PackedFile::MMap;
 use DiaColloDB::PackedFile;
 use DiaColloDB::Utils qw(:fcntl :pack);
 use File::Map qw(map_handle);
+use Fcntl qw(:DEFAULT :seek);
 use Carp;
 use strict;
 no warnings 'portable';
@@ -69,6 +70,13 @@ sub open {
 ##  + re-maps $pf->{bufr} from $pf->{fh}
 sub remap {
   my $pf = shift;
+
+  ##-- try to ensure filehandle is flushed to disk to handle recent writes
+  if (fcwrite($pf->{flags}//'r')) {
+    CORE::seek($pf->{fh},0,SEEK_END) or return undef;
+    CORE::truncate($pf->{fh}, $pf->{fh}->tell) or return undef;
+  }
+  CORE::seek($pf->{fh},0,SEEK_SET) or return undef;
 
   ##-- mmap handles
   map_handle(my $buf,  $pf->{fh},  fcperl($pf->{flags}));
@@ -380,7 +388,10 @@ sub bsearch {
 
 ## @keys = $coldb->headerKeys()
 ##  + keys to save as header
-##  + INHERITED from PackedFile
+sub headerKeys {
+  my $pf = shift;
+  return grep {!ref($_[0]{$_}) && $_ !~ m{^(?:bufp)$}} $pf->SUPER::headerKeys(@_);
+}
 
 ##--------------------------------------------------------------
 ## I/O: text

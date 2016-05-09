@@ -45,7 +45,7 @@ sub backup {
   }
 
   ##-- backup: relations
-  foreach my $base (qw(xf cof)) {
+  foreach my $base (map {"$dbdir/$_"} qw(xf cof)) {
     $up->info("backing up $base.*");
     copyto_a([glob "$base.*"], $backd)
       or $up->logconfess("backup failed for $base.*: $!");
@@ -79,6 +79,7 @@ sub upgrade {
   $up->info("creating $dbdir/tenum.* from $dbdir/xenum.*");
   my $xenum = $DiaColloDB::XECLASS->new(base=>"$dbdir/xenum", pack_s=>$hdr->{pack_x})
     or $up->logconfess("failed to open $dbdir/xenum.*: $!");
+  my %xeopts = map {($_=>$xenum->{$_})} qw(pack_i pack_o pack_l);
   my $xi2s = $xenum->toArray;
   my $xi2t = '';
   my $xi2d = '';
@@ -94,18 +95,23 @@ sub upgrade {
     vec($xi2d,$xi,$nbits_d) = unpack($pack_xd,$xs);
     vec($xi2t,$xi,$nbits_t) = $ti;
   }
-  my $tenum = $xenum->new(pack_s=>$pack_t, map {($_=>$xenum->{$_})} qw(pack_i pack_o pack_l));
+  $xenum->unlink()
+    or $up->logconfess("failed to remove old $dbdir/xenum.*: $!");
+  my $tenum = $DiaColloDB::XECLASS->new(pack_s=>$pack_t, %xeopts);
   $tenum->fromHash($ts2i)->save("$dbdir/tenum")
     or $up->logconfess("failed to save $dbdir/tenum.*: $!");
 
   ##-- convert attribute-wise multimaps & pack-templates
   foreach my $attr (@{$hdr->{attrs}}) {
     $up->info("creating multimap $dbdir/${attr}_2t.* from $dbdir/${attr}_2x.*");
-    my $xmm = $DiaColloDB::MMCLASS->new(flags=>'r', base=>"$dbdir/${attr}_2x")
+    my $xmm = $DiaColloDB::MMCLASS->new(flags=>'r', base=>"$dbdir/${attr}_2x", logCompat=>'off')
       or $up->logconfess("failed to open $dbdir/${attr}_2x.*");
-    my $mma     = $xmm->toArray();
+    my $mma    = $xmm->toArray();
+    my %mmopts = (map {($_=>$xmm->{$_})} qw(pack_i));
+    $xmm->unlink()
+      or $up->logconfess("failed to unlink $dbdir/${attr}_2x.*");
 
-    my $pack_bs = "($xmm->{pack_i})*";
+    my $pack_bs = "$mmopts{pack_i}*";
     my ($ai,$tmp);
     for ($ai=0; $ai <= $#$mma; ++$ai) {
       $tmp = undef;
@@ -117,7 +123,7 @@ sub upgrade {
 			);
     }
 
-    my $tmm = $xmm->new(flags=>'rw', (map {($_=>$xmm->{$_})} qw(pack_i)))
+    my $tmm = $DiaColloDB::MMCLASS->new(flags=>'rw', %mmopts)
       or $up->logconfess("failed to create new multimap for attribute '$attr'");
     $tmm->fromArray($mma)
       or $up->logconfess("failed to convert multimap data for attirbute '$attr'");
@@ -126,42 +132,74 @@ sub upgrade {
 
     ##-- adopt pack template
     $hdr->{"pack_t${attr}"} = $hdr->{"pack_x${attr}"};
+    delete $hdr->{"pack_x${attr}"};
   }
 
-  ##-- TODO: convert relations: unigrams
-  $up->info("creating new unigrams index $dbdir/tf.* from $dbdir/xf.*: TODO");
+  ##-- convert relations: unigrams
+  {
+    my $xf = DiaColloDB::Relation::Unigrams->new(base=>"$dbdir/xf", logCompat=>'off')
+      or $up->logconfess("failed to open unigram index '$dbdir/xf.dba': $!");
+    $up->info("upgrading unigram index $dbdir/xf.*");
+    $up->warn("unigram data in $dbdir/xf.* doesn't seem to be v0.09 format; trying to upgrade anyways")
+      if (!$xf->isa('DiaColloDB::Compat::v0_09::Relation::Unigrams'));
+
+    env_push('LC_ALL'=>'C');
+    my $tmpfile = "$dbdir/upgrade_xf.tmp";
+    my $sortfh = opencmd("| sort -nk2 -nk3 -o \"$tmpfile\"")
+      or $up->logconfess("open failed for pipe to sort for '$tmpfile': $!");
+    binmode($sortfh,':raw');
+    $xf->saveTextFh_v0_10($sortfh, i2s=>sub { join("\t", vec($xi2t,$_[0],$nbits_t), vec($xi2d,$_[0],$nbits_d)) })
+      or $up->logconfess("failed to create temporary file '$tmpfile'");
+    $sortfh->close()
+      or $up->logconfess("failed to close pipe to sort for '$tmpfile': $!");
+    env_pop();
+    $xf->unlink()
+      or $up->logconfess("failed to unlink old $dbdir/xf.*: $!");
+
+    my $tf = DiaColloDB::Relation::Unigrams->new(base=>"$dbdir/xf", flags=>'rw', version=>$up->toversion,
+						 pack_i=>$hdr->{pack_id}, pack_f=>$hdr->{pack_f}, pack_d=>$hdr->{pack_date});
+    $tf->loadTextFile($tmpfile)
+      or $up->logconfess("failed to load unigram data from '$tmpfile': $!");
+  }
 
   ##-- convert relations: cofreqs
-  my $cof = DiaColloDB::Relation::Cofreqs->new(base=>"$dbdir/cof", logCompat=>'off')
-    or $up->logconfess("failed to open co-frequency index $dbdir/cof.*: $!");
-  if ($cof->isa('DiaColloDB::Compat::v0_09::Relation::Cofreqs')) {
-    $up->info("creating new co-frequency index $dbdir/tcof.* from $dbdir/cof.*: TODO");
-  } else {
-    $up->warn("co-frequency data in $dbdir/cof.* doesn't seem to be v0.09 format; trying to upgrade anyways");
+  {
+    my $cof = DiaColloDB::Relation::Cofreqs->new(base=>"$dbdir/cof", logCompat=>'off')
+      or $up->logconfess("failed to open co-frequency index $dbdir/cof.*: $!");
+    my %cofopts = (map {($_=>$cof->{$_})} qw(pack_i pack_f fmin dmax));
+    $up->info("upgrading co-frequency index $dbdir/cof.*");
+    $up->warn("co-frequency data in $dbdir/cof.* doesn't seem to be v0.09 format; trying to upgrade anyways")
+      if (!$cof->isa('DiaColloDB::Compat::v0_09::Relation::Cofreqs'));
+
+    env_push('LC_ALL'=>'C');
+    my $tmpfile = "$dbdir/upgrade_cof.tmp";
+    my $sortfh = opencmd("| sort -nk2 -nk3 -nk4 -o \"$tmpfile\"")
+      or $up->logconfess("open failed for pipe to sort for '$tmpfile': $!");
+    binmode($sortfh,':raw');
+    $cof->saveTextFh($sortfh,
+		     i2s1=>sub { join("\t", vec($xi2t,$_[0],$nbits_t), vec($xi2d,$_[0],$nbits_d)) },
+		     i2s2=>sub { vec($xi2t,$_[0],$nbits_t) })
+      or $up->logconfess("failed to create temporary file '$tmpfile'");
+    $sortfh->close()
+      or $up->logconfess("failed to close pipe to sort for '$tmpfile': $!");
+    env_pop();
+    $cof->unlink()
+      or $up->logconfess("failed to unlink old $dbdir/cof.*: $!");
+
+    my $tcof = DiaColloDB::Relation::Cofreqs->new(base=>"$dbdir/cof", flags=>'rw', version=>$up->toversion,
+						  pack_d=>$hdr->{pack_date}, %cofopts);
+    $tcof->loadTextFile($tmpfile)
+      or $up->logconfess("failed to load co-frequency data from '$tmpfile': $!");
   }
-  env_push('LC_ALL'=>'C');
-  my $sortfh = opencmd("| sort -nk2 -nk3 -nk4 -o \"$dbdir/cof.x2t\"")
-    or $up->logconfess("open failed for pipe from sort for $dbdir/cof.x2t: $!");
-  binmode($sortfh,':raw');
-  $cof->saveTextFh($sortfh,
-		   i2s1=>sub { join("\t", vec($xi2t,$_[0],$nbits_t), vec($xi2d,$_[0],$nbits_d)) },
-		   i2s2=>sub { vec($xi2t,$_[0],$nbits_t) })
-    or $up->logconfess("failed to create temporary file $dbdir/cof.x2t");
-  $sortfh->close()
-    or $up->logconfess("failed to close pipe to sort: $!");
-  env_pop();
-
-  my $tcof = DiaColloDB::Relation::Cofreqs->new(base=>"$dbdir/tcof", flags=>'rw', version=>$up->toversion,
-						(map {($_=>$cof->{$_})} qw(pack_i pack_f fmin dmax)),
-						pack_d => $hdr->{pack_date});
-  $tcof->loadTextFile("$dbdir/cof.x2t")
-    or $up->logconfess("failed to load co-frequency data from $dbdir/cof.x2t: $!");
-
-
-  $up->warn("what now?");
 
   ##-- cleanup
-  #CORE::unlink("$dbdir/cof.x2t");
+  if (!$up->{keep}) {
+    $up->info("removing temporary file(s)");
+    CORE::unlink("$dbdir/upgrade_xf.tmp")
+	or $up->logconfess("failed to remove temporary file $dbdir/upgrade_xf.tmp: $!");
+    CORE::unlink("$dbdir/upgrade_cof.tmp")
+	or $up->logconfess("failed to remove temporary file $dbdir/upgrade_cof.tmp: $!");
+  }
 
   ##-- update header
   return $up->updateHeader();

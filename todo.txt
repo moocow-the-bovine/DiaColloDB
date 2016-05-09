@@ -1,12 +1,13 @@
 Wed, 20 Apr 2016 14:12:49 +0200
 + update DB create() and union() methods: x->t
-+ update Unigrams relation
-+ change Upgrade API: pass around $header and allow destructive changes in e.g. upgrade() method?
++ DEBUG: wonky non-integer size[123] in cof.hdr, ug.hdr after upgrade
++ WIP: update Unigrams relation
++ DONE: throw out or port unused f12(), f1() in Cofreqs --> throw an error
++ DONE: change Upgrade API: pass around $header and allow destructive changes in e.g. upgrade() method?
   - no, but DO allow backup (& maybe revert?)
-+ throw out or port unused f12(), f1() in Cofreqs
 + DONE: re-factor compatibility wrappers into DiaColloDB/Compat/vx_y_z/...
 + DONE: allow un-collocated f1 value pass-through for Cofreqs::(load|save)TextFh()
-+ DEBUG: weird -1pass inconsistencies for ./dcdb-query.perl kern.d Mann -ds=0 -1pass
++ DONE: DEBUG: weird -1pass inconsistencies for ./dcdb-query.perl kern.d Mann -ds=0 -1pass
   v0.09.x e.g. (N f1 f2 f12 score slice lemma):
     289801166	487461	463195	8513	8.196888	0	Frau
     289801166	487461	485656	4666	7.295717	0	Mann

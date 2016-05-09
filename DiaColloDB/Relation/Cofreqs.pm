@@ -30,7 +30,7 @@ our $PFCLASS = 'DiaColloDB::PackedFile::MMap';
 ##   (
 ##    ##-- user options
 ##    class    => $class,      ##-- optional, useful for debugging from header file
-##    base     => $basename,   ##-- file basename (default=undef:none); use files "${base}.dba1", "${base}.dba2", "${base}.hdr"
+##    base     => $basename,   ##-- file basename (default=undef:none); use files "${base}.dba1", "${base}.dba2", "${base}.dba3", "${base}.hdr"
 ##    flags    => $flags,      ##-- fcntl flags or open-mode (default='r')
 ##    perms    => $perms,      ##-- creation permissions (default=(0666 &~umask))
 ##    dmax     => $dmax,       ##-- maximum distance for co-occurrences (default=5)
@@ -160,7 +160,7 @@ sub opened {
 ## @keys = $cof->headerKeys()
 ##  + keys to save as header
 sub headerKeys {
-  return grep {!ref($_[0]{$_}) && $_ !~ m{^(?:base|flags|perms)$}} keys %{$_[0]};
+  return grep {!ref($_[0]{$_}) && $_ !~ m{^(?:base|flags|perms|log.*)$}} keys %{$_[0]};
 }
 
 ## $bool = $cof->loadHeaderData($hdr)
@@ -517,30 +517,19 @@ sub dbinfo {
 ## Utilities: lookup
 ##  + BROKEN in v0.10.000 (x(+date)->t(-date) db tuples)
 
-## $f = $cof->f1( @ids)
-## $f = $cof->f1(\@ids)
+## $f = $cof->f1( @xids)
+## $f = $cof->f1(\@xids)
 ##  + get total marginal unigram frequency (db must be opened)
-##  + UNUSED
+##  + no longer supported since v0.10.000
 sub f1 {
-  my $cof = shift;
-  my $ids = UNIVERSAL::isa($_[0],'ARRAY') ? @{$_[0]} : \@_;
-  my $r1  = $cof->{r1};
-  my $f   = 0;
-  foreach (@$ids) {
-    $f += $r1->fetch($_)->[1];
-  }
-  return $f;
+  $_[0]->logconfess("f1(): method no longer supported");
 }
 
-## $f12 = $cof->f12($id1,$id2)
-##  + return joint frequency for pair ($id1,$id2)
-##  + UNUSED
+## $f12 = $cof->f12($xid1,$xid2)
+##  + return joint frequency for pair ($xid1,$xid2)
+##  + no longer supported since v0.10.000
 sub f12 {
-  my ($cof,$i1,$i2) = @_;
-  my $beg2 = ($i1==0 ? 0 : $cof->{r1}->fetch($i1-1)->[0]);
-  my $end2 = $cof->{r1}->fetch($i1)->[0];
-  my $pos2 = $cof->{r2}->bsearch($i2, lo=>$beg2, hi=>$end2, packas=>$cof->{pack_i});
-  return defined($pos2) ? $cof->{r2}->fetch($pos2)->[1] : 0;
+  $_[0]->logconfess("f12(): method no longer supported");
 }
 
 ##==============================================================================
@@ -620,21 +609,12 @@ sub subprofile1 {
     }
   }
 
-  ##-- disable one-pass processing (for now)
-  #$opts->{onepass} = 0;
-
   return \%slice2prf;
 }
 
 ##  \%slice2prf = $rel->subprofile2(\%slice2prf, \%opts)
 ##  + populate f2 frequencies for profiles in \%slice2prf
-##  + %opts: as sor subprofile1()
-##     groupby => \%gbreq,  ##-- parsed groupby object
-##     a2data  => \%a2data, ##-- maps indexed attributes to associated data structures
-##     coldb   => $coldb,   ##-- parent DiaColloDB object (for shared data, debugging)
-##     #slices  => \@slices, ##-- slices (optional)
-##     ...                  ##-- other options as for profile(), esp. qw(slice)
-##  + default implementation does nothing
+##  + %opts: as for subprofile1()
 sub subprofile2 {
   my ($cof,$slice2prf,$opts) = @_;
 

@@ -285,16 +285,17 @@ sub open {
   }
 
   ##-- open: xf
-  $coldb->{xf} = DiaColloDB::Relation::Unigrams->new(file=>"$dbdir/xf.dba", flags=>$flags, packas=>$coldb->{pack_f})
+  $coldb->{xf} = DiaColloDB::Compat::v0_09::Relation::Unigrams->new(file=>"$dbdir/xf.dba", flags=>$flags, packas=>$coldb->{pack_f}, logCompat=>'off')
     or $coldb->logconfess("open(): failed to open tuple-unigrams $dbdir/xf.dba: $!");
   $coldb->{xf}{N} = $coldb->{xN} if ($coldb->{xN} && !$coldb->{xf}{N}); ##-- compat
 
   ##-- open: cof
   if ($coldb->{index_cof}//1) {
-    $coldb->{cof} = DiaColloDB::Relation::Cofreqs->new(base=>"$dbdir/cof", flags=>$flags,
-						       pack_i=>$coldb->{pack_id}, pack_f=>$coldb->{pack_f},
-						       dmax=>$coldb->{dmax}, fmin=>$coldb->{cfmin},
-						      )
+    $coldb->{cof} = DiaColloDB::Compat::v0_09::Relation::Cofreqs->new(base=>"$dbdir/cof", flags=>$flags,
+								      pack_i=>$coldb->{pack_id}, pack_f=>$coldb->{pack_f},
+								      dmax=>$coldb->{dmax}, fmin=>$coldb->{cfmin},
+								      logCompat=>'off',
+								     )
       or $coldb->logconfess("open(): failed to open co-frequency file $dbdir/cof.*: $!");
   }
 

@@ -189,7 +189,7 @@ our %TDF_OPTS = (
 ##    ##-- relation data
 ##    #xf    => $xf,       ##-- ug: $xi => $f($xi) : N=>N
 ##    #cof   => $cof,      ##-- cf: [$xi1,$xi2] => $f12
-##    tf    => $tf,       ##-- ug: [$ti,$date]       => f($ti,$date) : N=>N
+##    xf    => $xf,       ##-- ug: [$ti,$date]       => f($ti,$date) : N=>N
 ##    cof   => $cof,      ##-- cf: [$ti1,$date,$ti2] => f($ti1,$date,$ti2)
 ##    ddc   => $ddc,      ##-- ddc: ddc client relation
 ##    tdf   => $tdf,      ##-- tdf: (term x document) frequency matrix relation
@@ -254,7 +254,7 @@ sub new {
 		      #pack_t => 'N',
 
 		      ##-- relations
-		      #tf   => undef, #DiaColloDB::Relation::Unigrams->new(pack_f=>$coldb->{pack_f}, pack_date=>$coldb->{pack_date}),
+		      #xf   => undef, #DiaColloDB::Relation::Unigrams->new(pack_i=>$pack_i, pack_f=>$pack_f, pack_date=>$pack_date),
 		      #cof => undef, #DiaColloDB::Relation::Cofreqs->new(pack_f=>$pack_f, pack_i=>$pack_i, pack_d=>$pack_date, dmax=>$dmax, fmin=>$cfmin),
 		      #ddc  => undef, #DiaColloDB::Relation::DDC->new(),
 		      #tdf  => undef, #DiaColloDB::Relation::TDF->new(),
@@ -375,17 +375,19 @@ sub open {
       or $coldb->logconfess("open(): failed to open tuple-enum $dbdir/tenum.*: $!");
 
   ##-- open: xf
-  $coldb->{xf} = DiaColloDB::Relation::Unigrams->new(file=>"$dbdir/xf.dba", flags=>$flags, packas=>$coldb->{pack_f})
-    or $coldb->logconfess("open(): failed to open tuple-unigrams $dbdir/xf.dba: $!");
+  $coldb->{xf} = DiaColloDB::Relation::Unigrams->new(base=>"$dbdir/xf", flags=>$flags,
+						     pack_i=>$coldb->{pack_id}, pack_f=>$coldb->{pack_f}, pack_d=>$coldb->{pack_date}
+						    )
+    or $coldb->logconfess("open(): failed to open tuple-unigrams $dbdir/xf.*: $!");
   $coldb->{xf}{N} = $coldb->{xN} if ($coldb->{xN} && !$coldb->{xf}{N}); ##-- compat
 
   ##-- open: cof
   if ($coldb->{index_cof}//1) {
-    $coldb->{cof} = DiaColloDB::Relation::Cofreqs->new(base=>"$dbdir/tcof", flags=>$flags,
+    $coldb->{cof} = DiaColloDB::Relation::Cofreqs->new(base=>"$dbdir/cof", flags=>$flags,
 						       pack_i=>$coldb->{pack_id}, pack_f=>$coldb->{pack_f}, pack_d=>$coldb->{pack_date},
 						       dmax=>$coldb->{dmax}, fmin=>$coldb->{cfmin},
 						      )
-      or $coldb->logconfess("open(): failed to open co-frequency file $dbdir/tcof.*: $!");
+      or $coldb->logconfess("open(): failed to open co-frequency file $dbdir/cof.*: $!");
   }
 
   ##-- open: ddc (undef if ddcServer isn't set in ddc.hdr or $coldb)
@@ -950,17 +952,17 @@ sub create {
 
   ##-- compute collocation frequencies
   if ($coldb->{index_cof}//1) {
-    $coldb->info("creating co-frequency index $dbdir/tcof.* [dmax=$coldb->{dmax}, fmin=$coldb->{cfmin}]");
-    my $cof = $coldb->{cof} = DiaColloDB::Relation::Cofreqs->new(base=>"$dbdir/tcof", flags=>$flags,
+    $coldb->info("creating co-frequency index $dbdir/cof.* [dmax=$coldb->{dmax}, fmin=$coldb->{cfmin}]");
+    my $cof = $coldb->{cof} = DiaColloDB::Relation::Cofreqs->new(base=>"$dbdir/cof", flags=>$flags,
 								 pack_i=>$pack_id, pack_f=>$pack_f,
 								 dmax=>$coldb->{dmax}, fmin=>$coldb->{cfmin},
 								 keeptmp=>$coldb->{keeptmp},
 								)
-      or $coldb->logconfess("create(): failed to create co-frequency index $dbdir/tcof.*: $!");
+      or $coldb->logconfess("create(): failed to create co-frequency index $dbdir/cof.*: $!");
     $cof->create($coldb, $tokfile)
       or $coldb->logconfess("create(): failed to create co-frequency index: $!");
   } else {
-    $coldb->info("NOT creating co-frequency index $dbdir/tcof.*; set index_cof=1 to enable");
+    $coldb->info("NOT creating co-frequency index $dbdir/cof.*; set index_cof=1 to enable");
   }
 
   ##-- create tdf-model (if requested & available)
@@ -1151,17 +1153,17 @@ sub union {
 
   ##-- co-frequencies: populate
   if ($coldb->{index_cof}//1) {
-    $coldb->vlog($coldb->{logCreate}, "union(): creating co-frequency index $dbdir/tcof.* [fmin=$coldb->{cfmin}]");
-    $coldb->{cof} = DiaColloDB::Relation::Cofreqs->new(base=>"$dbdir/tcof", flags=>$flags,
+    $coldb->vlog($coldb->{logCreate}, "union(): creating co-frequency index $dbdir/cof.* [fmin=$coldb->{cfmin}]");
+    $coldb->{cof} = DiaColloDB::Relation::Cofreqs->new(base=>"$dbdir/cof", flags=>$flags,
 						       pack_i=>$pack_id, pack_f=>$pack_f,
 						       dmax=>$coldb->{dmax}, fmin=>$coldb->{cfmin},
 						       keeptmp=>$coldb->{keeptmp},
 						      )
-      or $coldb->logconfess("create(): failed to open co-frequency index $dbdir/tcof.*: $!");
+      or $coldb->logconfess("create(): failed to open co-frequency index $dbdir/cof.*: $!");
     $coldb->{cof}->union($coldb, [map {[@$_{qw(cof _union_xi2u)}]} @dbargs])
-      or $coldb->logconfess("union(): could not populate co-frequency index $dbdir/tcof.*: $!");
+      or $coldb->logconfess("union(): could not populate co-frequency index $dbdir/cof.*: $!");
   } else {
-    $coldb->vlog($coldb->{logCreate}, "union(): NOT creating co-frequency index $dbdir/tcof.*; set index_cof=1 to enable");
+    $coldb->vlog($coldb->{logCreate}, "union(): NOT creating co-frequency index $dbdir/cof.*; set index_cof=1 to enable");
   }
 
   ##-- tdf: populate

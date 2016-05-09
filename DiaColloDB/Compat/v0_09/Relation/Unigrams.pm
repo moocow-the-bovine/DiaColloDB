@@ -3,7 +3,7 @@
 ## Author: Bryan Jurish <moocow@cpan.org>
 ## Description: collocation db, profiling relation: unigram database (using DiaColloDB::PackedFile)
 
-package DiaColloDB::v0_09::Relation::Unigrams;
+package DiaColloDB::Compat::v0_09::Relation::Unigrams;
 use DiaColloDB::Compat::v0_09::Relation;
 use DiaColloDB::PackedFile;
 use DiaColloDB::Utils qw(:sort :env :run :pack :file);
@@ -49,16 +49,18 @@ sub new {
 }
 
 ##==============================================================================
-## Persistent API: disk usage
-
-## @files = $obj->diskFiles()
-##  + returns disk storage files, used by du() and timestamp()
-sub diskFiles {
-  return ($_[0]{file}, "$_[0]{file}.hdr");
-}
+## Persistent API: disk usage: INHERITED
 
 ##==============================================================================
-## API: open/close: INHERITED
+## API: open/close: mostly INHERITED
+
+## $filename = $obj->headerFile()
+##  + returns header filename; default returns "$obj->{base}.hdr" or "$obj->{dbdir}/header.json"
+sub headerFile {
+  return undef if (!ref($_[0]));
+  return "$_[0]{file}.hdr" if (defined($_[0]{file}));
+  return undef;
+}
 
 ##==============================================================================
 ## API: filters: INHERITED
@@ -70,7 +72,32 @@ sub diskFiles {
 ## PackedFile API: record access: INHERITED
 
 ##==============================================================================
-## PackedFile API: text I/O: INHERITED
+## I/O: text
+##  + largely INHERITED from DiaColloDB::PackedFile
+
+## $bool = $ug->saveTextFh_v0_10($fh,%opts)
+##  + save from text file in v0.10.x format: lines of the form:
+##      N                 ##-- 1 field : N
+##      FREQ ID1 DATE     ##-- 3 fields: unigram frequency for (ID1,DATE)
+##  + %opts:
+##      i2s => \&CODE,    ##-- code-ref for formatting indices; called as $s=CODE($i)
+sub saveTextFh_v0_10 {
+  my ($ug,$outfh,%opts) = @_;
+  $ug->logconfess("saveTextFile(): cannot save unopened DB") if (!$ug->opened);
+
+  $outfh->print($ug->{N}, "\n") if (defined($ug->{N})); ##-- save N line
+  my $size = $ug->size();
+  my $i2s  = $opts{i2s};
+  my ($i,$val);
+  for ($i=0, $ug->reset(); $i < $size; ++$i) {
+    $val = $ug->get();
+    $outfh->print($val, "\t", ($i2s ? $i2s->($i) : $i), "\n");
+  }
+
+  return $ug;
+}
+
+
 
 ##==============================================================================
 ## PackedFile API: tie interface: INHERITED
