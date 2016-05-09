@@ -3,10 +3,10 @@ Wed, 20 Apr 2016 14:12:49 +0200
 + update Unigrams relation
 + change Upgrade API: pass around $header and allow destructive changes in e.g. upgrade() method?
   - no, but DO allow backup (& maybe revert?)
-+ DONE: allow un-collocated f1 value pass-through for Cofreqs::(load|save)TextFh()
 + throw out or port unused f12(), f1() in Cofreqs
-+ re-factor compatibility wrappers into DiaColloDB/Compat/vx_y_z/...
-+ DEBUG: weird -1pass inconsistencies for ./dcdb-query.perl DBDIR Mann -ds=0 -1pass
++ DONE: re-factor compatibility wrappers into DiaColloDB/Compat/vx_y_z/...
++ DONE: allow un-collocated f1 value pass-through for Cofreqs::(load|save)TextFh()
++ DEBUG: weird -1pass inconsistencies for ./dcdb-query.perl kern.d Mann -ds=0 -1pass
   v0.09.x e.g. (N f1 f2 f12 score slice lemma):
     289801166	487461	463195	8513	8.196888	0	Frau
     289801166	487461	485656	4666	7.295717	0	Mann
@@ -14,7 +14,9 @@ Wed, 20 Apr 2016 14:12:49 +0200
     289801166	487461	479230	8513	8.172757	0	Frau
     289801166	487461	510840	4666	7.258855	0	Mann
   - QUESTION: why are f2 values different across DiaColloDB versions?
-  - QUESTION: is f2(Mann) > f1 in v0.10.x ?
+    ANSWER  : we were missing %i2 double-count checks in v0.10.x code
+  - QUESTION: why is f2(Mann) > f1 in v0.10.x ?
+    ANSWER  : we were double-counting
     
 + document new/changed modules:
   Compat/*
@@ -24,7 +26,8 @@ Wed, 20 Apr 2016 14:12:49 +0200
   Upgrade/v0_10_x2t
   Relation (subprofile[12] calling conventions changed)
   DiaColloDB : parseDateRequest() conventions changed, x->t
-  Persistent::move
+  Persistent::copyto, moveto, copyto_a
+  Utils::copyto, moveto, copyto_a, cp_a
 + update db & relation create() methods
   Cofreqs
   Unigrams

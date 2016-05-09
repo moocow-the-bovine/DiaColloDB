@@ -33,14 +33,9 @@ sub backup {
   my $backd = $up->backupdir;
 
   ##-- backup: by attribute
-  foreach my $attr (@{$hdr->{attrs}}) {
-    my $base = "$dbdir/${attr}_2x";
-    my $mmf  = $DiaColloDB::MMCLASS->new(base=>$base, logCompat=>'off')
-      or $up->logconfess("failed to open attribute multimap $base.*");
-
-    ##-- backup
+  foreach my $base (map {"$dbdir/${_}_2x"} @{$hdr->{attrs}}) {
     $up->info("backing up $base.*");
-    $mmf->copyto_a($backd, from=>$dbdir)
+    DiaColloDB::Utils::copyto_a([glob "$base.*"], $backd)
       or $up->logconfess("backup failed for $base.*: $!");
   }
   return 1;

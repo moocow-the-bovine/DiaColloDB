@@ -7,7 +7,7 @@
 package DiaColloDB::Upgrade::v0_10_x2t;
 use DiaColloDB::Upgrade::Base;
 use DiaColloDB::Compat::v0_09;
-use DiaColloDB::Utils qw(:pack :env :run);
+use DiaColloDB::Utils qw(:pack :env :run :file);
 use version;
 use strict;
 our @ISA = qw(DiaColloDB::Upgrade::Base);
@@ -21,10 +21,47 @@ sub toversion {
   return '0.10.000';
 }
 
+## $bool = $up->backup()
+##  + perform backup any files we expect to change to $up->backupdir()
+sub backup {
+  my $up = shift;
+  $up->SUPER::backup() or return undef;
+  return 1 if (!$up->{backup});
+
+  my $dbdir = $up->{dbdir};
+  my $hdr   = $up->dbheader;
+  my $backd = $up->backupdir;
+
+  ##-- backup: xenum
+  $up->info("backing up $dbdir/xenum.*");
+  copyto_a([glob "$dbdir/xenum.*"], $backd)
+      or $up->logconfess("backup failed for $dbdir/xenum.*: $!");
+
+  ##-- backup: by attribute: multimaps
+  foreach my $base (map {"$dbdir/${_}_2x"} @{$hdr->{attrs}}) {
+    $up->info("backing up $base.*");
+    copyto_a([glob "$base.*"], $backd)
+      or $up->logconfess("backup failed for $base.*: $!");
+  }
+
+  ##-- backup: relations
+  foreach my $base (qw(xf cof)) {
+    $up->info("backing up $base.*");
+    copyto_a([glob "$base.*"], $backd)
+      or $up->logconfess("backup failed for $base.*: $!");
+  }
+
+  return 1;
+}
+
+
 ## $bool = $CLASS_OR_OBJECT->_upgrade($dbdir, \%info)
 ##  + performs upgrade
 sub upgrade {
   my $up = shift;
+
+  ##-- backup
+  $up->backup() or return undef;
 
   ##-- read header
   my $dbdir = $up->{dbdir};

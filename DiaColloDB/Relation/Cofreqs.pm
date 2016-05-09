@@ -341,21 +341,21 @@ sub saveTextFh {
     $end2 = unpack($pack1,$buf1);
     $s1 = $i2s1 ? $i2s1->($i1) : $i1;
 
-    for ($f12sum=0; $off2 < $end2 && !$r2->eof(); ++$off2) {
+    for ( ; $off2 < $end2 && !$r2->eof(); ++$off2) {
       $r2->read(\$buf2) or $cof->logconfess("saveTextFile(): failed to read record $off2 from $r2->{file}: $!");
       ($end3,$d1,$f1) = unpack($pack2,$buf2);
 
-      for ( ; $off3 < $end3 && !$r3->eof(); ++$off3) {
+      for ($f12sum=0; $off3 < $end3 && !$r3->eof(); ++$off3) {
 	$r3->read(\$buf3) or $cof->logconfess("saveTextFile(): failed to read record $off3 from $r3->{file}: $!");
 	($i2,$f12) = unpack($pack3,$buf3);
 	$f12sum   += $f12;
 	$s2        = $i2s2 ? $i2s2->($i2) : $i2;
 	$outfh->print(join("\t", $f12, $s1, $d1, $s2), "\n");
       }
-    }
 
-    ##-- track un-collocated portion of $f1, if any
-    $outfh->print(join("\t", $f1-$f12sum, $d1, $s1), "\n") if ($f12sum != $f1);
+      ##-- track un-collocated portion of ($f1,$d1), if any
+      $outfh->print(join("\t", $f1-$f12sum, $s1, $d1), "\n") if ($f12sum != $f1);
+    }
   }
 
   return $cof;
@@ -583,7 +583,7 @@ sub subprofile1 {
   } ($slice ? (map {$_*$slice} (($dreq->{slo}/$slice)..($dreq->{shi}/$slice))) : 0);
 
   ##-- ye olde loope
-  my ($i1,$beg2,$end2, $pos2,$beg3,$end3,$d1,$ds,$dprf,$f1, $pos3,$i2,$f12,$key2, $buf);
+  my ($i1,$beg2,$end2, $pos2,$beg3,$end3,$d1,$ds,$dprf,$f1, $pos3,$i2,$f12,$key2, $buf,%id2);
   my ($blo,$bhi,$bi); ##-- one-pass guts
   foreach $i1 (@$tids) {
     next if ($i1 >= $size1);
@@ -608,8 +608,9 @@ sub subprofile1 {
 	next if (!defined($key2)); ##-- item2 selection via groupby CODE-ref
 	$dprf->{f12}{$key2} += $f12;
 
-	if ($onepass) {
+	if ($onepass && !exists($id2{"$i2 $d1"})) {
 	  ##-- search for ($i2,$date) offset in r2
+	  $id2{"$i2 $d1"} = undef;
 	  $blo = ($i2==0 ? 0 : unpack($pack1,$r1->fetchraw($i2-1,\$buf)));
 	  $bhi = unpack($pack1, $r1->fetchraw($i2,\$buf));
 	  $bi  = $r2->bsearch($d1,lo=>$blo,hi=>$bhi,packas=>$pack2d);
