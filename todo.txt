@@ -4,7 +4,7 @@ Wed, 20 Apr 2016 14:12:49 +0200
   - Unigrams
   - TDF?
 
-+ test unigrams relation
+x+ test unigrams relation
 
 x+ DEBUG: wonky non-integer size[123] in cof.hdr, ug.hdr after upgrade
   - PackedFile size() doesn't handle recent writes correctly

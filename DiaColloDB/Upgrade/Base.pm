@@ -103,7 +103,7 @@ sub backupdir {
   $stamp =~ s/\W//g;
   $stamp =~ s/T/_/;
   (my $suffix = $up->label."_$stamp") =~ s/^DiaColloDB::Upgrade:://;
-  return "$dbdir/upgrade_$suffix";
+  return "$dbdir/upgrade_${suffix}.d";
 }
 
 
