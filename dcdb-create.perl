@@ -34,7 +34,7 @@ our %coldb    = (
 		 pack_off=>'N',
 		 pack_len=>'n',
 		 dmax=>5,
-		 cfmin=>5,
+		 cfmin=>2,
 		 tfmin=>2,
 		 fmin_l=>undef,
 		 keeptmp=>0,
@@ -116,7 +116,7 @@ DiaColloDB::Logger->ensureLog(%log);
 ##-- setup corpus
 push(@ARGV,'-') if (!@ARGV);
 my $corpus = DiaColloDB::Corpus->new(%corpus);
-$corpus->open(\@ARGV, 'glob'=>$globargs, 'list'=>$listargs)
+$corpus->open(\@ARGV, 'glob'=>$globargs, 'list'=>$listargs, ($union ? (logOpen=>'off') : qw()))
   or die("$prog: failed to open corpus: $!");
 
 ##-- create colloc-db
@@ -184,7 +184,7 @@ dcdb-create.perl - create a DiaColloDB diachronic collocation database
    -dmax DIST           ##-- maximum distance for indexed co-occurrences (default=5)
    -tfmin TFMIN         ##-- minimum global term frequency (default=5)
    -lfmin TFMIN         ##-- minimum global lemma frequency (default=undef:tfmin)
-   -cfmin CFMIN         ##-- minimum relation co-occurrence frequency (default=5)
+   -cfmin CFMIN         ##-- minimum relation co-occurrence frequency (default=2)
    -[no]tdf             ##-- do/don't create (term x document) index relation (default=if available)
    -tdf-dbreak BREAK    ##-- set tdf matrix "document" granularity (e.g. s,p,page,file; default=file)
    -tdf-fmin VFMIN      ##-- set minimum tdf term frequency (default=undef: TFMIN)
@@ -387,11 +387,11 @@ B<not including> the "date" component.
 
 =item -lfmin TFMIN
 
-Specify minimum global lemma frequency (default=undef:tfmin).
+Specify minimum global lemma frequency (default=undef:TFMIN).
 
 =item -cfmin CFMIN
 
-Specify minimum relation co-occurrence frequency (default=5).
+Specify minimum relation co-occurrence frequency (default=2).
 
 =item -[no]tdf
 

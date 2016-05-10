@@ -100,6 +100,7 @@ sub upgrade {
   my $tenum = $DiaColloDB::XECLASS->new(pack_s=>$pack_t, %xeopts);
   $tenum->fromHash($ts2i)->save("$dbdir/tenum")
     or $up->logconfess("failed to save $dbdir/tenum.*: $!");
+  delete $hdr->{pack_x};
 
   ##-- convert attribute-wise multimaps & pack-templates
   foreach my $attr (@{$hdr->{attrs}}) {

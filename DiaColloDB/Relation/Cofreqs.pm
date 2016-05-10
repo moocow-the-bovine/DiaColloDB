@@ -367,13 +367,13 @@ sub saveTextFh {
 }
 
 ##==============================================================================
-## Relation API: create : TODO
+## Relation API: create
 
 ## $rel = $CLASS_OR_OBJECT->create($coldb,$tokdat_file,%opts)
 ##  + populates current database from $tokdat_file,
 ##    a tt-style text file containing with lines of the form:
 ##      TID DATE	##-- single token
-##	"\n"		##-- blank line --> EOS
+##	"\n"		##-- blank line: EOS
 ##  + %opts: clobber %$ug
 sub create {
   my ($cof,$coldb,$tokfile,%opts) = @_;
@@ -448,9 +448,9 @@ sub create {
 
 ## $cof = CLASS_OR_OBJECT->union($coldb, \@pairs, %opts)
 ##  + merge multiple unigram unigram indices from \@pairs into new object
-##  + @pairs : array of pairs ([$cof,\@xi2u],...)
-##    of unigram-objects $cof and tuple-id maps \@xi2u for $cof
-##    - \@xi2u may also be a mapping object supporting a toArray() method
+##  + @pairs : array of pairs ([$cof,\@ti2u],...)
+##    of unigram-objects $cof and tuple-id maps \@ti2u for $cof
+##    - \@ti2u may also be a mapping object supporting a toArray() method
 ##  + %opts: clobber %$cof
 ##  + implicitly flushes the new index
 sub union {
@@ -467,7 +467,7 @@ sub union {
   binmode($tmpfh,':raw');
 
   ##-- stage1: extract pairs and N
-  $cof->vlog('trace', "union(): stage1: extract pairs");
+  $cof->vlog('trace', "union(): stage1: collect pairs");
   my ($pair,$pcof,$pi2u);
   my $pairi=0;
   foreach $pair (@$pairs) {
@@ -480,14 +480,12 @@ sub union {
   $tmpfh->close()
     or $cof->logconfess("union(): failed to close tempfile $tmpfile: $!");
 
-  ##-- sort temp-file
+  ##-- stage2: sort & load tempfile
   env_push(LC_ALL=>'C');
-  my $sortfh = opencmd("sort -n -k2 -k3 $tmpfile |")
+  $cof->vlog('trace', "union(): stage2: load pair frequencies (fmin=$cof->{fmin})");
+  my $sortfh = opencmd("sort -n -k2 -k3 -k4 $tmpfile |")
     or $cof->logconfess("union(): open failed for pipe from sort: $!");
   binmode($sortfh,':raw');
-
-  ##-- stage2: load pair-frequencies
-  $cof->vlog('trace', "union(): stage2: load pair frequencies (fmin=$cof->{fmin})");
   $cof->loadTextFh($sortfh)
     or $cof->logconfess("union(): failed to load pair frequencies from $tmpfile: $!");
   $sortfh->close()
@@ -498,7 +496,7 @@ sub union {
   $cof->saveHeader()
     or $cof->logconfess("union(): failed to save header: $!");
 
-  ##-- unlink temp file
+  ##-- cleanup: unlink temp file
   CORE::unlink($tmpfile) if (!$cof->{keeptmp});
 
   return $cof;

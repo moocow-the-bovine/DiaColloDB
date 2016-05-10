@@ -1029,6 +1029,14 @@ sub union {
   my @dbargs = map {ref($_) ? $_ : $coldb->new(dbdir=>$_)} @$args;
   my $flags = O_RDWR|O_CREAT|O_TRUNC;
 
+  ##-- sanity check(s): version
+  my $min_db_version = '0.10.000';
+  foreach (@dbargs) {
+    my $dbversion = $_->{version} // '0';
+    $coldb->logconfess("union(): can't handle v$dbversion index in '$_->{dbdir}'; try running \`dcdb-upgrade.perl $_->{dbdir}'")
+      if (version->parse($dbversion) < $min_db_version);
+  }
+
   ##-- initialize: output directory
   my $dbdir = $coldb->{dbdir}
     or $coldb->logconfess("union() called but 'dbdir' key not set!");
@@ -1062,10 +1070,10 @@ sub union {
   my $pack_f     = $coldb->{pack_f};
   my $pack_off   = $coldb->{pack_off};
   my $pack_len   = $coldb->{pack_len};
-  my $pack_x     = $coldb->{pack_x} = $pack_id."[".scalar(@$attrs)."]".$pack_date; ##-- pack("${pack_id}*${pack_date}", @ais, $date)
+  my $pack_t     = $coldb->{pack_t} = $pack_id."[".scalar(@$attrs)."]"; ##-- pack("${pack_id}*${pack_date}", @ais)
 
   ##-- tuple packing
-  $coldb->{"pack_x$attrs->[$_]"} = '@'.($_*packsize($pack_id)).$pack_id foreach (0..$#$attrs);
+  $coldb->{"pack_t$attrs->[$_]"} = '@'.($_*packsize($pack_id)).$pack_id foreach (0..$#$attrs);
 
   ##-- common variables: enums
   my %efopts = (flags=>$flags, pack_i=>$coldb->{pack_id}, pack_o=>$coldb->{pack_off}, pack_l=>$coldb->{pack_len});
@@ -1098,71 +1106,80 @@ sub union {
 
   ##-- union: date-range
   $coldb->vlog($coldb->{logCreate}, "union(): computing date-range");
-  @$coldb{qw(xdmin xdmax)} = qw(inf -inf);
+  @$coldb{qw(xdmin xdmax)} = (undef,undef);
   foreach $db (@dbargs) {
-    $coldb->{xdmin} = $db->{xdmin} if ($db->{xdmin} < $coldb->{xdmin});
-    $coldb->{xdmax} = $db->{xdmax} if ($db->{xdmax} > $coldb->{xdmax});
+    $coldb->{xdmin} = $db->{xdmin} if (!defined($coldb->{xdmin}) || $db->{xdmin} < $coldb->{xdmin});
+    $coldb->{xdmax} = $db->{xdmax} if (!defined($coldb->{xdmax}) || $db->{xdmax} > $coldb->{xdmax});
   }
+  $coldb->{xdmin} //= 0;
+  $coldb->{xdmax} //= 0;
 
-  ##-- union: xenum
-  $coldb->vlog($coldb->{logCreate}, "union(): creating tuple-enum $dbdir/xenum.*");
-  my $xenum = $coldb->{xenum} = $XECLASS->new(%efopts, pack_s=>$pack_x);
-  my $xs2i  = $xenum->{s2i};
-  my $nx    = 0;
+  ##-- union: tenum
+  $coldb->vlog($coldb->{logCreate}, "union(): creating tuple-enum $dbdir/tenum.*");
+  my $tenum = $coldb->{tenum} = $XECLASS->new(%efopts, pack_s=>$pack_t);
+  my $ts2i  = $tenum->{s2i};
+  my $nt    = 0;
   foreach $db (@dbargs) {
-    $coldb->vlog($coldb->{logCreate}, "union(): processing $db->{xenum}{base}.*");
-    my $db_pack_x  = $db->{pack_x};
-    my $dbattrs = $db->{attrs};
-    my %a2dbxi  = map { ($dbattrs->[$_]=>$_) } (0..$#$dbattrs);
-    my %a2i2u = map { ($_=>$db->{"_union_${_}i2u"}) } @$attrs;
+    $coldb->vlog($coldb->{logCreate}, "union(): processing $db->{tenum}{base}.*");
+    my $db_pack_t = $db->{pack_t};
+    my $dbattrs   = $db->{attrs};
+    my %a2dbti  = map { ($dbattrs->[$_]=>$_) } (0..$#$dbattrs);
+    my %a2i2u   = map { ($_=>$db->{"_union_${_}i2u"}) } @$attrs;
     $argi       = $db->{_union_argi};
-    my $xi2u    = $db->{_union_xi2u} = DiaColloDB::PackedFile->new(file=>"$dbdir/x_i2u.tmp${argi}", flags=>'rw', packas=>$coldb->{pack_id});
-    my $dbxi    = 0;
-    my (@dbx,@ux,$uxs,$uxi);
-    foreach (@{$db->{xenum}->toArray}) {
-      @dbx = unpack($db_pack_x,$_);
-      $uxs = pack($pack_x,
+    my $ti2u    = $db->{_union_ti2u} = DiaColloDB::PackedFile->new(file=>"$dbdir/t_i2u.tmp${argi}", flags=>'rw', packas=>$coldb->{pack_id});
+    my $dbti    = 0;
+    my (@dbt,@ut,$uts,$uti);
+    foreach (@{$db->{tenum}->toArray}) {
+      @dbt = unpack($db_pack_t,$_);
+      $uts = pack($pack_t,
 		  (map  {
-		    (exists($a2dbxi{$_})
-		     ? $a2i2u{$_}->fetch($dbx[$a2dbxi{$_}]//0)//0
+		    (exists($a2dbti{$_})
+		     ? $a2i2u{$_}->fetch($dbt[$a2dbti{$_}]//0)//0
 		     : $a2i2u{$_}->fetch(0)//0)
 		  } @$attrs),
-		  $dbx[$#dbx]//0);
-      $uxi = $xs2i->{$uxs} = $nx++ if (!defined($uxi=$xs2i->{$uxs}));
-      $xi2u->store($dbxi++, $uxi);
+		  $dbt[$#dbt]//0);
+      $uti = $ts2i->{$uts} = $nt++ if (!defined($uti=$ts2i->{$uts}));
+      $ti2u->store($dbti++, $uti);
     }
-    $xi2u->flush()
-      or $coldb->logconfess("could not flush temporary $dbdir/x_i2u.tmp${argi}");
+    $ti2u->flush()
+      or $coldb->logconfess("could not flush temporary $dbdir/t_i2u.tmp${argi}");
   }
-  $xenum->fromHash($xs2i);
-  $xenum->save("$dbdir/xenum")
-    or $coldb->logconfess("union(): failed to save $dbdir/xenum: $!");
+  $tenum->fromHash($ts2i);
+  $tenum->save("$dbdir/tenum")
+    or $coldb->logconfess("union(): failed to save $dbdir/tenum.*: $!");
 
   ##-- union: expansion maps
   foreach (@$adata) {
-    $coldb->create_multimap("$dbdir/$_->{a}_2t",$xs2i,$_->{pack_t},"attribute expansion multimap");
+    $coldb->create_multimap("$dbdir/$_->{a}_2t",$ts2i,$_->{pack_t},"attribute expansion multimap");
   }
 
-  ##-- intermediate cleanup: xs2i
-  undef $xs2i;
+  ##-- intermediate cleanup: ts2i
+  undef $ts2i;
 
   ##-- unigrams: populate
-  $coldb->vlog($coldb->{logCreate}, "union(): creating tuple unigram index $dbdir/xf.*");
-  $coldb->{xf} = DiaColloDB::Relation::Unigrams->new(file=>"$dbdir/xf.dba", flags=>$flags, packas=>$pack_f)
-    or $coldb->logconfess("union(): could not create $dbdir/xf.*: $!");
-  $coldb->{xf}->union($coldb, [map {[@$_{qw(xf _union_xi2u)}]} @dbargs])
-    or $coldb->logconfess("union(): could not populate unigram index $dbdir/xf.*: $!");
+  if ($coldb->{index_xf}//1) {
+    $coldb->vlog($coldb->{logCreate}, "union(): creating tuple unigram index $dbdir/xf.*");
+    $coldb->{xf} = DiaColloDB::Relation::Unigrams->new(base=>"$dbdir/xf", flags=>$flags,
+						       pack_i=>$pack_id, pack_f=>$pack_f, pack_d=>$pack_date,
+						       keeptmp => $coldb->{keeptmp},
+						      )
+      or $coldb->logconfess("union(): could not create $dbdir/xf.*: $!");
+    $coldb->{xf}->union($coldb, [map {[@$_{qw(xf _union_ti2u)}]} @dbargs])
+      or $coldb->logconfess("union(): could not populate unigram index $dbdir/xf.*: $!");
+  } else {
+    $coldb->vlog($coldb->{logCreate}, "union(): NOT creating unigram index $dbdir/xf.*; set index_xf=1 to enable");
+  }
 
   ##-- co-frequencies: populate
   if ($coldb->{index_cof}//1) {
     $coldb->vlog($coldb->{logCreate}, "union(): creating co-frequency index $dbdir/cof.* [fmin=$coldb->{cfmin}]");
     $coldb->{cof} = DiaColloDB::Relation::Cofreqs->new(base=>"$dbdir/cof", flags=>$flags,
-						       pack_i=>$pack_id, pack_f=>$pack_f,
+						       pack_i=>$pack_id, pack_f=>$pack_f, pack_d=>$pack_date,
 						       dmax=>$coldb->{dmax}, fmin=>$coldb->{cfmin},
 						       keeptmp=>$coldb->{keeptmp},
 						      )
       or $coldb->logconfess("create(): failed to open co-frequency index $dbdir/cof.*: $!");
-    $coldb->{cof}->union($coldb, [map {[@$_{qw(cof _union_xi2u)}]} @dbargs])
+    $coldb->{cof}->union($coldb, [map {[@$_{qw(cof _union_ti2u)}]} @dbargs])
       or $coldb->logconfess("union(): could not populate co-frequency index $dbdir/cof.*: $!");
   } else {
     $coldb->vlog($coldb->{logCreate}, "union(): NOT creating co-frequency index $dbdir/cof.*; set index_cof=1 to enable");
@@ -1198,7 +1215,7 @@ sub union {
   if (!$coldb->{keeptmp}) {
     $coldb->vlog($coldb->{logCreate}, "union(): cleaning up temporary files");
     foreach $db (@dbargs) {
-      foreach my $pfkey ('_union_xi2u', map {"_union_${_}i2u"} @$attrs) {
+      foreach my $pfkey ('_union_ti2u', map {"_union_${_}i2u"} @$attrs) {
 	$db->{$pfkey}->unlink() if ($db->{$pfkey}->can('unlink'));
 	delete $db->{$pfkey};
       }
@@ -1278,14 +1295,14 @@ sub dbexport {
   ##-- dump: load enums
   my $adata  = $coldb->attrData();
   $coldb->vlog($coldb->{logExport}, "dbexport(): loading enums to memory");
-  $coldb->{xenum}->load() if ($coldb->{xenum} && !$coldb->{xenum}->loaded);
+  $coldb->{tenum}->load() if ($coldb->{tenum} && !$coldb->{tenum}->loaded);
   foreach (@$adata) {
     $_->{enum}->load() if ($_->{enum} && !$_->{enum}->loaded);
   }
 
   ##-- dump: common: stringification
-  my $pack_x = $coldb->{pack_x};
-  my ($xs2txt,$xi2txt);
+  my $pack_t = $coldb->{pack_t};
+  my ($ts2txt,$ti2txt);
   if ($export_sdat) {
     $coldb->vlog($coldb->{logExport}, "dbexport(): preparing tuple-stringification structures");
 
@@ -1294,29 +1311,29 @@ sub dbexport {
       $_->{i2txt} = sub { return $i2s->[$_[0]//0]//''; };
     }
 
-    my $xi2s = $coldb->{xenum}->toArray;
+    my $ti2s = $coldb->{tenum}->toArray;
     my @ai2s = map {$_->{i2s}} @$adata;
-    my (@x);
-    $xs2txt = sub {
-      @x = unpack($pack_x,$_[0]);
-      return join("\t", (map {$ai2s[$_][$x[$_]//0]//''} (0..$#ai2s)), $x[$#x]//0);
+    my (@t);
+    $ts2txt = sub {
+      @t = unpack($pack_t,$_[0]);
+      return join("\t", (map {$ai2s[$_][$t[$_]//0]//''} (0..$#ai2s)));
     };
-    $xi2txt = sub {
-      @x = unpack($pack_x, $xi2s->[$_[0]//0]//'');
-      return join("\t", (map {$ai2s[$_][$x[$_]//0]//''} (0..$#ai2s)), $x[$#x]//0);
+    $ti2txt = sub {
+      @t = unpack($pack_t, $ti2s->[$_[0]//0]//'');
+      return join("\t", (map {$ai2s[$_][$t[$_]//0]//''} (0..$#ai2s)));
     };
   }
 
-  ##-- dump: xenum: raw
-  $coldb->vlog($coldb->{logExport}, "dbexport(): exporting raw tuple-enum file $outdir/xenum.dat");
-  $coldb->{xenum}->saveTextFile("$outdir/xenum.dat", pack_s=>$pack_x)
-    or $coldb->logconfess("export failed for $outdir/xenum.dat");
+  ##-- dump: tenum: raw
+  $coldb->vlog($coldb->{logExport}, "dbexport(): exporting raw tuple-enum file $outdir/tenum.dat");
+  $coldb->{tenum}->saveTextFile("$outdir/tenum.dat")
+    or $coldb->logconfess("export failed for $outdir/tenum.dat");
 
   ##-- dump: xenum: stringified
   if ($export_sdat) {
-    $coldb->vlog($coldb->{logExport}, "dbexport(): exporting stringified tuple-enum file $outdir/xenum.sdat");
-    $coldb->{xenum}->saveTextFile("$outdir/xenum.sdat", pack_s=>$xs2txt)
-      or $coldb->logconfess("dbexport() failed for $outdir/xenum.sdat");
+    $coldb->vlog($coldb->{logExport}, "dbexport(): exporting stringified tuple-enum file $outdir/tenum.sdat");
+    $coldb->{xenum}->saveTextFile("$outdir/tenum.sdat", pack_s=>$ts2txt)
+      or $coldb->logconfess("dbexport() failed for $outdir/tenum.sdat");
   }
 
   ##-- dump: by attribute: enum
@@ -1337,7 +1354,7 @@ sub dbexport {
     ##-- dump: by attribute: a2x: stringified
     if ($export_sdat) {
       $coldb->vlog($coldb->{logExport}, "dbexport(): exporting attribute expansion multimap $outdir/$_->{a}_2t.sdat (strings)");
-      $_->{a2t}->saveTextFile("$outdir/$_->{a}_2t.sdat", a2s=>$_->{i2txt}, b2s=>$xi2txt)
+      $_->{a2t}->saveTextFile("$outdir/$_->{a}_2t.sdat", a2s=>$_->{i2txt}, b2s=>$si2txt)
 	or $coldb->logconfess("dbexport() failed for $outdir/$_->{a}_2t.sdat");
     }
   }
@@ -1346,16 +1363,14 @@ sub dbexport {
   if ($coldb->{xf}) {
     ##-- dump: xf: raw
     $coldb->vlog($coldb->{logExport}, "dbexport(): exporting tuple-frequency index $outdir/xf.dat");
-    $coldb->{xf}->setFilters($coldb->{pack_f});
-    $coldb->{xf}->saveTextFile("$outdir/xf.dat", keys=>1)
+    $coldb->{xf}->saveTextFile("$outdir/xf.dat")
       or $coldb->logconfess("export failed for $outdir/xf.dat");
-    $coldb->{xf}->setFilters();
 
     ##-- dump: xf: stringified
     if ($export_sdat) {
       $coldb->vlog($coldb->{logExport}, "dbexport(): exporting stringified tuple-frequency index $outdir/xf.sdat");
-      $coldb->{xf}->saveTextFile("$outdir/xf.sdat", key2s=>$xi2txt)
-      or $coldb->logconfess("dbexport() failed for $outdir/xf.sdat");
+      $coldb->{xf}->saveTextFile("$outdir/xf.sdat", i2s=>$ti2txt)
+	or $coldb->logconfess("dbexport() failed for $outdir/xf.sdat");
     }
   }
 
@@ -1367,7 +1382,7 @@ sub dbexport {
 
     if ($export_sdat) {
       $coldb->vlog($coldb->{logExport}, "dbexport(): exporting stringified co-frequency index $outdir/cof.sdat");
-      $coldb->{cof}->saveTextFile("$outdir/cof.sdat", i2s=>$xi2txt)
+      $coldb->{cof}->saveTextFile("$outdir/cof.sdat", i2s=>$ti2txt)
 	or $coldb->logconfess("export failed for $outdir/cof.sdat");
     }
   }
@@ -1627,41 +1642,6 @@ sub parseDateRequest {
   return wantarray
     ? ($dfilter,$slo,$shi,$dlo,$dhi)
     : { dfilter=>$dfilter, slo=>$slo, shi=>$shi, dlo=>$dlo, dhi=>$dhi };
-}
-
-##~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-## \%slice2xids = $coldb->xidsByDate(\@xids, $dateRequest, $sliceRequest, $fill)
-##   + parse and filter \@xids by $dateRequest, $sliceRequest
-##   + returns a HASH-ref from slice-ids to \@xids in that date-slice
-##   + if $fill is true, returned HASH-ref has a key for each date-slice in range
-##   + v0.10.000 : should soon be OBSOLETE
-sub xidsByDate {
-  my ($coldb,$xids,$date,$slice,$fill) = @_;
-  my ($dfilter,$slo,$shi,$dlo,$dhi) = $coldb->parseDateRequest($date,$slice,$fill);
-
-  ##-- filter xids
-  my $xenum  = $coldb->{xenum};
-  my $pack_x = $coldb->{pack_x};
-  my $pack_i = $coldb->{pack_id};
-  my $pack_d = $coldb->{pack_date};
-  my $pack_xd = "@".(packsize($pack_i) * scalar(@{$coldb->{attrs}})).$pack_d;
-  my $d2xis  = {}; ##-- ($dateKey => \@xis_at_date, ...)
-  my ($xi,$d);
-  foreach $xi (@$xids) {
-    $d = unpack($pack_xd, $xenum->i2s($xi));
-    next if (($dfilter && !$dfilter->($d)) || $d < $coldb->{xdmin} || $d > $coldb->{xdmax});
-    $d = $slice ? int($d/$slice)*$slice : 0;
-    push(@{$d2xis->{$d}}, $xi);
-  }
-
-  ##-- force-fill?
-  if ($fill && $slice) {
-    for ($d=$slo; $d <= $shi; $d += $slice) {
-      $d2xis->{$d} //= [];
-    }
-  }
-
-  return $d2xis;
 }
 
 ##~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -1970,17 +1950,10 @@ sub parseRequest {
 ##  + returns a HASH-ref:
 ##    (
 ##     req => $request,      ##-- save request
-##     ##--x->t
-##     #x2g => \&x2g,        ##-- group-tuple extraction code suitable for e.g. DiaColloDB::Relation::Cofreqs::profile(groupby=>\&x2g) ##--OLD
-##     #xi2g => \&xi2g,       ##-- group-tuple extraction code ($xi => $gtuple) suitable for e.g. DiaColloDB::Relation::Cofreqs::profile(groupby=>\&x2g) ##--OLD
-##     #xs2g => \&xs2g,       ##-- group-tuple extraction code ($xs => $gtuple)
-##     ##--
 ##     ti2g => \&ti2g,       ##-- group-tuple extraction code ($ti => $gtuple) : $g_packed = $ti2g->($ti)
 ##     ts2g => \&ts2g,       ##-- group-tuple extraction code ($ts => $gtuple) : $g_packed = $ts2g->($ts)
-##     ##--/x->t
-##     g2s => \&g2s,         ##-- stringification object suitable for DiaColloDB::Profile::stringify() [CODE,enum, or undef] : $g_str = $g2s->($g_packed)
+##     g2s   => \&g2s,       ##-- stringification object suitable for DiaColloDB::Profile::stringify() [CODE,enum, or undef] : $g_str = $g2s->($g_packed)
 ##     g2txt => \&g2txt,     ##-- compatible join()-string stringifcation sub
-##     #xpack => \@xpack,     ##-- group-attribute-wise pack-templates, given @xtuple
 ##     tpack => \@tpack,     ##-- group-attribute-wise pack-templates, given @ttuple
 ##     gpack => \@gpack,     ##-- group-attribute-wise pack-templates, given @gtuple
 ##     areqs => \@areqs,     ##-- parsed attribute requests ([$attr,$ahaving],...)
@@ -1990,7 +1963,7 @@ sub parseRequest {
 ##  + %opts:
 ##     warn  => $level,    ##-- log-level for unknown attributes (default: 'warn')
 ##     relax => $bool,     ##-- allow unsupported attributes (default=0)
-##     xenum => $xenum,    ##-- enum to use for \&x2g and \&g2s (default: $coldb->{xenum})
+##     tenum => $tenum,    ##-- enum to use for \&t2g and \&t2s (default: $coldb->{tenum})
 sub groupby {
   my ($coldb,$gbreq,%opts) = @_;
   return $gbreq if (UNIVERSAL::isa($gbreq,'HASH'));

@@ -317,7 +317,7 @@ sub saveTextFh {
 
 
 ##==============================================================================
-## Relation API: create : TODO
+## Relation API: create
 
 ## $ug = $CLASS_OR_OBJECT->create($coldb,$tokdat_file,%opts)
 ##  + populates current database from $tokdat_file,
@@ -355,12 +355,13 @@ sub create {
 }
 
 ##==============================================================================
-## Relation API: union : TODO
+## Relation API: union
 
 ## $ug = CLASS_OR_OBJECT->union($coldb, \@pairs, %opts)
 ##  + merge multiple co-frequency indices into new object
-##  + @pairs : array of pairs ([$ug,\@xi2u],...)
-##    of unigram-objects $ug and tuple-id maps \@xi2u for $ug
+##  + @pairs : array of pairs ([$ug,\@ti2u],...)
+##    of unigram-objects $ug and tuple-id maps \@ti2u for $ug
+##    - \@ti2u may also be a mapping object supporting a toArray() method
 ##  + %opts: clobber %$ug
 ##  + implicitly flushes the new index
 sub union {
@@ -370,27 +371,44 @@ sub union {
   $ug = $ug->new() if (!ref($ug));
   @$ug{keys %opts} = values %opts;
 
-  ##-- union guts (in-memory)
-  my $N = 0;
-  my $udata = [];
-  my ($pair,$pug,$pdata,$pi2u,$pxi);
-  foreach $pair (@$pairs) {
-    ($pug,$pi2u) = @$pair;
-    $pi2u  = $pi2u->toArray() if (UNIVERSAL::can($pi2u,'toArray'));
-    $pdata = $pug->toArray();
-    $pxi   = 0;
-    foreach (@$pdata) {
-      $udata->[$pi2u->[$pxi++]] += $_;
-    }
-    $N += $pug->{N};
-  }
+  ##-- tempfile (input for sort)
+  my $tmpfile = "$ug->{base}.udat";
+  my $tmpfh   = IO::File->new(">$tmpfile")
+    or $ug->logconfess("union(): open failed for tempfile $tmpfile: $!");
+  binmode($tmpfh,':raw');
 
-  ##-- finalize
-  $ug->{N} = $N;
-  $ug->fromArray($udata)
-    or $ug->logconfess("union(): failed to populate from array");
-  $ug->flush()
-    or $ug->logconfess("union(): failed to flush to disk");
+  ##-- stage1: dump argument relations to text tempfile
+  $ug->vlog('trace', "union(): stage1: collect items");
+  my ($pair,$pxf,$pi2u,$pi2s);
+  my $pairi =0;
+  foreach $pair (@$pairs) {
+    ($pxf,$pi2u) = @$pair;
+    $pi2u = $pi2u->toArray() if (UNIVERSAL::can($pi2u,'toArray'));
+    $pxf->saveTextFh($tmpfh, i2s=>sub { $pi2u->[$_[0]] })
+      or $ug->logconfess("union(): failed to extract data for argument $pairi");
+    ++$pairi;
+  }
+  $tmpfh->close()
+    or $ug->logconfess("union(): failed to close tempfile $tmpfile: $!");
+
+  ##-- stage2: sort & load tempfile
+  env_push(LC_ALL=>'C');
+  $ug->vlog('trace', "union(): stage2: load unigram frequencies");
+  my $sortfh = opencmd("sort -n -k2 -k3 $tmpfile |")
+    or $ug->logconfess("union(): open failed for pipe from sort: $!");
+  binmode($sortfh,':raw');
+  $ug->loadTextFh($sortfh)
+    or $ug->logconfess("union(): failed to load unigram frequencies from $tmpfile: $!");
+  $sortfh->close()
+    or $ug->logconfess("union(): failed to close pipe from sort: $!");
+  env_pop();
+
+  ##-- stage3: header
+  $ug->saveHeader()
+    or $ug->logconfess("union(): failed to save header: $!");
+
+  ##-- cleanup: unlink temp file(s)
+  CORE::unlink($tmpfile) if (!$ug->{keeptmp});
 
   return $ug;
 }

@@ -1,13 +1,16 @@
 Wed, 20 Apr 2016 14:12:49 +0200
 + update DB create() and union() methods: x->t
-  - pack_x -> pack_t  in attrData
   - text file format for Relation::create() changed
-+ update relation create() and union() methods: x->t
-  - Cofreqs
-  - Unigrams
-    x~ create
-  - TDF?
-
++ update DB export() method
+x+ update relation create() and union() methods: x->t
+  x- DiaColloDB::create
+  x- Cofreqs::create
+  x- Unigrams::create
+  x- TDF::create ?
+  x- DIaColloDB::union
+  x- Cofreqs::union  
+  x- Unigrams::union
+  x- TDF::union() ?
 
 x+ test unigrams relation
 
