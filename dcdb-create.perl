@@ -84,6 +84,8 @@ GetOptions(##-- general
 	   'min-cofrequency|min-cf|mincf|cfmin=i' => \$coldb{cfmin},
 	   'index-tdf|index-tdm|tdf|tdm!' => \$coldb{index_tdf},
 	   'tdf-dbreak|tdf-break|dbreak|db|vbreak|vb=s' => \$coldb{dbreak},
+	   'tdf-min-term-frequency|tdf-tfmin|tdf-fmin=i' => \$coldb{tdfopts}{minFreq},
+	   'tdf-min-document-frequency|tdf-dfmin=i' => \$coldb{tdfopts}{minDocFreq},
 	   'tdf-break-min-size|tdf-break-min|tdf-nmin|vbnmin|vbmin=s' => \$coldb{tdfopts}{minDocSize},
 	   'tdf-break-max-size|tdf-break-max|tdf-nmax|vbnmax|vbmax=s' => \$coldb{tdfopts}{maxDocSize},
 	   'tdf-option|tdm-option|tdfopt|tdmopt|tdmo|tdfo|to|tO=s%' => \$coldb{tdfopts},
@@ -185,6 +187,8 @@ dcdb-create.perl - create a DiaColloDB diachronic collocation database
    -cfmin CFMIN         ##-- minimum relation co-occurrence frequency (default=5)
    -[no]tdf             ##-- do/don't create (term x document) index relation (default=if available)
    -tdf-dbreak BREAK    ##-- set tdf matrix "document" granularity (e.g. s,p,page,file; default=file)
+   -tdf-fmin VFMIN      ##-- set minimum tdf term frequency (default=undef: TFMIN)
+   -tdf-dfmin VDFMIN    ##-- set minimum tdf term "document"-frequency (default=4)
    -tdf-nmin VNMIN      ##-- set minimum number of content tokens per tdf "document" (default=8)
    -tdf-nmax VNMAX      ##-- set maximum number of content tokens per tdf "document" (default=inf)
    -tdf-option OPT=VAL  ##-- set arbitrary tdf matrix option, e.g.
@@ -397,6 +401,14 @@ Do/don't create (term x document) index relation (default=if available).
 
 Set tdf matrix "document" granularity (e.g. s,p,page,file; default=file).
 
+=item -tdf-fmin VFMIN
+
+Set minimum tdf term frequency (default=undef: use TFMIN).
+
+=item -tdf-dfmin VDFMIN
+
+Set minimum term document-"frequency" (default=4).
+
 =item -tdf-nmin VNMIN
 
 Set minimum number of content tokens per tdf "document" (default=8).
@@ -409,10 +421,10 @@ Set maximum number of content tokens per tdf "document" (default=inf).
 
 Set arbitrary L<tdf matrixDiaColloDB|DiaColloDB::Relation::TDF> option, e.g.
 
- minFreq=INT            # minimum term frequency (default=undef: use TFMIN)
- minDocFreq=INT         # minimum term document-"frequency" (default=4)
- minDocSize=INT         # minimum document size (#/terms) (default=4)
- maxDocSize=INT         # maximum document size (#/terms) (default=inf)
+ minFreq=INT            # -tdf-fmin: minimum term frequency
+ minDocFreq=INT         # -tdf-dfmin: minimum term document-"frequency"
+ minDocSize=INT         # -tdf-nmin: minimum document size (#/terms)
+ maxDocSize=INT         # -tdf-nmax: maximum document size (#/terms)
  mgood=REGEX            # positive regex for document-level metatdata
  mbad=REGEX             # negative regex for document-level metatdata
 

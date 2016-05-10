@@ -246,6 +246,9 @@ sub loadTextFh {
       $N1 += $f1;		      ##-- load N values
       next;
     }
+    elsif ($i1 eq '') {
+      next;			      ##-- ignore EOS counts from create()
+    }
     elsif (!defined($d1)) {
       $ug->logconfess("loadTextFh(): failed to parse input line ", $infh->input_line_number);
     }
@@ -342,6 +345,10 @@ sub create {
   $cmdfh->close()
     or $ug->logconfess("create(): failed to close pipe from sort: $!");
   env_pop();
+
+  ##-- save header
+  $ug->saveHeader()
+    or $ug->logconfess("create(): failed to save header: $!");
 
   ##-- done
   return $ug;

@@ -28,9 +28,9 @@ sub diskFiles {
 }
 
 ## $nbytes = $obj->du()
-##  + default implementation wraps du_file($obj->diskFiles)
+##  + default implementation wraps DiaColloDB::Utils::du_file($obj->diskFiles)
 sub du {
-  return du_file($_[0]->diskFiles);
+  return DiaColloDB::Utils::du_file($_[0]->diskFiles);
 }
 
 ## $mtime = $obj->mtime()
@@ -38,7 +38,7 @@ sub du {
 sub mtime {
   my $obj   = shift;
   my $mtime = 0;
-  foreach (map {file_mtime($_)} $obj->diskFiles) {
+  foreach (map {DiaColloDB::Utils::file_mtime($_)} $obj->diskFiles) {
     $mtime = $_ if ($_ > $mtime);
   }
   return $mtime;

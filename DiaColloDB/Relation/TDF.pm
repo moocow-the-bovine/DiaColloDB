@@ -323,7 +323,7 @@ sub create {
   my $imax0    = $opts{ivalmax};
   my $nnz_v    = $vtokfh ? ((-s $vtokfh) / packsize($coldb->{pack_t})) : undef;
   my $nsigs0   = $docoff ? $docoff->[$#$docoff] : undef;
-  my $nterms0  = $coldb->{xenum}->size;
+  my $nterms0  = $coldb->{tenum}->size;
   my $imax     = lmax($imax0, $nnz_v, $nsigs0, $nterms0);
   my $imintype = DiaColloDB::Utils::mintype($imax, qw(ushort long indx));
   $vs->info("$logas: using PDL integer type $imintype (max value = $imax)");

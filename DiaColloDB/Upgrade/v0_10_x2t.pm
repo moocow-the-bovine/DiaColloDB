@@ -76,7 +76,7 @@ sub upgrade {
   my $nbits_t = packsize($hdr->{pack_id}) * 8;
 
   ##-- convert xenum to tenum
-  $up->info("creating $dbdir/tenum.* from $dbdir/xenum.*");
+  $up->info("creating $dbdir/tenum.*");
   my $xenum = $DiaColloDB::XECLASS->new(base=>"$dbdir/xenum", pack_s=>$hdr->{pack_x})
     or $up->logconfess("failed to open $dbdir/xenum.*: $!");
   my %xeopts = map {($_=>$xenum->{$_})} qw(pack_i pack_o pack_l);
@@ -103,7 +103,7 @@ sub upgrade {
 
   ##-- convert attribute-wise multimaps & pack-templates
   foreach my $attr (@{$hdr->{attrs}}) {
-    $up->info("creating multimap $dbdir/${attr}_2t.* from $dbdir/${attr}_2x.*");
+    $up->info("creating multimap $dbdir/${attr}_2t.*");
     my $xmm = $DiaColloDB::MMCLASS->new(flags=>'r', base=>"$dbdir/${attr}_2x", logCompat=>'off')
       or $up->logconfess("failed to open $dbdir/${attr}_2x.*");
     my $mma    = $xmm->toArray();
