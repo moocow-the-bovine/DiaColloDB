@@ -2,6 +2,23 @@
 ##
 ## Change log for perl distribution DiaColloDB
 
+v0.10.000 pending
+	* removed dates from generic term-tuple vocabulary ("x-tuples" -> "t-tuples"), a la tdf relation
+	* re-factored db structure for more efficient 2-pass Cofreqs queries (f2 bug-fix)
+	  - Cofreqs now 3-level (id1 -> (date -> (id2->f)))
+	  - Unigrams now 2-level (id1 -> (date -> f))
+	  - Relation::subprofile1() and subprofile2() calling conventions changed
+	* added upgrade package v0_10_x2t
+	  - added compatibility wrappers Compat::v0_09::* for transparent use of old indices
+	* added auto-backup of changed files to upgrade framework
+	  - upgraders are now instantiated as objects, not just packages: cache header & options
+	* added dcdb-upgrade.perl options -keep, -[no]backup
+	* added DiaColloDB::Utils functions copyto(), moveto(), copyto_a(), cp_a()
+	* added DiaColloDB::Persistent method-wrappers copyto(), moveto(), copyto_a()
+	* removed unused f1(), f12() methods from Cofreqs
+	* re-factored compatibility wrappers into DiaColloDB::Compat::vx_y_z::*
+	* added optimized PackedFile::MMap::bsearch() method (for new Cofreqs 'onepass' mode)
+
 v0.09.003 Wed, 27 Apr 2016 09:55:14 +0200 moocow
 	* fixed 'undefined value in vec' warning in DiaColloDB/Relation.pm
 
