@@ -21,40 +21,6 @@ sub toversion {
   return '0.10.000';
 }
 
-## $bool = $up->backup()
-##  + perform backup any files we expect to change to $up->backupdir()
-sub backup {
-  my $up = shift;
-  $up->SUPER::backup() or return undef;
-  return 1 if (!$up->{backup});
-
-  my $dbdir = $up->{dbdir};
-  my $hdr   = $up->dbheader;
-  my $backd = $up->backupdir;
-
-  ##-- backup: xenum
-  $up->info("backing up $dbdir/xenum.*");
-  copyto_a([glob "$dbdir/xenum.*"], $backd)
-      or $up->logconfess("backup failed for $dbdir/xenum.*: $!");
-
-  ##-- backup: by attribute: multimaps
-  foreach my $base (map {"$dbdir/${_}_2x"} @{$hdr->{attrs}}) {
-    $up->info("backing up $base.*");
-    copyto_a([glob "$base.*"], $backd)
-      or $up->logconfess("backup failed for $base.*: $!");
-  }
-
-  ##-- backup: relations
-  foreach my $base (map {"$dbdir/$_"} qw(xf cof)) {
-    $up->info("backing up $base.*");
-    copyto_a([glob "$base.*"], $backd)
-      or $up->logconfess("backup failed for $base.*: $!");
-  }
-
-  return 1;
-}
-
-
 ## $bool = $CLASS_OR_OBJECT->_upgrade($dbdir, \%info)
 ##  + performs upgrade
 sub upgrade {
@@ -204,6 +170,96 @@ sub upgrade {
 
   ##-- update header
   return $up->updateHeader();
+}
+
+##==============================================================================
+## Backup & Revert
+
+## $bool = $up->backup()
+##  + perform backup any files we expect to change to $up->backupdir()
+sub backup {
+  my $up = shift;
+  $up->SUPER::backup() or return undef;
+  return 1 if (!$up->{backup});
+
+  my $dbdir = $up->{dbdir};
+  my $hdr   = $up->dbheader;
+  my $backd = $up->backupdir;
+
+  ##-- backup: xenum
+  $up->info("backing up $dbdir/xenum.*");
+  copyto_a([glob "$dbdir/xenum.*"], $backd)
+      or $up->logconfess("backup failed for $dbdir/xenum.*: $!");
+
+  ##-- backup: by attribute: multimaps
+  foreach my $base (map {"$dbdir/${_}_2x"} @{$hdr->{attrs}}) {
+    $up->info("backing up $base.*");
+    copyto_a([glob "$base.*"], $backd)
+      or $up->logconfess("backup failed for $base.*: $!");
+  }
+
+  ##-- backup: relations
+  foreach my $base (map {"$dbdir/$_"} qw(xf cof)) {
+    $up->info("backing up $base.*");
+    copyto_a([glob "$base.*"], $backd)
+      or $up->logconfess("backup failed for $base.*: $!");
+  }
+
+  return 1;
+}
+
+## @files = $up->revert_created()
+##  + returns list of files created by this upgrade, for use with default revert() implementation
+sub revert_created {
+  my $up  = shift;
+  my $hdr = $up->dbheader;
+
+  return (
+	  ##-- multimaps
+	  (map {
+	    my $base="${_}_2t";
+	    map {"$base.$_"} qw(hdr ma mb)
+	  } @{$hdr->{attrs}}),
+
+	  ##-- tenum
+	  (map {"tenum.$_"} qw(hdr fix fsx)),
+
+	  ##-- unigrams
+	  (map {"xf.$_"} qw(dba1 dba1.hdr dba2 dba2.hdr hdr)),
+
+	  ##-- cofreqs
+	  (map {"cof.$_"} qw(dba3 dba3.hdr)),
+
+	  ##-- header
+	  'header.json',
+	 );
+}
+
+## @files = $up->revert_updated()
+##  + returns list of files updated by this upgrade, for use with default revert() implementation
+sub revert_updated {
+  my $up  = shift;
+  my $hdr = $up->dbheader;
+
+  return (
+	  ##-- multimaps
+	  (map {
+	    my $base="${_}_2x";
+	    map {"$base.$_"} qw(hdr ma mb)
+	  } @{$hdr->{attrs}}),
+
+	  ##-- tenum
+	  (map {"xenum.$_"} qw(hdr fix fsx)),
+
+	  ##-- unigrams
+	  (map {"xf.$_"} qw(dba dba.hdr)),
+
+	  ##-- cofreqs
+	  (map {"cof.$_"} qw(dba1 dba1.hdr dba2 dba2.hdr hdr)),
+
+	  ##-- header
+	  'header.json',
+	 );
 }
 
 

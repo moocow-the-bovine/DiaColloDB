@@ -20,28 +20,6 @@ sub toversion {
   return '0.09.000';
 }
 
-## $bool = $up->backup()
-##  + perform backup any files we expect to change to $up->backupdir()
-##  + call this from $up->upgrade()
-sub backup {
-  my $up = shift;
-  $up->SUPER::backup() or return undef;
-  return 1 if (!$up->{backup});
-
-  my $dbdir = $up->{dbdir};
-  my $hdr   = $up->dbheader;
-  my $backd = $up->backupdir;
-
-  ##-- backup: by attribute
-  foreach my $base (map {"$dbdir/${_}_2x"} @{$hdr->{attrs}}) {
-    $up->info("backing up $base.*");
-    DiaColloDB::Utils::copyto_a([glob "$base.*"], $backd)
-      or $up->logconfess("backup failed for $base.*: $!");
-  }
-  return 1;
-}
-
-
 ## $bool = $up->upgrade()
 ##  + performs upgrade
 sub upgrade {
@@ -77,6 +55,50 @@ sub upgrade {
 
   ##-- update header
   return $up->updateHeader();
+}
+
+##==============================================================================
+## Backup & Revert
+
+## $bool = $up->backup()
+##  + perform backup any files we expect to change to $up->backupdir()
+##  + call this from $up->upgrade()
+sub backup {
+  my $up = shift;
+  $up->SUPER::backup() or return undef;
+  return 1 if (!$up->{backup});
+
+  my $dbdir = $up->{dbdir};
+  my $hdr   = $up->dbheader;
+  my $backd = $up->backupdir;
+
+  ##-- backup: by attribute
+  foreach my $base (map {"$dbdir/${_}_2x"} @{$hdr->{attrs}}) {
+    $up->info("backing up $base.*");
+    DiaColloDB::Utils::copyto_a([glob "$base.*"], $backd)
+      or $up->logconfess("backup failed for $base.*: $!");
+  }
+  return 1;
+}
+
+## @files = $up->rb_created()
+##  + returns list of files created by this upgrade, for use with default rollback() implementation
+sub revert_created {
+  return qw();
+}
+
+## @files = $up->rb_updated()
+##  + returns list of files updated by this upgrade, for use with default rollback() implementation
+sub revert_updated {
+  my $up = shift;
+  my $hdr = $up->dbheader;
+
+  my @mmfiles = map {
+    my $base="${_}_2x";
+    map {"$base.$_"} qw(hdr ma mb)
+  } @{$hdr->{attrs}};
+
+  return (@mmfiles, 'header.json');
 }
 
 

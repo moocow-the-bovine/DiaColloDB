@@ -16,7 +16,7 @@ our @ISA = qw(DiaColloDB::Upgrade::Base);
 ## $version = $up->toversion()
 ##  + returns default target version; default just returns $DiaColloDB::VERSION
 sub toversion {
-  return '0.04';
+  return '0.04.000';
 }
 
 ## $bool = $up->needed()
@@ -57,7 +57,19 @@ sub upgrade {
 }
 
 ##==============================================================================
-## Utilities
+## Backups & Rollback
+
+## @files = $up->revert_created()
+##  + returns list of files created by this upgrade, for use with default rollback() implementation
+sub revert_created {
+  return qw();
+}
+
+## @files = $up->revert_updated()
+##  + returns list of files updated by this upgrade, for use with default rollback() implementation
+sub revert_updated {
+  return qw(header.json);
+}
 
 
 ##==============================================================================

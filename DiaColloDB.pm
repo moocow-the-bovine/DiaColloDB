@@ -1325,14 +1325,14 @@ sub dbexport {
   }
 
   ##-- dump: tenum: raw
-  $coldb->vlog($coldb->{logExport}, "dbexport(): exporting raw tuple-enum file $outdir/tenum.dat");
+  $coldb->vlog($coldb->{logExport}, "dbexport(): exporting tuple-enum file $outdir/tenum.dat (raw)");
   $coldb->{tenum}->saveTextFile("$outdir/tenum.dat")
     or $coldb->logconfess("export failed for $outdir/tenum.dat");
 
   ##-- dump: xenum: stringified
   if ($export_sdat) {
-    $coldb->vlog($coldb->{logExport}, "dbexport(): exporting stringified tuple-enum file $outdir/tenum.sdat");
-    $coldb->{xenum}->saveTextFile("$outdir/tenum.sdat", pack_s=>$ts2txt)
+    $coldb->vlog($coldb->{logExport}, "dbexport(): exporting tuple-enum file $outdir/tenum.sdat (strings)");
+    $coldb->{tenum}->saveTextFile("$outdir/tenum.sdat", pack_s=>$ts2txt)
       or $coldb->logconfess("dbexport() failed for $outdir/tenum.sdat");
   }
 
@@ -1354,7 +1354,7 @@ sub dbexport {
     ##-- dump: by attribute: a2x: stringified
     if ($export_sdat) {
       $coldb->vlog($coldb->{logExport}, "dbexport(): exporting attribute expansion multimap $outdir/$_->{a}_2t.sdat (strings)");
-      $_->{a2t}->saveTextFile("$outdir/$_->{a}_2t.sdat", a2s=>$_->{i2txt}, b2s=>$si2txt)
+      $_->{a2t}->saveTextFile("$outdir/$_->{a}_2t.sdat", a2s=>$_->{i2txt}, b2s=>$ti2txt)
 	or $coldb->logconfess("dbexport() failed for $outdir/$_->{a}_2t.sdat");
     }
   }
@@ -1362,13 +1362,13 @@ sub dbexport {
   ##-- dump: xf
   if ($coldb->{xf}) {
     ##-- dump: xf: raw
-    $coldb->vlog($coldb->{logExport}, "dbexport(): exporting tuple-frequency index $outdir/xf.dat");
+    $coldb->vlog($coldb->{logExport}, "dbexport(): exporting tuple-frequency index $outdir/xf.dat (raw)");
     $coldb->{xf}->saveTextFile("$outdir/xf.dat")
       or $coldb->logconfess("export failed for $outdir/xf.dat");
 
     ##-- dump: xf: stringified
     if ($export_sdat) {
-      $coldb->vlog($coldb->{logExport}, "dbexport(): exporting stringified tuple-frequency index $outdir/xf.sdat");
+      $coldb->vlog($coldb->{logExport}, "dbexport(): exporting tuple-frequency index $outdir/xf.sdat (strings)");
       $coldb->{xf}->saveTextFile("$outdir/xf.sdat", i2s=>$ti2txt)
 	or $coldb->logconfess("dbexport() failed for $outdir/xf.sdat");
     }
@@ -1376,12 +1376,12 @@ sub dbexport {
 
   ##-- dump: cof
   if ($coldb->{cof} && $export_cof) {
-    $coldb->vlog($coldb->{logExport}, "dbexport(): exporting raw co-frequency index $outdir/cof.dat");
+    $coldb->vlog($coldb->{logExport}, "dbexport(): exporting co-frequency index $outdir/cof.dat (raw)");
     $coldb->{cof}->saveTextFile("$outdir/cof.dat")
       or $coldb->logconfess("export failed for $outdir/cof.dat");
 
     if ($export_sdat) {
-      $coldb->vlog($coldb->{logExport}, "dbexport(): exporting stringified co-frequency index $outdir/cof.sdat");
+      $coldb->vlog($coldb->{logExport}, "dbexport(): exporting co-frequency index $outdir/cof.sdat (strings)");
       $coldb->{cof}->saveTextFile("$outdir/cof.sdat", i2s=>$ti2txt)
 	or $coldb->logconfess("export failed for $outdir/cof.sdat");
     }

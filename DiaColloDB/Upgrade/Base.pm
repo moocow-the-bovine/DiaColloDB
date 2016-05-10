@@ -7,6 +7,7 @@
 package DiaColloDB::Upgrade::Base;
 use DiaColloDB::Logger;
 use DiaColloDB::Utils qw(:time);
+use File::Path qw(remove_tree);
 use Carp;
 use version;
 use strict;
@@ -67,8 +68,9 @@ sub upgrade {
   $_[0]->logconfess("ugprade() method not implemented");
 }
 
+
 ##==============================================================================
-## Backups
+## Backup & Revert
 
 ## $bool = $up->backup()
 ##  + perform backup any files we expect to change to $up->backupdir()
@@ -106,6 +108,72 @@ sub backupdir {
   return "$dbdir/upgrade_${suffix}.d";
 }
 
+## $bool = $up->revert()
+##  + rolls back a previous upgrade on $up->{dbdir}
+##  + default implementation deletes files returned by $up->files_created()
+##    and copies files returned by $up->files_updated() from $up->backupdir
+sub revert {
+  my $up = shift;
+
+  ##-- get backup directory
+  my $dbdir = $up->{dbdir};
+  my $backd = $up->backupdir;
+
+  ##-- sanity check(s)
+  $up->logconfess("revert(): no DBDIR specified")
+    if (!$dbdir);
+  $up->logconfess("revert(): no backup specified")
+    if (!$backd);
+  $up->logconfess("revert(): backup directory $backd/ not found")
+    if (!-d $backd);
+  $up->logconfess("revert(): required method revert_created() not implemented")
+    if (($up->can('revert_created')//\&revert_created) eq \&revert_created);
+  $up->logconfess("revert(): required method revert_updated() not implemented")
+    if (($up->can('revert_updated')//\&revert_updated) eq \&revert_updated);
+
+  ##-- get file-lists
+  my @created = $up->revert_created;
+  my @updated = $up->revert_updated;
+
+  ##-- ensure backups exist
+  foreach (@updated) {
+    $up->logconfess("revert(): no backup found for updated file '$_'") if (!-e "$backd/$_");
+  }
+
+  ##-- unlink updated and restored files
+  foreach (@created,@updated) {
+    $up->trace("revert(): removing $dbdir/$_");
+    !-e "$dbdir/$_"
+      or CORE::unlink("$dbdir/$_")
+      or $up->logconfess("revert(): failed to remove $dbdir/$_: $!");
+  }
+
+  ##-- restore backup files
+  foreach (@updated) {
+    $up->trace("revert(): restoring $dbdir/$_");
+    DiaColloDB::Utils::copyto_a("$backd/$_", $dbdir, from=>$backd)
+	or $up->logconfess("revert(): failed to restore $dbdir/$_: $!");
+  }
+
+  ##-- remove backup directory
+  $up->trace("revert(): removing backup directory $backd");
+  remove_tree($backd)
+    or $up->logconfess("revert(): failed to remove backup directory $backd: $!");
+
+  return 1;
+}
+
+## @files = $up->revert_created()
+##  + returns list of files created by this upgrade, for use with default revert() implementation
+sub revert_created {
+  $_[0]->logconfess("revert_created() method not implemented");
+}
+
+## @files = $up->revert_updated()
+##  + returns list of files updated by this upgrade, for use with default revert() implementation
+sub revert_updated {
+  $_[0]->logconfess("revert_updated() method not implemented");
+}
 
 ##==============================================================================
 ## Utilities
@@ -153,7 +221,7 @@ sub updateHeader {
 
   ##-- backup old header if requested
   !$up->{backup}
-    or DiaColloDB::Utils::copyto("$dbdir/header.json", $up->backupdir)
+    or DiaColloDB::Utils::copyto_a("$dbdir/header.json", $up->backupdir)
     or $up->logconfess("updateHeader(): failed to backup header to ".$up->backupdir.": $!");
 
   ##-- get upgrade info

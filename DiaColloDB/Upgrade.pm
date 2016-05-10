@@ -49,6 +49,26 @@ sub needed {
   } @_;
 }
 
+## @upgrades = $CLASS_OR_OBJECT->which($dbdir, \%opts?, @upgrade_pkgs)
+##  + returns a list of upgrades applied to $dbdir
+##  + list is created by parsing "upgraded" field from "$dbdir/header.json"
+##  + if the upgrade-item "by" keyword inherits from DiaColloDB::Upgrade::Base,
+##    a new object will be created and returned in @upgrades; otherwise the
+##    parsed HASH-ref is returned as-is
+sub which {
+  my ($that,$dbdir,$opts) = @_;
+  $opts //= {};
+  my $hdr = DiaColloDB::Upgrade::Base->dbheader($dbdir);
+  my @ups = qw();
+  foreach (@{$hdr->{upgraded}//[]}) {
+    my $class = $_->{class} // $_->{by};
+    $class    = "DiaColloDB::Upgrade::$class" if (!UNIVERSAL::isa($class,'DiaColloDB::Upgrade::Base'));
+    my $up    = UNIVERSAL::isa($class,'DiaColloDB::Upgrade::Base') ? $class->new(%$opts, %$_, dbdir=>$dbdir) : $_;
+    push(@ups, $up);
+  }
+  return @ups;
+}
+
 ## $bool = $CLASS_OR_OBJECT->upgrade($dbdir, \%opts?, \@upgrades_or_pkgs)
 ##  + applies upgrades in @upgrades to DB in $dbdir
 ##  + %opts are passed to upgrade-package new() methods
