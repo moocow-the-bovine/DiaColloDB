@@ -260,8 +260,9 @@ sub loadTextFh {
   ##-- adopt final $N and sizes
   $ug->{N} = $N1>$N ? $N1 : $N;
   foreach (qw(1 2)) {
-    $ug->{"r$_"}->remap() if ($ug->{"r$_"}->can('remap'));
-    $ug->{"size$_"} = $ug->{"r$_"}->size;
+    my $r = $ug->{"r$_"};
+    $r->flush();
+    $ug->{"size$_"} = $r->size;
   }
 
   return $ug;
@@ -317,11 +318,10 @@ sub saveTextFh {
 
 ## $ug = $CLASS_OR_OBJECT->create($coldb,$tokdat_file,%opts)
 ##  + populates current database from $tokdat_file,
-##    a tt-style text file containing 1 token-id perl line with optional blank lines
-##  + %opts: clobber %$ug, also:
-##    (
-##     size=>$size,  ##-- set initial size
-##    )
+##    a tt-style text file containing with lines of the form:
+##      TID DATE	##-- single token
+##	"\n"		##-- blank line --> EOS
+##  + %opts: clobber %$ug
 sub create {
   my ($ug,$coldb,$datfile,%opts) = @_;
 
@@ -334,34 +334,14 @@ sub create {
     or $ug->open()
       or $ug->logconfess("create(): failed to open unigrams database: $!");
 
-  ##-- populate db
-  my $packas = $ug->{packas} // 'N';
-  my $cur    = 0;
-  my $N      = 0;
-  my ($i,$f);
-  if (defined($opts{size})) {
-    $ug->setsize($opts{size})
-      or $ug->logconfess("create(): failed to set size = $opts{size}: $!");
-  }
   env_push(LC_ALL=>'C');
-  my $cmdfh = opencmd("sort -n $datfile | uniq -c |")
+  my $cmdfh = opencmd("sort -nk1 -nk2 $datfile | uniq -c |")
     or $ug->logconfess("create(): failed to open pipe from sort: $!");
-  while (defined($_=<$cmdfh>)) {
-    chomp;
-    ($f,$i) = split(' ',$_,2);
-    next if ($i eq ''); ##-- ignore eos
-    if ($i==$cur++) {
-      $ug->write(pack($packas,$f));
-    } else {
-      $ug->store($i,$f);
-      $cur = $i+1;
-    }
-    $N += $f;
-  }
-  $cmdfh->close();
+  $ug->loadTextFh($cmdfh)
+    or $ug->logconfess("create(): failed to load unigram data: $!");
+  $cmdfh->close()
+    or $ug->logconfess("create(): failed to close pipe from sort: $!");
   env_pop();
-  $ug->setsize($cur); ##-- set final size
-  $ug->{N} = $N;      ##-- store unigram total
 
   ##-- done
   return $ug;

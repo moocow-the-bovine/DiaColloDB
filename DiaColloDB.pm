@@ -139,6 +139,7 @@ our %TDF_OPTS = (
 ##    keeptmp => $bool,   ##-- keep temporary files? (default=0)
 ##    index_tdf => $bool, ##-- tdf: create/use (term x document) frequency matrix index? (default=undef: if available)
 ##    index_cof => $bool, ##-- cof: create/use co-frequency index (default=1)
+##    index_xf => $bool,  ##-- xf: create/use unigram index (default=1)
 ##    dbreak => $dbreak,  ##-- tdf: use break-type $break for tdf index (default=undef: files)
 ##    tdfopts=>\%tdfopts, ##-- tdf: options for DiaColloDB::Relation::TDF->new(); default=undef (all inherited from %TDF_OPTS)
 ##    ##
@@ -174,14 +175,11 @@ our %TDF_OPTS = (
 ##    ##-- attribute data
 ##    ${a}enum => $aenum,   ##-- attribute enum: $aenum : ($dbdir/${a}_enum.*) : $astr<=>$ai : A*<=>N
 ##                          ##    e.g.  lemmata: $lenum : ($dbdir/l_enum.*   )  : $lstr<=>$li : A*<=>N
-##    #${a}2x   => $a2x,     ##-- attribute multimap: $a2x : ($dbdir/${a}_2x.*) : $ai=>@xis  : N=>N*
 ##    ${a}2t   => $a2t,     ##-- attribute multimap: $a2t : ($dbdir/${a}_2t.*) : $ai=>@tis  : N=>N*
 ##    pack_t$a => $fmt      ##-- pack format: extract attribute-id $ai from a packed tuple-string $ts ; $ai=unpack($coldb->{"pack_t$a"},$ts)
 ##    ##
 ##    ##-- tuple data (+dates)
-##    #xenum  => $xenum,     ##-- enum: tuples ($dbdir/xenum.*) : [@ais,$di]<=>$xi : N*n<=>N	  : OBSOLETE in v0.10.x
-##    #pack_x => $fmt,       ##-- symbol pack-format for $xenum : "${pack_id}[Nattrs]${pack_date}": OBSOLETE in v0.10.x
-##    tenum  => $tenum,     ##-- enum: tuples ($dbdir/xenum.*) : \@ais<=>$ti : N*<=>N
+##    tenum  => $tenum,     ##-- enum: tuples ($dbdir/tenum.*) : \@ais<=>$ti : N*<=>N
 ##    pack_t => $fmt,       ##-- symbol pack-format for $tenum : "${pack_id}[Nattrs]"
 ##    xdmin => $xdmin,      ##-- minimum date
 ##    xdmax => $xdmax,      ##-- maximum date
@@ -189,7 +187,7 @@ our %TDF_OPTS = (
 ##    ##-- relation data
 ##    #xf    => $xf,       ##-- ug: $xi => $f($xi) : N=>N
 ##    #cof   => $cof,      ##-- cf: [$xi1,$xi2] => $f12
-##    xf    => $xf,       ##-- ug: [$ti,$date]       => f($ti,$date) : N=>N
+##    xf    => $xf,       ##-- ug: [$ti,$date]       => f($ti,$date)
 ##    cof   => $cof,      ##-- cf: [$ti1,$date,$ti2] => f($ti1,$date,$ti2)
 ##    ddc   => $ddc,      ##-- ddc: ddc client relation
 ##    tdf   => $tdf,      ##-- tdf: (term x document) frequency matrix relation
@@ -214,6 +212,7 @@ sub new {
 		      #keeptmp => 0,
 		      index_tdf => undef,
 		      index_cof => 1,
+		      index_xf => 1,
 		      dbreak => undef,
 		      tdfopts => {},
 
@@ -250,11 +249,11 @@ sub new {
 		      #pack_tl => 'N',
 
 		      ##-- tuples (-dates)
-		      #tenum  => undef, #$XECLASS::FixedLen->new(pack_i=>$coldb->{pack_id}, pack_s=>$coldb->{pack_x}, pack_d=>$coldb->{pack_date}),
+		      #tenum  => undef, #$XECLASS::FixedLen->new(pack_i=>$coldb->{pack_id}, pack_s=>$coldb->{pack_t}, pack_d=>$coldb->{pack_date}),
 		      #pack_t => 'N',
 
 		      ##-- relations
-		      #xf   => undef, #DiaColloDB::Relation::Unigrams->new(pack_i=>$pack_i, pack_f=>$pack_f, pack_date=>$pack_date),
+		      #xf   => undef, #DiaColloDB::Relation::Unigrams->new(pack_i=>$pack_i, pack_f=>$pack_f, pack_d=>$pack_date),
 		      #cof => undef, #DiaColloDB::Relation::Cofreqs->new(pack_f=>$pack_f, pack_i=>$pack_i, pack_d=>$pack_date, dmax=>$dmax, fmin=>$cfmin),
 		      #ddc  => undef, #DiaColloDB::Relation::DDC->new(),
 		      #tdf  => undef, #DiaColloDB::Relation::TDF->new(),
@@ -452,11 +451,11 @@ sub diskFiles {
 ##--------------------------------------------------------------
 ## create: utils
 
-## $multimap = $coldb->create_xmap($base, \%ts2i, $packfmt, $label="multimap")
-sub create_xmap {
+## $multimap = $coldb->create_multimap($base, \%ts2i, $packfmt, $label="multimap")
+sub create_multimap {
   my ($coldb,$base,$ts2i,$packfmt,$label) = @_;
   $label //= "multimap";
-  $coldb->vlog($coldb->{logCreate},"create_xmap(): creating $label $base.*");
+  $coldb->vlog($coldb->{logCreate},"create_multimap(): creating $label $base.*");
 
   my $pack_id  = $coldb->{pack_id};
   my $pack_mmb = "${pack_id}*"; ##-- multimap target-set pack format
@@ -469,11 +468,11 @@ sub create_xmap {
   $_ = pack($pack_mmb, sort {$a<=>$b} unpack($pack_mmb,$_//'')) foreach (@v2ti); ##-- ensure multimap target-sets are sorted
 
   my $v2t = $MMCLASS->new(base=>$base, flags=>'rw', perms=>$coldb->{perms}, pack_i=>$pack_id, pack_o=>$coldb->{pack_off}, pack_l=>$coldb->{pack_id})
-    or $coldb->logconfess("create_xmap(): failed to create $base.*: $!");
+    or $coldb->logconfess("create_multimap(): failed to create $base.*: $!");
   $v2t->fromArray(\@v2ti)
-    or $coldb->logconfess("create_xmap(): failed to populate $base.*: $!");
+    or $coldb->logconfess("create_multimap(): failed to populate $base.*: $!");
   $v2t->flush()
-    or $coldb->logconfess("create_xmap(): failed to flush $base.*: $!");
+    or $coldb->logconfess("create_multimap(): failed to flush $base.*: $!");
 
   return $v2t;
 }
@@ -573,14 +572,14 @@ sub attrQuery {
 ## \@attrdata = $coldb->attrData()
 ## \@attrdata = $coldb->attrData(\@attrs=$coldb->attrs)
 ##  + get attribute data for \@attrs
-##  + return @attrdata = ({a=>$attr, i=>$i, enum=>$aenum, pack_x=>$pack_xa, a2t=>$a2t, ...})
+##  + return @attrdata = ({a=>$attr, i=>$i, enum=>$aenum, pack_t=>$pack_xa, a2t=>$a2t, ...})
 sub attrData {
   my ($coldb,$attrs) = @_;
   $attrs //= $coldb->attrs;
   my ($attr);
   return [map {
     $attr = $coldb->attrName($attrs->[$_]);
-    {i=>$_, a=>$attr, enum=>$coldb->{"${attr}enum"}, pack_x=>$coldb->{"pack_x$attr"}, a2t=>$coldb->{"${attr}2t"}}
+    {i=>$_, a=>$attr, enum=>$coldb->{"${attr}enum"}, pack_t=>$coldb->{"pack_t$attr"}, a2t=>$coldb->{"${attr}2t"}}
   } (0..$#$attrs)];
 }
 
@@ -635,20 +634,19 @@ sub create {
   my $pack_off   = $coldb->{pack_off};
   my $pack_len   = $coldb->{pack_len};
   my $pack_t     = $coldb->{pack_t} = $pack_id."[".scalar(@$attrs)."]";
-  my $pack_x     = $coldb->{pack_x} = $pack_t.$pack_date;
 
   ##-- initialize: common flags
   my %efopts = (flags=>$flags, pack_i=>$coldb->{pack_id}, pack_o=>$coldb->{pack_off}, pack_l=>$coldb->{pack_len});
   my %mmopts = (flags=>$flags, pack_i=>$coldb->{pack_id});
 
   ##-- initialize: attribute enums
-  my $aconf = [];  ##-- [{a=>$attr, i=>$i, enum=>$aenum, pack_x=>$pack_xa, s2i=>\%s2i, ns=>$nstrings, ?i2j=>$pftmp, ...}, ]
+  my $aconf = [];  ##-- [{a=>$attr, i=>$i, enum=>$aenum, pack_t=>$pack_ta, s2i=>\%s2i, ns=>$nstrings, ?i2j=>$pftmp, ...}, ]
   my $axpos = 0;
   my ($attr,$ac);
   foreach (0..$#$attrs) {
     push(@$aconf,$ac={i=>$_, a=>($attr=$attrs->[$_])});
     $ac->{enum}   = $coldb->{"${attr}enum"} = $ECLASS->new(%efopts);
-    $ac->{pack_x} = $coldb->{"pack_x$attr"} = '@'.$axpos.$pack_id;
+    $ac->{pack_t} = $coldb->{"pack_t$attr"} = '@'.$axpos.$pack_id;
     $ac->{s2i}    = $ac->{enum}{s2i};
     $ac->{ma}     = $1 if ($attr =~ /^(?:meta|doc)\.(.*)$/);
     $axpos       += packsize($pack_id);
@@ -657,9 +655,9 @@ sub create {
   my @aconfw = grep {!defined($_->{ma})} @$aconf; ##-- token-attributes
 
   ##-- initialize: tuple enum (+dates)
-  my $xenum = $coldb->{xenum} = $XECLASS->new(%efopts, pack_s=>$pack_x);
-  my $xs2i  = $xenum->{s2i};
-  my $nx    = 0;
+  my $tenum = $coldb->{tenum} = $XECLASS->new(%efopts, pack_s=>$pack_t);
+  my $ts2i  = $tenum->{s2i};
+  my $nt    = 0;
 
   ##-- initialize: corpus token-list (temporary)
   ##  + 1 token/line, blank lines ~ EOS, token lines ~ "$a0i $a1i ... $aNi $date"
@@ -696,7 +694,7 @@ sub create {
   ##-- initialize: enums, date-range
   $coldb->vlog($coldb->{logCreate},"create(): processing $nfiles corpus file(s)");
   my ($xdmin,$xdmax) = ('inf','-inf');
-  my ($doc, $date,$tok,$w,$p,$l,@ais,$aistr,$x,$xi, $nsigs, $filei, $last_was_eos);
+  my ($doc, $date,$tok,$w,$p,$l,@ais,$aistr,$t,$ti, $nsigs, $filei, $last_was_eos);
   my $docoff_cur = -1;
   my $toki       = 0;
   for ($corpus->ibegin(); $corpus->iok; $corpus->inext) {
@@ -824,9 +822,12 @@ sub create {
     tied(@$i2j)->flush;
   }
 
-  ##-- filter: terms: populate $ws2w (map IDs)
+  ##-- filter: terms: populate $ts2t (map IDs)
+  ## + $ts2t = { join(' ',@ais) => pack($pack_t,i2j(@ais)), ...}
+  ## + includes attribute-id re-mappings
+  ## + only populated if we have any frequency filters active
+  my $ts2t  = undef;
   my $tfmin = $coldb->{tfmin}//0;
-  my $ws2w  = undef; ##-- join(' ',@ais) => pack($pack_t,i2j(@ais)) : includes attribute-id re-mappings
   if ($tfmin > 0 || grep {defined($_->{i2j})} @$aconf) {
     $coldb->vlog($coldb->{logCreate}, "create(): populating global term enum (tfmin=$tfmin)");
     my @ai2j  = map {defined($_->{i2j}) ? $_->{i2j} : undef} @$aconf;
@@ -849,7 +850,7 @@ sub create {
 	$ais[$_] = $ai2j[$_][$ais[$_]//0];
 	next FILTER_WTUPLES if ($ais[$_] == $ibad);
       }
-      $ws2w->{$aistr} = pack($pack_t,@ais);
+      $ts2t->{$aistr} = pack($pack_t,@ais);
       ++$nw;
     }
     $cmdfh->close();
@@ -862,15 +863,15 @@ sub create {
 
   ##-- compile: apply filters & assign term-ids
   $coldb->vlog($coldb->{logCreate}, "create(): filtering corpus tokens & assigning term-IDs");
-  my $tokfile = "$dbdir/tokens.dat";
+  my $tokfile = "$dbdir/tokens.dat";		##-- v0.10.x: new format: "TID DATE\n" | "\n"
   CORE::open(my $tokfh, ">:raw", $tokfile)
       or $coldb->logconfess("$0: open failed for $tokfile: $!");
   my $vtokfile = "$dbdir/vtokens.bin";
-  CORE::open(my $vtokfh, ">:raw", $vtokfile)
+  CORE::open(my $vtokfh, ">:raw", $vtokfile)	##-- format: pack($pack_t,@ais)
       or $coldb->logconfess("$0: open failed for $vtokfile: $!");
   CORE::open($atokfh, "<:raw", $atokfile)
       or $coldb->logconfess("$0: re-open failed for $atokfile: $!");
-  $nx       = 0;
+  $nt = 0;
   my $ntok_in = $toki;
   my ($toki_in,$toki_out) = (0,0);
   my $doci_cur   = 0;
@@ -886,15 +887,14 @@ sub create {
       }
       ++$toki_in;
       $date = $1 if (s/ ([0-9]+)$//);
-      if (defined($ws2w)) {
-	next if (!defined($w=$ws2w->{$_}));
+      if (defined($ts2t)) {
+	next if (!defined($t=$ts2t->{$_}));
       } else {
-	$w = pack($pack_t, split(' ',$_));
+	$t = pack($pack_t, split(' ',$_));
       }
-      $x  = $w.pack($pack_date,$date);
-      $xi = $xs2i->{$x} = ++$nx if (!defined($xi=$xs2i->{$x}));
-      $tokfh->print($xi,"\n");
-      $vtokfh->print($w);
+      $ti  = $ts2i->{$t} = ++$nt if (!defined($ti=$ts2i->{$t}));
+      $tokfh->print($ti, "\t", $date, "\n");
+      $vtokfh->print($t);
       ++$toki_out;
     }
     else {
@@ -918,16 +918,16 @@ sub create {
       or $coldb->logconfess("create(): failed to temporary tdf-token-file $vtokfile: $!");
   my $ntok_out = $toki_out;
   my $ptokbad = $ntok_in ? sprintf("%.2f%%",100*($ntok_in-$ntok_out)/$ntok_in) : 'nan%';
-  $coldb->vlog($coldb->{logCreate}, "create(): assigned $nx term+date tuple-IDs to $ntok_out of $ntok_in tokens (pruned $ptokbad)");
+  $coldb->vlog($coldb->{logCreate}, "create(): assigned $nt term tuple-IDs to $ntok_out of $ntok_in tokens (pruned $ptokbad)");
 
   ##-- cleanup: drop $aconf->[$ai]{i2j} now that we've used it
   delete($_->{i2j}) foreach (@$aconf);
 
-  ##-- compile: xenum
-  $coldb->vlog($coldb->{logCreate}, "create(): creating tuple-enum $dbdir/xenum.*");
-  $xenum->fromHash($xs2i);
-  $xenum->save("$dbdir/xenum")
-    or $coldb->logconfess("create(): failed to save $dbdir/xenum: $!");
+  ##-- compile: tenum
+  $coldb->vlog($coldb->{logCreate}, "create(): creating tuple-enum $dbdir/tenum.*");
+  $tenum->fromHash($ts2i);
+  $tenum->save("$dbdir/tenum")
+    or $coldb->logconfess("create(): failed to save $dbdir/tenum.*: $!");
 
   ##-- compile: by attribute
   foreach $ac (@$aconf) {
@@ -938,23 +938,25 @@ sub create {
       or $coldb->logconfess("create(): failed to save $dbdir/$ac->{a}_enum: $!");
 
     ##-- compile: by attribute: expansion multimaps (+dates)
-    $coldb->create_xmap("$dbdir/$ac->{a}_2t",$xs2i,$ac->{pack_t},"attribute expansion multimap");
+    $coldb->create_multimap("$dbdir/$ac->{a}_2t",$ts2i,$ac->{pack_t},"attribute expansion multimap");
   }
 
   ##-- compute unigrams
-  $coldb->info("creating tuple unigram index $dbdir/xf.dba");
-  my $xfdb = $coldb->{xf} = DiaColloDB::Relation::Unigrams->new(file=>"$dbdir/xf.dba", flags=>$flags, packas=>$pack_f)
-    or $coldb->logconfess("create(): could not create $dbdir/xf.dba: $!");
-  $xfdb->setsize($xenum->{size})
-    or $coldb->logconfess("create(): could not set unigram index size = $xenum->{size}: $!");
-  $xfdb->create($coldb, $tokfile)
-    or $coldb->logconfess("create(): failed to create unigram index: $!");
+  if ($coldb->{index_xf}//1) {
+    $coldb->info("creating unigram index $dbdir/xf.*");
+    my $xfdb = $coldb->{xf} = DiaColloDB::Relation::Unigrams->new(base=>"$dbdir/xf", flags=>$flags, pack_i=>$pack_id, pack_f=>$pack_f, pack_d=>$pack_date)
+      or $coldb->logconfess("create(): could not create $dbdir/xf.*: $!");
+    $xfdb->create($coldb, $tokfile)
+      or $coldb->logconfess("create(): failed to create unigram index: $!");
+  } else {
+    $coldb->info("NOT creating unigram index $dbdir/xf.*; set index_xf=1 to enable");
+  }
 
   ##-- compute collocation frequencies
   if ($coldb->{index_cof}//1) {
     $coldb->info("creating co-frequency index $dbdir/cof.* [dmax=$coldb->{dmax}, fmin=$coldb->{cfmin}]");
     my $cof = $coldb->{cof} = DiaColloDB::Relation::Cofreqs->new(base=>"$dbdir/cof", flags=>$flags,
-								 pack_i=>$pack_id, pack_f=>$pack_f,
+								 pack_i=>$pack_id, pack_f=>$pack_f, pack_d=>$pack_date,
 								 dmax=>$coldb->{dmax}, fmin=>$coldb->{cfmin},
 								 keeptmp=>$coldb->{keeptmp},
 								)
@@ -1138,7 +1140,7 @@ sub union {
 
   ##-- union: expansion maps
   foreach (@$adata) {
-    $coldb->create_xmap("$dbdir/$_->{a}_2t",$xs2i,$_->{pack_t},"attribute expansion multimap");
+    $coldb->create_multimap("$dbdir/$_->{a}_2t",$xs2i,$_->{pack_t},"attribute expansion multimap");
   }
 
   ##-- intermediate cleanup: xs2i

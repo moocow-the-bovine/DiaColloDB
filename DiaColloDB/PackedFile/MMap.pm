@@ -115,7 +115,11 @@ sub truncate {
 
 ## $bool = $pf->flush()
 ##  + attempt to flush underlying filehandle, may not work
-##  + INHERITED from PackedFile
+sub flush {
+  my $pf = shift;
+  $pf->SUPER::flush(@_) or return undef;
+  $pf->remap();
+}
 
 ##==============================================================================
 ## API: filters

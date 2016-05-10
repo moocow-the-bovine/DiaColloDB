@@ -31,7 +31,9 @@ sub new {
 
 ## $rel = $CLASS_OR_OBJECT->create($coldb, $tokdat_file, %opts)
 ##  + populates current database from $tokdat_file,
-##    a tt-style text file containing 1 token-id perl line with optional blank lines
+##    a tt-style text file containing with lines of the form:
+##      TID DATE	##-- single token
+##	"\n"		##-- blank line --> EOS
 ##  + %opts: clobber %$rel
 sub create {
   my ($rel,$coldb,$datfile,%opts) = @_;

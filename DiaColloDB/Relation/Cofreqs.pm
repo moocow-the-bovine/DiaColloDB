@@ -189,7 +189,11 @@ sub loadHeaderData {
 ##  + INHERITED from DiaColloDB::Persistent
 
 ## $cof = $cof->loadTextFh($fh,%opts)
-##  + loads from text file as saved by saveTextFh()
+##  + loads from text file as saved by saveTextFh():
+##      N                       ##-- 1 field : N
+##      FREQ ID1 DATE           ##-- 3 fields: un-collocated portion of $f1
+##      FREQ ID1 DATE ID2       ##-- 4 fields: co-frequency pair (ID2 >= 0)
+##      FREQ ID1 DATE ID2 DATE2 ##-- 5 fields: redundant date (used by create(); DATE2 is ignored)
 ##  + supports semi-sorted input: input fh must be sorted by $i1,$d1
 ##    and all $i2 for each $i1,$d1 must be adjacent (i.e. no intervening ($j1,$e1) with $j1 != $i1 or $e1 != $d1)
 ##  + supports multiple lines for pairs ($i1,$d1,$i2) provided the above conditions hold
@@ -219,7 +223,7 @@ sub loadTextFh {
   ##-- iteration variables
   my ($pos1,$pos2,$pos3) = (0,0,0);
   my ($i1_cur,$d1_cur,$f1) = (-1,undef,0);
-  my ($f12,$i1,$d1,$i2,$f);
+  my ($f12,$i1,$d1,$i2,$d2,$f);
   my $N  = 0;	  ##-- total marginal frequency as extracted from %f12
   my $N1 = 0;     ##-- total N as extracted from single-element records
   my %f12 = qw(); ##-- ($i2=>$f12, ...) for $i1_cur
@@ -265,7 +269,7 @@ sub loadTextFh {
   binmode($infh,':raw');
   while (defined($_=<$infh>)) {
     chomp;
-    ($f12,$i1,$d1,$i2) = split(' ',$_,4);
+    ($f12,$i1,$d1,$i2,$d2) = split(' ',$_,5);
     if (!defined($i1)) {
       #$cof->debug("N1 += $f12");
       $N1 += $f12;		      ##-- load N values
@@ -285,8 +289,9 @@ sub loadTextFh {
   #$cof->debug("FINAL: N1=$N1, N=$N");
   $cof->{N} = $N1>$N ? $N1 : $N;
   foreach (qw(1 2 3)) {
-    $cof->{"r$_"}->remap() if ($cof->{"r$_"}->can('remap'));
-    $cof->{"size$_"} = $cof->{"r$_"}->size;
+    my $r = $cof->{"r$_"};
+    $r->flush();
+    $cof->{"size$_"} = $r->size;
   }
 
   return $cof;
@@ -366,11 +371,10 @@ sub saveTextFh {
 
 ## $rel = $CLASS_OR_OBJECT->create($coldb,$tokdat_file,%opts)
 ##  + populates current database from $tokdat_file,
-##    a tt-style text file containing 1 token-id perl line with optional blank lines
-##  + %opts: clobber %$ug, also:
-##    (
-##     size=>$size,  ##-- set initial size (number of types)
-##    )
+##    a tt-style text file containing with lines of the form:
+##      TID DATE	##-- single token
+##	"\n"		##-- blank line --> EOS
+##  + %opts: clobber %$ug
 sub create {
   my ($cof,$coldb,$tokfile,%opts) = @_;
 
@@ -391,7 +395,7 @@ sub create {
   ##-- sort filter
   env_push(LC_ALL=>'C');
   my $tmpfile = "$cof->{base}.dat";
-  my $sortfh = opencmd("| sort -nk1 -nk2 | uniq -c - $tmpfile")
+  my $sortfh = opencmd("| sort -nk1 -nk2 -nk3 | uniq -c - $tmpfile")
     or $cof->logconfess("create(): open failed for pipe to sort|uniq: $!");
   binmode($sortfh,':raw');
 
@@ -424,7 +428,7 @@ sub create {
 
   ##-- stage2: load pair-frequencies
   $cof->vlog('trace', "create(): stage2: load pair frequencies (fmin=$cof->{fmin})");
-  $cof->loadTextFile_create($tmpfile)
+  $cof->loadTextFile($tmpfile)
     or $cof->logconfess("create(): failed to load pair frequencies from $tmpfile: $!");
 
   ##-- stage3: header
