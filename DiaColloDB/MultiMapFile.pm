@@ -99,7 +99,7 @@ sub open {
   }
 
   ##-- check compatibility
-  my $min_version = qv(0.09.001);
+  my $min_version = qv(0.09.000);
   if ($hdr && (!defined($hdr->{version}) || version->parse($hdr->{version}) < $min_version)) {
     $mmf->vlog($mmf->{logCompat}, "using compatibility mode for $mmf->{base}.*; consider running \`dcdb-upgrade.perl ", dirname($mmf->{base}), "\'");
     DiaColloDB::Compat->usecompat('v0_08');

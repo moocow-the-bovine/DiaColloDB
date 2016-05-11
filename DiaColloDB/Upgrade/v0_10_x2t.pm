@@ -21,7 +21,7 @@ sub toversion {
   return '0.10.000';
 }
 
-## $bool = $CLASS_OR_OBJECT->_upgrade($dbdir, \%info)
+## $bool = $CLASS_OR_OBJECT->upgrade()
 ##  + performs upgrade
 sub upgrade {
   my $up = shift;

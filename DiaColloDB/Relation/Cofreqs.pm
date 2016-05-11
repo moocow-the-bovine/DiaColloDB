@@ -371,7 +371,7 @@ sub saveTextFh {
 
 ## $rel = $CLASS_OR_OBJECT->create($coldb,$tokdat_file,%opts)
 ##  + populates current database from $tokdat_file,
-##    a tt-style text file containing with lines of the form:
+##    a tt-style text file with lines of the form:
 ##      TID DATE	##-- single token
 ##	"\n"		##-- blank line: EOS
 ##  + %opts: clobber %$ug

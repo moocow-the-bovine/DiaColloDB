@@ -61,7 +61,7 @@ sub unlink {
 }
 
 ## $bool = $obj->copyto($todir, %opts)
-##  + copies object file(s) from $fromdir to $todir, creating $todir if it doesn't already exist;
+##  + copies object file(s) to $todir, creating $todir if it doesn't already exist;
 ##    options %opts:
 ##    (
 ##     method => \&method,   ##-- use CODE-ref \&method(\@srcfiles,$todir,%opts) to copy file(s) (default=\&DiaColloDB::Utils::copyto)
@@ -76,16 +76,16 @@ sub copyto {
   return $method->(\@files, $todir, %opts);
 }
 
-## $bool = $obj->moveto($todir, %opts)
-##  + wrapper for $obj->copy($todir, %opts, method=>\&DiaColloDB::Utils::moveto, close=>1);
-sub moveto {
-  return $_[0]->copyto(@_[1..$#_], method=>\&DiaColloDB::Utils::moveto, close=>1);
-}
-
 ## $bool = $obj->copyto_a($todir, %opts)
-##  + wrapper for copy() which propagates timestamps, ownership, and permissions
+##  + wrapper for copyto() which propagates timestamps, ownership, and permissions
 sub copyto_a {
   return $_[0]->copyto(@_[1..$#_], method=>\&DiaColloDB::Utils::copyto_a);
+}
+
+## $bool = $obj->moveto($todir, %opts)
+##  + wrapper for $obj->copyto($todir, %opts, method=>\&DiaColloDB::Utils::moveto, close=>1);
+sub moveto {
+  return $_[0]->copyto(@_[1..$#_], method=>\&DiaColloDB::Utils::moveto, close=>1);
 }
 
 ##==============================================================================

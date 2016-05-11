@@ -34,17 +34,24 @@ x+ DEBUG: weird -1pass inconsistencies for ./dcdb-query.perl kern.d Mann -ds=0 -
     ANSWER  : we were missing %i2 double-count checks in v0.10.x code
   - QUESTION: why is f2(Mann) > f1 in v0.10.x ?
     ANSWER  : we were double-counting
+
++ test diff
     
 + document new/changed modules:
-  Compat/*
-  Cofreqs
-  PackedFile/MMap : added optimized bsearch
-  Upgrade/Base : extra header data
-  Upgrade/v0_10_x2t
-  Relation (subprofile[12] calling conventions changed)
-  DiaColloDB : parseDateRequest() conventions changed, x->t
-  Persistent::copyto, moveto, copyto_a
-  Utils::copyto, moveto, copyto_a, cp_a
+  #Compat/*
+  #PackedFile/MMap : added optimized bsearch
+  #Upgrade/Base : extra header data, revert, instance conventions
+  #- Upgrade/v0_04
+  #- Upgrade/v0_09
+  #- Upgrade/v0_10_x2t
+  #Relation (subprofile[12] calling conventions changed)
+  #- Unigrams
+  #- Cofreqs
+  #DiaColloDB : parseDateRequest() conventions changed, x->t
+  #Persistent::copyto, moveto, copyto_a
+  #Utils::copyto, moveto, copyto_a, cp_a
+  #- xluniq xluniq
+  #- :pdl, :temp
 
 + update kaskade DBs
   1) update DBs from not-yet-installed new DiaColloDB build dir

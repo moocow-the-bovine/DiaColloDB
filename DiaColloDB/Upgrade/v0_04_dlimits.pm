@@ -26,7 +26,7 @@ sub needed {
   return !defined($up->{hdr}{xdmin}) || !defined($up->{hdr}{xdmax});
 }
 
-## $bool = $CLASS_OR_OBJECT->_upgrade($dbdir, \%info)
+## $bool = $up->upgrade()
 ##  + performs upgrade
 sub upgrade {
   my $up = shift;

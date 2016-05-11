@@ -178,11 +178,13 @@ our %TDF_OPTS = (
 ##    ${a}2t   => $a2t,     ##-- attribute multimap: $a2t : ($dbdir/${a}_2t.*) : $ai=>@tis  : N=>N*
 ##    pack_t$a => $fmt      ##-- pack format: extract attribute-id $ai from a packed tuple-string $ts ; $ai=unpack($coldb->{"pack_t$a"},$ts)
 ##    ##
-##    ##-- tuple data (+dates)
+##    ##-- tuple data (-dates)
+##    ##   + as of v0.10.000, packed term tuples EXCLUDING dates ("t-tuples") are mapped by $coldb->{tenum}
+##    ##   + prior to v0.10.000, term tuples INCLUDING dates ("x-tuples") were mapped by $coldb->{xenum}, now obsolete
 ##    tenum  => $tenum,     ##-- enum: tuples ($dbdir/tenum.*) : \@ais<=>$ti : N*<=>N
 ##    pack_t => $fmt,       ##-- symbol pack-format for $tenum : "${pack_id}[Nattrs]"
-##    xdmin => $xdmin,      ##-- minimum date
-##    xdmax => $xdmax,      ##-- maximum date
+##    xdmin => $xdmin,      ##-- minimum date (>= v0.04)
+##    xdmax => $xdmax,      ##-- maximum date (>= v0.04)
 ##    ##
 ##    ##-- relation data
 ##    #xf    => $xf,       ##-- ug: $xi => $f($xi) : N=>N
@@ -2170,7 +2172,7 @@ sub parseGroupBy {
 ##     global  => $bool,          ##-- trim profiles globally (vs. locally for each date-slice?) (default=0)
 ##     ##
 ##     ##-- profiling and debugging parameters
-##     strings => $bool,          ##-- do/don't stringify (default=do)
+##     strings => $bool,          ##-- do/don't stringify output profile(s) (default=do)
 ##     fill    => $bool,          ##-- if true, returned multi-profile will have null profiles inserted for missing slices
 ##     onepass => $bool,          ##-- if true, use fast but incorrect 1-pass method (Cofreqs profiling only)
 ##    )

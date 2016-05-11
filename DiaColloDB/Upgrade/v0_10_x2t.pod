@@ -7,7 +7,7 @@
 
 =head1 NAME
 
-DiaColloDB::Upgrade::v0_09_multimap - DiaColloDB utilities: auto-magic upgrade: v0.09.x: MultiMapFile format
+DiaColloDB::Upgrade::v0_10_x2t - DiaColloDB utilities: auto-magic upgrade: v0.10.x: x-tuples (+date) to t-tuples (-date)
 
 =cut
 
@@ -20,16 +20,16 @@ DiaColloDB::Upgrade::v0_09_multimap - DiaColloDB utilities: auto-magic upgrade: 
  ##========================================================================
  ## PRELIMINARIES
  
- use DiaColloDB::Upgrade::v0_09_multimap;
+ use DiaColloDB::Upgrade::v0_10_x2t;
  
  ##========================================================================
  ## API
  
- $version = $up->toversion();
+ $version = $CLASS_OR_OBJECT->toversion();
  $bool    = $up->upgrade();
  
  ##========================================================================
- ## Backups & Rollback
+ ## Backup & Revert
  
  $bool  = $up->backup();
  @files = $up->revert_created();
@@ -44,7 +44,7 @@ DiaColloDB::Upgrade::v0_09_multimap - DiaColloDB utilities: auto-magic upgrade: 
 
 =head1 DESCRIPTION
 
-DiaColloDB::Upgrade::v0_09_multimap
+DiaColloDB::Upgrade::v0_10_x2t
 provides a L<DiaColloDB::Upgrade|DiaColloDB::Upgrade>-compliant
 package for upgrading a
 L<DiaColloDB|DiaColloDB> database directory in-place.
@@ -55,15 +55,27 @@ Upgrade actions performed:
 
 =item *
 
-updates MultiMapFile formats from v0.08.x to v0.09.x
+converts date-inclusive "x-tuple" enum C<xenum>
+to date-free attributes-only term-tuple ("t-tuple") enum C<tenum>.
+
+=item *
+
+maps attribute multimap target IDs from "x-tuples" to "t-tuples".
+
+=item *
+
+updates db header pack-template keys ("pack_x*" -E<gt> "pack_t*")
+
+=item *
+
+updates native relation DBs C<xf>, C<cof>.
 
 =back
-
 
 =cut
 
 ##----------------------------------------------------------------
-## DESCRIPTION: DiaColloDB::Upgrade::v0_09_multimap: API
+## DESCRIPTION: DiaColloDB::Upgrade::v0_10_x2t: API
 =pod
 
 =head2 API
@@ -75,7 +87,7 @@ updates MultiMapFile formats from v0.08.x to v0.09.x
  $version = $CLASS_OR_OBJECT->toversion();
 
 Returns default target version;
-here C<"0.09.000">.
+here C<"0.10.000">.
 
 =item upgrade
 

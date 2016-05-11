@@ -60,7 +60,6 @@ DiaColloDB::Relation::Cofreqs - diachronic collocation db, profiling relation: n
  ## I/O: text
  
  $cof  = $cof->loadTextFh($fh,%opts)
- $cof  = $cof->loadTextFile_create($fh,%opts);
  $bool = $cof->saveTextFh($fh,%opts);
  
  ##========================================================================
@@ -72,12 +71,6 @@ DiaColloDB::Relation::Cofreqs - diachronic collocation db, profiling relation: n
  ## Relation API: union
  
  $cof = CLASS_OR_OBJECT->union($coldb, \@pairs, %opts);
- 
- ##========================================================================
- ## Utilities: lookup
- 
- $f = $cof->f1( @ids);
- $f12 = $cof->f12($id1,$id2);
  
  ##========================================================================
  ## Relation API: default: profiling
@@ -143,23 +136,28 @@ L<DiaColloDB::Relation|DiaColloDB::Relation>.
 
  ##-- user options
  class    => $class,      ##-- optional, useful for debugging from header file
- base     => $basename,   ##-- file basename (default=undef:none); use files "${base}.dba1", "${base}.dba2", "${base}.hdr"
+ base     => $basename,   ##-- file basename (default=undef:none); use files "${base}.dba1", "${base}.dba2", "${base}.dba3", "${base}.hdr"
  flags    => $flags,      ##-- fcntl flags or open-mode (default='r')
  perms    => $perms,      ##-- creation permissions (default=(0666 &~umask))
  dmax     => $dmax,       ##-- maximum distance for co-occurrences (default=5)
  fmin     => $fmin,       ##-- minimum pair frequency (default=0)
  pack_i   => $pack_i,     ##-- pack-template for IDs (default='N')
- pack_f   => $pack_f,     ##-- pack-template for IDs (default='N')
+ pack_f   => $pack_f,     ##-- pack-template for frequencies (default='N')
+ pack_d   => $pack_d,     ##-- pack-tempalte for dates (default='n')
  keeptmp  => $bool,       ##-- keep temporary files? (default=false)
+ logCompat => $level,     ##-- log-level for compatibility warnings (default='warn')
  ##
  ##-- size info (after open() or load())
  size1    => $size1,      ##-- == $r1->size()
  size2    => $size2,      ##-- == $r2->size()
+ size3    => $size2,      ##-- == $r3->size()
  ##
  ##-- low-level data
- r1 => $r1,               ##-- pf: [$end2,$f1] @ $i1
- r2 => $r2,               ##-- pf: [$i2,$f12]  @ end2($i1-1)..(end2($i1)-1)
- N  => $N,                ##-- sum($f12)
+ r1 => $r1,               ##-- pf: [$end2]            @ $i1				: constant (logical index)
+ r2 => $r2,               ##-- pf: [$end3,$d1,$f1]*   @ end2($i1-1)..(end2($i1+1)-1)	: sorted by $d1 for each $i1
+ r3 => $r3,               ##-- pf: [$i2,$f12]*        @ end3($d1-1)..(end3($d1+1)-1)	: sorted by $i2 for each ($i1,$d1)
+ N  => $N,                ##-- sum($f1)
+ version => $version,     ##-- file version, for compatibility checks
 
 =item DESTROY
 
@@ -241,50 +239,57 @@ overrides L<DiaColloDB::Persistent|DiaColloDB::Persistent> implementation.
 
  $cof = $cof->loadTextFh($fh,%opts)
 
+loads from text file as saved by L<saveTextFh|/saveTextFh>();
+lines of the form:
+
+ N                       ##-- 1 field : N
+ FREQ ID1 DATE           ##-- 3 fields: un-collocated portion of f(ID1,DATE)
+ FREQ ID1 DATE ID2       ##-- 4 fields: co-frequency pair (ID2 >= 0)
+ FREQ ID1 DATE ID2 DATE2 ##-- 5 fields: redundant date (used by create(); DATE2 is ignored)
+
 =over 4
 
 =item *
 
-loads from text file as saved by saveTextFh()
+supports semi-sorted input: input fh must be sorted numerically by C<($i1,$d1)>,
+and all C<$i2> for each C<($i1,$d1)>-pair must be adjacent (i.e. no intervening C<$j1 != $i1>)
 
 =item *
 
-supports semi-sorted input: input fh must be sorted by $i1,
-and all $i2 for each $i1 must be adjacent (i.e. no intervening $j1 != $i1)
+supports multiple lines for collocation-triples C<($i1,$d1,$i2)> provided the above conditions hold
 
 =item *
 
-supports multiple lines for pairs ($i1,$i2) provided the above conditions hold
-
-=item *
-
-supports loading of $cof-E<gt>{N} from single-value lines
-
-=item *
-
-%opts: clobber %$cof
+supports loading of C<$cof-E<gt>{N}> from single-value lines
 
 =back
+
+C<%opts>: clobber C<%$cof>
+
+
 
 =item loadTextFile_create
 
  $cof = $cof->loadTextFile_create($fh,%opts);
 
-old, slightly faster version of loadTextFile() which doesn't support {N}, semi-sorted input, or multiple ($i1,$i2) entries;
-not useable by union() method.
+backwards-compatible alias for L<loadTextFh()|/loadTextFh>.
 
 
 =item saveTextFh
 
  $bool = $cof->saveTextFh($fh,%opts);
 
-save from text file with initial line "N" and subsequent lines of the form:
+save to text filehandle with lines of the form:
 
- FREQ ID1 ID2
+ N                       ##-- 1 field : N
+ FREQ ID1 DATE           ##-- 3 fields: un-collocated portion of f(ID1,DATE)
+ FREQ ID1 DATE ID2       ##-- 4 fields: co-frequency pair (ID2 >= 0)
 
 %opts:
 
- i2s => \&CODE,   ##-- code-ref for formatting indices; called as $s=CODE($i)
+ i2s  => \&CODE,   ##-- code-ref for formatting indices; called as $s=CODE($i)
+ i2s1 => \&CODE,   ##-- code-ref for formatting item1 indices (overrides 'i2s')
+ i2s2 => \&CODE,   ##-- code-ref for formatting item2 indices (overrides 'i2s')
 
 =back
 
@@ -300,14 +305,15 @@ save from text file with initial line "N" and subsequent lines of the form:
 
 =item create
 
- $rel = $CLASS_OR_OBJECT->create($coldb,$tokdat_file,%opts);
+ $cof = $CLASS_OR_OBJECT->create($coldb,$tokdat_file,%opts);
 
-populates current index from $tokdat_file,
-a tt-style text file containing 1 token-id perl line with optional blank lines.
+populates co-frequency index from $tokdat_file,
+a tt-style text file with lines of the form:
 
-%opts: clobber %$rel, also:
+ TID DATE	##-- single token
+ "\n"		##-- blank line ~ EOS (hard co-occurrence boundary)
 
- size=>$size,  ##-- set initial size (number of types)
+C<%opts>: clobber C<%$cof>.
 
 =back
 
@@ -325,40 +331,12 @@ a tt-style text file containing 1 token-id perl line with optional blank lines.
 
  $cof = CLASS_OR_OBJECT->union($coldb, \@pairs, %opts);
 
-merge multiple co-frequency indices from \@pairs into new object.
-@pairs is an array of pairs ([$cof,\@xi2u],...)
-of DiaColloDB::Relation::Cofreqs objects $cof and tuple-id maps \@xi2u for $cof;
-\@xi2u may also be a mapping object supporting a toArray() method.
+merge multiple co-frequency indices into new object.
+C<@pairs> is an array of pairs C<([$argcof,\@ti2u],...)>
+of co-frequency relations C<$argcof> and tuple-id maps C<\@ti2u> for C<$argcof>.
 implicitly flushes the new index.
 
 %opts: clobber %$cof
-
-=back
-
-=cut
-
-##----------------------------------------------------------------
-## DESCRIPTION: DiaColloDB::Relation::Cofreqs: Utilities: lookup
-=pod
-
-=head2 Utilities: lookup
-
-=over 4
-
-=item f1
-
- $f = $cof->f1( @ids);
- $f = $cof->f1(\@ids);
-
-get total marginal unigram frequency (index must be opened)
-
-=item f12
-
- $f12 = $cof->f12($id1,$id2);
-
-return joint frequency for pair ($id1,$id2)
-
-currently B<UNUSED>
 
 =back
 
@@ -372,14 +350,21 @@ currently B<UNUSED>
 
 =over 4
 
-=item subprofile
+=item subprofile1
 
- $prf = $cof->subprofile(\@xids, %opts);
+ \%slice2prf = $ug->subprofile1(\@tids,\%opts);
 
-get co-frequency profile for @xids (index must be opened).
-%opts:
+Get slice-wise co-frequency profile(s) for tuple-IDs C<@tids>.
+C<$cof> must be opened.
+%opts: as for L<DiaColloDB::Relation::subprofile1|DiaColloDB::Relation/subprofile1>().
 
- groupby => \&gbsub,  ##-- key-extractor $key2_or_undef = $gbsub-E<gt>($i2)
+=item subprofile2
+
+ \%slice2prf = $rel->subprofile2(\%slice2prf, %opts)
+
+Populate independent collocate frequencies in C<%slice2prf> values.
+C<$cof> must be opened.
+%opts: as for L<DiaColloDB::Relation::subprofile2|DiaColloDB::Relation/subprofile2>().
 
 =back
 
@@ -399,7 +384,7 @@ get co-frequency profile for @xids (index must be opened).
 
 get query-info hash for profile administrivia (ddc hit links).
 
-%opts: as for profile(), additionally:
+%opts: as for L<DiaColloDB::Relation::profile|DiaColloDB::Relation/profile>(), additionally:
 
  qreqs => \@qreqs,      ##-- as returned by $coldb->parseRequest($opts{query})
  gbreq => \%groupby,    ##-- as returned by $coldb->groupby($opts{groupby})

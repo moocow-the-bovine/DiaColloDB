@@ -45,11 +45,11 @@ sub needed {
     my $pkg = $_;
     $pkg = "DiaColloDB::Upgrade::$pkg" if (!UNIVERSAL::can($pkg,'needed'));
     $that->warn("unknown upgrade package $_") if (!UNIVERSAL::can($pkg,'needed'));
-    $pkg->new($dbdir,%$opts)->needed();
+    $that->uobj($pkg,$dbdir,$opts)->needed();
   } @_;
 }
 
-## @upgrades = $CLASS_OR_OBJECT->which($dbdir, \%opts?, @upgrade_pkgs)
+## @upgrades = $CLASS_OR_OBJECT->which($dbdir, \%opts?)
 ##  + returns a list of upgrades applied to $dbdir
 ##  + list is created by parsing "upgraded" field from "$dbdir/header.json"
 ##  + if the upgrade-item "by" keyword inherits from DiaColloDB::Upgrade::Base,
@@ -63,8 +63,7 @@ sub which {
   foreach (@{$hdr->{upgraded}//[]}) {
     my $class = $_->{class} // $_->{by};
     $class    = "DiaColloDB::Upgrade::$class" if (!UNIVERSAL::isa($class,'DiaColloDB::Upgrade::Base'));
-    my $up    = UNIVERSAL::isa($class,'DiaColloDB::Upgrade::Base') ? $class->new(%$opts, %$_, dbdir=>$dbdir) : $_;
-    push(@ups, $up);
+    push(@ups, $that->uobj($class, $dbdir, { %$opts, %$_ }));
   }
   return @ups;
 }
@@ -81,12 +80,32 @@ sub upgrade {
     $pkg = "DiaColloDB::Upgrade::$pkg" if (!UNIVERSAL::can($pkg,'upgrade'));
     $that->logconfess("unknown upgrade package $_") if (!UNIVERSAL::can($pkg,'upgrade'));
     $that->info("applying upgrade package $_ to $dbdir/");
-    $pkg->new($dbdir,%$opts)->upgrade()
+    $that->uobj($pkg,$dbdir,$opts)->upgrade()
       or $that->logconfess("upgrade via package $pkg failed for $dbdir/");
   }
   return $that;
 }
 
+##==============================================================================
+## Utils
+
+## $up = $CLASS_OR_OBJECT->uobj($pkg,$dbdir,\%opts)
+##  + create or instantiate an upgrade-object $up as an instance of $pkg for $dbdir with options %opts
+sub uobj {
+  my $that = shift;
+  my ($pkg,$dbdir,$opts) = @_;
+  my ($up);
+  if (ref($pkg)) {
+    $up = $pkg;
+    @$up{keys %$opts} = values %$opts if ($opts);
+    $up->{dbdir} = $dbdir;
+  } elsif (UNIVERSAL::can($pkg,'new')) {
+    $up = $pkg->new(%{$opts//{}}, dbdir=>$dbdir);
+  } else {
+    $up = { %{$opts//{}}, dbdir=>$dbdir };
+  }
+  return $up;
+}
 
 ##==============================================================================
 ## Footer

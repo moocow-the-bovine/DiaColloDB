@@ -81,13 +81,13 @@ sub backup {
   return 1;
 }
 
-## @files = $up->rb_created()
+## @files = $up->revert_created()
 ##  + returns list of files created by this upgrade, for use with default rollback() implementation
 sub revert_created {
   return qw();
 }
 
-## @files = $up->rb_updated()
+## @files = $up->revert_updated()
 ##  + returns list of files updated by this upgrade, for use with default rollback() implementation
 sub revert_updated {
   my $up = shift;

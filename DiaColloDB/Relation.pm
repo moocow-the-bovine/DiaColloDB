@@ -45,8 +45,8 @@ sub create {
 
 ## $rel = $CLASS_OR_OBJECT->union($coldb, \@pairs, %opts)
 ##  + merge multiple co-frequency indices into new object
-##  + @pairs : array of pairs ([$argrel,\@xi2u],...)
-##    of relation-objects $argrel and tuple-id maps \@xi2u for $rel
+##  + @pairs : array of pairs ([$argrel,\@ti2u],...)
+##    of relation-objects $argrel and tuple-id maps \@ti2u for $rel
 ##  + %opts: clobber %$rel
 ##  + implicitly flushes the new index
 sub union {
@@ -102,8 +102,9 @@ sub dbinfo {
 ##     onepass => $bool,          ##-- if true, use fast but incorrect 1-pass method (Cofreqs subclass only)
 ##    )
 ##  + default implementation
-##    - calls $rel->subprofile1() for every requested date-slice, then
-##    - calls $rel->subprofile2() to compute item2 frequencies, and finally
+##    - parses request and extracts target tuple-ids
+##    - calls $rel->subprofile1() to compute slice-wise joint frequency profiles (f12)
+##    - calls $rel->subprofile2() to compute independent collocate frequencies (f2), and finally
 ##    - collects the result in a DiaColloDB::Profile::Multi object
 ##  + default values for %opts should be set by higher-level call, e.g. DiaColloDB::profile()
 sub profile {

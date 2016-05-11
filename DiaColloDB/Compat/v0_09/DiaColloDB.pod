@@ -7,7 +7,7 @@
 
 =head1 NAME
 
-DiaColloDB::Compat::v0_08::MultiMapFile - diachronic collocation db, integer-integer* multimap file, backwards-compatible (v0.08.x)
+DiaColloDB::Compat::v0_09::DiaColloDB - collocation db, top-level: backwards-compatible (v0.09.x)
 
 =cut
 
@@ -20,7 +20,7 @@ DiaColloDB::Compat::v0_08::MultiMapFile - diachronic collocation db, integer-int
  ##========================================================================
  ## PRELIMINARIES
  
- use DiaColloDB::Compat::v0_08::MultiMapFile;
+ use DiaColloDB::Compat::v0_09::DiaColloDB;
  
  #... stuff happens ...
 
@@ -32,10 +32,10 @@ DiaColloDB::Compat::v0_08::MultiMapFile - diachronic collocation db, integer-int
 
 =head1 DESCRIPTION
 
-DiaColloDB::Compat::v0_08::MultiMapFile
+DiaColloDB::Compat::v0_09::DiaColloDB
 provides a backwards-compatible
-L<DiaColloDB::MultiMapFile|DiaColloDB::MultiMapFile> interface
-for multimap files created by DiaColloDB E<lt>= v0.08.x.
+L<DiaColloDB|DiaColloDB> local database interface
+for indices created by DiaColloDB E<lt>= v0.09.x.
 
 =cut
 
@@ -59,8 +59,7 @@ at your option, any later version of Perl 5 you may have available.
 
 =head1 SEE ALSO
 
-L<DiaColloDB::Compat::v0_08(3pm)|DiaColloDB::Compat::v0_08>,
-L<DiaColloDB::MultiMapFile(3pm)|DiaColloDB::MultiMapFile>,
+L<DiaColloDB::Compat::v0_09(3pm)|DiaColloDB::Compat::v0_09>,
 L<DiaColloDB(3pm)|DiaColloDB>,
 L<perl(1)|perl>,
 ...

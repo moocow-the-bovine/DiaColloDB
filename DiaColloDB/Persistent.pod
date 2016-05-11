@@ -23,13 +23,16 @@ DiaColloDB::Persistent - diachronic collocation db, generic persistent objects
  use DiaColloDB::Persistent;
  
  ##========================================================================
- ## disk usage, timestamp
+ ## Disk File Access
  
- @files = $obj->diskFiles();
- $nbytes = $obj->du();
- $mtime = $obj->mtime();
+ @files     = $obj->diskFiles();
+ $nbytes    = $obj->du();
+ $mtime     = $obj->mtime();
  $timestamp = $obj->timestamp();
- $bool = $obj->unlink();
+ $bool      = $obj->unlink();
+ $bool      = $obj->copyto($todir,%opts);
+ $bool      = $obj->copyto_a($todir,%opts);
+ $bool      = $obj->moveto($todir,%opts);
  
  ##========================================================================
  ## I/O: Header
@@ -106,7 +109,7 @@ inherits from L<DiaColloDB::Logger|DiaColloDB::Logger>.
 ## DESCRIPTION: DiaColloDB::Persistent: disk usage, timestamp
 =pod
 
-=head2 disk usage, timestamp
+=head2 Disk File Access
 
 =over 4
 
@@ -114,33 +117,60 @@ inherits from L<DiaColloDB::Logger|DiaColloDB::Logger>.
 
  @files = $obj->diskFiles();
 
-returns disk storage files, used by du() and timestamp().
-default implementation returns $obj-E<gt>{file} or glob("$obj-E<gt>{base}*").
+Returns disk storage files, used by L<du()|/du>, L<timestamp()|/timestamp>, etc.
+Default implementation returns $obj-E<gt>{file} or glob("$obj-E<gt>{base}*").
 
 =item du
 
  $nbytes = $obj->du();
 
-default implementation wraps DiaColloDB::Utils::du_file($obj-E<gt>diskFiles)
+default implementation wraps
+L<DiaColloDB::Utils::du_file($obj-E<gt>diskFiles)|DiaColloDB::Utils/du_file>.
 
 =item mtime
 
  $mtime = $obj->mtime();
 
-default returns newest mtime for $obj-E<gt>diskFiles().
+default returns newest mtime for L<$obj-E<gt>diskFiles()|/diskFiles>.
 
 =item timestamp
 
  $timestamp = $obj->timestamp();
 
-default returns DiaColloDB::Utils::timestamp( $obj-E<gt>mtime() ).
+default returns C<L<DiaColloDB::Utils::timestamp|DiaColloDB::Utils/timestamp>( $obj-E<gt>L<mtime|/mtime>() )>.
 
 =item unlink
 
  $bool = $obj->unlink();
 
 unlinks disk files;
-implcitly calls $obj-E<gt>close() if available.
+implcitly calls C<$obj-E<gt>close()> if available.
+
+=item copyto
+
+ $bool = $obj->copyto($todir, %opts)
+
+Copies object file(s) to C<$todir>, creating C<$todir> if it doesn't already exist;
+wraps L<DiaColloDB::Utils::copyto()|DiaColloDB::Utils/copyto>.
+Options %opts:
+
+ method => \&method,   ##-- use CODE-ref \&method(\@srcfiles,$todir,%opts) to copy file(s) (default=\&DiaColloDB::Utils::copyto)
+ close  => $bool,      ##-- implicitly close() object before operation? (default=0)
+ #...                  ##-- other options are passed to \&method
+
+=item copyto_a
+
+ $bool = $obj->copyto_a($todir, %opts)
+
+Wrapper for L<|/copyto> which attempts to preserve timestamps, ownership and permissions of
+the copied file(s) using L<DiaColloDB::Utils::copyto_a()|DiaColloDB::Utils/copyto_a>.
+
+=item moveto
+
+ $bool = $obj->moveto_a($todir, %opts)
+
+Wrapper for L<|/copyto> which moves the underlying file(s) to C<$todir>
+using L<DiaColloDB::Utils::moveto()|DiaColloDB::Utils/moveto>.
 
 =back
 

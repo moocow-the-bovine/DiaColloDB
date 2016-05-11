@@ -79,6 +79,7 @@ DiaColloDB::PackedFile::MMap - collocation db: flat fixed-length record-oriented
  ## API: binary search
  
  $nbits_or_undef = $pf->vnbits();
+ $index_or_undef = $pf->bsearch($key, %opts);
  
  ##========================================================================
  ## I/O: text
@@ -382,6 +383,12 @@ write file contents from an array
 returns number of bits for using vec()-style search via Algorithm::BinarySearch::Vec, or undef if not supported
 
 still B<UNUSED>
+
+=item bsearch
+
+ $index_or_undef = $pf->bsearch($key, %opts);
+
+Optimized version of L<DiaColloDB::PackedFile::bsearch|DiaColloDB::PackedFile/bsearch>() method.
 
 =back
 
