@@ -58,6 +58,10 @@ while [ $# -gt 0 ] ; do
 	    list_tags
 	    exit $?
 	    ;;
+	-p|--prefix)
+	    tagprefix="$2"
+	    shift;
+	    ;;
 	-t|--tag)
 	    set_tag "$2"
 	    exit $?
