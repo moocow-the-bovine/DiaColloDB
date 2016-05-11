@@ -62,6 +62,10 @@ while [ $# -gt 0 ] ; do
 	    tagprefix="$2"
 	    shift;
 	    ;;
+	-v|--version)
+	    tagversion="$2"
+	    shift;
+	    ;;
 	-t|--tag)
 	    set_tag "$2"
 	    exit $?
