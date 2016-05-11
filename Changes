@@ -2,6 +2,13 @@
 ##
 ## Change log for perl distribution DiaColloDB
 
+v0.09.004 Tue, 03 May 2016 14:03:13 +0200 moocow
+	* devel only, no CPAN release
+	* cofreqs (load|save)TextFh() idempotency tweaks for un-colocated f1
+	* mmap optimization for Cofreqs::subprofile2(): ca. 26% improvement
+	* PackedFile dump tweaks: better handling of non-singleton pack formats
+	* added Utils::packsingle(): better check for singleton pack formats
+
 v0.09.003 Wed, 27 Apr 2016 09:55:14 +0200 moocow
 	* fixed 'undefined value in vec' warning in DiaColloDB/Relation.pm
 
