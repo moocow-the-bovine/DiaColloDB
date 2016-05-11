@@ -1,4 +1,17 @@
-Wed, 20 Apr 2016 14:12:49 +0200
+TODO Wed, 11 May 2016 14:27:14 +0200
++ update kaskade DBs
+  1) update DBs from not-yet-installed new DiaColloDB build dir
+     ./dcdb-upgrade.perl -u ~/dstar/corpora/$corpus/web/diacollo/data
+  2) update DiaColloDB distribution
+
+TODO Mon, 14 Mar 2016 12:31:35 +0100
++ Client::list: get working correctly!
++ add dbinfo() (and dbheader()?) client method(s)
++ Client::list: allow parallel queries of sub-clients in (fork or thread)
++ DiaColloDB: allow metadata constants in local indices (for subcorpus selection via list clients)
++ Client::list: check/allow null-results in sub-clients (for subcorpus selection)
+
+#DONE Wed, 20 Apr 2016 14:12:49 +0200
 x+ update DB create() and union() methods: x->t
   x- text file format for Relation::create() changed
 x+ update DB export() method
@@ -35,9 +48,9 @@ x+ DEBUG: weird -1pass inconsistencies for ./dcdb-query.perl kern.d Mann -ds=0 -
   - QUESTION: why is f2(Mann) > f1 in v0.10.x ?
     ANSWER  : we were double-counting
 
-+ test diff
-    
-+ document new/changed modules:
+x+ test diff
+ 
+x+ document new/changed modules:
   #Compat/*
   #PackedFile/MMap : added optimized bsearch
   #Upgrade/Base : extra header data, revert, instance conventions
@@ -53,32 +66,19 @@ x+ DEBUG: weird -1pass inconsistencies for ./dcdb-query.perl kern.d Mann -ds=0 -
   #- xluniq xluniq
   #- :pdl, :temp
 
-+ update kaskade DBs
-  1) update DBs from not-yet-installed new DiaColloDB build dir
-     ./dcdb-upgrade.perl -u ~/dstar/corpora/$corpus/web/diacollo/data
-  2) update DiaColloDB distribution
-
-DONE Mon, 09 May 2016 15:05:50 +0200 (was: TODO Tue, 26 Apr 2016 08:59:52 +0200)
-+ f2 bug / optimization: try re-factoring db structure from xenum (+date) to tenum a la tdf (-date)
+#DONE Mon, 09 May 2016 15:05:50 +0200 (was: TODO Tue, 26 Apr 2016 08:59:52 +0200)
+#+ f2 bug / optimization: try re-factoring db structure from xenum (+date) to tenum a la tdf (-date)
   - reduces number of items for iteration in f2 loop --> reduce number of expensive calls
     : nytprof.kern-f2bug-Mann-packed+mmap.d / DiaColloDB::Relation::Cofreqs::subprofile2()
       -> 5.91s making 1357520 calls to ANON ($groupby->{xs2g})
       -> 2.90s making 1357520 calls to DiaColloDB::PackedFile::MMap::fetchraw()
 
-DONE work-in-progress Thu, 21 Apr 2016 16:56:00 +0200
+#DONE work-in-progress Thu, 21 Apr 2016 16:56:00 +0200
 #+ implement cofreqs 2-phase lookup
   #-> refactor: move intermediate numeric groupby keys to pack()-strings rather than join()-strings
   #-> allow old join()-style strings in output a la tdf with relation-side recoding
   #-> allow groupby sub to work on pre-extracted $x tuple-string
 #+ DONE Tue, 26 Apr 2016 13:54:31 +0200: better, but still ca. 10x slower than (old, incorrect) single-pass variant
-
-DONE Mon, 14 Mar 2016 12:31:35 +0100
-+ Client::list: get working correctly!
-+ add dbinfo() (and dbheader()?) client method(s)
-+ Client::list: allow parallel queries of sub-clients in (fork or thread)
-+ DiaColloDB: allow metadata constants in local indices (for subcorpus selection via list clients)
-+ Client::list: check/allow null-results in sub-clients (for subcorpus selection)
-
 
 x+ DEBUG: 'stark/ADJA' getting bogus counts in list mode for 'Mann' (url="list://kern01-1ka.d kern01-1kb.d ?fudge=0")
    ---> pretty much DONE
@@ -100,7 +100,7 @@ x+ DEBUG: 'stark/ADJA' getting bogus counts in list mode for 'Mann' (url="list:/
    but don't always occur
 
 
-DONE Wed, 27 Jan 2016 11:11:56 +0100
+#DONE Wed, 27 Jan 2016 11:11:56 +0100
 x+ rename Relation::Vsem -> Relation::TDM
   x- generate native-compatible profiles in vprofile() (wip)
   x- fix create() code

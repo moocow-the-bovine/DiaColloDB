@@ -20,13 +20,19 @@ DiaColloDB/Client/list.pm
 DiaColloDB/Client/list.pod
 DiaColloDB/Compat.pm
 DiaColloDB/Compat/v0_08.pm
+DiaColloDB/Compat/v0_08.pod
 DiaColloDB/Compat/v0_08/MultiMapFile.pm
 DiaColloDB/Compat/v0_08/MultiMapFile.pod
 DiaColloDB/Compat/v0_09.pm
+DiaColloDB/Compat/v0_09.pod
 DiaColloDB/Compat/v0_09/DiaColloDB.pm
+DiaColloDB/Compat/v0_09/DiaColloDB.pod
 DiaColloDB/Compat/v0_09/Relation.pm
+DiaColloDB/Compat/v0_09/Relation.pod
 DiaColloDB/Compat/v0_09/Relation/Cofreqs.pm
+DiaColloDB/Compat/v0_09/Relation/Cofreqs.pod
 DiaColloDB/Compat/v0_09/Relation/Unigrams.pm
+DiaColloDB/Compat/v0_09/Relation/Unigrams.pod
 DiaColloDB/Corpus.pm
 DiaColloDB/Corpus.pod
 DiaColloDB/Document.pm
@@ -100,9 +106,11 @@ DiaColloDB/Upgrade.pod
 DiaColloDB/Upgrade/Base.pm
 DiaColloDB/Upgrade/Base.pod
 DiaColloDB/Upgrade/v0_04_dlimits.pm
+DiaColloDB/Upgrade/v0_04_dlimits.pod
 DiaColloDB/Upgrade/v0_09_multimap.pm
 DiaColloDB/Upgrade/v0_09_multimap.pod
 DiaColloDB/Upgrade/v0_10_x2t.pm
+DiaColloDB/Upgrade/v0_10_x2t.pod
 
 PDL-Utils/Makefile.PL
 PDL-Utils/pdlutils.pd
