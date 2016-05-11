@@ -1,7 +1,7 @@
 Wed, 20 Apr 2016 14:12:49 +0200
-+ update DB create() and union() methods: x->t
-  - text file format for Relation::create() changed
-+ update DB export() method
+x+ update DB create() and union() methods: x->t
+  x- text file format for Relation::create() changed
+x+ update DB export() method
 x+ update relation create() and union() methods: x->t
   x- DiaColloDB::create
   x- Cofreqs::create

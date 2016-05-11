@@ -17,6 +17,8 @@ v0.10.000 pending
 	  - added compatibility wrappers Compat::v0_09::* for transparent use of old indices
 	* added auto-backup of changed files to upgrade framework
 	  - upgraders are now instantiated as objects, not just packages: cache header & options
+	* added DiaColloDB::Upgrade::Base::revert() method and -revert option to dcdb-upgrade.perl
+	  - default implementation relies on subclass revert_created() and revert_updated() methods
 	* added dcdb-upgrade.perl options -keep, -[no]backup
 	* added DiaColloDB::Utils functions copyto(), moveto(), copyto_a(), cp_a()
 	* added DiaColloDB::Persistent method-wrappers copyto(), moveto(), copyto_a()

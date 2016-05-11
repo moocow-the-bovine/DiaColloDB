@@ -248,7 +248,7 @@ sub revert_updated {
 	    map {"$base.$_"} qw(hdr ma mb)
 	  } @{$hdr->{attrs}}),
 
-	  ##-- tenum
+	  ##-- xenum
 	  (map {"xenum.$_"} qw(hdr fix fsx)),
 
 	  ##-- unigrams
