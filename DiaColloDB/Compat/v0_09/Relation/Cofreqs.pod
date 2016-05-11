@@ -7,7 +7,7 @@
 
 =head1 NAME
 
-DiaColloDB::MultiMapFile::v0_08 - diachronic collocation db, integer->integer* multimap file, backwards-compatible (v0.08.x)
+DiaColloDB::Compat::v0_09::Relation::Cofreqs - collocation db, profiling relation: co-frequency database (v0.9x)
 
 =cut
 
@@ -20,9 +20,9 @@ DiaColloDB::MultiMapFile::v0_08 - diachronic collocation db, integer->integer* m
  ##========================================================================
  ## PRELIMINARIES
  
- use DiaColloDB::MultiMapFile::v0_08;
+ use DiaColloDB::Compat::v0_09::Relation::Cofreqs;
  
- ...
+ #... stuff happens ...
 
 =cut
 
@@ -32,10 +32,10 @@ DiaColloDB::MultiMapFile::v0_08 - diachronic collocation db, integer->integer* m
 
 =head1 DESCRIPTION
 
-DiaColloDB::MultiMapFile::v0_08
+DiaColloDB::Compat::v0_09::Relation::Cofreqs
 provides a backwards-compatible
-L<DiaColloDB::MultiMapFile|DiaColloDB::MultiMapFile> interface
-for multimap files created by DiaColloDB E<lt>= v0.08.006.
+L<DiaColloDB::Relation::Cofreqs|DiaColloDB::Relation::Cofreqs>-like interface
+for indices created by DiaColloDB E<lt>= v0.09.x.
 
 =cut
 
@@ -51,7 +51,7 @@ Bryan Jurish E<lt>moocow@cpan.orgE<gt>
 
 =head1 COPYRIGHT AND LICENSE
 
-Copyright (C) 2015-2016 by Bryan Jurish
+Copyright (C) 2016 by Bryan Jurish
 
 This package is free software; you can redistribute it and/or modify
 it under the same terms as Perl itself, either Perl version 5.14.2 or,
@@ -59,12 +59,10 @@ at your option, any later version of Perl 5 you may have available.
 
 =head1 SEE ALSO
 
-L<DiaColloDB::Persistent(3pm)|DiaColloDB::Persistent>,
-L<DiaColloDB::MultiMapFile(3pm)|DiaColloDB::MultiMapFile>,
+L<DiaColloDB::Compat::v0_09::Relation(3pm)|DiaColloDB::Compat::v0_09::Relation>,
+L<DiaColloDB::Compat::v0_09(3pm)|DiaColloDB::Compat::v0_09>,
 L<DiaColloDB(3pm)|DiaColloDB>,
 L<perl(1)|perl>,
 ...
-
-
 
 =cut

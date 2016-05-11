@@ -27,9 +27,11 @@ WriteMakefile
 
    PREREQ_PM    => {
 		    'Algorithm::BinarySearch::Vec' => '0.07', ##-- for fast integer-set operations
+		    #'Cwd' => 0, ##-- for abs_path
 		    'DB_File' => 0,  ##-- for temporary hashes; 1.831
 		    'DDC::Concordance' => 0.18, ##-- no functional changes from v0.18 to v0.20
 		    'DDC::XS'       => 0.05,
+		    'File::Copy'    => 0, ##-- for move()
 		    'File::Find'    => 0,
 		    'File::Map'     => 0,  # 0.63
 		    'File::Path'    => 0,  ##-- make_tree, remove_path; 2.08_01

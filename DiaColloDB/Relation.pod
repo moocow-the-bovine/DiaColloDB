@@ -51,8 +51,8 @@ DiaColloDB::Relation - diachronic collocation db, relation API (abstract & utili
  ##========================================================================
  ## Relation API: default
  
- $prf       = $rel->subprofile1(\@xids, %opts);
- $slice2prf = $rel->subprofile2(\%slice2prf, %opts)
+ \%slice2prf = $rel->subprofile1(\@tids, \%opts);
+ \%slice2prf = $rel->subprofile2(\%slice2prf, %opts)
  
  ##========================================================================
  ## Relation API: default: qinfo()
@@ -126,7 +126,11 @@ L<DiaColloDB::Persistent|DiaColloDB::Persistent>.
  $rel = $CLASS_OR_OBJECT->create($coldb, $tokdat_file, %opts);
 
 populates relation database from $tokdat_file,
-a tt-style text file containing 1 token-id perl line with optional blank lines.
+a tt-style text file with lines of the form:
+
+ TID DATE	##-- single token
+ "\n"		##-- blank line ~ EOS (hard co-occurrence boundary)
+
 %opts: clobber %$rel
 
 =back
@@ -153,8 +157,8 @@ merge multiple co-frequency indices into new object
 
 =item *
 
-@pairs : array of pairs ([$argrel,\@xi2u],...)
-of relation-objects $argrel and tuple-id maps \@xi2u for $rel
+C<@pairs> : array of pairs C<([$argrel,\@ti2u],...)>
+of relation-objects C<$argrel> and tuple-id maps C<\@ti2u> for C<$argrel>
 
 =item *
 
@@ -162,7 +166,7 @@ of relation-objects $argrel and tuple-id maps \@xi2u for $rel
 
 =item *
 
-implicitly flushes the new index
+should implicitly flush the new relation index
 
 =back
 
@@ -207,11 +211,29 @@ object; called by L<DiaColloDB::profile()|DiaColloDB/profile>.
  fill    => $bool,          ##-- if true, returned multi-profile will have null profiles inserted for missing slices
  onepass => $bool,          ##-- if true, use fast but incorrect 1-pass method (default=0; Cofreqs subclass only)
 
-The default implementation calls $rel-E<gt>L<subprofile1|/subprofile1>() for every requested date-slice,
-then calls $rel-E<gt>L<subprofile2|/subprofile2>() to compute item2 frequencies,
-and finally collects the result in a L<DiaColloDB::Profile::Multi|DiaColloDB::Profile::Multi> object.
+The default implementation
 
-Default values for %opts should be set by a higher-level call, e.g. L<DiaColloDB::profile|DiaColloDB/profile>().
+=over 4
+
+=item *
+
+parses the request and extracts target tuple-ids,
+
+=item *
+
+calls $rel-E<gt>L<subprofile1|/subprofile1>() to compute slice-wise joint frequency profiles (f12),
+
+=item *
+
+calls $rel-E<gt>L<subprofile2|/subprofile2>() to compute independent collocate frequencies (f2), and finally
+
+=item *
+
+collects the result in a L<DiaColloDB::Profile::Multi|DiaColloDB::Profile::Multi> object.
+
+=back
+
+Default values for C<%opts> should be set by a higher-level call, e.g. L<DiaColloDB::profile|DiaColloDB/profile>().
 
 =back
 
@@ -259,14 +281,14 @@ object.
  _gbparse => $bool,         ##-- if true (default), 'groupby' clause will be parsed only once, using $coldb->groupby() method
  _abkeys  => \@abkeys,      ##-- additional key-suffixes KEY s.t. (KEY=>VAL) gets passed to profile() calls if e.g. (aKEY=>VAL) is in %opts
 
-The default implementation just wraps the profile() method;
-default values for %opts should be set by higher-level call, e.g. L<DiaColloDB::compare()|DiaColloDB/compare>.
+The default implementation just wraps the L<profile|/profile>() method;
+default values for C<%opts> should be set by higher-level call, e.g. L<DiaColloDB::compare()|DiaColloDB/compare>.
 
 =item diff
 
  $mpdiff = $rel->diff($coldb, %opts);
 
-alias for compare()
+alias for L<compare|/compare>()
 
 =back
 
@@ -282,18 +304,19 @@ alias for compare()
 
 =item subprofile1
 
- $prf = $rel->subprofile1(\@xids, %opts)
+ \%slice2prf = $rel->subprofile1(\@tids,\%opts);
 
-Native index API low-level pass-1 profiling function for joint frequency acquisition (f12);
+Native index API low-level first-pass profiling function for joint frequency acquisition (f12);
 default implementation just throws an error.
 
 =item subprofile2
 
  \%slice2prf = $rel->subprofile2(\%slice2prf, %opts)
 
-Native index API low-level pass-2 profiling function for independent frequency acquisition (f2);
-default implementation just returns \%slice2prf, which is appropriate for relations which
-use a 1-pass strategy to populate C<$prf-E<gt>{f2}> in L<subprofile1|/subprofile1>().
+Native index API low-level second-pass profiling function for independent frequency acquisition (f2);
+default implementation just returns C<\%slice2prf>, which is appropriate for relations which
+use a single-pass strategy to populate C<$prf-E<gt>{f2}> in their implementation of
+L<subprofile1|/subprofile1>().
 
 =back
 

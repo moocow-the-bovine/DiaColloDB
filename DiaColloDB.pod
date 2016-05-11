@@ -39,7 +39,7 @@ DiaColloDB - diachronic collocation database, top-level
  ##========================================================================
  ## create: utils
  
- $multimap = $coldb->create_xmap($base, \%xs2i, $packfmt, $label="multimap");
+ $multimap = $coldb->create_multimapmap($base, \%ts2i, $packfmt, $label="multimap");
  \@attrs = $coldb->attrs();
  $atitle = $CLASS_OR_OBJECT->attrTitle($attr_or_alias);
  $acbexpr = $CLASS_OR_OBJECT->attrCountBy($attr_or_alias,$matchid=0);
@@ -82,11 +82,9 @@ DiaColloDB - diachronic collocation database, top-level
  \@ids         = $coldb->enumIds($enum,$req,%opts);
  
  ($dfilter,$sliceLo,$sliceHi,$dateLo,$dateHi)
-               = $coldb->parseDateRequest($dateRequest='', $sliceRequest=0, $fill=0, $ddcMode=0);
+                  = $coldb->parseDateRequest($dateRequest='', $sliceRequest=0, $fill=0, $ddcMode=0);
  
- \%slice2xids  = $coldb->xidsByDate(\@xids, $dateRequest, $sliceRequest, $fill);
- $compiler     = $coldb->qcompiler();
- 
+ $compiler        = $coldb->qcompiler();
  $cquery_or_undef = $coldb->qparse($ddc_query_string);
  $cquery          = $coldb->parseQuery([[$attr1,$val1],...], %opts) ##-- compat: ARRAY-of-ARRAYs
  
@@ -96,7 +94,7 @@ DiaColloDB - diachronic collocation database, top-level
  $cqfilter = $coldb->query2filter($attr,$cquery,%opts);
  
  ($CQCountKeyExprs,\$CQRestrict,\@CQFilters)
-            = $coldb->parseGroupBy($groupby_string_or_request,%opts);
+           = $coldb->parseGroupBy($groupby_string_or_request,%opts);
  
  ##========================================================================
  ## Profiling: Generic
@@ -251,8 +249,9 @@ Default:
     tfmin => $tfmin,      ##-- minimum global term-frequency WITHOUT date component (default=2)
     fmin_${a} => $fmin,   ##-- minimum independent frequency for value of attribute ${a} (default=undef:from $tfmin)
     keeptmp => $bool,     ##-- keep temporary files? (default=0)
-    index_tdf => $bool,   ##-- tdf: create/use (term x document) frequency matrix index? (default=undef: if available)
+    index_xf  => $bool,   ##-- xf: create/use unigram index (default=1)
     index_cof => $bool,   ##-- cof: create/use co-frequency index (default=1)
+    index_tdf => $bool,   ##-- tdf: create/use (term x document) frequency matrix index? (default=undef: if available)
     dbreak => $dbreak,    ##-- tdf: use break-type $break for tdf index (default=undef: files)
     tdfopts => \%tdfopts, ##-- tdf: options for DiaColloDB::Relation::TDF->new(); default=undef (all inherited from %TDF_OPTS)
     ##
@@ -276,6 +275,7 @@ Default:
     logExport => $level,     ##-- log-level for export messages (default='info')
     logProfile => $level,    ##-- log-level for verbose profiling messages (default='trace')
     logRequest => $level,    ##-- log-level for request-level profiling messages (default='debug')
+    logCompat  => $level,    ##-- log-level for compatibility warnings (default='warn')
     ##
     ##-- runtime limits
     maxExpand => $size,    ##-- maximum number of elements in query expansions (default=65535)
@@ -287,18 +287,22 @@ Default:
     ##-- attribute data
     ${a}enum => $aenum,    ##-- attribute enum: $aenum : ($dbdir/${a}_enum.*) : $astr<=>$ai : A*<=>N
                            ##    e.g.  lemmata: $lenum : ($dbdir/l_enum.*   ) : $lstr<=>$li : A*<=>N
-    ${a}2x   => $a2x,      ##-- attribute multimap: $a2x : ($dbdir/${a}_2x.*) : $ai=>@xis   : N=>N*
-    pack_x$a => $fmt       ##-- pack format: extract attribute-id $ai from a packed tuple-string $xs ; $ai=unpack($coldb->{"pack_x$a"},$xs)
+    ${a}2t   => $a2t,      ##-- attribute multimap: $a2t : ($dbdir/${a}_2t.*) : $ai=>@tis   : N=>N*
+    pack_t$a => $fmt       ##-- pack format: extract attribute-id $ai from a packed tuple-string $ts ; $ai=unpack($coldb->{"pack_x$a"},$ts)
     ##
-    ##-- tuple data (+dates)
+    ##-- tuple data (-dates)
+    ##   + as of v0.10.000, packed term tuples EXCLUDING dates ("t-tuples") are mapped by $coldb->{tenum}
+    ##   + prior to v0.10.000, term tuples INCLUDING dates ("x-tuples") were mapped by $coldb->{xenum}, now obsolete
+    tenum  => $tenum,      ##-- enum: tuples ($dbdir/tenum.*) : \@ais<=>$ti : N*<=>N
+    pack_t => $fmt,        ##-- symbol pack-format for $tenum : "${pack_id}[Nattrs]"
     xenum  => $xenum,      ##-- enum: tuples ($dbdir/xenum.*) : [@ais,$di]<=>$xi : N*n<=>N
-    pack_x => $fmt,        ##-- symbol pack-format for $xenum : "${pack_id}[Nattrs]${pack_date}"
-    xdmin => $xdmin,       ##-- minimum date
-    xdmax => $xdmax,       ##-- maximum date
+    pack_t => $fmt,        ##-- symbol pack-format for $tenum : "${pack_id}[Nattrs]"
+    xdmin => $xdmin,       ##-- minimum date (>= v0.04)
+    xdmax => $xdmax,       ##-- maximum date (>= v0.04)
     ##
     ##-- relation data
-    xf    => $xf,          ##-- ug: $xi => $f($xi) : N=>N
-    cof   => $cof,         ##-- cf: [$xi1,$xi2] => $f12
+    xf    => $xf,          ##-- ug: [$ti, $date]      => f($ti, $date)
+    cof   => $cof,         ##-- cf: [$ti1,$date,$ti2] => f($ti1,$date,$ti2)
     ddc   => $ddc,         ##-- ddc client relation
     tdf   => $tdf,         ##-- tdf: (term x document) frequency matrix relation
    )
@@ -373,11 +377,11 @@ Global attribute alias hacks.
  %ATTR_CBEXPR = ($name=>$ddcCountByExpr, ...)
  %ATTR_TITLE  = ($name_or_alias=>$title, ...)
 
-=item create_xmap
+=item create_multimap
 
- $multimap = $coldb->create_xmap($base, \%xs2i, $packfmt, $label="multimap");
+ $multimap = $coldb->create_multimap($base, \%ts2i, $packfmt, $label="multimap");
 
-Create an expansion map.
+Create an expansion multimap, used by L<create()|/create>.
 
 =item attrs
 
@@ -610,7 +614,7 @@ a string /REGEX/ : regexp for target strings, passed to $enum-E<gt>re2i()
 
 =item *
 
-another string   : space-, comma-, or |-separated list of literal values
+another string   : space-, comma-, or C<|>-separated list of literal values
 
 =back
 
@@ -622,8 +626,19 @@ another string   : space-, comma-, or |-separated list of literal values
 =item parseDateRequest
 
  ($dfilter,$sliceLo,$sliceHi,$dateLo,$dateHi) = $coldb->parseDateRequest($dateRequest='', $sliceRequest=0, $fill=0, $ddcMode=0);
+ \%dateRequest                                = $coldb->parseDateRequest($dateRequest='', $sliceRequest=0, $fill=0, $ddcMode=0);
 
-low-level parsing for date (slice) requests. Accepted formats for C<$dateRequest>:
+low-level parsing for date (slice) requests.  Returns limit and filter information as a list if called
+in list context (first form) or as a HASH-ref C<\%dateRequest> if called in scalar context (second form).
+Returned C<\%dateRequest> has keys corresponding to the list-elements returned in list context:
+
+ dfilter => $dfilter,  ##-- filter-sub, called as: $wanted=$dfilter->($date); undef for none
+ slo     => $sliceLo,  ##-- minimum slice (inclusive)
+ shi     => $sliceHi,  ##-- maximum slice (inclusive)
+ dlo     => $dateLo,   ##-- minimum date (inclusive); undef for none, always defined if $fill is true
+ dhi     => $dateHi,   ##-- maximum date (inclusive); undef for none, always defined if $fill is true
+
+Accepted formats for input parameter C<$dateRequest>:
 
 =over 4
 
@@ -656,15 +671,6 @@ Throws an error if C<$ddcMode> is true.
 Any other value is treated as a literal single target date.
 
 =back
-
-
-=item xidsByDate
-
- \%slice2xids = $coldb->xidsByDate(\@xids, $dateRequest, $sliceRequest, $fill);
-
-parse and filter \@xids by $dateRequest, $sliceRequest;
-returns a HASH-ref from slice-ids to \@xids in that date-slice.
-If $fill is true, returned HASH-ref has a key for each date-slice in range
 
 =item qcompiler
 
@@ -776,20 +782,24 @@ in "groupby" parsing mode:
  q_groupby ::= qg_clause ((" "|",") qg_clause)*
  qg_clause ::= "$"? qn_attr ("=" qn_value)?
 
-
 Returns a HASH-ref of the form:
 
- req => $request,    ##-- save request
- x2g => \&x2g,       ##-- group-id extraction code suitable for e.g. DiaColloDB::Relation::Cofreqs::profile(groupby=>\&x2g)
- g2s => \&g2s,       ##-- stringification object suitable for DiaColloDB::Profile::stringify() [CODE,enum, or undef]
- areqs => \@areqs,   ##-- parsed attribute requests ([$attr,$ahaving],...)
- attrs => \@attrs,   ##-- like $coldb->attrs($groupby_request), modulo "having" parts
- titles => \@titles, ##-- like map {$coldb->attrTitle($_)} @attrs
+ req => $request,      ##-- save request
+ ti2g => \&ti2g,       ##-- group-tuple extraction code ($ti => $gtuple) : $g_packed = $ti2g->($ti)
+ ts2g => \&ts2g,       ##-- group-tuple extraction code ($ts => $gtuple) : $g_packed = $ts2g->($ts)
+ g2s   => \&g2s,       ##-- stringification object suitable for DiaColloDB::Profile::stringify() [CODE,enum, or undef]
+ g2txt => \&g2txt,     ##-- backwards-compatible join()-string stringifcation sub: join("\t",unpack($pack_g,$g_packed))
+ tpack => \@tpack,     ##-- group-attribute-wise pack-templates, given @ttuple
+ gpack => \@gpack,     ##-- group-attribute-wise pack-templates, given @gtuple
+ areqs => \@areqs,     ##-- parsed attribute requests ([$attr,$ahaving],...)
+ attrs => \@attrs,     ##-- like $coldb->attrs($groupby_request), modulo "having" parts
+ titles => \@titles,   ##-- like map {$coldb->attrTitle($_)} @attrs
 
-%opts:
+Options %opts:
 
  warn  => $level,    ##-- log-level for unknown attributes (default: 'warn')
  relax => $bool,     ##-- allow unsupported attributes (default=0)
+ tenum => $tenum,    ##-- enum to use for \&t2g and \&t2s (default: $coldb->{tenum})
 
 
 =item query2filter

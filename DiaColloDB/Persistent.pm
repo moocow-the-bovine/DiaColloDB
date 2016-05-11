@@ -5,7 +5,7 @@
 
 
 package DiaColloDB::Persistent;
-use DiaColloDB::Utils qw(:file);
+use DiaColloDB::Utils qw(:list);
 use IO::File;
 use strict;
 
@@ -28,9 +28,9 @@ sub diskFiles {
 }
 
 ## $nbytes = $obj->du()
-##  + default implementation wraps du_file($obj->diskFiles)
+##  + default implementation wraps DiaColloDB::Utils::du_file($obj->diskFiles)
 sub du {
-  return du_file($_[0]->diskFiles);
+  return DiaColloDB::Utils::du_file($_[0]->diskFiles);
 }
 
 ## $mtime = $obj->mtime()
@@ -38,7 +38,7 @@ sub du {
 sub mtime {
   my $obj   = shift;
   my $mtime = 0;
-  foreach (map {file_mtime($_)} $obj->diskFiles) {
+  foreach (map {DiaColloDB::Utils::file_mtime($_)} $obj->diskFiles) {
     $mtime = $_ if ($_ > $mtime);
   }
   return $mtime;
@@ -60,8 +60,36 @@ sub unlink {
   CORE::unlink(grep {-e $_} @files);
 }
 
+## $bool = $obj->copyto($todir, %opts)
+##  + copies object file(s) to $todir, creating $todir if it doesn't already exist;
+##    options %opts:
+##    (
+##     method => \&method,   ##-- use CODE-ref \&method(\@srcfiles,$todir,%opts) to copy file(s) (default=\&DiaColloDB::Utils::copyto)
+##     close  => $bool,      ##-- implicitly close() object before operation? (default=0)
+##     ...                   ##-- other options are passed to \&method
+##    )
+sub copyto {
+  my ($obj,$todir,%opts) = @_;
+  my $method = $opts{method} || \&DiaColloDB::Utils::copyto;
+  my @files  = $obj->diskFiles();
+  $obj->close() if ($opts{close} && $obj->can('close'));
+  return $method->(\@files, $todir, %opts);
+}
+
+## $bool = $obj->copyto_a($todir, %opts)
+##  + wrapper for copyto() which propagates timestamps, ownership, and permissions
+sub copyto_a {
+  return $_[0]->copyto(@_[1..$#_], method=>\&DiaColloDB::Utils::copyto_a);
+}
+
+## $bool = $obj->moveto($todir, %opts)
+##  + wrapper for $obj->copyto($todir, %opts, method=>\&DiaColloDB::Utils::moveto, close=>1);
+sub moveto {
+  return $_[0]->copyto(@_[1..$#_], method=>\&DiaColloDB::Utils::moveto, close=>1);
+}
+
 ##==============================================================================
-## I/O
+## IO
 
 ##--------------------------------------------------------------
 ## I/O: Header

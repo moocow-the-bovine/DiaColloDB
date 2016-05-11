@@ -47,6 +47,25 @@ DiaColloDB::Relation::Unigrams - diachronic collocation db, profiling relation: 
  ## API: disk usage
  
  @files = $obj->diskFiles();
+
+ ##========================================================================
+ ## I/O: open/close
+ 
+ $ug_or_undef = $ug->open($base,$flags);
+ $ug_or_undef = $ug->close();
+ $bool = $ug->opened();
+ 
+ ##========================================================================
+ ## I/O: header
+ 
+ @keys = $ug->headerKeys();
+ $bool = $ug->loadHeaderData($hdr);
+ 
+ ##========================================================================
+ ## I/O: text
+ 
+ $ug = $ug->loadTextFh($fh,%opts)
+ $ug = $ug->saveTextFh($fh,%opts);
  
  ##========================================================================
  ## Relation API: create
@@ -61,7 +80,7 @@ DiaColloDB::Relation::Unigrams - diachronic collocation db, profiling relation: 
  ##========================================================================
  ## Relation API: default: profiling
  
- $prf = $ug->subprofile(\@xids, %opts);
+ \%slice2prf = $rel->subprofile1(\@tids,\%opts);
  
  ##========================================================================
  ## Relation API: default: query info
@@ -96,9 +115,7 @@ for low-level index data.
 =item Variable: @ISA
 
 DiaColloDB::Relation::Unigrams inherits from
-L<DiaColloDB::Relation|DiaColloDB::Relation>
-and
-L<DiaColloDB::PackedFile|DiaColloDB::PackedFile>.
+L<DiaColloDB::Relation|DiaColloDB::Relation>.
 
 =back
 
@@ -118,22 +135,29 @@ L<DiaColloDB::PackedFile|DiaColloDB::PackedFile>.
 
 %args, object structure:
 
- ##-- PackedFile: user options
- file     => $filename,   ##-- default: undef (none)
+ ##-- user options
+ base     => $basename,   ##-- file basename (default=undef:none); use files "${base}.dba1", "${base}.dba2", "${base}.hdr"
  flags    => $flags,      ##-- fcntl flags or open-mode (default='r')
  perms    => $perms,      ##-- creation permissions (default=(0666 &~umask))
- reclen   => $reclen,     ##-- record-length in bytes: (default: guess from pack format if available)
- packas   => $packas,     ##-- pack-format or array; see DiaColloDB::Utils::packFilterStore();  ##-- OVERRIDE default='N'
+ pack_i   => $pack_i,     ##-- pack-template for IDs (default='N')
+ pack_f   => $pack_f,     ##-- pack-template for frequencies (default='N')
+ pack_d   => $pack_d,     ##-- pack-tempalte for dates (default='n')
+ keeptmp  => $bool,       ##-- keep temporary files? (default=false)
+ logCompat => $level,     ##-- log-level for compatibility warnings (default='warn')
  ##
- ##-- PackedFile: filters
- filter_fetch => $filter, ##-- DB_File-style filter for fetch
- filter_store => $filter, ##-- DB_File-style filter for store
+ ##-- size info (after open() or load())
+ size1    => $size1,      ##-- == $r1->size()
+ size2    => $size2,      ##-- == $r2->size()
  ##
- ##-- PackedFile: low-level data
- fh       => $fh,         ##-- underlying filehandle
- ##
- ##-- Unigrams: high-level data
- N        => $N,          ##-- total frequency
+ ##-- low-level data
+ r1 => $r1,               ##-- pf: [$end2]      @ $i1				: constant (logical index)
+ r2 => $r2,               ##-- pf: [$d1,$f1]*   @ end2($i1-1)..(end2($i1+1)-1)	: sorted by $d1 for each $i1
+ N  => $N,                ##-- sum($f1)
+ version => $version,     ##-- file version, for compatibility checks
+
+=item DESTROY
+
+destructor implicitly calls L<close|/close>().
 
 =back
 
@@ -158,6 +182,120 @@ returns disk storage files, used by du() and timestamp()
 =cut
 
 ##----------------------------------------------------------------
+## DESCRIPTION: DiaColloDB::Relation::Unigrams: I/O: open/close
+=pod
+
+=head3 I/O: open/close
+
+=over 4
+
+=item open
+
+ $ug_or_undef = $ug->open($base,$flags);
+ $ug_or_undef = $ug->open($base);
+ $ug_or_undef = $ug->open();
+
+Opens underlying index files.
+
+=item close
+
+ $ug_or_undef = $ug->close();
+
+Closes underlying index files.
+Implicitly calls flush() if index is opened for writing.
+
+=item opened
+
+ $bool = $ug->opened();
+
+Returns true iff index is opened.
+
+=back
+
+=cut
+
+##----------------------------------------------------------------
+## DESCRIPTION: DiaColloDB::Relation::Unigrams: I/O: header
+=pod
+
+=head3 I/O: header
+
+=over 4
+
+=item headerKeys
+
+ @keys = $ug->headerKeys();
+
+keys to save as header
+
+=item loadHeaderData
+
+ $bool = $ug->loadHeaderData($hdr);
+
+instantiates header data from $hdr;
+overrides L<DiaColloDB::Persistent|DiaColloDB::Persistent> implementation.
+
+=back
+
+=cut
+
+##----------------------------------------------------------------
+## DESCRIPTION: DiaColloDB::Relation::Unigrams: I/O: text
+=pod
+
+=head3 I/O: text
+
+=over 4
+
+=item loadTextFh
+
+ $ug = $ug->loadTextFh($fh,%opts);
+
+=over 4
+
+=item *
+
+loads from text file as saved by L<saveTextFh|/saveTextFh>().
+
+=item *
+
+input fh must be sorted numerically by C<($i1,$d1)>.
+
+=item *
+
+supports multiple lines for pairs C<($i1,$d1)> provided the above condition(s) hold.
+
+=item *
+
+supports loading of C<$ug-E<gt>{N}> from single-component lines.
+
+=item *
+
+%opts: clobber %$ug
+
+=back
+
+
+
+=item saveTextFh
+
+ $bool = $ug->saveTextFh($fh,%opts);
+
+save as text with lines of the form:
+
+ N                 ##-- 1 field : N
+ FREQ ID1 DATE     ##-- 3 fields: unigram frequency for (ID1,DATE)
+
+%opts:
+
+ i2s => \&CODE,    ##-- code-ref for formatting indices; called as $s=CODE($i)
+
+=back
+
+=cut
+
+
+##----------------------------------------------------------------
 ## DESCRIPTION: DiaColloDB::Relation::Unigrams: Relation API: create
 =pod
 
@@ -169,12 +307,13 @@ returns disk storage files, used by du() and timestamp()
 
  $ug = $CLASS_OR_OBJECT->create($coldb,$tokdat_file,%opts);
 
-populates current database from $tokdat_file,
-a tt-style text file containing 1 token-id perl line with optional blank lines.
+populates unigram database from $tokdat_file,
+a tt-style text file with lines of the form:
 
-%opts: clobber %$ug, also:
+ TID DATE	##-- single token
+ "\n"		##-- blank line ~ EOS (hard co-occurrence boundary)
 
- size=>$size,  ##-- set initial size
+%opts: clobber %$ug
 
 =back
 
@@ -193,8 +332,8 @@ a tt-style text file containing 1 token-id perl line with optional blank lines.
  $ug = $CLASS_OR_OBJECT->union($coldb, \@pairs, %opts);
 
 merge multiple unigram indices into new object.
-@pairs is an array of pairs ([$ug,\@xi2u],...)
-of unigram-objects $ug and tuple-id maps \@xi2u for $ug.
+C<@pairs> is an array of pairs C<([$argug,\@ti2u],...)>
+of unigram relations C<$argug> and tuple-id maps C<\@ti2u> for C<$argug>.
 implicitly flushes the new index.
 
 %opts: clobber %$ug
@@ -211,14 +350,13 @@ implicitly flushes the new index.
 
 =over 4
 
-=item subprofile
+=item subprofile1
 
- $prf = $ug->subprofile(\@xids, %opts);
+ \%slice2prf = $ug->subprofile1(\@tids,\%opts);
 
-get frequency profile for @xids (index must be opened).
-%opts:
-
- groupby => \&gbsub,  ##-- key-extractor $key2_or_undef = $gbsub->($i2)
+Get slice-wise unigram profile(s) for tuple-IDs C<@tids>.
+C<$ug> must be opened.
+%opts: as for L<DiaColloDB::Relation::subprofile1|DiaColloDB::Relation/subprofile1>().
 
 =back
 

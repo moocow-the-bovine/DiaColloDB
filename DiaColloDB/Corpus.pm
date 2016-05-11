@@ -28,6 +28,7 @@ our $DCLASS_DEFAULT = 'DDCTabs';
 ##    dclass => $dclass,  ##-- DiaColloDB::Document subclass for loading (default=$DCLASS_DEFAULT)
 ##    dopts  => \%opts,   ##-- options for $dclass->fromFile()
 ##    cur    => $i,       ##-- index of current file
+##    logOpen => $level,  ##-- log-level for open(); default='info'
 ##   )
 sub new {
   my $that = shift;
@@ -36,6 +37,7 @@ sub new {
 		       dclass => $DCLASS_DEFAULT,
 		       dopts => {},
 		       cur => 0,
+		       logOpen => 'info',
 
 		       @_, ##-- user arguments
 		      },
@@ -84,7 +86,7 @@ sub open {
   $corpus->logwarn("open(): can't resolve DiaColloDB::Document subclass for {dclass} argument '$dclass'")
     if (!UNIVERSAL::isa($dclass,'DiaColloDB::Document'));
   $corpus->{dclass} = $dclass;
-  $corpus->info("using document parser class $corpus->{dclass}");
+  $corpus->vlog($corpus->{logOpen}, "using document parser class $corpus->{dclass}");
 
   return $corpus;
 }

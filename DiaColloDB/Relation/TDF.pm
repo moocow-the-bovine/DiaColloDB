@@ -265,7 +265,7 @@ sub opened {
 ##  + populates current database for $coldb
 ##  + reqires:
 ##    - (temporary, tied) doc-arrays @$coldb{qw(docmeta docoff)}
-##    - temp file "$coldb->{dbdir}/vtokens.bin": pack($coldb->{pack_w}, @wattrs)
+##    - temp file "$coldb->{dbdir}/vtokens.bin": pack($coldb->{pack_t}, @wattrs)
 ##      OR
 ##      wdmfile=>$wdmfile option
 ##  + %opts: clobber %$vs, also:
@@ -321,9 +321,9 @@ sub create {
 
   ##-- initialize: index-type (auto-promote)
   my $imax0    = $opts{ivalmax};
-  my $nnz_v    = $vtokfh ? ((-s $vtokfh) / packsize($coldb->{pack_w})) : undef;
+  my $nnz_v    = $vtokfh ? ((-s $vtokfh) / packsize($coldb->{pack_t})) : undef;
   my $nsigs0   = $docoff ? $docoff->[$#$docoff] : undef;
-  my $nterms0  = $coldb->{xenum}->size;
+  my $nterms0  = $coldb->{tenum}->size;
   my $imax     = lmax($imax0, $nnz_v, $nsigs0, $nterms0);
   my $imintype = DiaColloDB::Utils::mintype($imax, qw(ushort long indx));
   $vs->info("$logas: using PDL integer type $imintype (max value = $imax)");
@@ -343,8 +343,8 @@ sub create {
   my $NC      = $nfiles;
   my $itype   = $vs->itype;
   my $vtype   = $vs->vtype;
-  my $pack_w   = $coldb->{pack_w};
-  my $len_w    = packsize($pack_w);
+  my $pack_t   = $coldb->{pack_t};
+  my $len_t    = packsize($pack_t);
   my $pack_ix = $vs->ipack;
   (my $pack_ix1 = $pack_ix) =~ s/\*$//;
   my $len_ix  = packsize($pack_ix,0);
@@ -416,13 +416,13 @@ sub create {
 	$toki = $docoff->[$sigi_in];
 	$tokj = $docoff->[$sigi_in+1];
 
-	$vs->logconfess("$logas: bad offset in $vtokfile") if ($vtokfh->tell != $toki*$len_w); ##-- DEBUG
+	$vs->logconfess("$logas: bad offset in $vtokfile") if ($vtokfh->tell != $toki*$len_t); ##-- DEBUG
 
 	##-- parse signature
 	%sig  = qw();
 	$sign = $tokj - $toki;
 	for ( ; $toki < $tokj; ++$toki) {
-	  CORE::read($vtokfh, $buf, $len_w)
+	  CORE::read($vtokfh, $buf, $len_t)
 	      or $vs->logconfess("$logas: read() failed on $vtokfile: $!");
 	  ++$sig{$buf};
 	}
@@ -430,7 +430,7 @@ sub create {
 
 	##-- populate tdm0.dat
 	while (($ts,$f) = each %sig) {
-	  $tdm0fh->print(join(' ', unpack($pack_w,$ts), $sigi_out, $f),"\n");
+	  $tdm0fh->print(join(' ', unpack($pack_t,$ts), $sigi_out, $f),"\n");
 	}
 	++$sigi_out;
       }

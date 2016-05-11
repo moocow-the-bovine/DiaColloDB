@@ -2293,36 +2293,107 @@ sub bench_pack_split {
 #bench_pack_split @ARGV;
 
 ##----------------------------------------------------------------------
-## test cof reload (trunk)
-sub test_cof_reload {
-  my ($dbdir,$cofdat) = @_;
-  $dbdir  //= 'kern.d_v0_09';
-  $cofdat //= 'kern.dump_v0_09/cof.dat2';
+## bench date-check vs group-check
+sub bench_dx_vs_gx {
+  my ($pfile,$dlo,$dhi,$dslice) = @_;
+  $pfile //= 'prf.json';
 
+  ##-- load profile
   DiaColloDB->ensureLog(level=>'INFO');
   my $logger = 'DiaColloDB';
+  $logger->info("loading $pfile and encoding");
+  my $mp = DiaColloDB::Utils::loadJsonFile($pfile)
+    or die("$0: failed to load multi-profile from '$pfile': $!");
 
-  $logger->info("loading $dbdir/cof.hdr");
-  my $hdr = DiaColloDB::Utils::loadJsonFile("$dbdir/cof.hdr")
-    or die("$0: failed to load $dbdir/cof.hdr");
+  ##-- items
+  my @titems = qw();
+  my @ditems = qw();
+  my ($pack_g,$pack_date) = qw(N[2] n);
+  my $pack_x = $pack_g.$pack_date;
+  my %f12 = qw();
+  my (@key);
+  foreach my $prf (@{$mp->{profiles}}) {
+    my $slice = $prf->{label}+0;
+    foreach (keys %{$prf->{f12}}) {
+      push(@titems, pack($pack_g, split(' ',$_)));
+      push(@ditems, $slice);
+    }
+  }
+  my @pditems = map {pack($pack_date,$_)} @ditems;
 
-  $logger->info("creating cof object $dbdir/cof.*");
-  my $cof = DiaColloDB::Relation::Cofreqs->new(base=>"$dbdir/cof", flags=>'rw', map {($_=>$hdr->{$_})} grep {$_ !~ /^(?:N|class|size)/} keys %$hdr)
-    or die("$0: failed to create new cof object");
+  $dlo = undef if (($dlo//'-') eq '-');
+  $dhi = undef if (($dhi//'-') eq '-');
+  $dslice = 0  if (!$dslice || $dslice eq '-');
+  DiaColloDB->info("dlo=".($dlo//'-undef-')." ; dhi=".($dhi//'-undef-')." ; dslice=$dslice");
+  my ($d);
+  my $dlimits_code = join(' && ',
+			  (defined($dlo) ? "\$_[0]>=$dlo" : qw()),
+			  (defined($dhi) ? "\$_[0]<=$dhi" : qw()));
+  my $dslice_code  = $dslice ? "int(\$_[0]/$dslice)*$dslice" : "0";
+  my $d2slice_code = $dlimits_code . ($dlimits_code ? " ? ($dslice_code) : undef" : $dslice_code);
+  my $d2slice = eval "sub {$d2slice_code}";
+  (my $p2slice_code = $d2slice_code) =~ s{\$_\[0\]}{\$d}g;
+  my $p2slice = eval "sub { \$d=unpack('n',\$_[0]); $p2slice_code }";
+  my $t2group = sub { pack('N*', unpack('@0N@4N', $_[0])) };
 
-  $logger->info("loading text data from $cofdat");
-  $cof->loadTextFile($cofdat)
-    or die("$0: failed to load text data from $cofdat: $!");
-
-  $logger->info("saving header");
-  $cof->saveHeader()
-    or die("$0: failed to save header $dbdir/cof.hdr: $!");
-  $cof->close;
-
-  $logger->info("done");
+  cmpthese(-3, {
+		d2slice => sub { $d2slice->($_) foreach (@ditems); },
+		p2slice => sub { $p2slice->($_) foreach (@pditems); },
+		t2group => sub { $t2group->($_) foreach (@titems); },
+	       });
+  print STDERR "$0: dx_vs_gx done\n";
   exit 0;
 }
-test_cof_reload(@ARGV);
+#bench_dx_vs_gx(@ARGV);
+
+##----------------------------------------------------------------------
+## test v0.10 Cofreqs load
+sub test_cofreqs_load {
+  my $dbdir = shift // 'kern01-1k.d';
+  my $file  = "$dbdir/cof.x2t";
+
+  my $tcof = DiaColloDB::Relation::Cofreqs->new(base=>"$dbdir/tcof", flags=>'rw', version=>'0.10.000',
+						fmin=>1, dmax=>5,
+						pack_i=>'N', pack_f=>'N', pack_d=>'n',
+					       );
+  $tcof->loadTextFile($file)
+    or die("loadTextFile failed: $!");
+
+  print STDERR "$0: text_cofreqs_load done\n";
+  exit 0;
+}
+#test_cofreqs_load(@ARGV);
+
+##----------------------------------------------------------------------
+## test v0.10 Persistent move
+sub test_move {
+  #my $base = shift || 'tmp/l_enum';
+  #my $fromdir = undef;
+  #my $todir = shift || 'tmp/e';
+  ##
+  #my $base    = shift || 'tmp/e/l_enum';
+  #my $fromdir = shift || 'tmp';
+  #my $todir   = shift || 'tmp2';
+  ##
+  my $base = shift || 'tmp2/e/l_enum';
+  my $fromdir = shift || 'tmp2/e/l_';
+  my $todir = shift || 'tmp/ll_';
+
+  DiaColloDB->ensureLog();
+  my $hdr = DiaColloDB::Utils::loadJsonFile("$base.hdr")
+    or die("$0: failed to load header $base.hdr: $!");
+  my $class = $hdr->{class}
+    or die("$0: no class in $base.hdr: $!");
+  my $obj = $class->new()
+    or die("$0: could not create object of class $class: $!");
+  $obj->open($base)
+    or die("$0: open failed for $base via class $class: $!");
+  $obj->move($todir,from=>$fromdir)
+    or die("$0: move() failed for $base via class $class to $todir: $!");
+  print STDERR "$0: test_move() done\n";
+  exit 0;
+}
+test_move @ARGV;
 
 
 ##==============================================================================

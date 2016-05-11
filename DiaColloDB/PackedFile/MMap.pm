@@ -7,6 +7,7 @@ package DiaColloDB::PackedFile::MMap;
 use DiaColloDB::PackedFile;
 use DiaColloDB::Utils qw(:fcntl :pack);
 use File::Map qw(map_handle);
+use Fcntl qw(:DEFAULT :seek);
 use Carp;
 use strict;
 no warnings 'portable';
@@ -70,6 +71,13 @@ sub open {
 sub remap {
   my $pf = shift;
 
+  ##-- try to ensure filehandle is flushed to disk to handle recent writes
+  if (fcwrite($pf->{flags}//'r')) {
+    CORE::seek($pf->{fh},0,SEEK_END) or return undef;
+    CORE::truncate($pf->{fh}, $pf->{fh}->tell) or return undef;
+  }
+  CORE::seek($pf->{fh},0,SEEK_SET) or return undef;
+
   ##-- mmap handles
   map_handle(my $buf,  $pf->{fh},  fcperl($pf->{flags}));
   $pf->{bufr} = \$buf;
@@ -107,7 +115,11 @@ sub truncate {
 
 ## $bool = $pf->flush()
 ##  + attempt to flush underlying filehandle, may not work
-##  + INHERITED from PackedFile
+sub flush {
+  my $pf = shift;
+  $pf->SUPER::flush(@_) or return undef;
+  $pf->remap();
+}
 
 ##==============================================================================
 ## API: filters
@@ -301,6 +313,7 @@ sub fromArray {
 
 ## $nbits_or_undef = $pf->vnbits()
 ##  + returns number of bits for using vec()-style search via Algorithm::BinarySearch::Vec, or undef if not supported
+##  + currently UNUSED
 sub vnbits {
   my $pf     = shift;
   my $packas = $pf->{packas};
@@ -326,8 +339,38 @@ sub vnbits {
 ##    or undef if no such $i exists.
 ##  + $key must be a numeric value, and records must be stored in ascending order
 ##    by numeric value of key (as unpacked by $packas) between $ilo and $ihi
-##  + TODO: tweak this to use Algorithm::BinarySearch::Vec()
-##  + currently INHERITED from PackedFile
+##  + TODO: optimize this to use Algorithm::BinarySearch::Vec (only applicable for scalar pack-templates)
+sub bsearch {
+  my ($pf,$key,%opts) = @_;
+  my $ilo    = $opts{lo} // 0;
+  my $ihi    = $opts{hi} // $pf->size;
+  my $packas = $opts{packas} // $pf->{packas};
+  my $reclen = $pf->{reclen};
+  my $bufr   = $pf->{bufr};
+
+  ##-- binary search guts
+  my ($imid,$keymid);
+  while ($ilo < $ihi) {
+    $imid = ($ihi+$ilo) >> 1;
+
+    ##-- get item[$imid]
+    ($keymid) = unpack($packas, substr($$bufr, $imid*$reclen, $reclen));
+
+    if ($keymid < $key) {
+      $ilo = $imid + 1;
+    } else {
+      $ihi = $imid;
+    }
+  }
+
+  if ($ilo==$ihi) {
+    ##-- get item[$ilo]
+    ($keymid) = unpack($packas, substr($$bufr, $ilo*$reclen, $reclen));
+    return $ilo if ($keymid == $key);
+  }
+
+  return undef;
+}
 
 ##==============================================================================
 ## disk usage, timestamp, etc
@@ -349,7 +392,10 @@ sub vnbits {
 
 ## @keys = $coldb->headerKeys()
 ##  + keys to save as header
-##  + INHERITED from PackedFile
+sub headerKeys {
+  my $pf = shift;
+  return grep {!ref($_[0]{$_}) && $_ !~ m{^(?:bufp)$}} $pf->SUPER::headerKeys(@_);
+}
 
 ##--------------------------------------------------------------
 ## I/O: text
