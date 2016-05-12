@@ -20,6 +20,7 @@ our ($help,$version);
 our $dburl      = undef;
 our $outdir     = undef;
 our %cli        = (flags=>'r');
+our %log        = (level=>'TRACE', rootLevel=>'FATAL');
 
 ##----------------------------------------------------------------------
 ## Command-line processing
@@ -27,7 +28,8 @@ our %cli        = (flags=>'r');
 GetOptions(##-- general
 	   'help|h' => \$help,
 	   'version|V' => \$version,
-	   #'verbose|v=i' => \$verbose,
+	   'log-level|level|log|verbose|v=s' => sub { $log{level} = uc($_[1]); },
+	   'quiet|q!' => sub { $log{level} = $_[1] ? 'WARN' : 'TRACE' },
 	  );
 
 pod2usage({-exitval=>0,-verbose=>0}) if ($help);
@@ -44,7 +46,7 @@ if ($version) {
 ##----------------------------------------------------------------------
 
 ##-- setup logger
-DiaColloDB::Logger->ensureLog();
+DiaColloDB::Logger->ensureLog(%log);
 
 ##-- open colloc-db
 $dburl = shift(@ARGV);
@@ -85,8 +87,10 @@ dcdb-info.perl - get administrative info from a DiaColloDB diachronic collocatio
  dcdb-info.perl [OPTIONS] DBDIR
 
  Options:
-   -help
-   -version
+   -h, -help              # display a brief usage summary
+   -V, -version           # display program version
+   -l, -log-level LEVEL   # set minimum DiaColloDB log-level
+   -q, -quiet             # alias for -log-level=warn
 
 =cut
 

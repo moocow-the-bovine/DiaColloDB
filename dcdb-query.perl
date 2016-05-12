@@ -234,8 +234,8 @@ dcdb-query.perl - query a DiaColloDB diachronic collocation database
  dcdb-query.perl [OPTIONS] DBURL QUERY1 [QUERY2]
 
  General Options:
-   -help
-   -version
+   -help                 # display a brief usage summary
+   -version              # display program version
    -[no]time             # do/don't report operation timing (default=do)
    -iters NITERS         # benchmark NITERS iterations of query
 
