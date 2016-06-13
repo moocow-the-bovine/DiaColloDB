@@ -1711,7 +1711,7 @@ sub parseQuery {
 		   (?:${reqre})			##-- final component
 		   ${sepre}*			##-- final separators (optional)
 		   $/x) {
-    $coldb->debug("parseQuery($logas): parsing native query request");
+    #$coldb->debug("parseQuery($logas): parsing native query request");
     $areqs = [grep {defined($_)} ($req =~ m/${sepre}*(${reqre})/g)];
   }
 
@@ -1740,7 +1740,7 @@ sub parseQuery {
       $attr = $defaultIndex//'' if (($attr//'') eq '');
       $attr =~ s/^\$//;
 
-      $coldb->debug("parseQuery($logas): parsing native request: (".($attr//'')." = ".($areq//''));
+      #$coldb->debug("parseQuery($logas): parsing native request: (".($attr//'')." = ".($areq//''));
 
       if (UNIVERSAL::isa($areq,'DDC::XS::CQuery')) {
 	##-- compat: value: ddc query object
@@ -1813,8 +1813,7 @@ sub parseQuery {
 		       })
     if ($opts{mapand} || (!defined($opts{mapand}) && $req0 !~ /\&\&/));
 
-  ##-- DEBUG
-  $coldb->debug("parseQuery($logas): ", $q->toString);
+  #$coldb->debug("parseQuery($logas): ", $q->toString);
 
   return $q;
 }
