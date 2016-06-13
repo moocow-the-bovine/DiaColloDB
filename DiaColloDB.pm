@@ -41,7 +41,7 @@ use strict;
 ##==============================================================================
 ## Globals & Constants
 
-our $VERSION = "0.10.001";
+our $VERSION = "0.10.002";
 our @ISA = qw(DiaColloDB::Client);
 
 ## $PGOOD_DEFAULT
@@ -1688,6 +1688,7 @@ sub parseQuery {
   my $req0   = $req;
   my $wlevel = $opts{warn} // 'warn';
   my $defaultIndex = $opts{default};
+  my $logas = $opts{logas}//'';
 
   ##-- compat: accept ARRAY or HASH requests
   my $areqs = (UNIVERSAL::isa($req,'ARRAY') ? [@$req]
@@ -1698,8 +1699,9 @@ sub parseQuery {
   my $sepre  = qr{[\s\,]};
   my $charre = qr{(?:\\[^ux0-9]|[\w\x{80}-\x{ffff}])};
   my $attrre = qr{(?:\$?${charre}+)};
-  my $setre  = qr{(?:${charre}|\|)+};			##-- value: |-separated barewords
-  my $regre  = qr{(?:/(?:\\/|[^/]*)/(?:[gimsadlux]*))};	##-- value regexes
+  my $orre   = qr{(?:\s*\|?\s*)};
+  my $setre  = qr{(?:(?:${charre}+)(?:${orre}${charre}+)*)};	##-- value: |-separated barewords
+  my $regre  = qr{(?:/(?:\\/|[^/]*)/(?:[gimsadlux]*))};		##-- value regexes
   my $valre  = qr{(?:${setre}|${regre})};
   my $reqre  = qr{(?:(?:${attrre}[:=])?${valre})};
   if (!$areqs
@@ -1709,6 +1711,7 @@ sub parseQuery {
 		   (?:${reqre})			##-- final component
 		   ${sepre}*			##-- final separators (optional)
 		   $/x) {
+    $coldb->debug("parseQuery($logas): parsing native query request");
     $areqs = [grep {defined($_)} ($req =~ m/${sepre}*(${reqre})/g)];
   }
 
@@ -1736,6 +1739,8 @@ sub parseQuery {
       ($attr,$areq) = ('',$attr)   if (defined($defaultIndex) && !defined($areq));
       $attr = $defaultIndex//'' if (($attr//'') eq '');
       $attr =~ s/^\$//;
+
+      $coldb->debug("parseQuery($logas): parsing native request: (".($attr//'')." = ".($areq//''));
 
       if (UNIVERSAL::isa($areq,'DDC::XS::CQuery')) {
 	##-- compat: value: ddc query object
@@ -1807,6 +1812,9 @@ sub parseQuery {
 			 return UNIVERSAL::isa($_[0],'DDC::XS::CQAnd') ? DDC::XS::CQWith->new($_[0]->getDtr1,$_[0]->getDtr2) : $_[0];
 		       })
     if ($opts{mapand} || (!defined($opts{mapand}) && $req0 !~ /\&\&/));
+
+  ##-- DEBUG
+  $coldb->debug("parseQuery($logas): ", $q->toString);
 
   return $q;
 }
