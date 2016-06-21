@@ -2,6 +2,9 @@
 ##
 ## Change log for perl distribution DiaColloDB
 
+v0.10.003 PENDING
+	* added -subclient-option to dcdb-query.perl (common options for list:// sub-clients)
+
 v0.10.002 Mon, 13 Jun 2016 15:51:42 +0200 moocow
 	* native query syntax fix: identify CQOr queries and throw an error
 

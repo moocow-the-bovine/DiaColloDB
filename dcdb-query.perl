@@ -68,7 +68,8 @@ GetOptions(##-- general
 
 	   ##-- general
 	   'log-level|level|log=s' => sub { $log{level} = uc($_[1]); },
-	   'client-option|db-option|do|O=s%' => \$cli{opts},
+	   'client-option|db-option|do|O=s%' => \%cli,
+	   'subclient-option|suboption|so|SO=s%' => \$cli{opts},
 
 	   ##-- query options
 	   #'difference|diff|D|compare|comp|cmp!' => \$diff,
@@ -251,7 +252,8 @@ dcdb-query.perl - query a DiaColloDB diachronic collocation database
    -[no]global           # do/don't trim profiles globally (vs. locally by date-slice; default=don't)
    -[no]strings          # debug: do/don't stringify returned profile (default=do)
    -1pass , -2pass       # do/don't use fast but incorrect 1-pass method (default=don't)
-   -O KEY=VALUE          # set DiaColloDB::Client option
+   -O  KEY=VALUE         # set DiaColloDB::Client option
+   -SO KEY_=VALUE        # set sub-client option (for list:// clients)
 
  Scoring Options:
    -f                    # score by raw frequency
