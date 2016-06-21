@@ -276,9 +276,9 @@ sub compare {
   ##-- finalize: stringify
   if (!$opts{packed}) {
     if ($opts{strings}//1) {
-      $diff->stringify($groupby->{g2s});
+      $diff->stringify($groupby->{g2s}) if (ref($groupby) && $groupby->{g2s})
     } else {
-      $diff->stringify($groupby->{g2txt});
+      $diff->stringify($groupby->{g2txt}) if (ref($groupby) && $groupby->{g2txt});
     }
   }
 

@@ -2,8 +2,10 @@
 ##
 ## Change log for perl distribution DiaColloDB
 
-v0.10.003 PENDING
+v0.10.003 Tue, 21 Jun 2016 15:37:23 +0200 moocow
 	* added -subclient-option to dcdb-query.perl (common options for list:// sub-clients)
+	* fixed stringification bug for ddc-diff queries introduced in v0.09.002
+	  'Can't use string ("l") as a HASH ref while "strict refs" in use at DiaColloDB/Relation.pm line 281.'
 
 v0.10.002 Mon, 13 Jun 2016 15:51:42 +0200 moocow
 	* native query syntax fix: identify CQOr queries and throw an error

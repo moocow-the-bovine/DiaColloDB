@@ -178,7 +178,9 @@ if (0 && $query{query} eq 'debug') {
   #($isDiff,$rel,@query{qw(query bquery slice diff groupby)}) = (1,'dtdf','* #has[author,/Habermas/]','* #has[author,/Cassirer/]',0,'min','l,p=NN');
   #($isDiff,$rel,@query{qw(query bquery slice adate bdate)}) = (1,'d2','Bewegung','Bewegung',0,'1900:1910','1990:2000');
   ##
-  ($isDiff,$rel,@query{qw(query bquery slice onepass groupby)}) = (1,'d2','Mann','Frau',0,1,'l,p=ADJA');
+  #($isDiff,$rel,@query{qw(query bquery slice onepass groupby)}) = (1,'d2','Mann','Frau',0,1,'l,p=ADJA');
+  ##
+  ($isDiff,$rel,@query{qw(query bquery slice groupby)}) = (1,'diff-ddc','$p=PAV=2 #has[textClass,/Wiss*/]','$p=PAV=2 #has[textClass,/Bell*/]',0,'l');
 }
 ##--/DEBUG queries
 
