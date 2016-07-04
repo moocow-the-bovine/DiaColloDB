@@ -25,6 +25,7 @@ our @ISA = qw(DiaColloDB::Document);
 ##    trimPND    => $bool, ##-- create trimmed "pnd" meta-attribute? (default=1)
 ##    trimAuthor => $bool, ##-- trim "author" meta-attribute (eliminate DTA PNDs)? (default=1)
 ##    trimGenre  => $bool, ##-- create trimmed "genre" meta-attribute? (default=1)
+##    foreign => $bool,    ##-- alias for trimAuthor=0 trimPND=0 trimGenre=0
 ##    ##
 ##    ##-- document data
 ##    date   =>$date,     ##-- year
@@ -137,21 +138,23 @@ sub fromFile {
   }
   push(@$tokens,$eos) if (!$last_was_eos);
 
-  ##-- hack: compute top-level $meta->{genre} from $meta->{textClass} if requested
-  $meta->{genre} //= $meta->{textClass};
-  $meta->{genre} =~ s/\:.*$//
-    if ($doc->{trimGenre} && defined($meta->{genre}));
+  if (!$doc->{foreign}) {
+    ##-- hack: compute top-level $meta->{genre} from $meta->{textClass} if requested
+    $meta->{genre} //= $meta->{textClass};
+    $meta->{genre} =~ s/\:.*$//
+      if ($doc->{trimGenre} && defined($meta->{genre}));
 
-  ##-- hack: compute/trim top-level $meta->{pnd} if requested
-  $meta->{pnd} //= $meta->{author};
-  if ($doc->{trimPND} && defined($meta->{pnd})) {
-    $meta->{pnd} = join(' ', ($meta->{pnd} =~ m/\#[0-9a-zA-Z]+/g));
-    delete($meta->{pnd}) if (($meta->{pnd}//'') eq '');
+    ##-- hack: compute/trim top-level $meta->{pnd} if requested
+    $meta->{pnd} //= $meta->{author};
+    if ($doc->{trimPND} && defined($meta->{pnd})) {
+      $meta->{pnd} = join(' ', ($meta->{pnd} =~ m/\#[0-9a-zA-Z]+/g));
+      delete($meta->{pnd}) if (($meta->{pnd}//'') eq '');
+    }
+
+    ##-- hack: trim top-level $meta->{author} if requested
+    $meta->{author} =~ s/\s*\([^\)]*\)$//
+      if ($doc->{trimAuthor} && defined($meta->{author}));
   }
-
-  ##-- hack: trim top-level $meta->{author} if requested
-  $meta->{author} =~ s/\s*\([^\)]*\)$//
-    if ($doc->{trimAuthor} && defined($meta->{author}));
 
   $fh->close() if (!ref($file));
   return $doc;

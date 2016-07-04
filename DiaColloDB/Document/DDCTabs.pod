@@ -85,6 +85,7 @@ and supports the L<DiaColloDB::Document|DiaColloDB::Document> API.
  trimAuthor => $bool, ##-- trim "author" meta-attribute (eliminate DTA PNDs)? (default=1)
  trimGenre  => $bool, ##-- create trimmed "genre" meta-attribute? (default=1)
  trimPND    => $bool, ##-- create trimmed "pnd" meta-attribute? (default=1)
+ foreign => $bool,    ##-- disable D*-specific hacks (trimAuthor, trimGenre, trimPND)
  ##
  ##-- document data
  date   =>$date,     ##-- year

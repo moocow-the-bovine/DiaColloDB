@@ -2,6 +2,11 @@
 ##
 ## Change log for perl distribution DiaColloDB
 
+v0.10.004 Tue, 28 Jun 2016 09:30:42 +0100 moocow
+	* updated -nofilters option to dcdb-create.perl (alias -use-all-the-data, a la Mark Lauersdorf)
+	* added DDCTabs 'foreign' option (-dO=foreign=1)
+	* added (p|w|l)(good|bad)file options to DiaColloDB::create (stoplist files)
+
 v0.10.003 Tue, 21 Jun 2016 15:37:23 +0200 moocow
 	* added -subclient-option to dcdb-query.perl (common options for list:// sub-clients)
 	* fixed stringification bug for ddc-diff queries introduced in v0.09.002

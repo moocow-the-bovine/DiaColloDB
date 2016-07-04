@@ -65,16 +65,19 @@ GetOptions(##-- general
 	   'list|l!' => \$listargs,
 	   'union|u|merge!' => \$union,
 	   'document-class|dclass|dc=s' => \$corpus{dclass},
-	   'document-option|docoption|do|dO=s%' => \$corpus{dopts},
+	   'document-option|docoption|dopt|do|dO=s%' => \$corpus{dopts},
 	   'by-sentence|bysentence' => sub { $corpus{dopts}{eosre}='^$' },
 	   'by-paragraph|byparagraph' => sub { $corpus{dopts}{eosre}='^%%\$DDC:BREAK\.p=' },
 	   'by-doc|bydoc|by-file|byfile' => sub { $corpus{dopts}{eosre}='' },
 
 	   ##-- coldb options
 	   'index-attributes|attributes|attrs|a=s' => \$coldb{attrs},
-	   'nofilters|F' => sub {
-	     $coldb{$_}=undef foreach (qw(pgood pbad wgood wbad lgood lbad mgood mbad));
-	     $coldb{tdfopts}{$_}=undef foreach (qw(mgood mbad));
+	   'nofilters|no-filters|F|all|A|no-prune|noprune|use-all-the-data' => sub {
+	     $coldb{$_} = 0  foreach (grep {$_ =~ /fmin/} keys %coldb);
+	     $coldb{$_} = '' foreach (qw(pgood pbad wgood wbad lgood lbad));
+	     $coldb{tdfopts}{$_} = 0 foreach (grep {$_ =~ /min.*(Freq|Size)/} keys %{$coldb{tdfopts}});
+	     $coldb{tdfopts}{$_} = 'inf' foreach (grep {$_ =~ /max.*(Freq|Size)/} keys %{$coldb{tdfopts}});
+	     $coldb{tdfopts}{$_} = ''    foreach (qw(mgood mbad));
 	   },
 	   '64bit|64|quad|Q!'   => sub { pack64( $_[1]); },
 	   '32bit|32|long|L|N!' => sub { pack64(!$_[1]); },
@@ -169,7 +172,8 @@ dcdb-create.perl - create a DiaColloDB diachronic collocation database
    -union , -nounion    ##-- do/don't trate INPUT(s) as DB directories to be merged (default=don't)
    -dclass CLASS        ##-- set corpus document class (default=DDCTabs)
    -dopt OPT=VAL        ##-- set corpus document option, e.g.
-                        ##   eosre=EOSRE  # eos regex (default='^$') 
+                        ##   eosre=EOSRE  # eos regex (default='^$')
+                        ##   foreign=BOOL # disable D*-specific heuristics
    -bysent              ##-- track collocations by sentence (default)
    -byparagraph         ##-- track collocations by paragraph
    -bypage              ##-- track collocations by page
@@ -204,8 +208,11 @@ dcdb-create.perl - create a DiaColloDB diachronic collocation database
                         ##   pack_date=PACKFMT      # pack-format for dates
                         ##   (p|w|l)good=REGEX      # positive regex for (postags|words|lemmata)
                         ##   (p|w|l)bad=REGEX       # negative regex for (postags|words|lemmata)
+                        ##   (p|w|l)goodfile=FILE   # positive list-filefor (postags|words|lemmata)
+                        ##   (p|w|l)badfile=FILE    # negative list-file for (postags|words|lemmata)
                         ##   ddcServer=HOST:PORT    # server for ddc relations
                         ##   ddcTimeout=SECONDS     # timeout for ddc relations
+   -noprune             ##-- disable all pruning filters
 
  I/O and Logging Options:
    -log-level LEVEL     ##-- set log-level (default=TRACE)
@@ -329,6 +336,8 @@ Set corpus document option, e.g.
 C<-dopt eosre=EOSRE> sets the end-of-sentence regex
 for the default L<DDCTabs|DiaColloDB::Document::DDCTabs> document class.
 
+Aliases: -document-option, -docoption -dO
+
 =item -bysent
 
 Track collocations by sentence (default).
@@ -365,7 +374,25 @@ Known attributes include C<l, p, w, doc.title, doc.author>, etc.
 
 =item -nofilters
 
-Disable default regex-filters.
+Disables default frequency- and regex-based pruning filter options, equivalent to:
+
+ -tfmin=0 \
+ -lfmin=0 \
+ -cfmin=0 \
+ -tdf-tfmin=0 \
+ -tdf-dfmin=0 \
+ -tdf-nmin=0 \
+ -tdf-nmax=inf \
+ -O=pgood='' \
+ -O=wgood='' \
+ -O=lgood='' \
+ -O=pbad='' \
+ -O=wbad='' \
+ -O=lbad='' \
+ -tO=mgood='' \
+ -tO=mbad=''
+
+Aliases: -noprune, -all, -F
 
 =item -64bit
 
@@ -428,6 +455,8 @@ Set arbitrary L<tdf matrixDiaColloDB|DiaColloDB::Relation::TDF> option, e.g.
  mgood=REGEX            # positive regex for document-level metatdata
  mbad=REGEX             # negative regex for document-level metatdata
 
+Alias: -tO
+
 =item -option OPT=VAL
 
 Set arbitrary L<DiaColloDB|DiaColloDB> index option, e.g.
@@ -437,8 +466,12 @@ Set arbitrary L<DiaColloDB|DiaColloDB> index option, e.g.
  pack_date=PACKFMT      # pack-format for dates
  (p|w|l)good=REGEX      # positive regex for (postags|words|lemmata)
  (p|w|l)bad=REGEX       # negative regex for (postags|words|lemmata)
+ (p|w|l)goodfile=REGEX  # positive list-file for (postags|words|lemmata)
+ (p|w|l)badfile=REGEX   # negative list-file for (postags|words|lemmata)
  ddcServer=HOST:PORT    # server for ddc relations
  ddcTimeout=SECONDS     # timeout for ddc relations
+
+Alias: -O
 
 =back
 

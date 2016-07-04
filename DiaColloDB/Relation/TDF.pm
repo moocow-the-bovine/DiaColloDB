@@ -404,7 +404,7 @@ sub create {
 				 };
 	$mdata->{s2i}{''} = 0;
       }
-      $mvali = ($mdata->{s2i}{$mval} //= $mdata->{n}++);
+      $mvali = ($mdata->{s2i}{($mval//'')} //= $mdata->{n}++);
       $mdata->{vals}[$docid] = $mvali;
     }
 

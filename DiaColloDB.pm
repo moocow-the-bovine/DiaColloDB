@@ -41,7 +41,7 @@ use strict;
 ##==============================================================================
 ## Globals & Constants
 
-our $VERSION = "0.10.003";
+our $VERSION = "0.10.004";
 our @ISA = qw(DiaColloDB::Client);
 
 ## $PGOOD_DEFAULT
@@ -225,6 +225,7 @@ sub new {
 		      wbad  => $WBAD_DEFAULT,
 		      lgood => $LGOOD_DEFAULT,
 		      lbad  => $LBAD_DEFAULT,
+		      (map {("${_}file"=>undef)} qw(pgood bad wgood wbad lgood lbad)),
 		      #vsmgood => $TDF_MGOOD_DEFAULT,
 		      #vsmbad  => $TDF_MBAD_DEFAULT,
 
@@ -452,6 +453,22 @@ sub diskFiles {
 
 ##--------------------------------------------------------------
 ## create: utils
+
+## \%line2undef = $coldb->loadFilterFile($filename_or_undef)
+sub loadFilterFile {
+  my ($coldb,$file) = @_;
+  return undef if (($file//'') eq '');
+  CORE::open(my $fh,"<$file")
+      or $coldb->logconfess("loadFilterFile(): open failed for '$file': $!");
+  my $h = {};
+  while (defined($_=<$fh>)) {
+    chomp;
+    next if (/^\s*(?:\#.*)$/); ##-- skip comments and blank lines
+    $h->{$_} = undef;
+  }
+  CORE::close($file);
+  return $h;
+}
 
 ## $multimap = $coldb->create_multimap($base, \%ts2i, $packfmt, $label="multimap")
 sub create_multimap {
@@ -689,6 +706,14 @@ sub create {
   my $lgood = $coldb->{lgood} ? qr{$coldb->{lgood}} : undef;
   my $lbad  = $coldb->{lbad}  ? qr{$coldb->{lbad}}  : undef;
 
+  ##-- initialize: filter lists
+  my $pgoodh = $coldb->loadFilterFile($coldb->{pgoodfile});
+  my $pbadh  = $coldb->loadFilterFile($coldb->{pbadfile});
+  my $wgoodh = $coldb->loadFilterFile($coldb->{wgoodfile});
+  my $wbadh  = $coldb->loadFilterFile($coldb->{wbadfile});
+  my $lgoodh = $coldb->loadFilterFile($coldb->{lgoodfile});
+  my $lbadh  = $coldb->loadFilterFile($coldb->{lbadfile});
+
   ##-- initialize: logging
   my $nfiles   = $corpus->size();
   my $logFileN = $coldb->{logCorpusFileN} // max2(1,int($nfiles/20));
@@ -725,12 +750,13 @@ sub create {
 	($w,$p,$l) = @$tok{qw(w p l)};
 
 	##-- apply regex filters
-	next if ((defined($pgood)    && $p !~ $pgood)
-		 || (defined($pbad)  && $p =~ $pbad)
-		 || (defined($wgood) && $w !~ $wgood)
-		 || (defined($wbad)  && $w =~ $wbad)
-		 || (defined($lgood) && $l !~ $lgood)
-		 || (defined($lbad)  && $l =~ $lbad));
+	next if ((defined($pgood)    && $p !~ $pgood) || ($pgoodh && !exists($pgoodh->{$p}))
+		 || (defined($pbad)  && $p =~ $pbad)  || ($pbadh  &&  exists($pbadh->{$p}))
+		 || (defined($wgood) && $w !~ $wgood) || ($wgoodh && !exists($wgoodh->{$w}))
+		 || (defined($wbad)  && $w =~ $wbad)  || ($wbadh  &&  exists($wbadh->{$w}))
+		 || (defined($lgood) && $l !~ $lgood) || ($lgoodh && !exists($lgoodh->{$l}))
+		 || (defined($lbad)  && $l =~ $lbad)  || ($lbadh  &&  exists($lbadh->{$l}))
+		);
 
 	##-- get attribute value-ids and build tuple
 	$ais[$_->{i}] = ($_->{s2i}{$tok->{$_->{a}//''}} //= ++$_->{ns}) foreach (@aconfw);
