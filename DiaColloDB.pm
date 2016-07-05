@@ -41,7 +41,7 @@ use strict;
 ##==============================================================================
 ## Globals & Constants
 
-our $VERSION = "0.10.004";
+our $VERSION = "0.10.004_01";
 our @ISA = qw(DiaColloDB::Client);
 
 ## $PGOOD_DEFAULT
@@ -910,6 +910,18 @@ sub create {
     if ($_) {
       if ($toki_in == $docoff_in) {
 	##-- update break-indices for tdf
+
+	##-- BUGHUNT/Birmingham: weird errors around here: Tue, 05 Jul 2016 09:27:11 +0200
+	$coldb->logconfess("create(): \$doci_cur not defined at \$atokfh line ", $atokfh->input_line_number)
+	  if (!defined($doci_cur));
+	$coldb->logconfess("create(): \$toki_out not defined at \$atokfh line ", $atokfh->input_line_number)
+	  if (!defined($toki_out));
+	$coldb->logconfess("create(): \$docoff->[\$doci_cur=$doci_cur] not defined at \$atokfh line ", $atokfh->input_line_number)
+	  if (!defined($docoff->[$doci_cur]));
+	$coldb->logconfess("create(): next \$docoff_in=\$docoff->[++(\$doci_cur=$doci_cur)] not defined at \$atokfh line ", $atokfh->input_line_number)
+	  if (!defined($docoff->[$doci_cur+1]));
+	##--/BUGHUNT
+
 	$docoff->[$doci_cur] = $toki_out;
 	$docoff_in = $docoff->[++$doci_cur];
       }

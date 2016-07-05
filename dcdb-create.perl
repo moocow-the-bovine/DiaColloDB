@@ -75,7 +75,8 @@ GetOptions(##-- general
 	   'nofilters|no-filters|F|all|A|no-prune|noprune|use-all-the-data' => sub {
 	     $coldb{$_} = 0  foreach (grep {$_ =~ /fmin/} keys %coldb);
 	     $coldb{$_} = '' foreach (qw(pgood pbad wgood wbad lgood lbad));
-	     $coldb{tdfopts}{$_} = 0 foreach (grep {$_ =~ /min.*(Freq|Size)/} keys %{$coldb{tdfopts}});
+	     $coldb{tdfopts}{$_} = 0 foreach (grep {$_ =~ /min.*Freq/} keys %{$coldb{tdfopts}});
+	     $coldb{tdfopts}{$_} = 1 foreach (grep {$_ =~ /min.*Size/} keys %{$coldb{tdfopts}});
 	     $coldb{tdfopts}{$_} = 'inf' foreach (grep {$_ =~ /max.*(Freq|Size)/} keys %{$coldb{tdfopts}});
 	     $coldb{tdfopts}{$_} = ''    foreach (qw(mgood mbad));
 	   },
