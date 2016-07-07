@@ -10,7 +10,7 @@ use DiaColloDB::Compat::v0_09::Relation;
 use DiaColloDB::Compat::v0_09::Relation::Unigrams;
 use DiaColloDB::Compat::v0_09::Relation::Cofreqs;
 use DiaColloDB::Utils qw(:math :fcntl :json :sort :pack :regex :file :si :run :env :temp);
-use DDC::XS; ##-- for query parsing
+use DDC::Any; ##-- for query parsing
 use File::Path qw(make_path remove_tree);
 use Fcntl;
 use strict;
@@ -645,7 +645,7 @@ sub dbimport {
 ##~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 ## \@ids = $coldb->enumIds($enum,$req,%opts)
 ##  + parses enum IDs for $req, which is one of:
-##    - a DDC::XS::CQTokExact, ::CQTokInfl, ::CQTokSet, ::CQTokSetInfl, or ::CQTokRegex : interpreted
+##    - a DDC::Any::CQTokExact, ::CQTokInfl, ::CQTokSet, ::CQTokSetInfl, or ::CQTokRegex : interpreted
 ##    - an ARRAY-ref     : list of literal symbol-values
 ##    - a Regexp ref     : regexp for target strings, passed to $enum->re2i()
 ##    - a string /REGEX/ : regexp for target strings, passed to $enum->re2i()
@@ -705,7 +705,7 @@ sub xidsByDate {
 
 ##~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 ## $compiler = $coldb->qcompiler();
-##  + get DDC::XS::CQueryCompiler for this object (cached in $coldb->{_qcompiler})
+##  + get DDC::Any::CQueryCompiler for this object (cached in $coldb->{_qcompiler})
 ##  + INHERITED from DiaColloDB
 
 ##~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -721,7 +721,7 @@ sub xidsByDate {
 ## $cquery = $coldb->parseQuery("$attr1=$val1, ...", %opts)  ##-- compat: string
 ## $cquery = $coldb->parseQuery($ddcQueryString, %opts)      ##-- ddc string (with shorthand ","->WITH, "&&"->WITH)
 ##  + guts for parsing user target and groupby requests
-##  + returns a DDC::XS::CQuery object representing the request
+##  + returns a DDC::Any::CQuery object representing the request
 ##  + index-only items "$l" are mapped to $l=@{}
 ##  + %opts:
 ##     warn  => $level,       ##-- log-level for unknown attributes (default: 'warn')
@@ -803,7 +803,7 @@ sub groupby {
   my ($ids);
   my @gbids  = (
 		map {
-		  ($_->[1] && !UNIVERSAL::isa($_->[1],'DDC::XS::CQTokAny')
+		  ($_->[1] && !UNIVERSAL::isa($_->[1],'DDC::Any::CQTokAny')
 		   ? {
 		      map {($_=>undef)}
 		      @{$coldb->enumIds($coldb->{"$_->[0]enum"}, $_->[1], logLevel=>$coldb->{logProfile}, logPrefix=>"groupby(): fetch filter ids: $_->[0]")}

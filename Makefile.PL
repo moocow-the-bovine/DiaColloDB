@@ -23,14 +23,35 @@ WriteMakefile
    AUTHOR       => 'Bryan Jurish <moocow@cpan.org>',
    ABSTRACT	=> 'Diachronic collocation index',
    VERSION_FROM	=> 'DiaColloDB.pm',
-   LICENSE      => 'perl',
+   LICENSE      => 'perl_5',
+   META_MERGE   => {
+		    'meta-spec' => { version => 2 }, ##-- doesn't seem to work
+		    resources  => {
+				   repository => {
+						  type => 'svn',
+						  url => 'svn://svn.code.sf.net/p/ddc-concordance/code/ddc-perl/',
+						  web => 'https://sourceforge.net/p/ddc-concordance/code/HEAD/tree/ddc-perl/',
+						 },
+				  },
+		    prereqs => {
+				runtime => {
+					    recommends => {
+							   'DDC::XS' => 0.15,
+							  },
+					    #suggests => {},
+					   },
+				build => {
+					  recommends => \%pdl_deps,
+					 },
+			       },
+		   },
+
 
    PREREQ_PM    => {
 		    'Algorithm::BinarySearch::Vec' => '0.07', ##-- for fast integer-set operations
 		    #'Cwd' => 0, ##-- for abs_path
 		    'DB_File' => 0,  ##-- for temporary hashes; 1.831
-		    'DDC::Concordance' => 0.18, ##-- no functional changes from v0.18 to v0.20
-		    'DDC::XS'       => 0.05,
+		    'DDC::Concordance' => 0.25, ##-- for DDC::Any
 		    'File::Copy'    => 0, ##-- for move()
 		    'File::Find'    => 0,
 		    'File::Map'     => 0,  # 0.63

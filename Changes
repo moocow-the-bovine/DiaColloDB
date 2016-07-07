@@ -2,6 +2,11 @@
 ##
 ## Change log for perl distribution DiaColloDB
 
+v0.10.005 Thu, 07 Jul 2016 14:40:04 +0200 moocow
+	* replaced DDC::XS query-parsing and -manipulation with DDC::Any from DDC::Concordance >= v0.25
+	  - obviates troublesome Alien::DDC::Concordance dependency
+	  - still only expected to run correctly on *NIX systems due to runtime calls to sort etc.
+
 v0.10.004_001 Tue, 05 Jul 2016 09:27:52 +0200 moocow
 	* debugging release for un-reproducible 'undefined value' errors on Birmingham data
 

@@ -975,7 +975,7 @@ sub vprofile {
   ##
   my $q = $opts->{qobj} // $coldb->parseQuery($opts->{query}, logas=>'query', default=>'', ddcmode=>1);
   my ($qo);
-  $q->setOptions($qo=DDC::XS::CQueryOptions->new) if (!defined($qo=$q->getOptions));
+  $q->setOptions($qo=DDC::Any::CQueryOptions->new) if (!defined($qo=$q->getOptions));
   #$qo->setFilters([@{$qo->getFilters}, @$gbfilters]) if (@$gbfilters);
   $opts->{qobj} //= $q;
 
@@ -1385,7 +1385,7 @@ sub groupby {
       if (defined($apos=$vs->tpos($_))) {
 	##-- term-attribute request
 	@$ainfo{qw(atype apos aname)} = ('t',$apos,$_);
-	if ($ahaving && !UNIVERSAL::isa($ahaving,'DDC::XS::CQTokAny')) {
+	if ($ahaving && !UNIVERSAL::isa($ahaving,'DDC::Any::CQTokAny')) {
 	  my $avalids  = $coldb->enumIds($coldb->{"${_}enum"}, $ahaving, logLevel=>$coldb->{logProfile}, logPrefix=>"groupby(): fetch term-filter ids: $_");
 	  my $ahavingi = $vs->termIds($_, $avalids);
 	  $ghavingt    = DiaColloDB::Utils::_intersect_p($ghavingt,$ahavingi);
@@ -1395,7 +1395,7 @@ sub groupby {
       elsif (defined($apos=$vs->mpos($_))) {
 	##-- meta-attribute request
 	@$ainfo{qw(atype apos aname)} = ('m',$apos,$_);
-	if ($ahaving && !UNIVERSAL::isa($ahaving,'DDC::XS::CQTokAny')) {
+	if ($ahaving && !UNIVERSAL::isa($ahaving,'DDC::Any::CQTokAny')) {
 	  my $avalids  = $coldb->enumIds($vs->{"meta_e_$_"}, $ahaving, logLevel=>$coldb->{logProfile}, logPrefix=>"groupby(): fetch meta-filter ids: $_");
 	  my $ahavingi = $vs->catIds($_, $avalids);
 	  $ghavingc    = DiaColloDB::Utils::_intersect_p($ghavingc,$ahavingi);
@@ -1459,26 +1459,26 @@ sub qinfo {
   ##-- parse item1 query & options
   my $q1 = $opts{qobj} ? $opts{qobj}->clone : $coldb->parseQuery($opts{query}, logas=>'qinfo', default=>'', ddcmode=>1);
   my ($qo);
-  $q1->setOptions($qo=DDC::XS::CQueryOptions->new) if (!defined($qo=$q1->getOptions));
+  $q1->setOptions($qo=DDC::Any::CQueryOptions->new) if (!defined($qo=$q1->getOptions));
   $q1->SetMatchId(1);
   my $qf = $qo->getFilters // [];
   my ($qfi,$qfobj,$ma,$aqstr,$aq,$af,$av);
   foreach my $qfi (0..$#$qf) {
     $qfobj = $qf->[$qfi];
-    next if (!UNIVERSAL::isa($qfobj,'DDC::XS::CQFHasField'));
+    next if (!UNIVERSAL::isa($qfobj,'DDC::Any::CQFHasField'));
     $ma = $coldb->attrName( $qfobj->getArg0 );
     if (defined($aqstr=$vs->{mquery}{$ma})) {
       ##-- meta-filter: from template
       $aq = $coldb->qparse($aqstr)
 	or $vs->logconfess("qinfo(): failed to parse query-template '$aqstr': $coldb->{error}");
       $af = (($aq->getOptions ? $aq->getOptions->getFilters : undef)//[])->[0];
-      if (UNIVERSAL::isa($aq,'DDC::XS::CQTokAny') && UNIVERSAL::isa($af,'DDC::XS::CQFHasFieldRegex')) {
+      if (UNIVERSAL::isa($aq,'DDC::Any::CQTokAny') && UNIVERSAL::isa($af,'DDC::Any::CQFHasFieldRegex')) {
 	##-- meta-filter: from template: target=regex
-	if ($qfobj->isa('DDC::XS::CQFHasFieldRegex')) {
+	if ($qfobj->isa('DDC::Any::CQFHasFieldRegex')) {
 	  $af->setArg1($qfobj->getArg1);
-	} elsif ($qfobj->isa('DDC::XS::CQFHasFieldValue')) {
+	} elsif ($qfobj->isa('DDC::Any::CQFHasFieldValue')) {
 	  $af->setArg1(quotemeta($qfobj->getArg1));
-	} elsif ($qfobj->isa('DDC::XS::CQFHasFieldSet')) {
+	} elsif ($qfobj->isa('DDC::Any::CQFHasFieldSet')) {
 	  $af->setArg1(join('|',map {"(?:".quotemeta($_).")"} @{$qfobj->getValues}));
 	} else {
 	  $vs->logwarn("qinfo(): can't translate '$ma' regex field template '$aqstr' to DDC-safe query");
@@ -1494,7 +1494,7 @@ sub qinfo {
 
   ##-- item2 query (via groupby, lifted from Relation::qinfoData())
   my $xi = 1;
-  my $q2 = DDC::XS::CQTokAny->new();
+  my $q2 = DDC::Any::CQTokAny->new();
   foreach (@{$opts{groupby}{areqs}}) {
     if ($_->[2]{atype} eq 'm') {
       ##-- meta-attribute
@@ -1504,18 +1504,18 @@ sub qinfo {
 	$aqstr =~ s/__W2__/__W2.${xi}__/g;
 	$aq = $coldb->qparse($aqstr)
 	  or $vs->logconfess("qinfo(): failed to parse query-template '$aqstr': $coldb->{error}");
-	$q2 = $q2->isa('DDC::XS::CQTokAny') ? $aq : ($aq->isa('DDC::XS::CQTokAny') ? $q2 : DDC::XS::CQWith->new($q2,$aq));
+	$q2 = $q2->isa('DDC::Any::CQTokAny') ? $aq : ($aq->isa('DDC::Any::CQTokAny') ? $q2 : DDC::Any::CQWith->new($q2,$aq));
 	push(@$qf, @{$aq->getOptions->getFilters}) if ($aq->getOptions);
       } else {
 	##-- meta-attribute: default: literal #HAS filter
 	$ma =~ s/^doc\.//;
-	push(@$qf, DDC::XS::CQFHasField->new($ma,"__W2.${xi}__"));
+	push(@$qf, DDC::Any::CQFHasField->new($ma,"__W2.${xi}__"));
       }
     }
     else {
       ##-- token-attribute (literal)
-      $aq = DDC::XS::CQTokExact->new($_->[2]{aname},"__W2.${xi}__");
-      $q2 = $q2->isa('DDC::XS::CQTokAny') ? $aq : ($aq->isa('DDC::XS::CQTokAny') ? $q2 : DDC::XS::CQWith->new($q2,$aq));
+      $aq = DDC::Any::CQTokExact->new($_->[2]{aname},"__W2.${xi}__");
+      $q2 = $q2->isa('DDC::Any::CQTokAny') ? $aq : ($aq->isa('DDC::Any::CQTokAny') ? $q2 : DDC::Any::CQWith->new($q2,$aq));
     }
     ++$xi;
   }
@@ -1527,9 +1527,9 @@ sub qinfo {
   $qo->setFilters($qf);
 
   ##-- construct query
-  my $qboth = ($q1->isa('DDC::XS::CQTokAny') ? $q2
-	       : ($q2->isa('DDC::XS::CQTokAny') ? $q1
-		  : DDC::XS::CQAnd->new($q1,$q2)));
+  my $qboth = ($q1->isa('DDC::Any::CQTokAny') ? $q2
+	       : ($q2->isa('DDC::Any::CQTokAny') ? $q1
+		  : DDC::Any::CQAnd->new($q1,$q2)));
   $qboth->setOptions($qo);
   my $qtemplate = $qboth->toStringFull;
   utf8::decode($qtemplate) if (!utf8::is_utf8($qtemplate));

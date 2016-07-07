@@ -31,7 +31,7 @@ use DiaColloDB::Persistent;
 use DiaColloDB::Utils qw(:math :fcntl :json :sort :pack :regex :file :si :run :env :temp);
 #use DiaColloDB::Temp::Vec;
 use DiaColloDB::Timer;
-use DDC::XS; ##-- for query parsing
+use DDC::Any qw(:pp); ##-- for query parsing
 use Fcntl;
 use File::Path qw(make_path remove_tree);
 use version;
@@ -41,7 +41,7 @@ use strict;
 ##==============================================================================
 ## Globals & Constants
 
-our $VERSION = "0.10.004_01";
+our $VERSION = "0.10.005";
 our @ISA = qw(DiaColloDB::Client);
 
 ## $PGOOD_DEFAULT
@@ -539,8 +539,8 @@ BEGIN {
 		 'p'=>'pos',
 		);
   %ATTR_CBEXPR = (
-		  'doc.textClass' => DDC::XS::CQCountKeyExprRegex->new(DDC::XS::CQCountKeyExprBibl->new('textClass'),':.*$',''),
-		  'doc.genre'     => DDC::XS::CQCountKeyExprRegex->new(DDC::XS::CQCountKeyExprBibl->new('textClass'),':.*$',''),
+		  'doc.textClass' => DDC::Any::CQCountKeyExprRegex->new(DDC::Any::CQCountKeyExprBibl->new('textClass'),':.*$',''),
+		  'doc.genre'     => DDC::Any::CQCountKeyExprRegex->new(DDC::Any::CQCountKeyExprBibl->new('textClass'),':.*$',''),
 		 );
 }
 sub attrName {
@@ -568,10 +568,10 @@ sub attrCountBy {
   }
   if ($attr =~ /^doc\.(.*)$/) {
     ##-- document attribute ("doc.ATTR" convention)
-    return DDC::XS::CQCountKeyExprBibl->new($1);
+    return DDC::Any::CQCountKeyExprBibl->new($1);
   } else {
     ##-- token attribute
-    return DDC::XS::CQCountKeyExprToken->new($attr, ($matchid||0), 0);
+    return DDC::Any::CQCountKeyExprToken->new($attr, ($matchid||0), 0);
   }
 }
 
@@ -1571,7 +1571,7 @@ sub relations {
 ##~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 ## \@ids = $coldb->enumIds($enum,$req,%opts)
 ##  + parses enum IDs for $req, which is one of:
-##    - a DDC::XS::CQTokExact, ::CQTokInfl, ::CQTokSet, ::CQTokSetInfl, or ::CQTokRegex : interpreted
+##    - a DDC::Any::CQTokExact, ::CQTokInfl, ::CQTokSet, ::CQTokSetInfl, or ::CQTokRegex : interpreted
 ##    - an ARRAY-ref     : list of literal symbol-values
 ##    - a Regexp ref     : regexp for target strings, passed to $enum->re2i()
 ##    - a string /REGEX/ : regexp for target strings, passed to $enum->re2i()
@@ -1582,22 +1582,22 @@ sub relations {
 sub enumIds {
   my ($coldb,$enum,$req,%opts) = @_;
   $opts{logPrefix} //= "enumIds(): fetch ids";
-  if (UNIVERSAL::isa($req,'DDC::XS::CQTokInfl') || UNIVERSAL::isa($req,'DDC::XS::CQTokExact')) {
+  if (UNIVERSAL::isa($req,'DDC::Any::CQTokInfl') || UNIVERSAL::isa($req,'DDC::Any::CQTokExact')) {
     ##-- CQuery: CQTokExact
     $coldb->vlog($opts{logLevel}, $opts{logPrefix}, " (", ref($req), ")");
     return [$enum->s2i($req->getValue)];
   }
-  elsif (UNIVERSAL::isa($req,'DDC::XS::CQTokSet') || UNIVERSAL::isa($req,'DDC::XS::CQTokSetInfl')) {
+  elsif (UNIVERSAL::isa($req,'DDC::Any::CQTokSet') || UNIVERSAL::isa($req,'DDC::Any::CQTokSetInfl')) {
     ##-- CQuery: CQTokSet
     $coldb->vlog($opts{logLevel}, $opts{logPrefix}, " (", ref($req), ")");
     return [map {$enum->s2i($_)} @{$req->getValues}];
   }
-  elsif (UNIVERSAL::isa($req,'DDC::XS::CQTokRegex')) {
+  elsif (UNIVERSAL::isa($req,'DDC::Any::CQTokRegex')) {
     ##-- CQuery: CQTokRegex
     $coldb->vlog($opts{logLevel}, $opts{logPrefix}, " (", ref($req), ")");
     return $enum->re2i($req->getValue);
   }
-  elsif (UNIVERSAL::isa($req,'DDC::XS::CQTokAny')) {
+  elsif (UNIVERSAL::isa($req,'DDC::Any::CQTokAny')) {
     $coldb->vlog($opts{logLevel}, $opts{logPrefix}, " (", ref($req), ")");
     return undef;
   }
@@ -1686,9 +1686,9 @@ sub parseDateRequest {
 
 ##~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 ## $compiler = $coldb->qcompiler();
-##  + get DDC::XS::CQueryCompiler for this object (cached in $coldb->{_qcompiler})
+##  + get DDC::Any::CQueryCompiler for this object (cached in $coldb->{_qcompiler})
 sub qcompiler {
-  return $_[0]{_qcompiler} ||= DDC::XS::CQueryCompiler->new();
+  return $_[0]{_qcompiler} ||= DDC::Any::CQueryCompiler->new();
 }
 
 ##~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -1713,7 +1713,7 @@ sub qparse {
 ## $cquery = $coldb->parseQuery("$attr1=$val1, ...", %opts)  ##-- compat: string
 ## $cquery = $coldb->parseQuery($ddcQueryString, %opts)      ##-- ddc string (with shorthand ","->WITH, "&&"->WITH)
 ##  + guts for parsing user target and groupby requests
-##  + returns a DDC::XS::CQuery object representing the request
+##  + returns a DDC::Any::CQuery object representing the request
 ##  + index-only items "$l" are mapped to $l=@{}
 ##  + %opts:
 ##     warn  => $level,       ##-- log-level for unknown attributes (default: 'warn')
@@ -1780,20 +1780,20 @@ sub parseQuery {
 
       #$coldb->debug("parseQuery($logas): parsing native request: (".($attr//'')." = ".($areq//''));
 
-      if (UNIVERSAL::isa($areq,'DDC::XS::CQuery')) {
+      if (UNIVERSAL::isa($areq,'DDC::Any::CQuery')) {
 	##-- compat: value: ddc query object
 	$aq = $areq;
 	$aq->setIndexName($attr) if ($aq->can('setIndexName') && $attr ne '');
       }
       elsif (UNIVERSAL::isa($areq,'ARRAY')) {
 	##-- compat: value: array --> CQTokSet @{VAL1,...,VALN}
-	$aq = DDC::XS::CQTokSet->new($attr, '', $areq);
+	$aq = DDC::Any::CQTokSet->new($attr, '', $areq);
       }
       elsif (UNIVERSAL::isa($areq,'RegExp') || (!$opts{ddcmode} && $areq && $areq =~ m{^${regre}$})) {
 	##-- compat: value: regex --> CQTokRegex /REGEX/
 	my $re = regex($areq)."";
 	$re    =~ s{^\(\?\^\:(.*)\)$}{$1};
-	$aq = DDC::XS::CQTokRegex->new($attr, $re);
+	$aq = DDC::Any::CQTokRegex->new($attr, $re);
       }
       elsif ($opts{ddcmode} && ($areq//'') ne '') {
 	##-- compat: ddcmode: parse requests as ddc queries
@@ -1806,12 +1806,12 @@ sub parseQuery {
 	my $vals = [grep {($_//'') ne ''} map {s{\\(.)}{$1}g; $_} split(/(?:(?<!\\)[\,\s\|])+/,($areq//''))];
 	$aq = (@$vals<=1
 	       ? (($vals->[0]//'*') eq '*'
-		  ? DDC::XS::CQTokAny->new($attr,'*')
-		  : DDC::XS::CQTokExact->new($attr,$vals->[0]))
-	       : DDC::XS::CQTokSet->new($attr,($areq//''),$vals));
+		  ? DDC::Any::CQTokAny->new($attr,'*')
+		  : DDC::Any::CQTokExact->new($attr,$vals->[0]))
+	       : DDC::Any::CQTokSet->new($attr,($areq//''),$vals));
       }
       ##-- push request to query
-      $q = $q ? DDC::XS::CQWith->new($q,$aq) : $aq;
+      $q = $q ? DDC::Any::CQWith->new($q,$aq) : $aq;
     }
   }
   else {
@@ -1847,7 +1847,7 @@ sub parseQuery {
 
   ##-- tweak query: map CQAnd to CQWith
   $q = $q->mapTraverse(sub {
-			 return UNIVERSAL::isa($_[0],'DDC::XS::CQAnd') ? DDC::XS::CQWith->new($_[0]->getDtr1,$_[0]->getDtr2) : $_[0];
+			 return UNIVERSAL::isa($_[0],'DDC::Any::CQAnd') ? DDC::Any::CQWith->new($_[0]->getDtr1,$_[0]->getDtr2) : $_[0];
 		       })
     if ($opts{mapand} || (!defined($opts{mapand}) && $req0 !~ /\&\&/));
 
@@ -1886,73 +1886,73 @@ sub queryAttributes {
       ##-- NULL: ignore
       next;
     }
-    elsif ($q->isa('DDC::XS::CQWith')) {
+    elsif ($q->isa('DDC::Any::CQWith')) {
       ##-- CQWith: ignore (just recurse)
       next;
     }
-    elsif ($q->isa('DDC::XS::CQueryOptions')) {
+    elsif ($q->isa('DDC::Any::CQueryOptions')) {
       ##-- CQueryOptions: check for nontrivial user requests
       $warnsub->("#WITHIN clause") if (@{$q->getWithin});
       $warnsub->("#CNTXT clause") if ($q->getContextSentencesCount);
     }
-    elsif ($q->isa('DDC::XS::CQToken')) {
+    elsif ($q->isa('DDC::Any::CQToken')) {
       ##-- CQToken: create attribute clause
       $warnsub->("negated query clause in native $logas request (".$q->toString.")") if ($q->getNegated);
       $warnsub->("explicit term-expansion chain in native $logas request (".$q->toString.")") if ($q->can('getExpanders') && @{$q->getExpanders});
 
       my $attr = $q->getIndexName || $default;
-      if (ref($q) =~ /^DDC::XS::CQTok(?:Exact|Set|Regex|Any)$/) {
+      if (ref($q) =~ /^DDC::\w+::CQTok(?:Exact|Set|Regex|Any)$/) {
 	$aq = $q;
-      } elsif (ref($q) eq 'DDC::XS::CQTokInfl') {
-	$aq = DDC::XS::CQTokExact->new($q->getIndexName, $q->getValue);
-      } elsif (ref($q) eq 'DDC::XS::CQTokSetInfl') {
-	$aq = DDC::XS::CQTokSet->new($q->getIndexName, $q->getValue, $q->getValues);
-      } elsif (ref($q) eq 'DDC::XS::CQTokPrefix') {
-	$aq = DDC::XS::CQTokRegex->new($q->getIndexName, '^'.quotemeta($q->getValue));
-      } elsif (ref($q) eq 'DDC::XS::CQTokSuffix') {
-	$aq = DDC::XS::CQTokRegex->new($q->getIndexName, quotemeta($q->getValue).'$');
-      } elsif (ref($q) eq 'DDC::XS::CQTokInfix') {
-	$aq = DDC::XS::CQTokRegex->new($q->getIndexName, quotemeta($q->getValue));
+      } elsif (ref($q) =~ /^DDC::\w+::CQTokInfl$/) {
+	$aq = DDC::Any::CQTokExact->new($q->getIndexName, $q->getValue);
+      } elsif (ref($q) =~ /^DDC::\w+::CQTokSetInfl$/) {
+	$aq = DDC::Any::CQTokSet->new($q->getIndexName, $q->getValue, $q->getValues);
+      } elsif (ref($q) =~ /^DDC::\w+::CQTokPrefix$/) {
+	$aq = DDC::Any::CQTokRegex->new($q->getIndexName, '^'.quotemeta($q->getValue));
+      } elsif (ref($q) =~ /^DDC::\w+::CQTokSuffix$/) {
+	$aq = DDC::Any::CQTokRegex->new($q->getIndexName, quotemeta($q->getValue).'$');
+      } elsif (ref($q) =~ /^DDC::\w+::CQTokInfix$/) {
+	$aq = DDC::Any::CQTokRegex->new($q->getIndexName, quotemeta($q->getValue));
       } else {
 	$warnsub->("token query clause of type ".ref($q)." in native $logas request (".$q->toString.")");
       }
-      $aq=undef if ($aq && $aq->isa('DDC::XS::CQTokAny')); ##-- empty value, e.g. for groupby
+      $aq=undef if ($aq && $aq->isa('DDC::Any::CQTokAny')); ##-- empty value, e.g. for groupby
       push(@$areqs, [$attr,$aq]);
     }
-    elsif ($q->isa('DDC::XS::CQFilter')) {
+    elsif ($q->isa('DDC::Any::CQFilter')) {
       ##-- CQFilter
-      if ($q->isa('DDC::XS::CQFHasField')) {
+      if ($q->isa('DDC::Any::CQFHasField')) {
 	##-- CQFilter: CQFHasField
 	my $attr = $q->getArg0;
-	if ($q->isa('DDC::XS::CQFHasFieldValue')) {
-	  $aq = DDC::XS::CQTokExact->new($attr, $q->getArg1);
+	if ($q->isa('DDC::Any::CQFHasFieldValue')) {
+	  $aq = DDC::Any::CQTokExact->new($attr, $q->getArg1);
 	}
-	elsif ($q->isa('DDC::XS::CQFHasFieldSet')) {
-	  $aq = DDC::XS::CQTokSet->new($attr, $q->getArg1, $q->getValues);
+	elsif ($q->isa('DDC::Any::CQFHasFieldSet')) {
+	  $aq = DDC::Any::CQTokSet->new($attr, $q->getArg1, $q->getValues);
 	}
-	elsif ($q->isa('DDC::XS::CQFHasFieldRegex')) {
-	  $aq = DDC::XS::CQTokRegex->new($attr, $q->getArg1);
+	elsif ($q->isa('DDC::Any::CQFHasFieldRegex')) {
+	  $aq = DDC::Any::CQTokRegex->new($attr, $q->getArg1);
 	}
-	elsif ($q->isa('DDC::XS::CQFHasFieldPrefix')) {
-	  $aq = DDC::XS::CQTokRegex->new($attr, '^'.quotemeta($q->getArg1));
+	elsif ($q->isa('DDC::Any::CQFHasFieldPrefix')) {
+	  $aq = DDC::Any::CQTokRegex->new($attr, '^'.quotemeta($q->getArg1));
 	}
-	elsif ($q->isa('DDC::XS::CQFHasFieldSuffix')) {
-	  $aq = DDC::XS::CQTokRegex->new($attr, quotemeta($q->getArg1).'$');
+	elsif ($q->isa('DDC::Any::CQFHasFieldSuffix')) {
+	  $aq = DDC::Any::CQTokRegex->new($attr, quotemeta($q->getArg1).'$');
 	}
-	elsif ($q->isa('DDC::XS::CQFHasFieldInfix')) {
-	  $aq = DDC::XS::CQTokRegex->new($attr, quotemeta($q->getArg1));
+	elsif ($q->isa('DDC::Any::CQFHasFieldInfix')) {
+	  $aq = DDC::Any::CQTokRegex->new($attr, quotemeta($q->getArg1));
 	}
 	else {
 	  $warnsub->("filter of type ".ref($q)." unsupported in native $logas request (".$q->toString.")");
 	}
-	$aq=undef if ($aq && $aq->isa('DDC::XS::CQTokAny')); ##-- empty value, e.g. for groupby
+	$aq=undef if ($aq && $aq->isa('DDC::Any::CQTokAny')); ##-- empty value, e.g. for groupby
 	push(@$areqs, [$attr,$aq]);
       }
-      elsif ($q->isa('DDC::XS::CQFRandomSort') || $q->isa('DDC::XS::CQFRankSort')) {
+      elsif ($q->isa('DDC::Any::CQFRandomSort') || $q->isa('DDC::Any::CQFRankSort')) {
 	##-- CQFilter: CQFRandomSort, CQFRanksort: ignore
 	next;
       }
-      elsif ($q->isa('DDC::XS::CQFSort') && ($q->getArg1 ne '' || $q->getArg2 ne '')) {
+      elsif ($q->isa('DDC::Any::CQFSort') && ($q->getArg1 ne '' || $q->getArg2 ne '')) {
 	##-- CQFilter: CQFSort: other
 	$warnsub->("filter of type ".ref($q)." with nontrivial bounds in native $logas request (".$q->toString.")");
       }
@@ -2039,7 +2039,7 @@ sub groupby {
   my ($ids);
   my @gbids  = (
 		map {
-		  ($_->[1] && !UNIVERSAL::isa($_->[1],'DDC::XS::CQTokAny')
+		  ($_->[1] && !UNIVERSAL::isa($_->[1],'DDC::Any::CQTokAny')
 		   ? {
 		      map {($_=>undef)}
 		      @{$coldb->enumIds($coldb->{"$_->[0]enum"}, $_->[1], logLevel=>$coldb->{logProfile}, logPrefix=>"groupby(): fetch filter ids: $_->[0]")}
@@ -2120,20 +2120,20 @@ sub query2filter {
   ##-- document attribute ("doc.ATTR" convention)
   my $field = $coldb->attrName( $attr // $q->getIndexName );
   $field = $1 if ($field =~ /^doc\.(.*)$/);
-  if (UNIVERSAL::isa($q, 'DDC::XS::CQTokAny')) {
+  if (UNIVERSAL::isa($q, 'DDC::Any::CQTokAny')) {
     return undef;
-  } elsif (UNIVERSAL::isa($q, 'DDC::XS::CQTokExact') || UNIVERSAL::isa($q, 'DDC::XS::CQTokInfl')) {
-    return DDC::XS::CQFHasField->new($field, $q->getValue, $q->getNegated);
-  } elsif (UNIVERSAL::isa($q, 'DDC::XS::CQTokSet') || UNIVERSAL::isa($q, 'DDC::XS::CQTokSetInfl')) {
-    return DDC::XS::CQFHasFieldSet->new($field, $q->getValues, $q->getNegated);
-  } elsif (UNIVERSAL::isa($q, 'DDC::XS::CQTokRegex')) {
-    return DDC::XS::CQFHasFieldRegex->new($field, $q->getValue, $q->getNegated);
-  } elsif (UNIVERSAL::isa($q, 'DDC::XS::CQTokPrefix')) {
-    return DDC::XS::CQFHasFieldPrefix->new($field, $q->getValue, $q->getNegated);
-  } elsif (UNIVERSAL::isa($q, 'DDC::XS::CQTokSuffix')) {
-    return DDC::XS::CQFHasFieldSuffix->new($field, $q->getValue, $q->getNegated);
-  } elsif (UNIVERSAL::isa($q, 'DDC::XS::CQTokInfix')) {
-    return DDC::XS::CQFHasFieldInfix->new($field, $q->getValue, $q->getNegated);
+  } elsif (UNIVERSAL::isa($q, 'DDC::Any::CQTokExact') || UNIVERSAL::isa($q, 'DDC::Any::CQTokInfl')) {
+    return DDC::Any::CQFHasField->new($field, $q->getValue, $q->getNegated);
+  } elsif (UNIVERSAL::isa($q, 'DDC::Any::CQTokSet') || UNIVERSAL::isa($q, 'DDC::Any::CQTokSetInfl')) {
+    return DDC::Any::CQFHasFieldSet->new($field, $q->getValues, $q->getNegated);
+  } elsif (UNIVERSAL::isa($q, 'DDC::Any::CQTokRegex')) {
+    return DDC::Any::CQFHasFieldRegex->new($field, $q->getValue, $q->getNegated);
+  } elsif (UNIVERSAL::isa($q, 'DDC::Any::CQTokPrefix')) {
+    return DDC::Any::CQFHasFieldPrefix->new($field, $q->getValue, $q->getNegated);
+  } elsif (UNIVERSAL::isa($q, 'DDC::Any::CQTokSuffix')) {
+    return DDC::Any::CQFHasFieldSuffix->new($field, $q->getValue, $q->getNegated);
+  } elsif (UNIVERSAL::isa($q, 'DDC::Any::CQTokInfix')) {
+    return DDC::Any::CQFHasFieldInfix->new($field, $q->getValue, $q->getNegated);
   } else {
     $coldb->logconfess("can't handle metadata restriction of type ", ref($q), " in $logas request: \`", $q->toString, "'");
   }
@@ -2152,8 +2152,8 @@ sub parseGroupBy {
 
   ##-- groupby clause: date
   my $gbdate = ($opts{slice}<=0
-		? DDC::XS::CQCountKeyExprConstant->new($opts{slice}||'0')
-		: DDC::XS::CQCountKeyExprDateSlice->new('date',$opts{slice}));
+		? DDC::Any::CQCountKeyExprConstant->new($opts{slice}||'0')
+		: DDC::Any::CQCountKeyExprDateSlice->new('date',$opts{slice}));
 
   ##-- groupby clause: user request
   my $gbexprs   = [$gbdate];
@@ -2166,7 +2166,7 @@ sub parseGroupBy {
       or $coldb->logconfess($coldb->{error}="failed to parse DDC groupby request \`$req': $coldb->{error}");
     push(@$gbexprs, @{$gbq->getKeys->getExprs});
     $_->setMatchId($opts{matchid}//0)
-      foreach (grep {UNIVERSAL::isa($_,'DDC::XS::CQCountKeyExprToken') && !$_->HasMatchId} @$gbexprs);
+      foreach (grep {UNIVERSAL::isa($_,'DDC::Any::CQCountKeyExprToken') && !$_->HasMatchId} @$gbexprs);
   }
   else {
     ##-- native-style request with optional restrictions
@@ -2180,15 +2180,15 @@ sub parseGroupBy {
       }
       else {
 	##-- token attribute
-	if (defined($_->[1]) && !UNIVERSAL::isa($_->[1], 'DDC::XS::CQTokAny')) {
-	  $gbrestr = (defined($gbrestr) ? DDC::XS::CQWith->new($gbrestr,$_->[1]) : $_->[1]);
+	if (defined($_->[1]) && !UNIVERSAL::isa($_->[1], 'DDC::Any::CQTokAny')) {
+	  $gbrestr = (defined($gbrestr) ? DDC::Any::CQWith->new($gbrestr,$_->[1]) : $_->[1]);
 	}
       }
     }
   }
 
   ##-- finalize: expression list
-  my $xlist = DDC::XS::CQCountKeyExprList->new;
+  my $xlist = DDC::Any::CQCountKeyExprList->new;
   $xlist->setExprs($gbexprs);
 
   return ($xlist,$gbrestr,$gbfilters);
