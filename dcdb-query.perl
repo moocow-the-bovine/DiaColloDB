@@ -8,7 +8,7 @@ use Pod::Usage;
 use File::Basename qw(basename);
 use strict;
 
-#use DiaColloDB::Relation::TDF; ##-- DEBUG
+use DiaColloDB::Relation::TDF; ##-- DEBUG
 
 BEGIN {
   select STDERR; $|=1; select STDOUT;
@@ -166,21 +166,22 @@ $query{bquery} = @ARGV ? shift : $query{query};
 $rel  = "d$rel" if ($isDiff);
 
 ##-- DEBUG queries
-if (0 && $query{query} eq 'debug') {
+if (1 && $query{query} eq 'debug') {
   #$query{query} = '$p=NN !#has[textClass,/politik/i]';
   #$query{query} = 'Mann #has[textClass,/zeitung/i]';
   #$query{query} = '* #has[textClass,/Zeitung/i]';
   #$query{query} = 'Katze && Maus';
   #$query{query} = '* #has[genre,/Zeitung/]';
   #$query{query} = 'Katze && Maus && Hund';
-  $query{query} = 'Mann with $p=NN';
+  #$query{query} = 'Mann with $p=NN';
   ##
   #($isDiff,$rel,@query{qw(query bquery slice diff groupby)}) = (1,'dtdf','* #has[author,/Habermas/]','* #has[author,/Cassirer/]',0,'min','l,p=NN');
   #($isDiff,$rel,@query{qw(query bquery slice adate bdate)}) = (1,'d2','Bewegung','Bewegung',0,'1900:1910','1990:2000');
-  ##
   #($isDiff,$rel,@query{qw(query bquery slice onepass groupby)}) = (1,'d2','Mann','Frau',0,1,'l,p=ADJA');
+  #($isDiff,$rel,@query{qw(query bquery slice groupby)}) = (1,'diff-ddc','$p=PAV=2 #has[textClass,/Wiss*/]','$p=PAV=2 #has[textClass,/Bell*/]',0,'l');
   ##
-  ($isDiff,$rel,@query{qw(query bquery slice groupby)}) = (1,'diff-ddc','$p=PAV=2 #has[textClass,/Wiss*/]','$p=PAV=2 #has[textClass,/Bell*/]',0,'l');
+  #($rel,@query{qw(query slice)}) = ('ddc', '$p=ADJA=2 Haus', 0);
+  ($rel,@query{qw(query slice)}) = ('tdf', 'Haus', 0);
 }
 ##--/DEBUG queries
 

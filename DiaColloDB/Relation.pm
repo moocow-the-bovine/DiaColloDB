@@ -346,10 +346,10 @@ sub qinfoData {
   ##-- query clause
   foreach (@{$opts{qreqs}}) {
     $q = $coldb->attrQuery(@$_);
-    if (UNIVERSAL::isa($q,'DDC::XS::CQFilter')) {
+    if (UNIVERSAL::isa($q,'DDC::Any::CQFilter')) {
       push(@fstrs, $q->toString);
     }
-    elsif (defined($q) && !UNIVERSAL::isa($q,'DDC::XS::CQTokAny')) {
+    elsif (defined($q) && !UNIVERSAL::isa($q,'DDC::Any::CQTokAny')) {
       push(@q1strs, $q->toString);
     }
   }
@@ -358,10 +358,10 @@ sub qinfoData {
   my $xi=1;
   foreach (@{$opts{gbreq}{areqs}}) {
     if ($_->[0] =~ /^doc\.(.*)/) {
-      push(@fstrs, DDC::XS::CQFHasField->new($1,"__W2.${xi}__")->toString);
+      push(@fstrs, DDC::Any::CQFHasField->new($1,"__W2.${xi}__")->toString);
     }
     else {
-      push(@q2strs, DDC::XS::CQTokExact->new($_->[0],"__W2.${xi}__")->toString);
+      push(@q2strs, DDC::Any::CQTokExact->new($_->[0],"__W2.${xi}__")->toString);
     }
     ++$xi;
   }
