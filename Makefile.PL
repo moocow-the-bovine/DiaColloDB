@@ -1,5 +1,6 @@
 ##-*- Mode: CPerl -*-
 use ExtUtils::MakeMaker;
+use 5.010; ##-- in case old EU::MM doesn't grok MIN_PERL_VERSION
 
 ##----------------------------------------------------------------------
 ## PDL-dependencies (for CONFIGURE_REQUIRES)
@@ -24,6 +25,7 @@ WriteMakefile
    ABSTRACT	=> 'Diachronic collocation index',
    VERSION_FROM	=> 'DiaColloDB.pm',
    LICENSE      => 'perl_5',
+   MIN_PERL_VERSION => 5.010, ##-- v5.10.0
    META_MERGE   => {
 		    'meta-spec' => { version => 2 }, ##-- doesn't seem to work
 		    resources  => {

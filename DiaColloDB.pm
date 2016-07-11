@@ -4,7 +4,7 @@
 ## Description: collocation db, top-level
 
 package DiaColloDB;
-require 5.10.0; ##-- for // operator
+use 5.010; ##-- v5.10.0: for // operator
 use DiaColloDB::Compat;
 use DiaColloDB::Client;
 use DiaColloDB::Logger;
@@ -41,7 +41,7 @@ use strict;
 ##==============================================================================
 ## Globals & Constants
 
-our $VERSION = "0.10.005";
+our $VERSION = "0.10.006";
 our @ISA = qw(DiaColloDB::Client);
 
 ## $PGOOD_DEFAULT
