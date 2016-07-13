@@ -35,15 +35,17 @@ WriteMakefile
 						  web => 'https://sourceforge.net/p/ddc-concordance/code/HEAD/tree/ddc-perl/',
 						 },
 				  },
+		    ##-- prereqs: for Meta::Spec v2
 		    prereqs => {
 				runtime => {
 					    recommends => {
 							   'DDC::XS' => 0.15,
+							   %pdl_deps
 							  },
 					    #suggests => {},
 					   },
 				build => {
-					  recommends => \%pdl_deps,
+					  recommends => { %pdl_deps },
 					 },
 			       },
 		   },
@@ -70,11 +72,11 @@ WriteMakefile
 		    'XML::LibXML' => '1.70',	    ##-- for XML-based input formats (TCF, TEI)
 		    ##
 		    ##-- for (term x document) models (TDF, formerly "Vsem")
-		    %pdl_deps,
+		    #%pdl_deps,
 		   },
    CONFIGURE_REQUIRES => {
 			  'ExtUtils::MakeMaker' => 6.52, ##-- for CONFIGURE_REQUIRES
-			  %pdl_deps,
+			  #%pdl_deps,
 			 },
 
 
