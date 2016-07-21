@@ -501,6 +501,12 @@ Set arbitrary L<DiaColloDB::Logger|DiaColloDB::Logger> option (e.g. logdate, log
 
 Do/don't keep temporary files (default=don't)
 
+=item -[no]mmap
+
+Do/don't use mmap() for low-level index file access (default=do)
+
+Do/don't
+
 =item -[no]times
 
 Do/don't report operating timing (default=do)
