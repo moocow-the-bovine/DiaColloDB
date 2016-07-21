@@ -79,7 +79,8 @@ sub remap {
   CORE::seek($pf->{fh},0,SEEK_SET) or return undef;
 
   ##-- mmap handles
-  map_handle(my $buf,  $pf->{fh},  fcperl($pf->{flags}));
+  my ($buf);
+  map_handle($buf,  $pf->{fh},  fcperl($pf->{flags})); ##-- "could not map errors" after 5 calls to remap() (xf.dba2, called from Unigrams::loadTextFile via flush())
   $pf->{bufr} = \$buf;
 
   return $pf;
