@@ -38,6 +38,7 @@ our %coldb    = (
 		 tfmin=>2,
 		 fmin_l=>undef,
 		 keeptmp=>0,
+		 mmap => 1,
 		 tdfopts=>{
 			   minDocFreq => 4,
 			   minDocSize => 8,
@@ -82,6 +83,7 @@ GetOptions(##-- general
 	   },
 	   '64bit|64|quad|Q!'   => sub { pack64( $_[1]); },
 	   '32bit|32|long|L|N!' => sub { pack64(!$_[1]); },
+	   'mmap!' => \$coldb{mmap},
 	   'max-distance|maxd|dmax|n=i' => \$coldb{dmax},
 	   'min-term-frequency|min-tf|mintf|tfmin|min-frequency|min-f|minf|fmin=i' => \$coldb{tfmin},
 	   'min-lemma-frequency|min-lf|minlf|lfmin=i' => \$coldb{fmin_l},
@@ -219,6 +221,7 @@ dcdb-create.perl - create a DiaColloDB diachronic collocation database
    -log-level LEVEL     ##-- set log-level (default=TRACE)
    -log-option OPT=VAL  ##-- set log option (e.g. logdate, logtime, file, syslog, stderr, ...)
    -[no]keep            ##-- do/don't keep temporary files (default=don't)
+   -[no]mmap            ##-- do/don't use mmap for file access (default=do)
    -[no]times           ##-- do/don't report operating timing (default=do)
    -output DIR          ##-- output directory (required)
 

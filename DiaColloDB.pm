@@ -137,6 +137,7 @@ our %TDF_OPTS = (
 ##    tfmin => $tfmin,    ##-- minimum global term-frequency WITHOUT date component (default=2)
 ##    fmin_${a} => $fmin, ##-- minimum independent frequency for value of attribute ${a} (default=undef:from $tfmin)
 ##    keeptmp => $bool,   ##-- keep temporary files? (default=0)
+##    mmap => $bool,      ##-- use mmap() subclasses if available? (default: true)
 ##    index_tdf => $bool, ##-- tdf: create/use (term x document) frequency matrix index? (default=undef: if available)
 ##    index_cof => $bool, ##-- cof: create/use co-frequency index (default=1)
 ##    index_xf => $bool,  ##-- xf: create/use unigram index (default=1)
@@ -212,6 +213,7 @@ sub new {
 		      cfmin => 2,
 		      tfmin => 2,
 		      #keeptmp => 0,
+		      #mmap => 1,
 		      index_tdf => undef,
 		      index_cof => 1,
 		      index_xf => 1,
@@ -364,20 +366,20 @@ sub open {
   foreach my $attr (@$attrs) {
     ##-- open: ${attr}*
     my $abase = (-r "$dbdir/${attr}_enum.hdr" ? "$dbdir/${attr}_" : "$dbdir/${attr}"); ##-- v0.03-compatibility hack
-    $coldb->{"${attr}enum"} = $ECLASS->new(base=>"${abase}enum", %efopts)
+    $coldb->{"${attr}enum"} = $coldb->mmclass($ECLASS)->new(base=>"${abase}enum", %efopts)
       or $coldb->logconfess("open(): failed to open enum ${abase}enum.*: $!");
-    $coldb->{"${attr}2t"} = $MMCLASS->new(base=>"${abase}2t", %mmopts)
+    $coldb->{"${attr}2t"} = $coldb->mmclass($MMCLASS)->new(base=>"${abase}2t", %mmopts)
       or $coldb->logconfess("open(): failed to open expansion multimap ${abase}2x.*: $!");
     $coldb->{"pack_t$attr"} //= "\@${atat}$coldb->{pack_id}";
     $atat += packsize($coldb->{pack_id});
   }
 
   ##-- open: tenum
-  $coldb->{tenum} = $XECLASS->new(base=>"$dbdir/tenum", %efopts, pack_s=>$coldb->{pack_t})
+  $coldb->{tenum} = $coldb->mmclass($XECLASS)->new(base=>"$dbdir/tenum", %efopts, pack_s=>$coldb->{pack_t})
       or $coldb->logconfess("open(): failed to open tuple-enum $dbdir/tenum.*: $!");
 
   ##-- open: xf
-  $coldb->{xf} = DiaColloDB::Relation::Unigrams->new(base=>"$dbdir/xf", flags=>$flags,
+  $coldb->{xf} = DiaColloDB::Relation::Unigrams->new(base=>"$dbdir/xf", flags=>$flags, mmap=>$coldb->{mmap},
 						     pack_i=>$coldb->{pack_id}, pack_f=>$coldb->{pack_f}, pack_d=>$coldb->{pack_date}
 						    )
     or $coldb->logconfess("open(): failed to open tuple-unigrams $dbdir/xf.*: $!");
@@ -385,7 +387,7 @@ sub open {
 
   ##-- open: cof
   if ($coldb->{index_cof}//1) {
-    $coldb->{cof} = DiaColloDB::Relation::Cofreqs->new(base=>"$dbdir/cof", flags=>$flags,
+    $coldb->{cof} = DiaColloDB::Relation::Cofreqs->new(base=>"$dbdir/cof", flags=>$flags, mmap=>$coldb->{mmap},
 						       pack_i=>$coldb->{pack_id}, pack_f=>$coldb->{pack_f}, pack_d=>$coldb->{pack_date},
 						       dmax=>$coldb->{dmax}, fmin=>$coldb->{cfmin},
 						      )
@@ -486,7 +488,7 @@ sub create_multimap {
   }
   $_ = pack($pack_mmb, sort {$a<=>$b} unpack($pack_mmb,$_//'')) foreach (@v2ti); ##-- ensure multimap target-sets are sorted
 
-  my $v2t = $MMCLASS->new(base=>$base, flags=>'rw', perms=>$coldb->{perms}, pack_i=>$pack_id, pack_o=>$coldb->{pack_off}, pack_l=>$coldb->{pack_id})
+  my $v2t = $coldb->mmclass($MMCLASS)->new(base=>$base, flags=>'rw', perms=>$coldb->{perms}, pack_i=>$pack_id, pack_o=>$coldb->{pack_off}, pack_l=>$coldb->{pack_id})
     or $coldb->logconfess("create_multimap(): failed to create $base.*: $!");
   $v2t->fromArray(\@v2ti)
     or $coldb->logconfess("create_multimap(): failed to populate $base.*: $!");
@@ -664,7 +666,7 @@ sub create {
   my ($attr,$ac);
   foreach (0..$#$attrs) {
     push(@$aconf,$ac={i=>$_, a=>($attr=$attrs->[$_])});
-    $ac->{enum}   = $coldb->{"${attr}enum"} = $ECLASS->new(%efopts);
+    $ac->{enum}   = $coldb->{"${attr}enum"} = $coldb->mmclass($ECLASS)->new(%efopts);
     $ac->{pack_t} = $coldb->{"pack_t$attr"} = '@'.$axpos.$pack_id;
     $ac->{s2i}    = $ac->{enum}{s2i};
     $ac->{ma}     = $1 if ($attr =~ /^(?:meta|doc)\.(.*)$/);
@@ -674,7 +676,7 @@ sub create {
   my @aconfw = grep {!defined($_->{ma})} @$aconf; ##-- token-attributes
 
   ##-- initialize: tuple enum (+dates)
-  my $tenum = $coldb->{tenum} = $XECLASS->new(%efopts, pack_s=>$pack_t);
+  my $tenum = $coldb->{tenum} = $coldb->mmclass($XECLASS)->new(%efopts, pack_s=>$pack_t);
   my $ts2i  = $tenum->{s2i};
   my $nt    = 0;
 
@@ -984,7 +986,8 @@ sub create {
   ##-- compute unigrams
   if ($coldb->{index_xf}//1) {
     $coldb->info("creating unigram index $dbdir/xf.*");
-    my $xfdb = $coldb->{xf} = DiaColloDB::Relation::Unigrams->new(base=>"$dbdir/xf", flags=>$flags, pack_i=>$pack_id, pack_f=>$pack_f, pack_d=>$pack_date)
+    my $xfdb = $coldb->{xf} = DiaColloDB::Relation::Unigrams->new(base=>"$dbdir/xf", flags=>$flags, mmap=>$coldb->{mmap},
+								  pack_i=>$pack_id, pack_f=>$pack_f, pack_d=>$pack_date)
       or $coldb->logconfess("create(): could not create $dbdir/xf.*: $!");
     $xfdb->create($coldb, $tokfile)
       or $coldb->logconfess("create(): failed to create unigram index: $!");
@@ -995,7 +998,7 @@ sub create {
   ##-- compute collocation frequencies
   if ($coldb->{index_cof}//1) {
     $coldb->info("creating co-frequency index $dbdir/cof.* [dmax=$coldb->{dmax}, fmin=$coldb->{cfmin}]");
-    my $cof = $coldb->{cof} = DiaColloDB::Relation::Cofreqs->new(base=>"$dbdir/cof", flags=>$flags,
+    my $cof = $coldb->{cof} = DiaColloDB::Relation::Cofreqs->new(base=>"$dbdir/cof", flags=>$flags, mmap=>$coldb->{mmap},
 								 pack_i=>$pack_id, pack_f=>$pack_f, pack_d=>$pack_date,
 								 dmax=>$coldb->{dmax}, fmin=>$coldb->{cfmin},
 								 keeptmp=>$coldb->{keeptmp},
@@ -1125,7 +1128,7 @@ sub union {
   foreach $ac (@$adata) {
     $coldb->vlog($coldb->{logCreate}, "union(): creating attribute enum $dbdir/$ac->{a}_enum.*");
     $attr  = $ac->{a};
-    $aenum = $coldb->{"${attr}enum"} = $ac->{enum} = $ECLASS->new(%efopts);
+    $aenum = $coldb->{"${attr}enum"} = $ac->{enum} = $coldb->mmclass($ECLASS)->new(%efopts);
     $as2i  = $aenum->{s2i};
     foreach $argi (0..$#dbargs) {
       ##-- enum union: guts
@@ -1156,7 +1159,7 @@ sub union {
 
   ##-- union: tenum
   $coldb->vlog($coldb->{logCreate}, "union(): creating tuple-enum $dbdir/tenum.*");
-  my $tenum = $coldb->{tenum} = $XECLASS->new(%efopts, pack_s=>$pack_t);
+  my $tenum = $coldb->{tenum} = $coldb->mmclass($XECLASS)->new(%efopts, pack_s=>$pack_t);
   my $ts2i  = $tenum->{s2i};
   my $nt    = 0;
   foreach $db (@dbargs) {
@@ -1199,7 +1202,7 @@ sub union {
   ##-- unigrams: populate
   if ($coldb->{index_xf}//1) {
     $coldb->vlog($coldb->{logCreate}, "union(): creating tuple unigram index $dbdir/xf.*");
-    $coldb->{xf} = DiaColloDB::Relation::Unigrams->new(base=>"$dbdir/xf", flags=>$flags,
+    $coldb->{xf} = DiaColloDB::Relation::Unigrams->new(base=>"$dbdir/xf", flags=>$flags, mmap=>$coldb->{mmap},
 						       pack_i=>$pack_id, pack_f=>$pack_f, pack_d=>$pack_date,
 						       keeptmp => $coldb->{keeptmp},
 						      )
@@ -1213,7 +1216,7 @@ sub union {
   ##-- co-frequencies: populate
   if ($coldb->{index_cof}//1) {
     $coldb->vlog($coldb->{logCreate}, "union(): creating co-frequency index $dbdir/cof.* [fmin=$coldb->{cfmin}]");
-    $coldb->{cof} = DiaColloDB::Relation::Cofreqs->new(base=>"$dbdir/cof", flags=>$flags,
+    $coldb->{cof} = DiaColloDB::Relation::Cofreqs->new(base=>"$dbdir/cof", flags=>$flags, mmap=>$coldb->{mmap},
 						       pack_i=>$pack_id, pack_f=>$pack_f, pack_d=>$pack_date,
 						       dmax=>$coldb->{dmax}, fmin=>$coldb->{cfmin},
 						       keeptmp=>$coldb->{keeptmp},
