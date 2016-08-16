@@ -92,9 +92,9 @@ GetOptions(##-- general
 	   'tdf-min-document-frequency|tdf-dfmin=i' => \$coldb{tdfopts}{minDocFreq},
 	   'tdf-break-min-size|tdf-break-min|tdf-nmin|vbnmin|vbmin=s' => \$coldb{tdfopts}{minDocSize},
 	   'tdf-break-max-size|tdf-break-max|tdf-nmax|vbnmax|vbmax=s' => \$coldb{tdfopts}{maxDocSize},
-	   'tdf-option|tdm-option|tdfopt|tdmopt|tdmo|tdfo|to|tO=s%' => \$coldb{tdfopts},
+	   'tdf-option|tdm-option|tdfopt|tdmopt|tdmo|tdfo|to|tO=s%' => sub { $coldb{tdfopts}{$_[1]}=$_[2] },
 	   'keeptmp|keep!' => \$coldb{keeptmp},
-	   'option|O=s%' => \%coldb,
+	   'option|O=s%' => sub { $coldb{$_[1]}=$_[2]; },
 
 	   ##-- I/O and logging
 	   'timing|times|time|t!' => \$dotime,
