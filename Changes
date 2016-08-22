@@ -5,6 +5,8 @@
 PENDING
 	* removed "hard" pdl dependencies, moved to 'recommends'
 	* fixed default option inheritance for dcdb-create.perl hash-valued options -tdf-option, -option
+	* added use_ok(DiaColloDB::Upgrade) test: weird errors w/ DDC::Any
+	* fixed import DiaColloDB::Utils::packsize() in Relation.pm
 
 v0.10.006 Mon, 11 Jul 2016 11:03:01 +0200 moocow
 	* better version dependency for v5.10.0

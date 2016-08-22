@@ -7,7 +7,7 @@ package DiaColloDB::Relation;
 use DiaColloDB::Persistent;
 use DiaColloDB::Profile;
 use DiaColloDB::Profile::Multi;
-use DiaColloDB::Utils qw(:si);
+use DiaColloDB::Utils qw(:si :pack);
 use Algorithm::BinarySearch::Vec qw(:api);
 use strict;
 

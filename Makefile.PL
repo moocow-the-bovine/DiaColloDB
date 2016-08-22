@@ -70,6 +70,7 @@ WriteMakefile
 		    'Tie::File::Indexed' => '0.04', ##-- for temporary object arrays
 		    'Time::HiRes' => 0,		    ##-- for runtime profiling
 		    'XML::LibXML' => '1.70',	    ##-- for XML-based input formats (TCF, TEI)
+		    'Test::More' => 0,
 		    ##
 		    ##-- for (term x document) models (TDF, formerly "Vsem")
 		    #%pdl_deps,
