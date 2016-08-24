@@ -2,7 +2,7 @@
 ##
 ## Change log for perl distribution DiaColloDB
 
-v0.10.007 Wed, 24 Aug 2016 08:56:25 +0200 moocow
+v0.10.007 Wed, 24 Aug 2016 08:59:10 +0200 moocow
 	* removed "hard" pdl dependencies, moved to 'recommends'
 	* fixed default option inheritance for dcdb-create.perl hash-valued options -tdf-option, -option
 	* added use_ok(DiaColloDB::Upgrade) test: weird errors w/ DDC::Any
