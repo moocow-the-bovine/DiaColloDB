@@ -19,6 +19,7 @@ DiaColloDB/Client/http.pod
 DiaColloDB/Client/list.pm
 DiaColloDB/Client/list.pod
 DiaColloDB/Compat.pm
+DiaColloDB/Compat.pod
 DiaColloDB/Compat/v0_08.pm
 DiaColloDB/Compat/v0_08.pod
 DiaColloDB/Compat/v0_08/MultiMapFile.pm
