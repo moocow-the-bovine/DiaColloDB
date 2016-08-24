@@ -41,7 +41,7 @@ use strict;
 ##==============================================================================
 ## Globals & Constants
 
-our $VERSION = "0.10.007";
+our $VERSION = "0.10.008";
 our @ISA = qw(DiaColloDB::Client);
 
 ## $PGOOD_DEFAULT
