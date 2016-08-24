@@ -31,8 +31,8 @@ DiaColloDB::MultiMapFile::MMap - collocation db, integer->integer* multimap file
  ## I/O: open/close (file)
  
  $mmf_or_undef = $mmf->open($base,$flags);
- $mmf_or_undef = $mmf->mmap_open();
- $mmf_or_undef = $mmf->mmap_close();
+ $mmf_or_undef = $mmf->remap();
+ $mmf_or_undef = $mmf->unmap();
  $mmf_or_undef = $mmf->close();
  $bool = $mmf->opened();
  \@a2b = $mmf->toArray();
@@ -133,17 +133,17 @@ and supports the L<DiaColloDB::MultiMapFile|DiaColloDB::MultiMapFile> read-acces
 Open underlying files.
 See L<DiaColloDB::MultiMapFile::open|DiaColloDB::MultiMapFile/open>().
 
-=item mmap_open
+=item remap
 
- $mmf_or_undef = $mmf->mmap_open();
+ $mmf_or_undef = $mmf->remap();
 
 mmaps local buffers C<@$mmf{qw(abufr bbufr)}> from C<@$mmf{qw(afh bfh)}>.
 
-=item mmap_close
+=item unmap
 
- $mmf_or_undef = $mmf->mmap_close();
+ $mmf_or_undef = $mmf->unmap();
 
-un-references local buffers C<@$mmf{qw(abufr bbufr)}>.
+un-references local buffers C<@$mmf{qw(abufr bbufr)}>.  object will be unuseable after this.
 
 =item close
 

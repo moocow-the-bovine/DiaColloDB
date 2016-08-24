@@ -6,7 +6,7 @@
 package DiaColloDB::EnumFile::FixedLen;
 use DiaColloDB::EnumFile;
 use DiaColloDB::Logger;
-use DiaColloDB::Utils qw(:fcntl :json :regex :pack);
+use DiaColloDB::Utils qw(:fcntl :file :json :regex :pack);
 use Fcntl qw(:DEFAULT :seek);
 use strict;
 
@@ -118,6 +118,19 @@ sub opened {
     );
 }
 
+## $bool = $enum->reopen()
+##  + re-opens datafiles
+sub reopen {
+  my $enum = shift;
+  my $base = $enum->{base} || "$enum";
+  return (
+	  $enum->opened
+	  #&& fh_reopen($enum->{sfh}, "$base.fs")
+	  && fh_reopen($enum->{ixfh}, "$base.fix")
+	  && fh_reopen($enum->{sxfh}, "$base.fsx")
+	 );
+}
+
 ## $bool = $enum->dirty()
 ##  + returns true iff some in-memory structures haven't been flushed to disk
 ##  + INHERITED
@@ -172,6 +185,7 @@ sub flush {
   $enum->{s2i} = {};
   $enum->{dirty} = 0;
 
+  $enum->reopen() or return undef if ((caller(1))[3] !~ /::close$/);
   return $enum;
 }
 

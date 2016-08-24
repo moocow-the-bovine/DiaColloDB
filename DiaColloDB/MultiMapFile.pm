@@ -6,7 +6,7 @@
 package DiaColloDB::MultiMapFile;
 use DiaColloDB::Logger;
 use DiaColloDB::Persistent;
-use DiaColloDB::Utils qw(:fcntl :json :pack);
+use DiaColloDB::Utils qw(:fcntl :file :json :pack);
 use Fcntl qw(:DEFAULT :seek);
 use File::Basename qw(basename dirname);
 use version;
@@ -148,6 +148,19 @@ sub opened {
     );
 }
 
+## $bool = $enum->reopen()
+##  + re-opens datafiles
+sub reopen {
+  my $mmf   = shift;
+  my $base = $mmf->{base} || "$mmf";
+  return (
+	  $mmf->opened
+	  && fh_reopen($mmf->{afh}, "$base.ma")
+	  && fh_reopen($mmf->{bfh}, "$base.mb")
+	 );
+}
+
+
 ## $bool = $mmf->dirty()
 ##  + returns true iff some in-memory structures haven't been flushed to disk
 sub dirty {
@@ -196,6 +209,7 @@ sub flush {
   ##-- clear in-memory structures (but don't clobber existing references)
   $mmf->{a2b} = [];
 
+  $mmf->reopen() or return undef if ((caller(1))[3] !~ /::close$/);
   return $mmf;
 }
 

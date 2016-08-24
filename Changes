@@ -2,9 +2,13 @@
 ##
 ## Change log for perl distribution DiaColloDB
 
-PENDING
+v0.10.008 Wed, 24 Aug 2016 14:12:21 +0200 moocow
 	* merged in debugging changes from v0.10.004 debugging branch (_v0.10.004_0[123])
 	  - conditionally enabled by new dcdb-create.perl -debug option
+	* added Utils::fh_flush() and Utils::fh_reopen() methods
+	  - fh_reopen() should simulate flush() even on systems which don't support flush()
+	* updated Persistent subclasses to call fh_reopen() from their flush() methods:
+	  - EnumFile(+FixedLen +FixedMap +MMap), MultiMapFile(+MMap), PackedFile(+MMap)
 
 v0.10.007 Wed, 24 Aug 2016 08:59:10 +0200 moocow
 	* removed "hard" pdl dependencies, moved to 'recommends'

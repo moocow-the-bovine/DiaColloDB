@@ -26,6 +26,7 @@ DiaColloDB::Utils - diachronic collocation database, generic utilities
  ## Functions: Fcntl
  
  $flags = PACKAGE::fcflags($flags);
+ $flags = PACKAGE::fcgetfl($fh);
  $bool = fcread($flags);
  $bool = fcwrite($flags);
  $bool = fctrunc($flags);
@@ -179,7 +180,7 @@ L<DiaColloDB::Logger|DiaColloDB::Logger>.
 
 Exportable tags:
 
- fcntl => [qw(fcflags fcread fcwrite fctrunc fccreat fcperl fcopen)],
+ fcntl => [qw(fcflags fcgetfl fcread fcwrite fctrunc fccreat fcperl fcopen)],
  json  => [qw(loadJsonString loadJsonFile saveJsonString saveJsonFile)],
  sort  => [qw(csort_to csortuc_to)],
  run   => [qw(crun opencmd)],
@@ -190,7 +191,7 @@ Exportable tags:
  regex => [qw(regex)],
  html  => [qw(htmlesc)],
  time  => [qw(s2hms s2timestr timestamp)],
- file  => [qw(file_mtime file_timestamp du_file du_glob copyto copyto_a moveto cp_a)],
+ file  => [qw(file_mtime file_timestamp du_file du_glob copyto copyto_a moveto cp_a fh_flush fh_reopen)],
  si    => [qw(si_str)],
  pdl   => [qw(_intersect_p _union_p _complement_p _setdiff_p),
 	   qw(readPdlFile writePdlFile writePdlHeader writeCcsHeader mmzeroes mmtemp),
@@ -223,6 +224,12 @@ All symbols in %EXPORT_TAGS are exported by default.
  $flags = PACKAGE::fcflags($flags);
 
 returns L<Fcntl|Fcntl> flags for symbolic string $flags
+
+=item fcgetfl
+
+ $flags = PACKAGE::fcgetfl($fh);
+
+returns L<Fcntl|Fcntl> flags for filehandle $fh
 
 =item fcread
 
@@ -633,6 +640,19 @@ the core perl functions
 L<chown()|perlfunc/chown>,
 L<chmod()|perlfunc/chmod>,
 and L<utime()|perlfunc/utime>.
+
+=item fh_flush
+
+ $fh_or_undef = PACKAGE->fh_flush($fh);
+
+flushes filehandle $fh using its flush() method if available
+
+=item fh_reopen
+
+ $fh_or_undef = PACKAGE->fh_reopen($fh,$file);
+
+closes and re-opens filehandle $fh, should be an expensive flush even if system doesn't
+support the IO::Handle::flush method.
 
 =back
 

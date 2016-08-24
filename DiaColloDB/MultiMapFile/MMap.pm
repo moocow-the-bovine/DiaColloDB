@@ -5,7 +5,7 @@
 
 package DiaColloDB::MultiMapFile::MMap;
 use DiaColloDB::MultiMapFile;
-use DiaColloDB::Utils qw(:fcntl :json :pack);
+use DiaColloDB::Utils qw(:fcntl :file :json :pack);
 use File::Map qw(map_handle);
 use strict;
 
@@ -66,12 +66,15 @@ sub open {
   my ($mmf,$base,$flags) = @_;
   $mmf->SUPER::open($base,$flags) or return undef;
   return $mmf if (!$mmf->isa(__PACKAGE__)); ##-- uh-oh: we were re-blessed out of __PACKAGE__
-  return $mmf->mmap_open();
+  return $mmf->remap();
 }
 
-## $mmf_or_undef = $mmf->mmap_open()
+## $mmf_or_undef = $mmf->remap()
 ##  + mmaps local buffers abufr,bbufr from afh,bfh
-sub mmap_open {
+BEGIN {
+  *mmap_open = \&remap;
+}
+sub remap {
   my $mmf = shift;
 
   ##-- mmap handles
@@ -88,7 +91,10 @@ sub mmap_open {
 
 ## $mmf_or_undef = $mmf->mmap_close()
 ##  + un-references local  buffers abufr,bbufr
-sub mmap_close {
+BEGIN {
+  *mmap_close = \&unmap;
+}
+sub unmap {
   my $mmf = shift;
   delete @$mmf{qw(abufr bbufr)};
   return $mmf;
@@ -98,7 +104,7 @@ sub mmap_close {
 ## $mmf_or_undef = $mmf->close()
 sub close {
   my $mmf = shift;
-  return $mmf->mmap_close() && $mmf->SUPER::close();
+  return $mmf->unmap() && $mmf->SUPER::close();
 }
 
 ## $bool = $mmf->opened()
@@ -106,6 +112,15 @@ sub opened {
   my $mmf = shift;
   return $mmf->SUPER::opened() && defined($mmf->{abufr}) && defined($mmf->{bbufr});
 }
+
+## $bool = $mmf->reopen()
+##  + re-opens datafiles
+##  + override also remaps buffers
+sub reopen {
+  my $mmf = shift;
+  return $mmf->SUPER::reopen() && $mmf->remap();
+}
+
 
 ## $bool = $mmf->dirty()
 ##  + returns true iff some in-memory structures haven't been flushed to disk

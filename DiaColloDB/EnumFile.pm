@@ -5,7 +5,7 @@
 
 package DiaColloDB::EnumFile;
 use DiaColloDB::Persistent;
-use DiaColloDB::Utils qw(:fcntl :pack :json :regex);
+use DiaColloDB::Utils qw(:fcntl :file :pack :json :regex);
 use Fcntl qw(:DEFAULT :seek);
 use strict;
 
@@ -175,6 +175,19 @@ sub opened {
     );
 }
 
+## $bool = $enum->reopen()
+##  + re-opens datafiles
+sub reopen {
+  my $enum = shift;
+  my $base = $enum->{base} || "$enum";
+  return (
+	  $enum->opened
+	  && fh_reopen($enum->{sfh}, "$base.es")
+	  && fh_reopen($enum->{ixfh}, "$base.eix")
+	  && fh_reopen($enum->{sxfh}, "$base.esx")
+	 );
+}
+
 ## $bool = $enum->dirty()
 ##  + returns true iff some in-memory structures haven't been flushed to disk
 sub dirty {
@@ -255,6 +268,7 @@ sub flush {
 
   ##-- clear in-memory structures (but don't clobber existing references; used for xenum by DiaColloDB::create())
   $enum->rollback();
+  $enum->reopen() or return undef if ((caller(1))[3] !~ /::close$/);
   return $enum;
 }
 

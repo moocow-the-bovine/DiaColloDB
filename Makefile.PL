@@ -67,7 +67,7 @@ WriteMakefile
 		    'JSON'          => 0,  # 2.53
 		    'Log::Log4perl' => 1.07,   # 1.29
 		    'LWP::UserAgent' => 0, ##-- 6.06, for http client-mode
-		    'Tie::File::Indexed' => '0.04', ##-- for temporary object arrays
+		    'Tie::File::Indexed' => '0.07', ##-- for temporary object arrays
 		    'Time::HiRes' => 0,		    ##-- for runtime profiling
 		    'XML::LibXML' => '1.70',	    ##-- for XML-based input formats (TCF, TEI)
 		    'Test::More' => 0,

@@ -5,7 +5,7 @@
 
 package DiaColloDB::EnumFile::MMap;
 use DiaColloDB::EnumFile;
-use DiaColloDB::Utils qw(:fcntl :json :regex);
+use DiaColloDB::Utils qw(:fcntl :file :json :regex);
 use File::Map qw(map_handle);
 use Fcntl qw(:DEFAULT :seek);
 use strict;
@@ -79,6 +79,13 @@ sub open {
   my ($enum,$base,$flags) = @_;
   $enum->SUPER::open($base,$flags) or return undef;
   return $enum if (!$enum->isa(__PACKAGE__)); ##-- superclass open() promoted us to another class
+  return $enum->remap();
+}
+
+## $enum_or_undef = $enum->remap()
+##  + re-maps mmap buffers from enum handles
+sub remap {
+  my $enum = shift;
 
   ##-- mmap handles
   my $mapmode = fcperl($enum->{flags});
@@ -118,6 +125,15 @@ sub opened {
      && defined($enum->{sxbufr})
     );
 }
+
+## $bool = $enum->reopen()
+##  + re-opens datafiles
+##  + override also remaps buffers
+sub reopen {
+  my $enum = shift;
+  return $enum->SUPER::reopen() && $enum->remap();
+}
+
 
 ## $bool = $enum->dirty()
 ##  + returns true iff some in-memory structures haven't been flushed to disk

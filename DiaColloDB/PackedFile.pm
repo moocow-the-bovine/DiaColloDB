@@ -6,7 +6,7 @@
 package DiaColloDB::PackedFile;
 use DiaColloDB::Logger;
 use DiaColloDB::Persistent;
-use DiaColloDB::Utils qw(:fcntl :pack);
+use DiaColloDB::Utils qw(:fcntl :file :pack);
 use Tie::Array;
 use Fcntl;
 use IO::File;
@@ -94,6 +94,14 @@ sub opened {
   return defined($_[0]{fh});
 }
 
+## $bool = $pf->reopen()
+##  + re-opens datafile
+sub reopen {
+  my $pf   = shift;
+  my $file = $pf->{file} || "$pf";
+  return $pf->opened && fh_reopen($pf->{fh}, $file);
+}
+
 ## $bool = $pf->close()
 sub close {
   my $pf = shift;
@@ -142,8 +150,13 @@ sub flush {
   return undef if (!$pf->opened || !fcwrite($pf->{flags}));
   $pf->saveHeader()
     or $pf->logconfess("flush(): failed to store header file ", $pf->headerFile, ": $!");
-  return $pf->{fh}->flush() if (UNIVERSAL::can($pf->{fh},'flush'));
-  return binmode($pf->{fh},':raw'); ##-- see perlfaq5(1) re: flushing filehandles
+
+  ##-- BUGHUNT/Birmingham: strangeness: tied @$docoff buffers seem not to get flushed
+  #return $pf->{fh}->flush() if (UNIVERSAL::can($pf->{fh},'flush'));
+  #return binmode($pf->{fh},':raw'); ##-- see perlfaq5(1) re: flushing filehandles
+
+  $pf->reopen() or return undef if ((caller(1))[3] !~ /::close$/);
+  return $pf;
 }
 
 ##==============================================================================

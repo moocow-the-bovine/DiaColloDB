@@ -29,7 +29,7 @@ our @ISA = qw(Exporter DiaColloDB::Logger);
 our @EXPORT= qw();
 our %EXPORT_TAGS =
     (
-     fcntl => [qw(fcflags fcread fcwrite fctrunc fccreat fcperl fcopen)],
+     fcntl => [qw(fcflags fcread fcwrite fctrunc fccreat fcperl fcopen fcgetfl)],
      json  => [qw(jsonxs loadJsonString loadJsonFile saveJsonString saveJsonFile)],
      sort  => [qw(csort_to csortuc_to)],
      run   => [qw(crun opencmd)],
@@ -40,7 +40,7 @@ our %EXPORT_TAGS =
      regex => [qw(regex)],
      html  => [qw(htmlesc)],
      time  => [qw(s2hms s2timestr timestamp)],
-     file  => [qw(file_mtime file_timestamp du_file du_glob copyto moveto copyto_a cp_a)],
+     file  => [qw(file_mtime file_timestamp du_file du_glob copyto moveto copyto_a cp_a fh_flush fh_reopen)],
      si    => [qw(si_str)],
      pdl   => [qw(_intersect_p _union_p _complement_p _setdiff_p),
 	       qw(readPdlFile writePdlFile writePdlHeader writeCcsHeader mmzeroes mmtemp),
@@ -69,6 +69,14 @@ sub fcflags {
 	       );
   $iflags |= O_TRUNC  if ($fwrite && !$fappend);
   return $iflags;
+}
+
+## $fcflags = fcgetfl($fh)
+##  + returns Fcntl flags for filehandle $fh
+sub fcgetfl {
+  shift if (UNIVERSAL::isa($_[0],__PACKAGE__));
+  my $fh = shift;
+  return CORE::fcntl($fh,F_GETFL,0);
 }
 
 ## $bool = fcread($flags)
@@ -636,6 +644,34 @@ sub cp_a {
       or $that->warn("cp_a(): failed to propagate timestamps from '$src' to '$dst': $!");
   return $rc;
 }
+
+## $fh_or_undef = PACKAGE->fh_flush($fh)
+##  + flushes filehandle $fh using its flush() method if available
+sub fh_flush {
+  shift if (UNIVERSAL::isa($_[0],__PACKAGE__));
+  my $fh = shift;
+  return UNIVERSAL::can($fh,'flush') ? $fh->flush() : $fh;
+}
+
+## $fh_or_undef = PACKAGE->fh_reopen($fh,$file)
+##  + closes and re-opens filehandle $fh
+sub fh_reopen {
+  shift if (UNIVERSAL::isa($_[0],__PACKAGE__));
+  my ($fh,$file) = @_;
+  my $flags      = fcgetfl($fh) & (~O_TRUNC);
+  my @layers0    = PerlIO::get_layers($fh);
+  CORE::close($fh) || return undef;
+  CORE::open($fh, fcperl($flags), $file) or return undef;
+  my @layers1    = PerlIO::get_layers($fh);
+  while (@layers0 && @layers1 && $layers0[0] eq $layers1[0]) {
+    shift(@layers0);
+    shift(@layers1);
+  }
+  binmode($fh,":$_") foreach (@layers1);
+  return $fh;
+}
+
+
 
 ##==============================================================================
 ## Utils: SI

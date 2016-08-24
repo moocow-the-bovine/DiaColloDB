@@ -5,7 +5,7 @@
 
 package DiaColloDB::PackedFile::MMap;
 use DiaColloDB::PackedFile;
-use DiaColloDB::Utils qw(:fcntl :pack);
+use DiaColloDB::Utils qw(:fcntl :file :pack);
 use File::Map qw(map_handle);
 use Fcntl qw(:DEFAULT :seek);
 use Carp;
@@ -92,6 +92,13 @@ sub opened {
   return defined($_[0]{bufr});
 }
 
+## $bool = $pf->reopen()
+##  + re-opens datafile
+sub reopen {
+  my $pf = shift;
+  return $pf->SUPER::reopen() && $pf->remap();
+}
+
 ## $bool = $pf->close()
 sub close {
   my $pf = shift;
@@ -117,6 +124,7 @@ sub truncate {
 
 ## $bool = $pf->flush()
 ##  + attempt to flush underlying filehandle, may not work
+##  + INHERITED
 sub flush {
   my $pf = shift;
   $pf->SUPER::flush(@_) or return undef;
