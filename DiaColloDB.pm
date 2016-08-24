@@ -41,7 +41,7 @@ use strict;
 ##==============================================================================
 ## Globals & Constants
 
-our $VERSION = "0.10.006";
+our $VERSION = "0.10.007";
 our @ISA = qw(DiaColloDB::Client);
 
 ## $PGOOD_DEFAULT
@@ -1715,23 +1715,28 @@ sub qparse {
 ##  + guts for parsing user target and groupby requests
 ##  + returns a DDC::Any::CQuery object representing the request
 ##  + index-only items "$l" are mapped to $l=@{}
+##  + if query request is wrapped in "(...)" or "[...]", native parsing is NOT attempted
 ##  + %opts:
 ##     warn  => $level,       ##-- log-level for unknown attributes (default: 'warn')
 ##     logas => $reqtype,     ##-- request type for warnings
 ##     default => $attr,      ##-- default attribute (for query requests)
 ##     mapand => $bool,       ##-- map CQAnd to CQWith? (default=true unless '&&' occurs in query string)
-##     ddcmode => $bool,      ##-- force ddc query mode? (default=false)
+##     ddcmode => $bool,      ##-- force ddc query parsing? (0:no:default, >0:always, <0:fallback)
 sub parseQuery {
   my ($coldb,$req,%opts) = @_;
   my $req0   = $req;
   my $wlevel = $opts{warn} // 'warn';
   my $defaultIndex = $opts{default};
   my $logas = $opts{logas}//'';
+  my $ddcmode = $opts{ddcmode} || 0;
 
   ##-- compat: accept ARRAY or HASH requests
   my $areqs = (UNIVERSAL::isa($req,'ARRAY') ? [@$req]
 	       : (UNIVERSAL::isa($req,'HASH') ? [%$req]
 		  : undef));
+
+  ##-- ddcmode: detect "[...]" queries
+  $ddcmode = 1 if ($req =~ s{^\s*\[(.*)\]\s*$}{$1});
 
   ##-- compat: parse into attribute-local requests $areqs=[[$attr1,$areq1],...]
   my $sepre  = qr{[\s\,]};
@@ -1743,13 +1748,13 @@ sub parseQuery {
   my $valre  = qr{(?:${setre}|${regre})};
   my $reqre  = qr{(?:(?:${attrre}[:=])?${valre})};
   if (!$areqs
-      && !$opts{ddcmode}
+      && ($ddcmode <= 0)			##-- allow native parsing?
       && $req =~ m/^${sepre}*			##-- initial separators (optional)
 		   (?:${reqre}${sepre}+)*	##-- separated components
 		   (?:${reqre})			##-- final component
 		   ${sepre}*			##-- final separators (optional)
 		   $/x) {
-    #$coldb->debug("parseQuery($logas): parsing native query request");
+    $coldb->debug("parseQuery($logas): parsing native query request [ddcmode=$ddcmode]");
     $areqs = [grep {defined($_)} ($req =~ m/${sepre}*(${reqre})/g)];
   }
 
@@ -1778,7 +1783,7 @@ sub parseQuery {
       $attr = $defaultIndex//'' if (($attr//'') eq '');
       $attr =~ s/^\$//;
 
-      #$coldb->debug("parseQuery($logas): parsing native request: (".($attr//'')." = ".($areq//''));
+      $coldb->debug("parseQuery($logas): parsing native request clause: (".($attr//'')." = ".($areq//'').")");
 
       if (UNIVERSAL::isa($areq,'DDC::Any::CQuery')) {
 	##-- compat: value: ddc query object
@@ -1795,12 +1800,7 @@ sub parseQuery {
 	$re    =~ s{^\(\?\^\:(.*)\)$}{$1};
 	$aq = DDC::Any::CQTokRegex->new($attr, $re);
       }
-      elsif ($opts{ddcmode} && ($areq//'') ne '') {
-	##-- compat: ddcmode: parse requests as ddc queries
-	$aq = $coldb->qparse($areq)
-	  or $coldb->logconfess($coldb->{error}="parseQuery(): failed to parse request \`$areq': $coldb->{error}");
-      }
-      else {
+      elsif (!$areq || $areq =~ /^\s*${reqre}\s*$/) {
 	##-- compat: value: space- or |-separated literals --> CQTokExact $a=@VAL or CQTokSet $a=@{VAL1,...VALN} or CQTokAny $a=*
 	##   + also applies to empty $areq, e.g. in groupby clauses
 	my $vals = [grep {($_//'') ne ''} map {s{\\(.)}{$1}g; $_} split(/(?:(?<!\\)[\,\s\|])+/,($areq//''))];
@@ -1809,6 +1809,11 @@ sub parseQuery {
 		  ? DDC::Any::CQTokAny->new($attr,'*')
 		  : DDC::Any::CQTokExact->new($attr,$vals->[0]))
 	       : DDC::Any::CQTokSet->new($attr,($areq//''),$vals));
+      }
+      elsif ($ddcmode && ($areq//'') ne '') {
+	##-- compat: ddcmode: parse requests as ddc queries
+	$aq = $coldb->qparse($areq)
+	  or $coldb->logconfess($coldb->{error}="parseQuery(): failed to parse request \`$areq': $coldb->{error}");
       }
       ##-- push request to query
       $q = $q ? DDC::Any::CQWith->new($q,$aq) : $aq;
@@ -1851,7 +1856,7 @@ sub parseQuery {
 		       })
     if ($opts{mapand} || (!defined($opts{mapand}) && $req0 !~ /\&\&/));
 
-  #$coldb->debug("parseQuery($logas): ", $q->toString);
+  $coldb->debug("parseQuery($logas): parsed query: ", $q->toString);
 
   return $q;
 }

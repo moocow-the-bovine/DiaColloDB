@@ -390,7 +390,7 @@ sub countQuery {
   my $fcoef  = ($opts->{query} =~ s/\s*\#f?coef\s*[\s\[]s*([\+\-]?\d*\.?\d+(?:[eE][\+-]?\d+)?)\s*\]?//i ? $1 : $opts->{fcoef});
 
   ##-- parse daughter query & setup match-ids
-  my $qdtr  = $coldb->parseQuery($opts->{query}, logas=>'query', default=>'', ddcmode=>1);
+  my $qdtr  = $coldb->parseQuery($opts->{query}, logas=>'query', default=>'', ddcmode=>-1);
   my $qopts = $qdtr->getOptions || DDC::Any::CQueryOptions->new;
   $qdtr->setOptions(undef);
 

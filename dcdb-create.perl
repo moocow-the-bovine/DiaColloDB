@@ -183,7 +183,7 @@ dcdb-create.perl - create a DiaColloDB diachronic collocation database
  Indexing Options:
    -attrs ATTRS         ##-- select index attributes (default=l,p)
                         ##   known attributes: l, p, w, doc.title, ...
-   -nofilters           ##-- disable default regex-filters
+   -use-all-the-data    ##-- disable default frequency- and regex-filters
    -64bit               ##-- use 64-bit quads where available
    -32bit               ##-- use 32-bit integers where available
    -dmax DIST           ##-- maximum distance for indexed co-occurrences (default=5)
@@ -330,12 +330,16 @@ Default=don't.
 Set corpus document class (default=DDCTabs).
 See L<DiaColloDB::Document/SUBCLASSES> for a list
 of supported input formats.
+If you are using the default L<DDCTabs|DiaColloDB::Document::DDCTabs> document class
+on your own (non-D*) corpus, you may also want to specify
+L<C<-dopt foreign=1>|/"-dopt OPT=VAL">.
 
 =item -dopt OPT=VAL
 
 Set corpus document option, e.g.
-C<-dopt eosre=EOSRE> sets the end-of-sentence regex
-for the default L<DDCTabs|DiaColloDB::Document::DDCTabs> document class.
+L<C<-dopt eosre=EOSRE>|DDCTabs/new> sets the end-of-sentence regex
+for the default L<DDCTabs|DiaColloDB::Document::DDCTabs> document class,
+and L<C<-dopt foreign=1|DDCTabs/new> disables D*-specific hacks.
 
 Aliases: -document-option, -docoption -dO
 
@@ -373,9 +377,10 @@ Track collocations by document.
 Select attributes to be indexed (default=l,p).
 Known attributes include C<l, p, w, doc.title, doc.author>, etc.
 
-=item -nofilters
+=item -use-all-the-data
 
-Disables default frequency- and regex-based pruning filter options, equivalent to:
+Disables default frequency- and regex-based pruning filter options,
+inspired by Mark Lauersdorf; equivalent to:
 
  -tfmin=0 \
  -lfmin=0 \
@@ -393,7 +398,7 @@ Disables default frequency- and regex-based pruning filter options, equivalent t
  -tO=mgood='' \
  -tO=mbad=''
 
-Aliases: -noprune, -all, -F
+Aliases: -all, -noprune, -nofilters, -F
 
 =item -64bit
 

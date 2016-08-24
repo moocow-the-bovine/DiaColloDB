@@ -973,7 +973,7 @@ sub vprofile {
   ##-- parse query
   my $groupby = $opts->{groupby} = $vs->groupby($coldb, $opts->{groupby}, relax=>0); ##-- TODO: allow metadata group-keys
   ##
-  my $q = $opts->{qobj} // $coldb->parseQuery($opts->{query}, logas=>'query', default=>'', ddcmode=>1);
+  my $q = $opts->{qobj} // $coldb->parseQuery($opts->{query}, logas=>'query', default=>'', ddcmode=>-1);
   my ($qo);
   $q->setOptions($qo=DDC::Any::CQueryOptions->new) if (!defined($qo=$q->getOptions));
   #$qo->setFilters([@{$qo->getFilters}, @$gbfilters]) if (@$gbfilters);
