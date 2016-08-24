@@ -34,6 +34,7 @@ our $PFCLASS = 'DiaColloDB::PackedFile::MMap';
 ##    pack_f   => $pack_f,     ##-- pack-template for frequencies (default='N')
 ##    pack_d   => $pack_d,     ##-- pack-tempalte for dates (default='n')
 ##    keeptmp  => $bool,       ##-- keep temporary files? (default=false)
+##    mmap     => $bool,       ##-- use mmap access? (default=true)
 ##    logCompat => $level,     ##-- log-level for compatibility warnings (default='warn')
 ##    ##
 ##    ##-- size info (after open() or load())
@@ -55,13 +56,14 @@ sub new {
 		    pack_i=>'N',
 		    pack_f=>'N',
 		    pack_d=>'n',
-		    r1 => $PFCLASS->new(),
-		    r2 => $PFCLASS->new(),
 		    N  => 0,
 		    version => $DiaColloDB::VERSION,
 		    logCompat => 'warn',
+		    #keeptmp => 0,
+		    #mmap => 1,
 		    @_
 		   }, (ref($that)||$that));
+  $ug->{$_} //= $ug->mmclass($PFCLASS)->new() foreach (qw(r1 r2));
   $ug->{class} = ref($ug);
   return $ug->open() if (defined($ug->{base}));
   return $ug;

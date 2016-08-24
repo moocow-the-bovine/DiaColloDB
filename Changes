@@ -2,6 +2,10 @@
 ##
 ## Change log for perl distribution DiaColloDB
 
+PENDING
+	* merged in debugging changes from v0.10.004 debugging branch (_v0.10.004_0[123])
+	  - conditionally enabled by new dcdb-create.perl -debug option
+
 v0.10.007 Wed, 24 Aug 2016 08:59:10 +0200 moocow
 	* removed "hard" pdl dependencies, moved to 'recommends'
 	* fixed default option inheritance for dcdb-create.perl hash-valued options -tdf-option, -option
@@ -18,6 +22,12 @@ v0.10.005 Thu, 07 Jul 2016 14:40:04 +0200 moocow
 	  - obviates troublesome Alien::DDC::Concordance dependency
 	  - still only expected to run correctly on *NIX systems due to runtime calls to sort etc.
 	* commented out DiaColloDB::create() debugging code from v0.10.004_01
+
+v0.10.004_03 Thu, 21 Jul 2016 13:43:49 +0200 moocow
+	* added dcdb-create -nommap option: see if mmap use in VirtualBox/MacOS is causing errors
+
+v0.10.004_02 2017-07-15 moocow
+	* debugging test for PackedFile::MMap -- no joy
 
 v0.10.004_01 Tue, 05 Jul 2016 09:27:52 +0200 moocow
 	* debugging release for un-reproducible 'undefined value' errors on Birmingham data

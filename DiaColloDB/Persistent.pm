@@ -15,6 +15,17 @@ use strict;
 our @ISA = qw(DiaColloDB::Logger);
 
 ##==============================================================================
+## mmap usage
+
+## $CLASS = $obj->mmclass($CLASSNAME) : respects $obj->{mmap} option
+sub mmclass {
+  my ($that,$class) = @_;
+  $class =~ s/::MMap$//i if (ref($that) && !($that->{mmap}//1));
+  return $class;
+}
+
+
+##==============================================================================
 ## disk usage, timestamp
 
 ## @files = $obj->diskFiles()

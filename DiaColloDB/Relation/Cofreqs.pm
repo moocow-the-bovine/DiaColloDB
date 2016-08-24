@@ -64,14 +64,12 @@ sub new {
 		    pack_i=>'N',
 		    pack_f=>'N',
 		    pack_d=>'n',
-		    r1 => $PFCLASS->new(),
-		    r2 => $PFCLASS->new(),
-		    r3 => $PFCLASS->new(),
 		    N  => 0,
 		    version => $DiaColloDB::VERSION,
 		    logCompat => 'warn',
 		    @_
 		   }, (ref($that)||$that));
+  $cof->{$_} //= $cof->mmclass($PFCLASS)->new() foreach (qw(r1 r2 r3));
   $cof->{class} = ref($cof);
   return $cof->open() if (defined($cof->{base}));
   return $cof;
