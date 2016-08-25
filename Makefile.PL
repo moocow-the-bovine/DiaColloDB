@@ -55,7 +55,7 @@ WriteMakefile
 		    'Algorithm::BinarySearch::Vec' => '0.07', ##-- for fast integer-set operations
 		    #'Cwd' => 0, ##-- for abs_path
 		    'DB_File' => 0,  ##-- for temporary hashes; 1.831
-		    'DDC::Concordance' => 0.25, ##-- for DDC::Any
+		    'DDC::Concordance' => 0.28, ##-- for DDC::Any
 		    'File::Copy'    => 0, ##-- for move()
 		    'File::Find'    => 0,
 		    'File::Map'     => 0,  # 0.63
@@ -67,7 +67,7 @@ WriteMakefile
 		    'JSON'          => 0,  # 2.53
 		    'Log::Log4perl' => 1.07,   # 1.29
 		    'LWP::UserAgent' => 0, ##-- 6.06, for http client-mode
-		    'Tie::File::Indexed' => '0.07', ##-- for temporary object arrays
+		    'Tie::File::Indexed' => '0.08', ##-- for temporary object arrays
 		    'Time::HiRes' => 0,		    ##-- for runtime profiling
 		    'XML::LibXML' => '1.70',	    ##-- for XML-based input formats (TCF, TEI)
 		    'Test::More' => 0,
