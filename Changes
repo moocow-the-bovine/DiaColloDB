@@ -2,7 +2,7 @@
 ##
 ## Change log for perl distribution DiaColloDB
 
-v0.10.009 Thu, 25 Aug 2016 09:45:36 +0200 moocow
+v0.10.009 Thu, 25 Aug 2016 09:51:34 +0200 moocow
 	* updated Tie::File::Indexed dependency to v0.08
 	* updated DDC::Concordance dependency to v0.28
 
