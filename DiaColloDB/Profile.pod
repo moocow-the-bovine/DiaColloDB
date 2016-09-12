@@ -155,13 +155,14 @@ L<DiaColloDB::Persistent|DiaColloDB::Persistent>.
  ##
  eps => $eps,        ##-- smoothing constant (default=0.5)
  score => $func,     ##-- selected scoring function qw(f fm lf lfm mi mi3 ld ll)
- mi => \%mi12,       ##-- score: mutual information * logFreq a la Wortprofil; requires compile_mi()
- mi3 => \%mi312,     ##-- score: mutual information^3 a la Rychlý (2008); requires compile_mi3()
- ld => \%ld12,       ##-- score: log-dice a la Wortprofil; requires compile_ld()
- ll => \%ll12,       ##-- score: 1-sided log-likelihood a la Evert (2008); requires compile_ll()
- fm => \%fm12,       ##-- frequency per million score; requires compile_fm()
- lf => \%lf12,       ##-- log-frequency ; requires compile_lf()
- lfm => \%lfm12,     ##-- log-frequency per million; requires compile_lfm()
+ milf => \%milf_12,  ##-- score: mutual information * logFreq a la Wortprofil; requires compile_milf()
+ mi1 => \%mi1_12,    ##-- score: mutual information; requires compile_mi1()
+ mi3 => \%mi3_12,    ##-- score: mutual information^3 a la Rychlý (2008); requires compile_mi3()
+ ld => \%ld_12,      ##-- score: log-dice a la Wortprofil; requires compile_ld()
+ ll => \%ll_12,      ##-- score: 1-sided log-likelihood a la Evert (2008); requires compile_ll()
+ fm => \%fm_12,      ##-- frequency per million score; requires compile_fm()
+ lf => \%lf_12,      ##-- log-frequency ; requires compile_lf()
+ lfm => \%lfm_1,     ##-- log-frequency per million; requires compile_lfm()
 
 =item clone
 
@@ -320,7 +321,7 @@ Save flat HTML table data with rows of the form
 
  $prf = $prf->compile($func,%opts);
 
-compile for score-function $func, one of qw(f fm mi ld); default='f'
+compile for score-function $func, one of qw(f fm lf lfm mi1 mi3 milf ld ll); default='f' (emits a warning).
 
 =item uncompile
 
@@ -355,21 +356,30 @@ sets $prf-E<gt>{score}='fm'.
 computes log-frequency-per-million in $prf-E<gt>{lfm}
 sets $prf-E<gt>{score}='lfm'.
 
-=item compile_mi
+=item compile_milf
 
- $prf = $prf->compile_mi(%opts);
+ $prf = $prf->compile_milf(%opts);
 
-computes MI*logF-profile in $prf-E<gt>{mi} a la Rychlý (2008);
-sets $prf-E<gt>{score}='mi'.
+formerly compile_mi()
+
+computes MI*logF-profile in $prf-E<gt>{milf} a la Rychlý (2008);
+sets $prf-E<gt>{score}='milf'.
 %opts:
 
  eps => $eps  #-- clobber $prf->{eps}
+
+=item compile_mi1
+
+ $prf = $prf->compile_mi1(%opts);
+
+computes raw pointwise-MI profile in $prf-E<gt>{mi1};
+sets $prf-E<gt>{score}='mi1'.
 
 =item compile_mi3
 
  $prf = $prf->compile_mi3(%opts);
 
-computes MI^3 profile in $prf-E<gt>{mi} a la Rychlý (2008);
+computes MI^3 profile in $prf-E<gt>{mi3} a la Rychlý (2008);
 sets $prf-E<gt>{score}='mi3'.
 
 =item compile_ld

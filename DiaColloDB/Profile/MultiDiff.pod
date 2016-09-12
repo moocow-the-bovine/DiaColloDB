@@ -63,7 +63,6 @@ DiaColloDB::Profile::MultiDiff - diachronic collocation db, (co-)frequency profi
  ##========================================================================
  ## Compilation
  
- @ppairs = $CLASS_OR_OBJECT->align($mp1,$mp2);
  $mpd = $mpd->populate($mp1,$mp2);
  $class = $CLASS_OR_OBJECT->pclass();
  $mp_or_undef = $CLASS_OR_OBJECT->trimPairs(\@pairs, %opts);
@@ -205,45 +204,6 @@ Options %opts:
 =head3 Compilation
 
 =over 4
-
-=item align
-
-  @ppairs = $CLASS_OR_OBJECT->align($mp1,$mp2);
- \@ppairs = $CLASS_OR_OBJECT->align($mp1,$mp2);
-
-=over 4
-
-=item *
-
-aligns subprofile-pairs from $mp1 and $mp2
-
-=item *
-
-$mp1, $mp2 are either:
-
-=over 4
-
-=item HASH-refs
-
-with a 'profiles' key (e.g. DiaColloDB::Profile::Multi objects)
-
-=item ARRAY-refs
-
-of DiaColloDB::Profile-like objects to align
-
-=back
-
-=item *
-
-subprofiles are aligned in stored order
-
-=item *
-
-arguments must be B<EITHER> singletons (1 subprofile) B<OR> of same size;
-this lets you compare e.g. a global profile with a sliced one by
-something like L<PDL|PDL>'s "implicit threading".
-
-=back
 
 =item populate
 

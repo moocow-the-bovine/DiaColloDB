@@ -53,6 +53,7 @@ DiaColloDB::Profile::Multi - diachronic collocation db, (co-)frequency profile, 
  $prf = $mp->sumover();
  $mp_or_undef = $mp->trim(%opts);
  $mp = $mp->stringify( $obj);
+ @ppairs = $CLASS_OR_OBJECT->align($mp1,$mp2);
  
  ##========================================================================
  ## Binary operations
@@ -261,6 +262,46 @@ calls $prf-E<gt>trim(%opts) for each sub-profile $prf.
 
 stringifies multi-profile (destructive) via $obj-E<gt>i2s($key2), $key2str-E<gt>($i2) or $key2str-E<gt>{$i2};
 calls $prf-E<gt>stringify(...) for each sub-profile $prf.
+
+=item align
+
+  @ppairs = $CLASS_OR_OBJECT->align($mp1,$mp2);
+ \@ppairs = $CLASS_OR_OBJECT->align($mp1,$mp2);
+
+=over 4
+
+=item *
+
+aligns subprofile-pairs from $mp1 and $mp2
+
+=item *
+
+$mp1, $mp2 are either:
+
+=over 4
+
+=item HASH-refs
+
+with a 'profiles' key (e.g. DiaColloDB::Profile::Multi objects),
+or
+
+=item ARRAY-refs
+
+of DiaColloDB::Profile-like objects to align
+
+=back
+
+=item *
+
+subprofiles are aligned in stored order
+
+=item *
+
+arguments must be B<EITHER> singletons (1 subprofile) B<OR> of same size;
+this lets you compare e.g. a global profile with a sliced one by
+something like L<PDL|PDL>'s "implicit threading".
+
+=back
 
 =back
 

@@ -2013,7 +2013,9 @@ sub parseRequest {
 ##     ti2g => \&ti2g,       ##-- group-tuple extraction code ($ti => $gtuple) : $g_packed = $ti2g->($ti)
 ##     ts2g => \&ts2g,       ##-- group-tuple extraction code ($ts => $gtuple) : $g_packed = $ts2g->($ts)
 ##     g2s   => \&g2s,       ##-- stringification object suitable for DiaColloDB::Profile::stringify() [CODE,enum, or undef] : $g_str = $g2s->($g_packed)
-##     g2txt => \&g2txt,     ##-- compatible join()-string stringifcation sub
+##     s2g   => \&s2g,       ##-- inverse-stringification object (for 2nd-pass processing)
+##     g2txt => \&g2txt,     ##-- compatible join()-string stringifcation sub (decimal numeric strings)
+##     txt2g => \&txt2g,     ##-- compatible inverse-string stringifcation sub (decimal numeric strings)
 ##     tpack => \@tpack,     ##-- group-attribute-wise pack-templates, given @ttuple
 ##     gpack => \@gpack,     ##-- group-attribute-wise pack-templates, given @gtuple
 ##     areqs => \@areqs,     ##-- parsed attribute requests ([$attr,$ahaving],...)
@@ -2080,16 +2082,17 @@ sub groupby {
 
   ($ti2g_code = $ts2g_code) =~ s{\$_\[0\]}{\$tenum->i2s(\$_[0])};
   my $ti2g_sub  = eval qq{sub {$ti2g_code}};
-  $coldb->logconfess($coldb->{error}="groupby(): could not compile id-base aggregation code sub {$ti2g_code}: $@") if (!$ti2g_sub);
+  $coldb->logconfess($coldb->{error}="groupby(): could not compile id-based aggregation code sub {$ti2g_code}: $@") if (!$ti2g_sub);
   $@='';
   $gb->{ti2g} = $ti2g_sub;
 
-  ##-- get stringification sub
-  my ($genum,@genums,$g2scode);
+  ##-- get stringification sub(s)
+  my ($genum,@genums,$g2scode,$s2gcode);
   if (@$gbattrs == 1) {
     ##-- stringify a single attribute
     $genum   = $coldb->{$gbattrs->[0]."enum"};
     $g2scode = qq{ \$genum->i2s(unpack('$pack_id',\$_[0])) };
+    $s2gcode = qq{ pack('$pack_id', \$genum->s2i(\$_[0]) // 0) };
   }
   else {
     @genums = map {$coldb->{$_."enum"}} @$gbattrs;
@@ -2097,25 +2100,42 @@ sub groupby {
 		.qq{ \@gi=unpack('$pack_ids', \$_[0]); }
 		.q{ join("\t",}.join(', ', map {"\$genums[$_]->i2s(\$gi[$_])"} (0..$#genums)).q{)}
 	       );
+    $s2gcode = (''
+		.qq{ \@gi=split(/\\t/, \$_[0]); }
+		.qq{ pack('$pack_ids',}.join(', ', map {"\$genums[$_]->s2i(\$gi[$_]) // 0"} (0..$#genums)).q{)}
+	       );
   }
   my $g2s = eval qq{sub {$g2scode}};
   $coldb->logconfess($coldb->{error}="groupby(): could not compile stringification code sub {$g2scode}: $@") if (!$g2s);
   $@='';
   $gb->{g2s} = $g2s;
 
+  my $s2g = eval qq{sub {$s2gcode}};
+  $coldb->logconfess($coldb->{error}="groupby(): could not compile inverse-stringification code sub {$s2gcode}: $@") if (!$s2g);
+  $@='';
+  $gb->{s2g} = $s2g;
+
+
   ##-- get pseudo-stringification sub ("\t"-joined decimal integer ids)
-  my ($g2txt_code);
+  my ($g2txt_code,$txt2g_code);
   if (@$gbattrs == 1) {
     ##-- stringify a single attribute
     $g2txt_code = qq{ unpack('$pack_id',\$_[0]) };
+    $txt2g_code = qq{ pack('$pack_id',\$_[0] // 0) };
   }
   else {
     $g2txt_code = qq{ join("\t",unpack('$pack_ids', \$_[0])); };
+    $txt2g_code = qq{ pack('$pack_ids', split(/\t/, \$_[0] // 0)); };
   }
   my $g2txt = eval qq{sub {$g2txt_code}};
   $coldb->logconfess($coldb->{error}="groupby(): could not compile pseudo-stringification code sub {$g2txt_code}: $@") if (!$g2txt);
   $@='';
   $gb->{g2txt} = $g2txt;
+
+  my $txt2g = eval qq{sub {$txt2g_code}};
+  $coldb->logconfess($coldb->{error}="groupby(): could not compile inverse pseudo-stringification code sub {$txt2g_code}: $@") if (!$txt2g);
+  $@='';
+  $gb->{txt2g} = $txt2g;
 
   return $gb;
 }
@@ -2232,7 +2252,7 @@ sub parseGroupBy {
 ##     ##-- profiling and debugging parameters
 ##     strings => $bool,          ##-- do/don't stringify output profile(s) (default=do)
 ##     fill    => $bool,          ##-- if true, returned multi-profile will have null profiles inserted for missing slices
-##     onepass => $bool,          ##-- if true, use fast but incorrect 1-pass method (Cofreqs profiling only)
+##     onepass => $bool,          ##-- if true, use fast but incorrect 1-pass method (Cofreqs profiling only, >= v0.09.001)
 ##    )
 ##  + sets default %opts and wraps $coldb->relation($rel)->profile($coldb, %opts)
 sub profile {
@@ -2285,6 +2305,59 @@ sub profileOptions {
 
   return $opts;
 }
+
+##--------------------------------------------------------------
+## Profiling: extend (pass-2 for multi-clients)
+
+## $mprf = $coldb->complete($relation, %opts)
+##  + get independent f2 frequencies for $opts{slice2keys}, which is EITHER
+##    - a HASH-ref {$slice1=>\@keys1, ...},
+##      OR
+##    - a JSON-string encoding a such a HASH-ref
+##  + %opts, as for profile(), except:
+##    (
+##     ##-- selection parameters
+##     #query => $query,           ##-- target request ATTR:REQ... : IGNORED (but reported in log for debbugging)
+##     slice2keys => \%slice2keys, ##-- target f2-items or JSON-string
+##     ##-- scoring and trimming parameters : IGNORED
+##     ##-- profiling and debugging parameters: IGNORED
+##    )
+##  + returns a DiaColloDB::Profile::Multi containing the appropriate f2 entries
+sub extend {
+  my ($coldb,$rel,%opts) = @_;
+
+  ##-- defaults
+  $coldb->profileOptions(\%opts);
+
+  ##-- items
+  $opts{slice2keys} //= '';
+  $opts{slice2keys}   = DiaColloDB::Utils::loadJsonString($opts{slice2keys}, allow_nonref=>0)
+    if ($opts{slice2keys} && !ref($opts{slice2keys}));
+
+  ##-- debug
+  $coldb->vlog($coldb->{logRequest},
+	       "extend("
+	       .join(', ',
+		     map {"$_->[0]='".quotemeta($_->[1]//'')."'"}
+		     ([rel=>$rel],
+		      [query=>$opts{query}],
+		      [groupby=>UNIVERSAL::isa($opts{groupby},'ARRAY') ? join(',', @{$opts{groupby}}) : $opts{groupby}],
+		      (map {[$_=>$opts{$_}]} qw(date slice)),
+		     ))
+	       .")");
+
+  ##-- relation
+  my ($reldb);
+  if (!defined($reldb=$coldb->relation($rel||'cof'))) {
+    $coldb->logwarn($coldb->{error}="extend(): unknown relation '".($rel//'-undef-')."'");
+    return undef;
+  }
+
+  ##-- delegate
+  return $reldb->extend($coldb,%opts);
+}
+
+
 
 ##--------------------------------------------------------------
 ## Profiling: Comparison (diff)

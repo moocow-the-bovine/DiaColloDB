@@ -99,7 +99,7 @@ sub dbinfo {
 ##     strings => $bool,          ##-- do/don't stringify item keys (default=do)
 ##     packed  => $bool,          ##-- leave item keys packed (default=don't)
 ##     fill    => $bool,          ##-- if true, returned multi-profile will have null profiles inserted for missing slices
-##     onepass => $bool,          ##-- if true, use fast but incorrect 1-pass method (Cofreqs subclass only)
+##     onepass => $bool,          ##-- if true, use fast but incorrect 1-pass method (Cofreqs subclass only, >= v0.09.001)
 ##    )
 ##  + default implementation
 ##    - parses request and extracts target tuple-ids
@@ -175,7 +175,7 @@ sub profile {
   }
   my $tis = [$tivec ? unpack($pack_tv, $tivec) : qw()];
 
-  ##-- prepare: parse and filter tuples
+  ##-- parse date request (no filtering here)
   $reldb->vlog($logProfile, "profile(): parse date request (date=$opts{date}, slice=$opts{slice}, fill=$opts{fill})");
   my $dreq = $opts{dreq} = $coldb->parseDateRequest(@opts{qw(date slice fill)});
 
@@ -214,6 +214,54 @@ sub profile {
   }
 
   ##-- return
+  return $mp;
+}
+
+##--------------------------------------------------------------
+## Relation API: extend (pass-2 for multi-clients)
+
+## $mprf = $rel->extend($coldb, %opts)
+##  + get independent f2 frequencies for \%slice2keys = $opts{slice2keys}
+##  + calls $rel->subextend(\%slice2keys, \%opts)
+##  + returns a DiaColloDB::Profile::Multi containing the appropriate f2 entries
+sub extend {
+  my ($reldb,$coldb,%opts) = @_;
+
+  ##-- common variables
+  $opts{coldb}   = $coldb; ##-- pass-down to subprofile() methods
+  my $logProfile = $coldb->{logProfile};
+
+  ##-- sanity check(s)
+  if (!$opts{slice2keys}) {
+    $reldb->logwarn($coldb->{error}="extend(): no 'slice2keys' parameter specified!");
+    return undef;
+  }
+  elsif (!UNIVERSAL::isa($opts{slice2keys},'HASH')) {
+    $reldb->logwarn($coldb->{error}="extend(): failed to parse 'slice2keys' parameter");
+    return undef;
+  }
+
+  ##-- subprofile2() requirements
+  my $groupby= $opts{groupby} = $coldb->groupby($opts{groupby});
+  my $a2data = $opts{a2data}  = {map {($_->{a}=>$_)} @{$coldb->attrData($coldb->attrs)}};
+  my $dreq   = $opts{dreq}    = $coldb->parseDateRequest(@opts{qw(date slice fill)});
+
+  ##-- create dummy profiles for completion
+  my $s2prf   = {};
+  my ($slice,$keys);
+  while (($slice,$keys) = each %{$opts{slice2keys}}) {
+    $s2prf->{$slice} = DiaColloDB::Profile->new(label=>$slice, N=>0,f1=>0,f12=>{ map {($_=>0)} @$keys })->stringify($groupby->{s2g});
+  }
+
+  ##-- get independent f2
+  $reldb->subextend($s2prf, \%opts);
+
+  ##-- collect, stringify & return
+  my $mp = DiaColloDB::Profile::Multi->new(profiles=>[@$s2prf{sort {$a<=>$b} keys %$s2prf}],
+					   titles  =>$groupby->{titles});
+  $reldb->vlog($logProfile, "extend(): stringify");
+  $mp->stringify($groupby->{g2s});
+
   return $mp;
 }
 
@@ -314,6 +362,15 @@ sub subprofile1 {
 sub subprofile2 {
   #my ($rel,$slice2prf,$opts) = @_;
   return $_[1];
+}
+
+## \%slice2prf = $rel->subextend(\%slice2prf,\%opts)
+##  + populate f2 frequencies for profiles in \%slice2prf
+##  + %opts: as for subprofile1()
+##  + default implementation just pukes
+sub subextend {
+  my ($rel,$slice2prf,$opts) = @_;
+  $rel->logconfess("subextend() method not supported");
 }
 
 ##==============================================================================

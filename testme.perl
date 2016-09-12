@@ -2393,7 +2393,192 @@ sub test_move {
   print STDERR "$0: test_move() done\n";
   exit 0;
 }
-test_move @ARGV;
+#test_move @ARGV;
+
+##==============================================================================
+## test: union cofreqs
+
+sub test_union_cofreqs {
+  use strict;
+  my %qopts = (dir1=>'kern01-1ka.d',
+	       dir2=>'kern01-1kb.d',
+	       query=>'Mann',
+	       groupby=>'l,p=ADJA',
+	       date=>'1914:1915',
+	       slice=>0,
+	       score=>'ld',
+	       kbest=>10,
+	      );
+  foreach (@_) {
+    if (/^-+([^=]*)=(.*)$/) {
+      my ($key,$val) = ($1,$2);
+      $qopts{$key}   = $val;
+    }
+  }
+  my ($dir1,$dir2) = @qopts{qw(dir1 dir2)};
+
+  ##-- debugging
+  my $logProfile = 'debug';
+
+  my $db1 = DiaColloDB->new(dbdir=>$dir1) or die("$0: failed to open db1 '$dir1': $!");
+  my $db2 = DiaColloDB->new(dbdir=>$dir2) or die("$0: failed to open db2 '$dir2': $!");
+
+  $db1->vlog($logProfile, "profile_union: initialize");
+  my %qopt1 = (score=>'f',fill=>1,kbest=>-1);
+  my $rel   = 'cof';
+
+  my $mp1 = $db1->profile($rel, %qopts,%qopt1) or die("$0: failed to profile via db1 '$dir1': $!");
+  my $mp2 = $db2->profile($rel, %qopts,%qopt1) or die("$0: failed to profile via db2 '$dir2': $!");
+
+  ##-- HACK: complete profiles
+  $db1->vlog($logProfile, "$0: mp_symmetric_difference()");
+  my $sd12 = mp_symmetric_difference($mp1,$mp2);
+  if (0) { ##-- DEBUG
+    binmode(STDOUT,':utf8');
+    foreach my $sd (@$sd12) {
+      my ($p1,$p2) = @$sd{qw(p1 p2)};
+      my $items = { %{$p1->{f12}}, %{$p2->{f12}} };
+      print "## slice=$sd->{p1}{label}\n";
+      foreach (sort keys %$items) {
+	my $class = (exists($p1->{f12}{$_}) ? '1' : '_').(exists($p2->{f12}{$_}) ? '2' : '_');
+	print join("\t", $class, $_, ($p1->{f2}{$_}//0).'+'.($p2->{f2}{$_}//0)), "\n";
+      }
+    }
+    #exit 0;
+  }
+
+  if (0) {
+    ##-- local hacks
+    $db1->vlog($logProfile, "$0: complete (local hacks)");
+    complete_cof_profile($db1,$mp1, [map {[@$_{qw(p1 keys2)}]} @$sd12], %qopts,%qopt1, complete=>'1');
+    complete_cof_profile($db2,$mp2, [map {[@$_{qw(p2 keys1)}]} @$sd12], %qopts,%qopt1, complete=>'2');
+  }
+  else {
+    ##-- new API
+    $db1->vlog($logProfile, "$0: complete (new API)");
+    my $mp1x = $db1->extend($rel, %qopts,%qopt1, slice2keys=>{map {($_->{p1}{label}=>$_->{keys2})} @$sd12});
+    my $mp2x = $db2->extend($rel, %qopts,%qopt1, slice2keys=>{map {($_->{p2}{label}=>$_->{keys1})} @$sd12});
+
+    if (0) {
+      ##-- DEBUG
+      sub showmp {
+	my ($label,$mp) = @_;
+	print STDERR "## $label:\n"; $mp->saveTextFh(\*STDERR, header=>0);
+      };
+      showmp("mp1",$mp1);
+      showmp("mp1x",$mp1x);
+      showmp("mp1+mp1x", $mp1->add($mp1x));
+      showmp("mp2",$mp2);
+      showmp("mp2x",$mp2x);
+      showmp("mp2+mp2x", $mp2->add($mp2x));
+    }
+
+    $mp1->_add($mp1x);
+    $mp2->_add($mp2x);
+  }
+
+  ##-- sum over completed profiles
+  $db1->vlog($logProfile, "profile_union: finalize");
+  my $mp = $mp1->add($mp2);
+
+  $mp->compile(($qopts{score}//'f'), eps=>($qopts{eps}//0));
+  $mp->trim(%qopts, empty=>!$qopts{fill});
+
+  #print "## final:\n";
+  $mp->saveTextFh(\*STDOUT);
+  #$mp->saveJsonFh(\*STDOUT);
+  exit 0;
+}
+test_union_cofreqs;
+
+## $mp_complete = complete_cof_profile($coldb, $mp, \@pkpairs, %qopts)
+sub complete_cof_profile {
+  use strict;
+  my ($coldb,$mp,$pkpairs,%opts) = @_;
+  $opts{coldb} //= $coldb;
+  my $cof = $coldb->{cof};
+  my $reldb = $cof;
+  my $label = $opts{complete} // "$mp";
+
+  ##-- inverse-stringification stuff
+  my $groupby = $opts{groupby} = $coldb->groupby($opts{groupby});
+  my $gpack   = join('', @{$groupby->{gpack}});
+  my @genums  = map {$coldb->{$_."enum"}} @{$groupby->{attrs}};
+  my (@gs);
+  my $s2g = sub {
+    @gs = split(/\t/, $_[0]);
+    return pack($gpack, map { $genums[$_]->s2i($gs[$_]) // 0 } (0..$#genums));
+  };
+
+  ##-- create dummy profiles for completion
+  my %s2prf = qw();
+  my ($pkpair,$p0,$keys0,$p);
+  foreach $pkpair (@$pkpairs) {
+    ($p0,$keys0) = @$pkpair;
+    #print STDERR "## complete[$label]: slice=$p0->{label}, keys=".JSON::to_json($keys0,{utf8=>0})."\n";
+
+    $p = ref($p0)->new(
+		       label=>$p0->{label},
+		       N=>0,
+		       f1=>0,
+		       f12=>{ map {($_=>0)} @$keys0 },
+		       f2 =>{ },
+		      );
+    $p->stringify($s2g);
+    $s2prf{$p0->{label}} = $p;
+  }
+
+  ##---- complete dummy profiles using subprofile2()
+  ##      + adapted from DiaColloDB::Relation::profile()
+  ##-- variables: by attribute
+  #my $groupby= $opts{groupby} = $coldb->groupby($opts{groupby});
+  my $a2data = $opts{a2data} = {map {($_->{a}=>$_)} @{$coldb->attrData($coldb->attrs)}};
+  my $dreq   = $opts{dreq} = $coldb->parseDateRequest(@opts{qw(date slice fill)});
+  $reldb->subprofile2(\%s2prf, \%opts);
+
+  my $mpx = DiaColloDB::Profile::Multi->new(profiles=>[@s2prf{map {$_->{label}} @{$mp->{profiles}}}]);
+  $mpx->stringify($groupby->{g2s});
+
+  #print "## mp[$label]:\n"; $mp->saveTextFh(\*STDOUT);
+  #print "## mpx[$label]:\n"; $mpx->saveTextFh(\*STDOUT);
+  $mp->_add( $mpx );
+  #print "## mp+mpx[$label]:\n"; $mp->saveTextFh(\*STDOUT);
+
+  return $mp;
+}
+
+##  @symdiffs = mp_symmetric_difference($mp1,$mp2)
+## \@symdiffs = mp_symmetric_difference($mp1,$mp2)
+##  + returns a slice-wise aligned list of symmetric differences @symdiffs,
+##    where each element is a HASH-ref:
+##     {
+##      p1=>$p1,        ##-- $mp1 sub-profile
+##      p2=>$p2,        ##-- $mp2 sub-profile
+##      keys1=>\@keys1, ##-- set difference: keys($p1) - keys($p2)
+##      keys2=>\@keys2, ##-- set difference: keys($p2) - keys($p1)
+##     }
+sub mp_symmetric_difference {
+  use strict;
+  my ($mp1,$mp2) = @_;
+  my $ppairs = DiaColloDB::Profile::Multi->align($mp1,$mp2);
+
+  my (%diff1,%diff2, $ppair,$p1,$p2, $items1,$items2);
+  my @symdiffs = qw();
+  foreach $ppair (@$ppairs) {
+    ($p1,$p2) = @$ppair;
+    $items1   = $p1->{f12};
+    $items2   = $p2->{f12};
+    push(@symdiffs, {
+		     p1=>$p1,
+		     p2=>$p2,
+		     keys1=>[grep {!exists $items2->{$_}} keys %$items1],
+		     keys2=>[grep {!exists $items1->{$_}} keys %$items2],
+		    });
+  }
+
+  return wantarray ? @symdiffs : \@symdiffs;
+}
+
 
 
 ##==============================================================================

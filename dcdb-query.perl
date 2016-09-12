@@ -86,7 +86,8 @@ GetOptions(##-- general
 	   ##
 	   'difference|diff|D|compare|comp|cmp=s' => \$query{diff},
 	   'epsilon|eps|e=f'  => \$query{eps},
-	   'mutual-information|mi'    => sub {$query{score}='mi'},
+	   'mutual-information-log-frequency|milf|mi' => sub {$query{score}='milf'},
+	   'mutual-information-1|mi1' => sub {$query{score}='mi1'},
 	   'mutual-information-3|mi3' => sub {$query{score}='mi3'},
 	   'log-dice|logdice|ld|dice' => sub {$query{score}='ld'},
 	   'log-likelihood|loglik|logl|ll' => sub {$query{score}='ll'},
@@ -263,7 +264,8 @@ dcdb-query.perl - query a DiaColloDB diachronic collocation database
    -lf                   # score by log-frequency
    -fm                   # score by frequency per million tokens
    -lfm                  # score by log-frequency per million tokens
-   -mi                   # score by pointwise mutual information x log-frequency product
+   -milf                 # score by pointwise mutual information x log-frequency product
+   -mi1                  # score by raw pointwise mutual information
    -mi3                  # score by pointwise mutual information^3 (Rychlý 2008)
    -ld                   # score by scaled log-Dice coefficient (Rychlý 2008)
    -ll                   # score by 1-sided log-likelihood ratio (Evert 2008)
@@ -511,9 +513,13 @@ score by frequency per million tokens
 
 score by log-frequency per million tokens
 
-=item -mi
+=item -milf
 
 score by pointwise mutual information x log-frequency product
+
+=item -mi1
+
+score by raw pointwise mutual information
 
 =item -mi3
 

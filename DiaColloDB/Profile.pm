@@ -61,14 +61,15 @@ our @ISA = qw(DiaColloDB::Persistent);
 ##    titles => \@titles, ##-- item group titles (default:undef: unknown)
 ##    #
 ##    eps => $eps,       ##-- smoothing constant (default=0.5)
-##    score => $func,    ##-- selected scoring function qw(f fm lf lfm mi mi3 ld ll)
-##    mi => \%mi12,      ##-- score: mutual information * logFreq a la Wortprofil; requires compile_mi()
-##    mi3 => \%mi312,    ##-- score: mutual information^3 a la Rychly (2008); requires compile_mi3()
-##    ld => \%ld12,      ##-- score: log-dice a la Wortprofil; requires compile_ld()
-##    ll => \%ll12,      ##-- score: 1-sided log-likelihood a la Evert (2008); requires compile_ll()
-##    fm => \%fm12,      ##-- frequency per million score; requires compile_fm()
-##    lf => \%lf12,      ##-- log-frequency ; requires compile_lf()
-##    lfm => \%lfm12,    ##-- log-frequency per million; requires compile_lfm()
+##    score => $func,    ##-- selected scoring function qw(f fm lf lfm mi1 mi3 milf ld ll)
+##    milf => \%milf_12, ##-- score: mutual information * logFreq a la Wortprofil; requires compile_milf()
+##    mi1 => \%mi1_12,   ##-- score: mutual information; requires compile_mi1()
+##    mi3 => \%mi3_12,   ##-- score: mutual information^3 a la Rychly (2008); requires compile_mi3()
+##    ld => \%ld_12,     ##-- score: log-dice a la Wortprofil; requires compile_ld()
+##    ll => \%ll_12,     ##-- score: 1-sided log-likelihood a la Evert (2008); requires compile_ll()
+##    fm => \%fm_12,     ##-- frequency per million score; requires compile_fm()
+##    lf => \%lf_12,     ##-- log-frequency ; requires compile_lf()
+##    lfm => \%lfm_12,   ##-- log-frequency per million; requires compile_lfm()
 ##   )
 sub new {
   my $that = shift;
@@ -80,7 +81,6 @@ sub new {
 		    f12=>{},
 		    eps=>0.5,
 		    #titles=>undef,
-		    #mi=>{},
 		    #ld=>{},
 		    @_
 		   }, (ref($that)||$that));
@@ -109,7 +109,7 @@ sub clone {
 ## $prf2 = $prf->shadow()
 ## $prf2 = $prf->shadow($keep_compiled)
 ##  + shadows %$mp
-##  + if $keep_score is true, compiled data is shadows too (all zeroes)
+##  + if $keep_score is true, compiled data is shadowed too (all zeroes)
 sub shadow {
   my $prf = $_[0]->clone($_[1]);
   $prf->{f1} = $prf->{N} = 0;
@@ -140,7 +140,7 @@ sub titles {
 ## @keys = $prf->scoreKeys()
 ##  + returns known score function keys
 sub scoreKeys {
-  return qw(mi mi3 ld ll fm lf lfm);
+  return qw(mi1 mi3 milf ld ll fm lf lfm);
 }
 
 ## $bool = $prf->empty()
@@ -300,18 +300,19 @@ sub saveHtmlFile {
 ## Compilation
 
 ## $prf = $prf->compile($func,%opts)
-##  + compile for score-function $func, one of qw(f fm lf lfm mi mi3 ld ll); default='f'
+##  + compile for score-function $func, one of qw(f fm lf lfm mi1 mi3 milf ld ll); default='f'
 sub compile {
   my $prf = shift;
   my $func = shift;
-  return $prf->compile_f(@_)   if (!$func || $func =~ m{^(?:f(?:req(?:uency)?)?(?:12)?)$}i);
-  return $prf->compile_fm(@_)  if ($func =~ m{^(?:f(?:req(?:uency)?)?(?:-?p(?:er)?)?(?:-?m(?:(?:ill)?ion)?)(?:12)?)$}i);
-  return $prf->compile_lf(@_)  if ($func =~ m{^(?:l(?:og)?-?f(?:req(?:uency)?)?(?:12)?)$}i);
-  return $prf->compile_lfm(@_) if ($func =~ m{^(?:l(?:og)?-?f(?:req(?:uency)?)?(?:-?p(?:er)?)?(?:-?m(?:(?:ill)?ion)?)(?:12)?)$}i);
-  return $prf->compile_ld(@_)  if ($func =~ m{^(?:ld|log-?dice)}i);
-  return $prf->compile_ll(@_)  if ($func =~ m{^(?:ll|log-?l(?:ikelihood)?)}i);
-  return $prf->compile_mi(@_)  if ($func =~ m{^(?:(?:lf)?mi(?:-?lf)?|mutual-?information-?(?:l(?:og)?)?-?f(?:req(?:uency)?)?)?$}i);
-  return $prf->compile_mi3(@_) if ($func =~ m{^(?:mi3|mutual-?information-?3)$}i);
+  return $prf->compile_f(@_)    if (!$func || $func =~ m{^(?:f(?:req(?:uency)?)?(?:12)?)$}i);
+  return $prf->compile_fm(@_)   if ($func =~ m{^(?:f(?:req(?:uency)?)?(?:-?p(?:er)?)?(?:-?m(?:(?:ill)?ion)?)(?:12)?)$}i);
+  return $prf->compile_lf(@_)   if ($func =~ m{^(?:l(?:og)?-?f(?:req(?:uency)?)?(?:12)?)$}i);
+  return $prf->compile_lfm(@_)  if ($func =~ m{^(?:l(?:og)?-?f(?:req(?:uency)?)?(?:-?p(?:er)?)?(?:-?m(?:(?:ill)?ion)?)(?:12)?)$}i);
+  return $prf->compile_ld(@_)   if ($func =~ m{^(?:ld|log-?dice)}i);
+  return $prf->compile_ll(@_)   if ($func =~ m{^(?:ll|log-?l(?:ikelihood)?)}i);
+  return $prf->compile_milf(@_) if ($func =~ m{^(?:(?:lf)?mi(?:-?lf)?|mutual-?information-?(?:l(?:og)?)?-?f(?:req(?:uency)?)?)?$}i);
+  return $prf->compile_mi1(@_)  if ($func =~ m{^(?:mi1|mutual-?information-?1|pmi1?)$}i);
+  return $prf->compile_mi3(@_)  if ($func =~ m{^(?:mi3|mutual-?information-?3)$}i);
   $prf->logwarn("compile(): unknown score function '$func'");
   return $prf->compile_f(@_);
 }
@@ -383,15 +384,18 @@ sub compile_lfm {
   return $prf;
 }
 
-## $prf = $prf->compile_mi(%opts)
-##  + computes MI*logF-profile in $prf->{mi} a la Rychly (2008)
-##  + sets $prf->{score}='mi'
+## $prf = $prf->compile_milf(%opts)
+##  + computes MI*logF-profile in $prf->{milf} a la Rychly (2008)
+##  + sets $prf->{score}='milf'
 ##  + %opts:
 ##     eps => $eps  #-- clobber $prf->{eps}
-sub compile_mi {
+BEGIN {
+  *compile_mi = \&compile_milf; ##-- backwards-compatible alias
+}
+sub compile_milf {
   my ($prf,%opts) = @_;
   my ($N,$f1,$pf2,$pf12) = @$prf{qw(N f1 f2 f12)};
-  my $mi = $prf->{mi} = {};
+  my $mi = $prf->{milf} = {};
   my $eps = $opts{eps} // $prf->{eps} // 0; #0.5;
   my ($i2,$f2,$f12);
   while (($i2,$f2)=each(%$pf2)) {
@@ -405,11 +409,36 @@ sub compile_mi {
 		       (($f1+$eps)*($f2+$eps))
 		      )
 		 );
-
   }
-  $prf->{score} = 'mi';
+  $prf->{score} = 'milf';
   return $prf;
 }
+
+## $prf = $prf->compile_mi1(%opts)
+##  + computes raw poinwise-MI profile in $prf->{mi1}
+##  + sets $prf->{score}='mi1'
+##  + %opts:
+##     eps => $eps  #-- clobber $prf->{eps}
+sub compile_mi1 {
+  my ($prf,%opts) = @_;
+  my ($N,$f1,$pf2,$pf12) = @$prf{qw(N f1 f2 f12)};
+  my $mi = $prf->{mi1} = {};
+  my $eps = $opts{eps} // $prf->{eps} // 0; #0.5;
+  my ($i2,$f2,$f12);
+  while (($i2,$f2)=each(%$pf2)) {
+    $f12 = $pf12->{$i2} // 0;
+    $mi->{$i2} = (
+		  log2(
+		       (($f12+$eps)*($N+$eps))
+		       /
+		       (($f1+$eps)*($f2+$eps))
+		      )
+		 );
+  }
+  $prf->{score} = 'mi1';
+  return $prf;
+}
+
 
 ## $prf = $prf->compile_mi3(%opts)
 ##  + computes MI^3 profile in $prf->{mi} a la Rychly (2008)
@@ -685,8 +714,8 @@ sub _add {
   my ($af2,$af12) = @$pa{qw(f2 f12)};
   my ($bf2,$bf12) = @$pb{qw(f2 f12)};
   foreach (keys %$bf12) {
-    $af2->{$_}  += $bf2->{$_};
-    $af12->{$_} += $bf12->{$_};
+    $af2->{$_}  += ($bf2->{$_} // 0);
+    $af12->{$_} += ($bf12->{$_} // 0);
   }
   return $pa->uncompile();
 }

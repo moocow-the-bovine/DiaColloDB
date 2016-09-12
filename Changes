@@ -2,6 +2,16 @@
 ##
 ## Change log for perl distribution DiaColloDB
 
+PENDING
+	* added DiaColloDB::Relation::extend() and wrapper DiaColloDB::extend()
+	  - high-level interface to independent f2 acquisition, e.g. for list-clients
+	  - as yet only implemented in Cofreqs
+	  - TODO: integrate into Client::list (including www-wrapper support)
+  	  - TODO: add implementations for Unigrams and TDF relations
+	* renamed 'mi' score function to more accurate 'milf'
+	* added 'mi1' score function (raw PMI)
+	  - not too useful without pre-filtered corpus: too sensitive to low-frequency outliers
+
 v0.10.009 Thu, 25 Aug 2016 09:51:34 +0200 moocow
 	* updated Tie::File::Indexed dependency to v0.08
 	* updated DDC::Concordance dependency to v0.28

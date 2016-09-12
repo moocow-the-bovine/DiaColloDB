@@ -133,29 +133,7 @@ sub saveHtmlFile {
 ##  @ppairs = $CLASS_OR_OBJECT->align($mp1,$mp2)
 ## \@ppairs = $CLASS_OR_OBJECT->align($mp1,$mp2)
 ##  + aligns subprofile-pairs from $mp1 and $mp2
-##  + $mp1, $mp2 are either:
-##    - HASH-refs with a 'profiles' key (e.g. DiaColloDB::Profile::Multi objects)
-##    - ARRAY-refs of DiaColloDB::Profile-like objects to align
-##  + subprofiles are aligned in stored order
-##  + arguments must be EITHER singletons (1 subprofile) OR of same size
-##    - this lets you compare e.g. a global profile with a sliced one by
-##      something like PDL's "implicit threading"
-sub align {
-  my ($that,$mpa,$mpb) = @_;
-  my $psa = UNIVERSAL::isa($mpa,'HASH') ? $mpa->{profiles} : $mpa;
-  my $psb = UNIVERSAL::isa($mpb,'HASH') ? $mpb->{profiles} : $mpb;
-  if (@$psa==1 || @$psb==1 || @$psa==@$psb) {
-    ##-- align cyclically (allow slices)
-    my @pairs = map {
-      [
-       (@$psa==1 && $_ != 0 ? $psa->[0]->clone(1) : $psa->[$_]),
-       (@$psb==1 && $_ != 0 ? $psb->[0]->clone(1) : $psb->[$_]),
-      ]
-    } (0..($#$psa > $#$psb ? $#$psa : $#$psb));
-    return wantarray ? @pairs : \@pairs;
-  }
-  $that->logconfess("align(): cannot align non-trivial multi-profiles of unequal size (".scalar(@$psa)." != ".scalar(@$psb).")");
-}
+##  + INHERITED from DiaColloDB::Profile::Multi
 
 ## $mpd = $mpd->populate($mp1,$mp2,%opts)
 ##  + populates multi-diff by subtracting $mp2 sub-profile scores from $mp1

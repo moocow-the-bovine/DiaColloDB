@@ -686,6 +686,14 @@ sub subprofile2 {
   return $slice2prf;
 }
 
+## \%slice2prf = $rel->subextend(\%slice2prf,\%opts)
+##  + populate f2 frequencies for profiles in \%slice2prf
+##  + %opts: as for subprofile1()
+##  + override calls subprofile2()
+sub subextend {
+  my $cof = shift;
+  return $cof->subprofile2(@_);
+}
 
 ##==============================================================================
 ## Relation API: default: query info
