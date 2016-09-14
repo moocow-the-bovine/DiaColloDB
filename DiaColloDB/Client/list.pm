@@ -59,6 +59,7 @@ sub defaults {
 	  logThread => 'none',
 	  fork => $HAVE_FORKS,
 	  lazy => 1,
+	  extend => 1,
 	 );
 }
 
@@ -105,7 +106,7 @@ sub open_list {
 
   ##-- sanity check(s)
   if ($cli->{fork} && !$HAVE_FORKS) {
-    $cli->logwarn("fork-mode requested, but 'forks' module unavailable")
+    $cli->warn("fork-mode requested, but 'forks' module unavailable");
     $cli->{fork} = 0;
   }
 
