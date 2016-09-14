@@ -2331,7 +2331,7 @@ sub extend {
 
   ##-- items
   $opts{slice2keys} //= '';
-  $opts{slice2keys}   = DiaColloDB::Utils::loadJsonString($opts{slice2keys}, allow_nonref=>0)
+  $opts{slice2keys}   = DiaColloDB::Utils::loadJsonString($opts{slice2keys})
     if ($opts{slice2keys} && !ref($opts{slice2keys}));
 
   ##-- debug

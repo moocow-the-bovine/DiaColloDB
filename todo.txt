@@ -1,16 +1,16 @@
 TODO Wed, 14 Sep 2016 14:02:58 +0200
 + implement
-  - extend(): Unigrams, TDF
+  - extend(): Unigrams, TDF, DDC
 + document
   - extend(): DiaColloDB, Relation, Relation::*, Client, Client::*
 
-TODO Wed, 11 May 2016 14:27:14 +0200
-+ update kaskade DBs
+#DONE TODO Wed, 11 May 2016 14:27:14 +0200
+x+ update kaskade DBs
   1) update DBs from not-yet-installed new DiaColloDB build dir
      ./dcdb-upgrade.perl -u ~/dstar/corpora/$corpus/web/diacollo/data
   2) update DiaColloDB distribution
 
-TODO Mon, 14 Mar 2016 12:31:35 +0100
+(mostly DONE) TODO Mon, 14 Mar 2016 12:31:35 +0100
 x+ Client::list: get working correctly!
 x+ add dbinfo() (and dbheader()?) client method(s)
 x+ Client::list: allow parallel queries of sub-clients in (fork or thread)

@@ -37,7 +37,7 @@ sub new {
 ##  + %opts: clobber %$rel
 sub create {
   my ($rel,$coldb,$datfile,%opts) = @_;
-  $rel->logconfess("create(): abstract method called");
+  $rel->logconfess($coldb->{error}="create(): abstract method called");
 }
 
 ##==============================================================================
@@ -51,7 +51,7 @@ sub create {
 ##  + implicitly flushes the new index
 sub union {
   my ($rel,$coldb, $pairs,%opts) = @_;
-  $rel->logconfess("union(): abstract method called");
+  $rel->logconfess($coldb->{error}="union(): abstract method called");
 }
 
 ##==============================================================================
@@ -155,9 +155,9 @@ sub profile {
     $nbits   //= $ac->{a2t}{len_i}*8;
     $pack_tv //= "$ac->{a2t}{pack_i}*";
     vec($test_tv='',0,$nbits) = 0x12345678 if (!defined($test_tv));
-    $reldb->logconfess("profile(): multimap pack-size mismatch: nbits($ac->{a2t}{base}.*) != $nbits")
+    $reldb->logconfess($coldb->{error}="profile(): multimap pack-size mismatch: nbits($ac->{a2t}{base}.*) != $nbits")
       if ($ac->{a2t}{len_i} != $nbits/8);
-    $reldb->logconfess("profile(): multimap pack-template '$ac->{a2t}{pack_i}' for $ac->{a2t}{base}.* is not big-endian")
+    $reldb->logconfess($coldb->{error}="profile(): multimap pack-template '$ac->{a2t}{pack_i}' for $ac->{a2t}{base}.* is not big-endian")
       if (pack($ac->{a2t}{pack_i},0x12345678) ne $test_tv);
 
     ##-- target set construction
@@ -352,7 +352,7 @@ sub diff {
 ##     dreq  => \%dreq,    ##-- parsed date request
 sub subprofile1 {
   my ($rel,$tids,$opts) = @_;
-  $rel->logconfess("subprofile(): abstract method called");
+  $rel->logconfess($opts->{coldb}{error}="subprofile(): abstract method called");
 }
 
 ## \%slice2prf = $rel->subprofile2(\%slice2prf,\%opts)
@@ -370,7 +370,7 @@ sub subprofile2 {
 ##  + default implementation just pukes
 sub subextend {
   my ($rel,$slice2prf,$opts) = @_;
-  $rel->logconfess("subextend() method not supported");
+  $rel->logconfess($opts->{coldb}{error}="subextend() method not supported");
 }
 
 ##==============================================================================

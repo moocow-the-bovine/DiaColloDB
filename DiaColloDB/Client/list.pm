@@ -234,6 +234,8 @@ sub profile {
 			  });
 
   if ($cli->{extend} && @mps > 1) {
+    $cli->vlog($cli->{logFudge}, "profile(): extending sub-profiles");
+
     ##-- fill-out multi-profiles (ensure compatible slice-partitioning & find "missing" keys)
     DiaColloDB::Profile::Multi->xfill(\@mps);
     my $xkeys = DiaColloDB::Profile::Multi->xkeys(\@mps);

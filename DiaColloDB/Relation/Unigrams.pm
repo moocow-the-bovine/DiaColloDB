@@ -494,10 +494,25 @@ sub subprofile1 {
   return \%slice2prf;
 }
 
+##--------------------------------------------------------------
+## Relation API: default: subprofile2
+
 ##  \%slice2prf = $rel->subprofile2(\%slice2prf, \%opts)
 ##  + populate f2 frequencies for profiles in \%slice2prf
 ##  + %opts: as for subprofile1()
 ##  + INHERITED from DiaColloDB::Relation : no-op
+
+##--------------------------------------------------------------
+## Relation API: default: subextend
+
+## \%slice2prf = $rel->subextend(\%slice2prf,\%opts)
+##  + populate f2 frequencies for profiles in \%slice2prf
+##  + %opts: as for subprofile1()
+##  + override returns empty meta-profile (no-op)
+sub subextend {
+  return DiaColloDB::Profile::Multi->new();
+}
+
 
 ##==============================================================================
 ## Relation API: default: query info
