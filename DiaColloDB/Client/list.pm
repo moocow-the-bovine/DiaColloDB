@@ -8,9 +8,9 @@ use DiaColloDB::Client;
 use strict;
 
 ##-- try to use threads
-our ($HAVE_THREADS);
+our ($HAVE_FORKS);
 BEGIN {
-  $HAVE_THREADS = eval <<EOF;
+  $HAVE_FORKS = eval <<EOF;
 #use threads; ##-- segfaults on join()ing 2nd thread (possibly bogus destruction)
 use forks;
 1
@@ -37,12 +37,14 @@ our @ISA = qw(DiaColloDB::Client);
 ##    urls  => \@urls,     ##-- db urls
 ##    opts  => \%opts,     ##-- sub-client options
 ##    fudge => $coef,      ##-- get ($coef*$kbest) items from sub-clients (0:all, default=10)
+##    fork  => $bool,      ##-- run each subclient query in its own fork? (default=if available)
+##    lazy => $bool,       ##-- use temporary on-demand sub-clients (true,default) or persistent sub-clients (false)
+##    extend => $bool,     ##-- use extend() queries to acquire correct f2 counts? (default=true)
 ##    logFudge => $level,  ##-- log-level for fudge-factor debugging (default='debug')
-##    logThread => $level,  ##-- log-level for thread (fork) options (default='none')
-##    threads => $bool,    ##-- use threads if available? (default=0)
+##    logFork => $level,   ##-- log-level for thread (fork) options (default='none')
 ##    ##
 ##    ##-- guts
-##    #clis => \@clis,     ##-- per-url clients (created & destroyed on-demand as of v0.11.000)
+##    #clis => \@clis,     ##-- per-url clients for mode, v0.11.000
 ##   )
 
 ## %defaults = $CLASS_OR_OBJ->defaults()
@@ -55,7 +57,8 @@ sub defaults {
 	  fudge=>10,
 	  logFudge => 'debug',
 	  logThread => 'none',
-	  threads => $HAVE_THREADS,
+	  fork => $HAVE_FORKS,
+	  lazy => 1,
 	 );
 }
 
@@ -100,20 +103,20 @@ sub open_list {
   }
   @$cli{qw(url urls)} = ($url,$curls);
 
-  ##-- open sub-clients
-#  my ($c);
-#  my $clis = $cli->{clis} = [];
-#  foreach (@$curls) {
-#    $c = DiaColloDB::Client->new($_,%{$cli->{opts}//{}},@_)
-#      or $cli->logconfess("open(): failed to create client for URL '$_': $!");
-#    push(@$clis, $c);
-  #  }
+  ##-- sanity check(s)
+  if ($cli->{fork} && !$HAVE_FORKS) {
+    $cli->logwarn("fork-mode requested, but 'forks' module unavailable")
+    $cli->{fork} = 0;
+  }
 
   ##-- save sub-client options in $cli->{opts}
   if (@_) {
     my %opts = @_;
     $cli->{opts}{keys %opts} = values %opts;
   }
+
+  ##-- open sub-clients (non-lazy mode)
+  $cli->{clis} = [map {$cli->client($_)} (0..$#$curls)] if (!$cli->{lazy});
 
   return $cli;
 }
@@ -129,10 +132,16 @@ sub close {
 
 ## $bool = $cli->opened()
 ##  + override checks for non-empty $cli->{urls}
+##  + ensures all sub-clients are opened in non-lazy mode
 sub opened {
   return (ref($_[0])
 	  && $_[0]{urls}
 	  && @{$_[0]{urls}}
+	  && ($_[0]{lazy} || (
+			      $_[0]{clis}
+			      && @{$_[0]{clis}}==@{$_[0]{urls}}
+			      && !grep {!defined($_) || !$_->opened} @{$_[0]{clis}}
+			     ))
 	 );
 }
 
@@ -140,10 +149,11 @@ sub opened {
 ##  + open (temporary) sub-client #$i
 sub client {
   my ($cli,$i,%opts) = @_;
+  return $cli->{clis}[$i] if (!$cli->{lazy} && $cli->{clis} && $cli->{clis}[$i]); ##-- non-lazy mode
   my $url = $cli->{urls}[$i]
     or $cli->logconfess("client(): no URL for client #$i");
   my $sub = DiaColloDB::Client->new($url,%{$cli->{opts}//{}},%opts)
-    or $cli->logconfess("open(): failed to open client for URL '$url': $!");
+    or $cli->logconfess("client(): failed to create client for URL '$url': $!");
   return $sub;
 }
 
@@ -159,7 +169,7 @@ sub dbinfo {
 			     $sub->dbinfo()
 			       or $_[0]->logconfess("dbinfo() failed for client URL $sub->{url}: $sub->{error}");
 			   });
-  return {dtrs=>\@info, fudge=>$cli->{fudge}, threads=>$cli->{threads}};
+  return {dtrs=>\@info, (map {($_=>$cli->{$_})} qw(fudge fork lazy))};
 }
 
 ##==============================================================================
@@ -171,9 +181,9 @@ sub dbinfo {
 sub subcall {
   my ($cli,$code,@args) = @_;
   my ($i,@results);
-  if ($HAVE_THREADS && $cli->{threads}) {
+  if ($HAVE_FORKS && $cli->{fork}) {
     ##-- threaded call
-    PDL::no_clone_skip_warning() if (UNIVERSAL::can('PDL','no_clone_skip_warning'));
+    #PDL::no_clone_skip_warning() if (UNIVERSAL::can('PDL','no_clone_skip_warning'));
     my (@thrs);
     for ($i=0; $i <= $#{$cli->{urls}}; ++$i) {
       $cli->vlog($cli->{logThread}, "subcall: spawning thread for sub-client #$i");
@@ -207,7 +217,7 @@ sub subcall {
 sub profile {
   my ($cli,$rel,%opts) = @_;
 
-  ##-- defualts
+  ##-- defaults
   DiaColloDB->profileOptions(\%opts);
 
   ##-- fudge coefficient
@@ -222,7 +232,7 @@ sub profile {
 			      or $_[0]->logconfess("profile() failed for client URL $sub->{url}: $sub->{error}");
 			  });
 
-  if (@mps > 1) {
+  if ($cli->{extend} && @mps > 1) {
     ##-- fill-out multi-profiles (ensure compatible slice-partitioning & find "missing" keys)
     DiaColloDB::Profile::Multi->xfill(\@mps);
     my $xkeys = DiaColloDB::Profile::Multi->xkeys(\@mps);
@@ -255,6 +265,33 @@ sub profile {
 }
 
 ##--------------------------------------------------------------
+## Profiling: extend (pass-2 for multi-clients)
+
+## $mprf = $cli->extend($relation, %opts)
+##  + get an extension-profile for selected items as a DiaColloDB::Profile::Multi object
+##  + %opts: as for DiaColloDB::extend()
+##  + sets $cli->{error} on error
+sub extend {
+  my ($cli,$rel,%opts) = @_;
+
+  ##-- defaults
+  DiaColloDB->profileOptions(\%opts);
+
+  ##-- query clients
+  my @mps = $cli->subcall(sub {
+			    my $sub = $_[0]->client($_[1]);
+			    $sub->extend($rel,%opts,strings=>1)
+			      or $_[0]->logconfess("extend() failed for client URL $sub->{url}: $sub->{error}");
+			  });
+
+  ##-- create final profile
+  my $mp = shift(@mps) or return undef;
+  $mp->_add($_) foreach (@mps);
+
+  return $mp;
+}
+
+##--------------------------------------------------------------
 ## Profiling: Comparison (diff)
 
 ## $mprf = $cli->compare($relation, %opts)
@@ -265,7 +302,7 @@ sub profile {
 sub compare {
   my ($cli,$rel,%opts) = @_;
 
-  ##-- defaults ::: CONTINUE HERE
+  ##-- defaults
   DiaColloDB->compareOptions(\%opts);
 
   ##-- common variables

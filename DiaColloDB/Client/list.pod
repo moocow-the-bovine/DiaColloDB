@@ -20,7 +20,7 @@ DiaColloDB::Client::list - diachronic collocation db: client: distributed
 DiaColloDB::Client::list is a subclass of
 L<DiaColloDB::Client|DiaColloDB::Client> for
 accessing a set of distributed L<DiaColloDB|DiaColloDB> databases
-via a C<list://> URL whose path part is a space- or colon--separated list
+via a C<list://> URL whose path part is a space- or colon-separated list
 of sub-URLs supported by L<DiaColloDB::Client|DiaColloDB::Client>.
 It supports the L<DiaColloDB::Client|DiaColloDB::Client> API
 by calling the relevant methods on each of its sub-clients.
@@ -34,18 +34,27 @@ new() options and object structure:
  urls  => \@urls,     ##-- sub-urls
  opts  => \%opts,     ##-- sub-client options
  fudge => $fudge,     ##-- get ($fudge*$kbest) items from sub-clients (0:all; default=10)
+ fork => $bool,       ##-- run each subclient query in its own fork? (default=if available)
+ lazy => $bool,       ##-- use temporary on-demand sub-clients (true,default) or persistent sub-clients (false)
+ extend => $boo,      ##-- use extend() queries to acquire correct f2 counts? (default=true)
  logFudge => $level,  ##-- log-level for fudge-coefficient debugging (default='debug')
+ logFork => $level,   ##-- log-level for fork operations (default='none')
  ##
  ##-- guts
- clis => \@clis,      ##-- per-url clients
+ #clis => \@clis,     ##-- per-url sub-clients for "busy" (non-"lazy") mode
 
 The most important client parameter is the fudge-coefficient option C<fudge=E<gt>$fudge>, which requests
 that up to C<$fudge*$kbest> items be retrieved from sub-clients for each L<profile()|profile>
 call.  If C<$fudge E<lt>= 0>, all collocates will be retrieved from each sub-client,
 and trimming will be performed exclusively by the superordinate DiaColloDB::Client::list object.
 The default value of 10 should return reasonable results without too large of
-a performance penalty in most cases, but be aware that the results may not be strictly correct
+a performance penalty in most cases, but be aware that the results for C<$fudge E<gt> 0> may not be strictly correct
 due to sub-client local pruning; see L<|/KNOWN BUGS> for details.
+
+As of v0.11.000, this module supports parallel processing of sub-client queries using the
+perl L<forks|forks> module.  Parallel sub-client processing is enabled by default if the
+L<forks|forks> module is installed on your system.  It can be disabled by specifying
+the C<fork=E<gt>0> option to the list-client.
 
 =head2 List URLs
 
@@ -85,19 +94,23 @@ a sub-URL consisting of a HASH-ref or only a query string, e.g.:
 
 =head2 Incorrect Independent Collocate Frequencies
 
-The evaluation strategy currently used by this package is not strictly correct,
-even when C<$fudge==0>.  Although the reported join frequencies I<f12>
-ought to be correct in this case, it can easily happen that the independent collocate
+Prior to the introduction of L<extend()|DiaColloDB/extend> queries in
+DiaCollODB v0.11.000, the list-clients were B<always>
+apt to return incorrrect independent collocate frequencies I<f2> whenever
+the queried subcorpora were not partitioned explicitly by date,
+even with C<$fudge==0>.
+Although the reported joint frequencies I<f12>
+ought to have been correct in this case, it could easily happen that the independent collocate
 frequencies I<f2> get mis-reported, leading to incorrect computations of I<f2>-sensitive
-association scores such as C<mi> (pointwise mutual information * log-frequency product),
-C<ll> (log likelihood), or the default C<ld> (log Dice).  Such errors occur whenever
-the list client accesses multiple sub-clients (e.g. C<$a> and C<$b>) and a candidate
+association scores such as C<milf> (pointwise mutual information * log-frequency product),
+C<ll> (log likelihood), or the default C<ld> (log Dice).  Such errors occurred whenever
+the pre-v0.11.000 list client accessed multiple sub-clients (e.g. C<$a> and C<$b>) and some candidate
 collocate C<$v> occurs in both of the subcorpora, but only occurs together with the target term C<$w>
 in one of the sub-clients' indices.
 
 Suppose C<$v> occurs in subcorpus C<$a> with frequency C<f_a($v)>
 and in subcorpus C<$b> with frequency C<f_b($v)>, but only occurs together with
-C<$w> in subcorpus C<$a> with frequency C<f_a($w,$v)> -- i.e. C<f_b($w,$v)==0>.
+C<$w> in subcorpus C<$a> with frequency C<f_a($w,$v)>; i.e. C<f_b($w,$v)==0>.
 Since only collocates with nonzero
 co-occurrence frequencies are collected in subcorpus profiles, the sub-profile for C<$w>
 over subcorpus C<$b> will not contain an entry for C<$v> at all.  This is fine if
@@ -108,21 +121,12 @@ since C<f_b($v)> will not have been reported by the subprofile for corpus C<$b>,
 its value will be treated as 0 (zero), leading to an incorrect estimate of the
 association score.
 
-An adequate solution to this problem will probably require
-extending the C<DiaColloDB::Client|DiaColloDB::Client>
-and C<DiaColloDB::Relation|DiaColloDB::Relation>
-APIs with
-method(s) for acquiring correct independent collocate frequencies
-on a relation-dependent basis given a set of candidate collocates
-(e.g. in the form of a partial profile),
-and will necessarily involve an additional round-trip for each subcorpus to ensure
-correct I<f2> values in list-client profiles.
-Until these issues are addressed, it is recommended that you avoid using
-list-clients together with I<f2>-sensitive association scores.
-In the meantime,
-you can use the L<DiaColloDB::union()|DiaColloDB/union> method
-via the L<-union|dcdb-create.perl/union> option to L<dcdb-create.perl|dcdb-create.perl>
-to merge multiple local DiaCollo index directories into a single monolithic index.
+As of v0.11.000, each list client is queried a second time using its
+L<extend()|DiaColloDB/extend> method to acquire independent collocate frequencies
+for "missing" keys such as C<$v> in the example above.  This introduces additional
+processing overhead, which can be disabled by setting
+the C<extend=E<gt>0> option to the list-client to simulate the old, incorrect,
+pre-v0.11 behavior.
 
 =cut
 

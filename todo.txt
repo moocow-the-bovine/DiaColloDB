@@ -1,3 +1,9 @@
+TODO Wed, 14 Sep 2016 14:02:58 +0200
++ implement
+  - extend(): Unigrams, TDF
++ document
+  - extend(): DiaColloDB, Relation, Relation::*, Client, Client::*
+
 TODO Wed, 11 May 2016 14:27:14 +0200
 + update kaskade DBs
   1) update DBs from not-yet-installed new DiaColloDB build dir

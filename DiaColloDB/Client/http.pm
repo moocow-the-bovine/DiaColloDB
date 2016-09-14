@@ -145,7 +145,10 @@ sub profile {
 ##  + sets $cli->{error} on error
 sub extend {
   my ($cli,$rel,%opts) = @_;
-  delete @opts{qw(alemma adate aslice blemma bdate bslice)};
+  delete @opts{(qw(alemma adate aslice blemma bdate bslice),
+		qw(eps score kbest cutoff global),
+		qw(onepass),
+	       )};
   return $cli->jget($cli->{url}, {profile=>"extend-$rel", %opts, format=>'json'},'DiaColloDB::Profile::Multi');
 }
 

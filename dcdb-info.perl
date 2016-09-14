@@ -84,7 +84,7 @@ dcdb-info.perl - get administrative info from a DiaColloDB diachronic collocatio
 
 =head1 SYNOPSIS
 
- dcdb-info.perl [OPTIONS] DBDIR
+ dcdb-info.perl [OPTIONS] DBDIR_OR_URL
 
  Options:
    -h, -help              # display a brief usage summary

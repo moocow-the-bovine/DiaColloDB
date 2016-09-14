@@ -61,8 +61,8 @@ sub promote {
 ## undef = $obj->DESTROY
 ##  + destructor calls close() if necessary
 sub DESTROY {
-  $_[0]->trace("DESTROY (tid=", (UNIVERSAL::can('threads','tid') ? threads->tid : '-undef-'), ')');
-  return if (UNIVERSAL::can('threads','tid') && threads->tid!=0); ##-- don't close if not in main thread
+  #$_[0]->trace("DESTROY (tid=", (UNIVERSAL::can('threads','tid') ? threads->tid : '-undef-'), ')'); ##-- DEBUG:thrads
+  return if (UNIVERSAL::can('threads','tid') && threads->tid!=0); ##-- don't implicitly close if we're not in main thread
   $_[0]->close() if ($_[0]->opened);
 }
 
