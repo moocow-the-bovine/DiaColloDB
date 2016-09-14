@@ -41,7 +41,7 @@ our @ISA = qw(DiaColloDB::Client);
 ##    threads => $bool,    ##-- use threads if available? (default=0)
 ##    ##
 ##    ##-- guts
-##    clis => \@clis,      ##-- per-url clients (WIP: created & destroyed on-demand)
+##    #clis => \@clis,     ##-- per-url clients (created & destroyed on-demand as of v0.11.000)
 ##   )
 
 ## %defaults = $CLASS_OR_OBJ->defaults()
@@ -178,11 +178,6 @@ sub subcall {
     for ($i=0; $i <= $#{$cli->{urls}}; ++$i) {
       $cli->trace("subcall: spawning thread for client #$i");
       push(@thrs, threads->create({context=>'scalar'}, $code, $cli, $i, @args));
-
-#      $cli->trace("subcall: joining thread for client #$i");
-#      my $rv = $thrs[$i]->join(); ##-- segfaults here at 2nd encounter (client #0:ok, client #1:segfault)
-#      $cli->trace("subcall: storing results for client #$i");
-#      push(@results, $rv);
     }
     for ($i=0; $i <= $#{$cli->{urls}}; ++$i) {
       $cli->trace("subcall: joining thread for client #$i");
@@ -227,12 +222,6 @@ sub profile {
 			    $sub->profile($rel,%opts,strings=>1,kbest=>$kfudge,cutoff=>0)
 			      or $_[0]->logconfess("profile() failed for client URL $sub->{url}: $sub->{error}");
 			  });
-#  foreach (@{$cli->{clis}}) {
-#    $mp = $_->profile($rel,%opts,strings=>1,kbest=>$kfudge,cutoff=>0)
-#      or $cli->logconfess("profile() failed for client URL $_->{url}: $_->{error}");
-#    push(@mps, $mp);
-  #  }
-
 
   if (@mps > 1) {
     ##-- fill-out multi-profiles (ensure compatible slice-partitioning & find "missing" keys)

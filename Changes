@@ -2,7 +2,7 @@
 ##
 ## Change log for perl distribution DiaColloDB
 
-PENDING
+v0.11.000 PENDING
 	* added DiaColloDB::Relation::extend() and wrapper DiaColloDB::extend()
 	  - high-level interface to independent f2 acquisition, e.g. for list-clients
 	  - as yet only implemented in Cofreqs
