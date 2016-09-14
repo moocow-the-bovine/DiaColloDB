@@ -159,6 +159,40 @@ sub client {
 }
 
 ##==============================================================================
+## utils: threaded sub-client calls
+
+##  @results = $cli->subcall(\&CODE, @args)
+## \@results = $cli->subcall(\&CODE, @args)
+##  + calls CODE($cli, $i, @args) in scalar context foreach $i (0..$#{$cli->{urls}})
+##  + CODE is expected to return anything other than undef
+sub subcall {
+  my ($cli,$code,@args) = @_;
+  my ($i,@results);
+  if ($HAVE_FORKS && $cli->{fork}) {
+    ##-- threaded call
+    #PDL::no_clone_skip_warning() if (UNIVERSAL::can('PDL','no_clone_skip_warning')); ##-- ithreads warning
+    my (@thrs);
+    for ($i=0; $i <= $#{$cli->{urls}}; ++$i) {
+      $cli->vlog($cli->{logThread}, "subcall(): spawning thread for subclient[$i]");
+      push(@thrs, threads->create({context=>'scalar'}, $code, $cli, $i, @args));
+    }
+    for ($i=0; $i <= $#{$cli->{urls}}; ++$i) {
+      $cli->vlog($cli->{logThread}, "subcall(): joining thread for subclient[$i]");
+      my $rv = $thrs[$i]->join(); ##-- perl 'threads' module (ithreads) segfaults here at 2nd encounter (client #0:ok, client #1:segfault)
+      $cli->logconfess("subcall(): error processing subclient[$i] ($cli->{urls}[$i])") if ($thrs[$i]->error);
+      push(@results, $rv);
+    }
+  }
+  else {
+    ##-- non-threaded call
+    for ($i=0; $i <= $#{$cli->{urls}}; ++$i) {
+      push(@results, scalar($code->($cli,$i,@args)));
+    }
+  }
+  return wantarray ? @results : \@results;
+}
+
+##==============================================================================
 ## dbinfo
 
 ## \%info = $cli->dbinfo()
@@ -173,37 +207,6 @@ sub dbinfo {
   return {dtrs=>\@info, (map {($_=>$cli->{$_})} qw(fudge fork lazy))};
 }
 
-##==============================================================================
-## threaded sub-client calls
-
-##  @results = $cli->subcall(\&CODE, @args)
-## \@results = $cli->subcall(\&CODE, @args)
-##  + calls CODE($cli, $i, @args) in scalar context foreach $i (0..$#{$cli->{urls}})
-sub subcall {
-  my ($cli,$code,@args) = @_;
-  my ($i,@results);
-  if ($HAVE_FORKS && $cli->{fork}) {
-    ##-- threaded call
-    #PDL::no_clone_skip_warning() if (UNIVERSAL::can('PDL','no_clone_skip_warning'));
-    my (@thrs);
-    for ($i=0; $i <= $#{$cli->{urls}}; ++$i) {
-      $cli->vlog($cli->{logThread}, "subcall: spawning thread for sub-client #$i");
-      push(@thrs, threads->create({context=>'scalar'}, $code, $cli, $i, @args));
-    }
-    for ($i=0; $i <= $#{$cli->{urls}}; ++$i) {
-      $cli->vlog($cli->{logThread}, "subcall: joining thread for sub-client #$i");
-      my $rv = $thrs[$i]->join(); ##-- perl 'threads' module (ithreads) segfaults here at 2nd encounter (client #0:ok, client #1:segfault)
-      push(@results, $rv);
-    }
-  }
-  else {
-    ##-- non-threaded call
-    for ($i=0; $i <= $#{$cli->{urls}}; ++$i) {
-      push(@results, scalar($code->($cli,$i,@args)));
-    }
-  }
-  return wantarray ? @results : \@results;
-}
 
 ##==============================================================================
 ## Profiling

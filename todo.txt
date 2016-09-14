@@ -1,6 +1,6 @@
 TODO Wed, 14 Sep 2016 14:02:58 +0200
 + implement
-  - extend(): Unigrams, TDF, DDC
+  - extend(): TDF, DDC
 + document
   - extend(): DiaColloDB, Relation, Relation::*, Client, Client::*
 
