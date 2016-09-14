@@ -93,6 +93,22 @@ sub profile {
 }
 
 ##--------------------------------------------------------------
+## Profiling: extend (pass-2 for multi-clients)
+
+## $mprf = $cli->extend($relation, %opts)
+##  + get an extension-profile for selected items as a DiaColloDB::Profile::Multi object
+##  + %opts: as for DiaColloDB::extend()
+##  + sets $cli->{error} on error
+sub extend {
+  my $cli = shift;
+  $cli->logconfess($cli->{error}="extend(): no db opened!") if (!$cli->opened);
+  delete $cli->{error};
+  $cli->{error} = $cli->{db}{error} if (!defined(my $mp = $cli->{db}->extend(@_)));
+  return $mp;
+}
+
+
+##--------------------------------------------------------------
 ## Profiling: Comparison (diff)
 
 ## $mprf = $cli->compare($relation, %opts)

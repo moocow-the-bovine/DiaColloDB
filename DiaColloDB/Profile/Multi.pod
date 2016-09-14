@@ -53,7 +53,10 @@ DiaColloDB::Profile::Multi - diachronic collocation db, (co-)frequency profile, 
  $prf = $mp->sumover();
  $mp_or_undef = $mp->trim(%opts);
  $mp = $mp->stringify( $obj);
+ 
  @ppairs = $CLASS_OR_OBJECT->align($mp1,$mp2);
+ @mps    = $CLASS_OR_OBJECT->xfill(\@mps,%opts)
+ @xkd    = $CLASS_OR_OBJECT->xkeys(\@mps,%opts)
  
  ##========================================================================
  ## Binary operations
@@ -302,6 +305,25 @@ this lets you compare e.g. a global profile with a sliced one by
 something like L<PDL|PDL>'s "implicit threading".
 
 =back
+
+=item xfill
+
+  @mps = $CLASS_OR_OBJECT->xfill(\@mps, %opts);
+ \@mps = $CLASS_OR_OBJECT->xfill(\@mps, %opts);
+
+Ensure sub-profile labels for all MultiProfiles in C<\@mps> are identical
+by inserting dummy objects for every sub-profile label (slice) represented
+by any MultiProfile object in the argument array \@mps.
+After calling this method,
+any pair of profiles from the array \@mps can safely be passed to L<align()|/align>.
+
+Options %opts:
+
+ class => $class,  ##-- null profile class; default='DiaColloDB::Profile'
+
+=item xkeys
+
+
 
 =back
 

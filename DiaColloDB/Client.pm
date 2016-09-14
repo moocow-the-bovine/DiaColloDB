@@ -61,6 +61,8 @@ sub promote {
 ## undef = $obj->DESTROY
 ##  + destructor calls close() if necessary
 sub DESTROY {
+  $_[0]->trace("DESTROY (tid=", (UNIVERSAL::can('threads','tid') ? threads->tid : '-undef-'), ')');
+  return if (UNIVERSAL::can('threads','tid') && threads->tid!=0); ##-- don't close if not in main thread
   $_[0]->close() if ($_[0]->opened);
 }
 
@@ -166,6 +168,9 @@ sub query {
   if ($rel =~ s{^(?:d(?!dc)(?:iff)?|co?mp(?:are)?)[\-\/\.\:]?}{}) {
     return $cli->compare($rel,@_);
   }
+  elsif ($rel =~ s{^ext(?:end)?[\-\/\.\:]?}{}) {
+    return $cli->extend($rel,@_);
+  }
   return $cli->profile($rel,@_);
 }
 
@@ -214,6 +219,18 @@ sub compare2 {
 sub profile {
   my ($cli,$rel,%opts) = @_;
   $cli->logconfess("profile(): not implemented");
+}
+
+##--------------------------------------------------------------
+## Profiling: extend (pass-2 for multi-clients)
+
+## $mprf = $cli->extend($relation, %opts)
+##  + get an extension-profile for selected items as a DiaColloDB::Profile::Multi object
+##  + %opts: as for DiaColloDB::extend()
+##  + sets $cli->{error} on error
+sub extend {
+  my ($cli,$rel,%opts) = @_;
+  $cli->logconfess("extend(): not implemented");
 }
 
 ##--------------------------------------------------------------

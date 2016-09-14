@@ -8,7 +8,7 @@
 package DiaColloDB::Profile::Multi;
 use DiaColloDB::Profile;
 use DiaColloDB::Persistent;
-use DiaColloDB::Utils qw(:html);
+use DiaColloDB::Utils qw(:html :list);
 use strict;
 
 ##==============================================================================
@@ -258,6 +258,63 @@ sub align {
     return wantarray ? @pairs : \@pairs;
   }
   $that->logconfess("align(): cannot align non-trivial multi-profiles of unequal size (".scalar(@$psa)." != ".scalar(@$psb).")");
+}
+
+## \@mps = $CLASS_OR_OBJECT->xfill(\@mps, %opts)
+##  @mps = $CLASS_OR_OBJECT->xfill(\@mps, %opts)
+##  + ensure sub-profile labels for all MultiProfiles in \@mps are identical, and can be passed to align()
+##  + %opts:
+##     class => $class, ##-- null profile class (for filling)
+sub xfill {
+  my ($that,$mps,%opts) = @_;
+  my $class  = $opts{class} || 'DiaColloDB::Profile';
+
+  ##-- collect pseudo-set of all labels
+  my $labels = sluniq [sort {$a <=> $b || $a cmp $b} map {$_->{label}} map {@{$_->{profiles}}} @$mps];
+
+  my ($mp,%l2p);
+  foreach $mp (@$mps) {
+    %l2p = (map {($_->{label}=>$_)} @{$mp->{profiles}});
+    $l2p{$_} = $class->new(label=>$_, N=>0,f1=>0) foreach (grep {!exists($l2p{$_})} @$labels);
+    @{$mp->{profiles}} = @l2p{@$labels};
+  }
+
+  return wantarray ? @$mps : $mps;
+}
+
+## \@xkeys = $CLASS_OR_OBJECT->xkeys(\@mps)
+##  @xkeys = $CLASS_OR_OBJECT->xkeys(\@mps)
+##  + find missing slice-wise item keys for each profile in \@mps
+##  + argument multi-profiles in \@mps must have identical sub-profile labels (see xfill() method)
+##  + returns a list @xkeys=(\%xkeys1,...,\%xkeysN) for argument @mps=($mp1,...,$mpN),
+##    where $xkeys[$i] is a HASH-ref of the form C<( $label => \@sxkeys, ... )> whose
+##    keys are sub-profile labels (slices) and whose values are ARRAY-refs C<\@sxkeys>
+##    of those item-keys C<$sxkey> present in some sub-profile C<$p> of some argument
+##    C<$mps[$j]> with C<($j != $i)>, C<($p-E<gt>{label} eq $label)>, and missing
+##    from C<$mps[$i]>, i.e. C<(!exists $mps[$i]{f12}{$sxkey})>.
+sub xkeys {
+  my ($that,$mps) = @_;
+
+  ##-- index profiles by slice : %s2prf = ( $slice=>\@sliceProfilesByI )
+  my (%s2prf,$prf,$i);
+  for ($i=0; $i <= $#$mps; ++$i) {
+    foreach $prf (@{$mps->[$i]{profiles}}) {
+      $s2prf{$prf->{label}}[$i] = $prf;
+    }
+  }
+
+  ##-- find "missing" keys by slice
+  my @xkeys = qw();
+  my ($slice,$prfs, $skeys,$pf12);
+  while (($slice,$prfs)=each %s2prf) {
+    $skeys = luniq [map {keys %{$_->{f12}}} grep {defined($_)} @{$prfs}];
+    for ($i=0; $i <= $#$mps; ++$i) {
+      $pf12 = ($prfs->[$i] ? $prfs->[$i]{f12} : undef) // {};
+      $xkeys[$i]{$slice} = [grep {!exists $pf12->{$_}} @$skeys];
+    }
+  }
+
+  return wantarray ? @xkeys : \@xkeys;
 }
 
 

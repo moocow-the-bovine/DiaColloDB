@@ -7,7 +7,8 @@ PENDING
 	  - high-level interface to independent f2 acquisition, e.g. for list-clients
 	  - as yet only implemented in Cofreqs
 	  - TODO: integrate into Client::list (including www-wrapper support)
-  	  - TODO: add implementations for Unigrams and TDF relations
+	  - TODO: integrate into www-wrapper
+  	  - TODO: add extend() implementations for Unigrams and TDF relations
 	* renamed 'mi' score function to more accurate 'milf'
 	* added 'mi1' score function (raw PMI)
 	  - not too useful without pre-filtered corpus: too sensitive to low-frequency outliers

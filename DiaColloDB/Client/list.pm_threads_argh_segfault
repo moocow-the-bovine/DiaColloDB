@@ -11,8 +11,8 @@ use strict;
 our ($HAVE_THREADS);
 BEGIN {
   $HAVE_THREADS = eval <<EOF;
-#use threads;
-use forks;
+use threads;
+use threads::shared;
 1
 EOF
   $@ = '';
@@ -179,17 +179,17 @@ sub subcall {
       $cli->trace("subcall: spawning thread for client #$i");
       push(@thrs, threads->create({context=>'scalar'}, $code, $cli, $i, @args));
 
-#      $cli->trace("subcall: joining thread for client #$i");
-#      my $rv = $thrs[$i]->join(); ##-- segfaults here at 2nd encounter (client #0:ok, client #1:segfault)
-#      $cli->trace("subcall: storing results for client #$i");
-#      push(@results, $rv);
-    }
-    for ($i=0; $i <= $#{$cli->{urls}}; ++$i) {
       $cli->trace("subcall: joining thread for client #$i");
-      my $rv = $thrs[$i]->join();
+      my $rv = $thrs[$i]->join(); ##-- segfaults here at 2nd encounter (client #0:ok, client #1:segfault)
       $cli->trace("subcall: storing results for client #$i");
       push(@results, $rv);
     }
+#    for ($i=0; 0 && $i <= $#{$cli->{clis}}; ++$i) {
+#      $cli->trace("subcall: joining thread for client #$i");
+#      my $rv = $thrs[$i]->join();
+#      push(@results, $rv);
+#      $cli->trace("subcall: joined thread for client #$i");
+#    }
   }
   else {
     ##-- non-threaded call

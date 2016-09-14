@@ -182,7 +182,9 @@ if (1 && $query{query} eq 'debug') {
   #($isDiff,$rel,@query{qw(query bquery slice groupby)}) = (1,'diff-ddc','$p=PAV=2 #has[textClass,/Wiss*/]','$p=PAV=2 #has[textClass,/Bell*/]',0,'l');
   ##
   #($rel,@query{qw(query slice)}) = ('ddc', '$p=ADJA=2 Haus', 0);
-  ($rel,@query{qw(query slice)}) = ('tdf', 'Haus', 0);
+  #($rel,@query{qw(query slice)}) = ('tdf', 'Haus', 0);
+  ##
+  ($rel,@query{qw(query groupby slice date)}) = ('cof','Mann','l,p=ADJA',0,'1914:1915');
 }
 ##--/DEBUG queries
 
