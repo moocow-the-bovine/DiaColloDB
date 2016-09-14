@@ -42,7 +42,7 @@ our @ISA = qw(DiaColloDB::Client);
 ##    threads => $bool,    ##-- use threads if available? (default=0)
 ##    ##
 ##    ##-- guts
-##    #clis => \@clis,     ##-- per-url clients (created & destroyed on-demand as of v0.11.000)
+##    clis => \@clis,     ##-- per-url clients
 ##   )
 
 ## %defaults = $CLASS_OR_OBJ->defaults()
@@ -100,16 +100,7 @@ sub open_list {
   }
   @$cli{qw(url urls)} = ($url,$curls);
 
-  ##-- open sub-clients
-#  my ($c);
-#  my $clis = $cli->{clis} = [];
-#  foreach (@$curls) {
-#    $c = DiaColloDB::Client->new($_,%{$cli->{opts}//{}},@_)
-#      or $cli->logconfess("open(): failed to create client for URL '$_': $!");
-#    push(@$clis, $c);
-  #  }
-
-  ##-- save sub-client options in $cli->{opts}
+  ##-- save sub-client options in $cli->{opts}, open on-demand with $cli->client($i)
   if (@_) {
     my %opts = @_;
     $cli->{opts}{keys %opts} = values %opts;
@@ -128,11 +119,13 @@ sub close {
 }
 
 ## $bool = $cli->opened()
-##  + override checks for non-empty $cli->{urls}
+##  + override ensures all sub-clients are opened
 sub opened {
   return (ref($_[0])
 	  && $_[0]{urls}
-	  && @{$_[0]{urls}}
+	  && $_[0]{clis}
+	  && @{$_[0]{clis}}==@{$_[0]{urls}}
+	  && !grep {!defined($_) || !$_->opened} @{$_[0]{clis}}
 	 );
 }
 
