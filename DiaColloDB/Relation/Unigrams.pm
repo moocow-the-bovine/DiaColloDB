@@ -429,7 +429,10 @@ sub dbinfo {
 
 
 ##==============================================================================
-## Relation API: default: profiling
+## Relation API: default
+
+##--------------------------------------------------------------
+## Relation API: default: profile
 
 ## \%slice2prf = $rel->subprofile1(\@tids,\%opts)
 ##  + get slice-wise joint co-frequency profile(s) for @tids (db must be opened; f1 and f12 only)
@@ -513,9 +516,8 @@ sub subextend {
   return DiaColloDB::Profile::Multi->new();
 }
 
-
-##==============================================================================
-## Relation API: default: query info
+##--------------------------------------------------------------
+## Relation API: default: qinfo
 
 ## \%qinfo = $rel->qinfo($coldb, %opts)
 ##  + get query-info hash for profile administrivia (ddc hit links)

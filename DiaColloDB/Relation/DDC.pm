@@ -5,7 +5,7 @@
 
 package DiaColloDB::Relation::DDC;
 use DiaColloDB::Relation;
-use DiaColloDB::Utils qw(:math);
+use DiaColloDB::Utils qw(:math :list);
 use DDC::Client::Distributed;
 use Fcntl qw(:seek);
 use strict;
@@ -126,7 +126,7 @@ sub dbinfo {
 sub profile {
   my ($that,$coldb,%opts) = @_;
   my $rel = $that->fromDB($coldb,%opts)
-    or $that->logconfess("profile(): initialization failed (did you forget to set the 'ddcServer' option?)");
+    or $that->logconfess($coldb->{error}="profile(): initialization failed (did you forget to set the 'ddcServer' option?)");
 
   ##-- get count-query, count-by expressions, titles
   my $qcount = $rel->countQuery($coldb,\%opts);
@@ -239,7 +239,7 @@ sub profile {
 	      };
   foreach (values %$qinfo) { utf8::decode($_) if (!utf8::is_utf8($_)); }
 
-  ##-- finalize collect multi-profile & trim
+  ##-- finalize: collect multi-profile & trim
   $rel->vlog($coldb->{logProfile}, "profile(): collect and trim");
   my $mp = DiaColloDB::Profile::Multi->new(
 					   profiles => [@y2prf{sort {$a<=>$b} keys %y2prf}],
@@ -249,6 +249,111 @@ sub profile {
   $mp->trim(%opts, empty=>!$opts{fill});
 
   ##-- return
+  return $mp;
+}
+
+##--------------------------------------------------------------
+## Relation API: extend
+
+## $mprf = $rel->extend($coldb, %opts)
+## + get f2 frequencies profile for selected items as a DiaColloDB::Profile::Multi object
+## + %opts: as for profile(), also
+sub extend {
+  my ($that,$coldb,%opts) = @_;
+  my $rel = $that->fromDB($coldb,%opts)
+    or $that->logconfess($coldb->{error}="extend(): initialization failed (did you forget to set the 'ddcServer' option?)");
+
+  ##-- common variables
+  $opts{coldb}   = $coldb;
+  my $opts       = \%opts;
+  my $logProfile = $coldb->{logProfile};
+
+  ##-- sanity check(s)
+  my ($slice2keys);
+  if (!($slice2keys=$opts{slice2keys})) {
+    $rel->logwarn($coldb->{error}="extend(): no 'slice2keys' parameter specified!");
+    return undef;
+  }
+  elsif (!UNIVERSAL::isa($slice2keys,'HASH')) {
+    $rel->logwarn($coldb->{error}="extend(): failed to parse 'slice2keys' parameter");
+    return undef;
+  }
+
+  ##-- get "real" count-query, count-by expressions, titles, fcoef, ...
+  my $qcount = $rel->countQuery($coldb,\%opts);
+
+  ##-- parse slice2keys into HASH-refs: ($slice => {$key=>[split(/\t/,$key)], ... }, ...)
+  $slice2keys->{$_} = {map {($_=>[split(/\t/,$_)])} @{$slice2keys->{$_}}} foreach (keys %$slice2keys);
+  my $items         = {map { %$_ } values %$slice2keys};
+
+  ##-- create "extend" query
+  my $gbexprs   = $opts{gbexprs}->getExprs;
+  my $gbfilters = $opts{gbfilters};
+  my $qxdtr     = undef;
+  my @qxfilt    = qw();
+  my ($gbxi,$gbai,$expr,$qa,$fa);
+  foreach $gbxi (1..$#$gbexprs) {
+    $expr = $gbexprs->[$gbxi];
+    $gbai = $gbxi-1;
+    if (UNIVERSAL::isa($expr,'DDC::Any::CountKeyExprConstant') || UNIVERSAL::isa($_,'DDC::Any::CQCountKeyExprDate')) {
+      ; ##-- skip these
+    }
+    if (UNIVERSAL::isa($expr,'DDC::Any::CQCountKeyExprToken')) {
+      ##-- token expression -> literal set
+      $qa = DDC::Any::CQTokSet->new;
+      $qa->setIndexName($expr->getIndexName);
+      $qa->setValues([map {$_->[$gbai]//''} values %$items]);
+      $qxdtr = defined($qxdtr) ? DDC::Any::CQWith->new($qxdtr,$qa) : $qa;
+    }
+    elsif (UNIVERSAL::isa($expr,'DDC::Any::CQCountKeyExprBibl')) {
+      ##-- bibl expression -> literal set
+      $fa = DDC::Any::CQFHasFieldSet->new($expr->getLabel,[map {$_->[$gbai]//''} values %$items]);
+      push(@qxfilt, $fa);
+    }
+    elsif (UNIVERSAL::isa($_, 'DDC::Any::CQCountKeyExprRegex') && UNIVERSAL::isa($_->getSrc, 'DDC::Any::CQCountKeyExprBibl')) {
+      ##-- regex transformation: ignore
+      #$fa = DDC::Any::CQFHasFieldRegex->new($expr->getLabel);
+      #$fa->setRegex(join('|', map {"\\Q$_->[$gbai]\\E"} values %$items));
+      #push(@qxfilt, $fa);
+      ;
+    }
+    else {
+      $coldb->warn("can't generate extend query-template for groupby expression of type ", ref($expr)//'(undefined)', " \`", $expr->toString, "'");
+    }
+  }
+  $coldb->logconfess($coldb->{error}="no query restrictions found for 'extend' query") if (!$qxdtr);
+  $qxdtr->setMatchId(2);
+  $qxdtr->setOptions($qcount->getDtr->getOptions->clone);
+
+  ##-- cleanup coldb parser (so we're using "real" refcounts)
+  $coldb->qcompiler->CleanParser();
+
+  my $qextend = $qcount->clone;
+  $qextend->setDtr($qxdtr);
+
+  ##-- get slice-wise f2
+  my $xresult = $rel->ddcQuery($coldb, $qextend, limit=>$opts{limit}, logas=>'f2_extend', logTrunc=>-1);
+  my $fcoef   = $opts{fcoef} || 1;
+  my (%y2prf,$y,$prf,$key);
+  foreach (@{$xresult->{counts_}}) {
+    $y   = ($_->[1]//'0');
+    $key = join("\t", @$_[2..$#$_]);
+    next if (!exists $slice2keys->{$y}{$key});
+    $prf = ($y2prf{$y} //= DiaColloDB::Profile->new(label=>$y,N=>0,f1=>0));
+    $prf->{f2}{$key} += $_->[0]*$fcoef;
+    $prf->{f12}{$key} = 0;
+  }
+
+  ##-- honor "fill" option
+  if ($opts{fill}) {
+    for ($y=$opts{dslo}; $y <= $opts{dshi}; $y += ($opts{slice}||1)) {
+      next if (exists($y2prf{$y}));
+      $prf = $y2prf{$y} = DiaColloDB::Profile->new(label=>$y,N=>0,f1=>0);
+    }
+  }
+
+  ##-- finalize: collect multi-profile
+  my $mp = DiaColloDB::Profile::Multi->new(profiles => [@y2prf{sort {$a<=>$b || $a cmp $b} keys %y2prf}]);
   return $mp;
 }
 
@@ -287,7 +392,7 @@ sub ddcClient {
   }
 
   ##-- sanity check(s)
-  $rel->logconfess("ddcClient(): no 'ddcServer' key defined") if (!$rel->{ddcServer});
+  $rel->logconfess($opts{coldb}{error}="ddcClient(): no 'ddcServer' key defined") if (!$rel->{ddcServer});
 
   ##-- get server
   my ($server,$port) = @$rel{qw(ddcServer ddcPort)};
@@ -309,18 +414,21 @@ sub ddcClient {
 ##     logas => $prefix,   ##-- log prefix (default: 'ddcQuery()')
 ##     loglevel => $level, ##-- log level (default=$coldb->{logProfile})
 ##     limit => $limit,    ##-- set result client limit (default: current client limit, or -1 for limit=>undef)
+##     logTrunc => $len,   ##-- truncate long query strings to max $len characters (default=-1: full string)
 sub ddcQuery {
   my ($rel,$coldb,$query,%opts) = @_;
   my $logas = $opts{logas} // 'ddcQuery';
   my $level = exists($opts{loglevel}) ? $opts{loglevel} : $coldb->{logProfile};
+  my $trunc = $opts{logTrunc} // -1;
 
   my $qstr = ref($query) ? $query->toStringFull : $query;
   my $cli  = $rel->ddcClient();
   $cli->{limit} = $opts{limit}//-1 if (exists($opts{limit}));
 
-  $rel->vlog($level, "$logas: query[server=$rel->{ddcServer},limit=$cli->{limit}]: $qstr");
+  $rel->vlog($level, "$logas: query[server=$rel->{ddcServer},limit=$cli->{limit}]: ",
+	     ($trunc < 0 || length($qstr) <= $trunc ? $qstr : (substr($qstr,0,$trunc)."...")));
   $cli->open()
-    or $rel->logconfess("$logas: failed to connect to DDC server on $rel->{ddcServer}: $!")
+    or $rel->logconfess($coldb->{error}="$logas: failed to connect to DDC server on $rel->{ddcServer}: $!")
     if (!defined($cli->{sock}));
   my $result = $cli->queryJson($qstr);
 
@@ -368,6 +476,9 @@ sub fcoef {
 ## + %opts: as for DiaColloDB::Relation::DDC::profile()
 ## + sets following keys in %opts:
 ##   (
+##    gbexprs => $gbexprs,      ##-- groupby expressions (DDC::Any::CQCountKeyExprList)
+##    gbrestr => $gbrestr,      ##-- groupby item2 restrictions (DDC::Any::CQWith conjunction of token expressions)
+##    gbfilters => \@gbfilters, ##-- groupby filter restrictions (ARRAY-ref of DDC::Any::CQFilter)
 ##    limit  => $limit,		##-- hit return limit for ddc query
 ##    dslo   => $dslo,          ##-- minimum date-slice, from @opts{qw(date slice fill)}
 ##    dshi   => $dshi,          ##-- maximum date-slice, from @opts{qw(date slice fill)}
@@ -380,7 +491,7 @@ sub countQuery {
   my ($rel,$coldb,$opts) = @_;
 
   ##-- groupby clause: user request
-  my ($gbexprs,$gbrestr,$gbfilters) = $coldb->parseGroupBy($opts->{groupby}, %$opts);
+  my ($gbexprs,$gbrestr,$gbfilters) = @$opts{qw(gbexprs gbrestr gbfilters)} = $coldb->parseGroupBy($opts->{groupby}, %$opts);
 
   ##-- query hacks: override options
   my $limit  = ($opts->{query} =~ s/\s*\#limit\s*[\s\[]\s*([\+\-]?\d+)\s*\]?//i ? $1 : ($opts->{limit}//$rel->{ddcLimit})) || -1;
@@ -400,7 +511,7 @@ sub countQuery {
     push(@qnodes1,$_) if ($_->getMatchId<=1);
     push(@qnodes2,$_) if ($_->getMatchId==2);
   }
-  $rel->logconfess("no primary target-nodes found in daughter query '", $qdtr->toString, "': use match-id =1 to specify primary target(s)")
+  $rel->logconfess($coldb->{error}="no primary target-nodes found in daughter query '", $qdtr->toString, "': use match-id =1 to specify primary target(s)")
     if (!@qnodes1 && !@qnodes2);
   $_->setMatchId(1) foreach (@qnodes1);
 
@@ -466,7 +577,7 @@ sub countQuery {
     }
   }
 
-  ##-- setup query tempalte
+  ##-- setup query template
   my ($qtconds,$qtcond,@qtfilters);
   my $xi=0;
   foreach (@{$gbexprs->getExprs}) {

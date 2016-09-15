@@ -242,6 +242,7 @@ sub profile {
     ##-- fill-out multi-profiles (ensure compatible slice-partitioning & find "missing" keys)
     DiaColloDB::Profile::Multi->xfill(\@mps);
     my $xkeys = DiaColloDB::Profile::Multi->xkeys(\@mps);
+    #$cli->trace("extend(): xkeys=", DiaColloDB::Utils::saveJsonString($xkeys, utf8=>0));
 
     ##-- extend multi-profiles with "missing" keys
     my @mpx = $cli->subcall(sub {

@@ -232,14 +232,15 @@ sub extend {
   my $logProfile = $coldb->{logProfile};
 
   ##-- sanity check(s)
+   ##-- sanity check(s)
   if (!$opts{slice2keys}) {
-    $reldb->logwarn($coldb->{error}="extend(): no 'slice2keys' parameter specified!");
-    return undef;
-  }
+     $reldb->logwarn($coldb->{error}="extend(): no 'slice2keys' parameter specified!");
+     return undef;
+   }
   elsif (!UNIVERSAL::isa($opts{slice2keys},'HASH')) {
-    $reldb->logwarn($coldb->{error}="extend(): failed to parse 'slice2keys' parameter");
-    return undef;
-  }
+     $reldb->logwarn($coldb->{error}="extend(): failed to parse 'slice2keys' parameter");
+     return undef;
+   }
 
   ##-- subprofile2() requirements
   my $groupby= $opts{groupby} = $coldb->groupby($opts{groupby});
@@ -264,7 +265,6 @@ sub extend {
 
   return $mp;
 }
-
 
 ##--------------------------------------------------------------
 ## Relation API: comparison (diff)
@@ -342,7 +342,10 @@ sub diff {
 
 
 ##==============================================================================
-## Relation API: default: subprofile1()
+## Relation API: default
+
+##--------------------------------------------------------------
+## Relation API: default: subprofile1
 
 ## \%slice2prf = $rel->subprofile1(\@tids,\%opts)
 ##  + get slice-wise joint frequency profile(s) for \@tids (db must be opened)
@@ -355,6 +358,9 @@ sub subprofile1 {
   $rel->logconfess($opts->{coldb}{error}="subprofile(): abstract method called");
 }
 
+##--------------------------------------------------------------
+## Relation API: default: subprofile2
+
 ## \%slice2prf = $rel->subprofile2(\%slice2prf,\%opts)
 ##  + populate f2 frequencies for profiles in \%slice2prf
 ##  + %opts: as for subprofile1()
@@ -363,6 +369,9 @@ sub subprofile2 {
   #my ($rel,$slice2prf,$opts) = @_;
   return $_[1];
 }
+
+##--------------------------------------------------------------
+## Relation API: default: subextend
 
 ## \%slice2prf = $rel->subextend(\%slice2prf,\%opts)
 ##  + populate f2 frequencies for profiles in \%slice2prf
@@ -373,8 +382,8 @@ sub subextend {
   $rel->logconfess($opts->{coldb}{error}="subextend() method not supported");
 }
 
-##==============================================================================
-## Relation API: default: qinfo()
+##--------------------------------------------------------------
+## Relation API: default: qinfo
 
 ## \%qinfo = $rel->qinfo($coldb, %opts)
 ##  + get query-info hash for profile administrivia (ddc hit links)

@@ -186,7 +186,10 @@ if (1 && $query{query} eq 'debug') {
   ##
   #($rel,@query{qw(query groupby slice date)}) = ('cof','Mann','l,p=ADJA',0,'1914:1915');
   #($rel,@query{qw(query groupby slice date)}) = ('ug','/mann$/i','l,p=NN',0,'1914:1915');
-  ($rel,@query{qw(query groupby slice date)}) = ('tdf','Mann','l,p=ADJA',0,'1914:1915');
+  #($rel,@query{qw(query groupby slice date)}) = ('tdf','Mann','l,p=ADJA',0,'1914:1915'); ##-- TODO
+  #
+  #($rel,@query{qw(query groupby slice)}) = ('ddc','"$p=ADJA=2 Mann"','l,p',0);
+  ($rel,@query{qw(query groupby slice)}) = ('ddc','"$p=ADJA=2 Kaffee"','l',0);
 }
 ##--/DEBUG queries
 
