@@ -257,7 +257,8 @@ sub profile {
 
 ## $mprf = $rel->extend($coldb, %opts)
 ## + get f2 frequencies profile for selected items as a DiaColloDB::Profile::Multi object
-## + %opts: as for profile(), also
+## + requires 'query' option for correct estimation of 'fcoef'
+## + %opts: as for profile()
 sub extend {
   my ($that,$coldb,%opts) = @_;
   my $rel = $that->fromDB($coldb,%opts)

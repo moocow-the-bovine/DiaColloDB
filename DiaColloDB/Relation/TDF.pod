@@ -54,34 +54,27 @@ DiaColloDB::Relation::TDF - collocation db, profiling relation: (term x document
  $bool = $rel->opened();
  
  ##========================================================================
- ## Relation API: create
+ ## Relation API: creation
  
  $rel = $CLASS_OR_OBJECT->create($coldb,$tokdat_file,%opts);
- 
- ##========================================================================
- ## Relation API: union
- 
  $rel = CLASS_OR_OBJECT->union($coldb, \@dbargs, %opts);
  
  ##========================================================================
- ## Relation API: dbinfo
+ ## Relation API: info
  
  \%info = $rel->dbinfo($coldb);
  
  ##========================================================================
- ## Relation API: profile
+ ## Relation API: profiling
  
- $mprf = $rel->profile($coldb, %opts);
- 
- ##========================================================================
- ## Relation API: comparison (diff)
- 
+ $mprf   = $rel->profile($coldb, %opts);
+ $mprf   = $rel->extend($coldb, %opts);
  $mpdiff = $rel->compare($coldb, %opts);
  
  ##========================================================================
  ## Profile: Utils: PDL-based profiling
  
- \@pprfs = $rel->vprofile($coldb, \%opts);
+ $mprf = $rel->vprofile($coldb, \%opts);
  
  ##========================================================================
  ## Profile: Utils: domain sizes
@@ -338,10 +331,10 @@ Really just checks for C<$rel-E<gt>{tdm}>.
 =cut
 
 ##----------------------------------------------------------------
-## DESCRIPTION: DiaColloDB::Relation::TDF: Relation API: create
+## DESCRIPTION: DiaColloDB::Relation::TDF: Relation API: creation
 =pod
 
-=head2 Relation API: create
+=head2 Relation API: creation
 
 =over 4
 
@@ -377,18 +370,6 @@ wdmfile=E<gt>$wdmfile option
  reusedir=>$bool,     ##-- for union(): set to true if we're running in a "clean" directory
  logas   =>$logas,    ##-- log label (default: 'create()')
 
-=back
-
-=cut
-
-##----------------------------------------------------------------
-## DESCRIPTION: DiaColloDB::Relation::TDF: Relation API: union
-=pod
-
-=head2 Relation API: union
-
-=over 4
-
 =item union
 
  $rel = CLASS_OR_OBJECT->union($coldb, \@dbargs, %opts);
@@ -410,7 +391,7 @@ just creates temp-files F<utdm0.dat> and F<udocmeta.tmp> and then calls create()
 ## DESCRIPTION: DiaColloDB::Relation::TDF: Relation API: dbinfo
 =pod
 
-=head2 Relation API: dbinfo
+=head2 Relation API: info
 
 =over 4
 
@@ -425,7 +406,7 @@ embedded info-hash for $coldb-E<gt>dbinfo()
 =cut
 
 ##----------------------------------------------------------------
-## DESCRIPTION: DiaColloDB::Relation::TDF: Relation API: profile
+## DESCRIPTION: DiaColloDB::Relation::TDF: Relation API: profiling
 =pod
 
 =head2 Relation API: profiling
@@ -441,17 +422,6 @@ Get a relation profile for selected items as a L<DiaColloDB::Profile::Multi|DiaC
 Really just a wrapper for
 the L<vprofile()|/vprofile> method.
 
-=back
-
-=cut
-
-##----------------------------------------------------------------
-## DESCRIPTION: DiaColloDB::Relation::TDF: Relation API: comparison (diff)
-=pod
-
-=head2 Relation API: comparison (diff)
-
-=over 4
 
 =item compare
 

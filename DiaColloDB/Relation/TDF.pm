@@ -259,7 +259,10 @@ sub opened {
 }
 
 ##==============================================================================
-## Relation API: create
+## Relation API: creation
+
+##--------------------------------------------------------------
+## Relation API: creation: create
 
 ## $vs = $CLASS_OR_OBJECT->create($coldb,$tokdat_file,%opts)
 ##  + populates current database for $coldb
@@ -715,11 +718,8 @@ sub create {
   return $vs;
 }
 
-##----------------------------------------------------------------------
-## create: utils
-
-##==============================================================================
-## Relation API: union
+##--------------------------------------------------------------
+## Relation API: creation: union
 
 ## $vs = CLASS_OR_OBJECT->union($coldb, \@dbargs, %opts)
 ##  + merge multiple tdf indices into new object
@@ -934,6 +934,18 @@ sub profile {
 }
 
 ##--------------------------------------------------------------
+## Relation API: extend
+
+## $mprf = $rel->extend($coldb, %opts)
+## + get f2 frequencies profile for selected items as a DiaColloDB::Profile::Multi object
+## + requires 'query' option for correct estimation of 'fcoef'
+## + %opts: as for profile()
+sub extend {
+  my ($vs,$coldb,%opts) = @_;
+  return $vs->vextend($coldb,\%opts);
+}
+
+##--------------------------------------------------------------
 ## Relation API: comparison (diff)
 
 ## $mpdiff = $rel->compare($coldb, %opts)
@@ -948,8 +960,11 @@ sub compare {
 ##==============================================================================
 ## Profile: Utils: PDL-based profiling
 
-## \@pprfs = $vs->vprofile($coldb, \%opts)
-## + get a relation profile for selected items as an ARRAY of DiaColloDB::Profile objects
+##--------------------------------------------------------------
+## Profile: Utils: PDL-based profiling: vprofile
+
+## $mprf = $vs->vprofile($coldb, \%opts)
+## + guts for profile()
 ## + %opts: as for DiaColloDB::Relation::profile()
 ## + new/altered %opts:
 ##   (
@@ -971,7 +986,7 @@ sub vprofile {
   $vs->{attrs} = $coldb->{attrs} if (!@{$vs->{attrs}//[]});
 
   ##-- parse query
-  my $groupby = $opts->{groupby} = $vs->groupby($coldb, $opts->{groupby}, relax=>0); ##-- TODO: allow metadata group-keys
+  my $groupby = $opts->{groupby} = $vs->groupby($coldb, $opts->{groupby}, relax=>0);
   ##
   my $q = $opts->{qobj} // $coldb->parseQuery($opts->{query}, logas=>'query', default=>'', ddcmode=>-1);
   my ($qo);
@@ -1030,7 +1045,7 @@ sub vprofile {
     my $di      = $q_c2d->slice("(1),")->rldseq($q_c2d->slice("(0),")); #->qsort;
 
     ##-- sanity check
-    #$vs->logconfess("vprofile(): unsorted doc-list when decoding cat conditions") ##-- sanity check
+    #$vs->logconfess($coldb->{error}="vprofile(): unsorted doc-list when decoding cat conditions") ##-- sanity check
     #  if ($di->nelem > 1 && !all($di->slice("0:-2") <= $di->slice("1:-1")));
 
     ##-- find matching nz-indices WITH ptr(1): pxindex1d+indadd
@@ -1081,7 +1096,7 @@ sub vprofile {
     $vs->vlog($logDebug, "got ", scalar(keys %$f2p), " independent item2 tuple-frequencies via tym");
   }
   elsif ($groupby->{how} eq 'c') {
-    #-- evaluate query: groupby doc-attrs
+    ##-- evaluate query: groupby doc-attrs
     $vs->vlog($logLocal, "vprofile(): evaluating query (groupby metadata-attributes only)");
     my $cofsub = PDL->can('diacollo_cof_c_'.$vs->itype) || \&PDL::diacollo_cof_c_long;
     $cofsub->($tdm->_whichND, @$vs{qw(ptr1 pix1)}, $tdm->_vals,
@@ -1113,7 +1128,7 @@ sub vprofile {
     $vs->vlog($logDebug, "got ", scalar(keys %$f2p), " independent item2 tuple-frequencies via cf");
   }
   elsif ($groupby->{how} eq 'tc') {
-    #-- evaluate query: groupby (term+doc)-attrs
+    ##-- evaluate query: groupby (term+doc)-attrs
     $vs->vlog($logLocal, "vprofile(): evaluating query (groupby term- and metadata-attributes)");
     my $cofsub = PDL->can('diacollo_cof_tc_'.$vs->itype) || \&PDL::diacollo_cof_tc_long;
     $cofsub->($tdm->_whichND, @$vs{qw(ptr1 pix1)}, $tdm->_vals,
@@ -1136,7 +1151,7 @@ sub vprofile {
     $vs->vlog($logDebug, "got ", scalar(keys %$f2p), " independent item2 tuple-frequencies via tdm");
   }
   else {
-    $vs->logconfess("unknown groupby mode '$groupby->{how}'");
+    $vs->logconfess($coldb->{error}="vprofile(): unknown groupby mode '$groupby->{how}'");
   }
 
   ##-- convert packed to native-style profiles (by date-slice)
@@ -1174,6 +1189,149 @@ sub vprofile {
   $mp->trim(%$opts, empty=>!$opts->{fill});
   $mp->stringify($groupby->{g2s}) if ($opts->{strings});
 
+  return $mp;
+}
+
+##--------------------------------------------------------------
+## Profile: Utils: PDL-based profiling: vextend
+
+## \@pprfs = $vs->vextend($coldb, \%opts)
+## + guts for extend()
+## + %opts: as for profile(), also
+## + new/altered %opts:
+##   (
+##    slice2keys => \%slice2keys,  ##-- f2 items to be extended
+##   )
+sub vextend {
+  my ($vs,$coldb,$opts) = @_;
+
+  ##-- common variables
+  my $logLocal = $vs->{logvprofile};
+  my $logDebug = undef; #'debug';
+  $opts->{coldb} //= $coldb;
+
+  ##-- sanity checks / fixes
+  $vs->{attrs} = $coldb->{attrs} if (!@{$vs->{attrs}//[]});
+  my ($slice2keys);
+  if (!($slice2keys=$opts->{slice2keys})) {
+    $vs->logwarn($coldb->{error}="extend(): no 'slice2keys' parameter specified!");
+    return undef;
+  }
+  elsif (!UNIVERSAL::isa($slice2keys,'HASH')) {
+    $vs->logwarn($coldb->{error}="extend(): failed to parse 'slice2keys' parameter");
+    return undef;
+  }
+
+  ##-- parse groupby
+  my $groupby = $opts->{groupby} = $vs->groupby($coldb, $opts->{groupby}, relax=>0);
+  #my $q       = $opts->{qobj} // $coldb->parseQuery($opts->{query}, logas=>'query', default=>'', ddcmode=>-1);
+  #my ($qo);
+  #$q->setOptions($qo=DDC::Any::CQueryOptions->new) if (!defined($qo=$q->getOptions));
+  ##$qo->setFilters([@{$qo->getFilters}, @$gbfilters]) if (@$gbfilters);
+  #$opts->{qobj} //= $q;
+
+  ##-- parse date-request
+  my ($dfilter,$dslo,$dshi,$dlo,$dhi) = $coldb->parseDateRequest(@$opts{qw(date slice fill)},1);
+  $dlo //= $coldb->{xdmin};
+  $dhi //= $coldb->{xdmax};
+  @$opts{qw(dslo dshi dlo dhi)} = ($dslo,$dshi,$dlo,$dhi);
+
+  ##-- create dummy %$f12p
+  my $f12p = {};
+  my ($g2s,$s2g) = @$groupby{qw(g2s s2g)};
+  my ($pack_ix,$pack_gkey) = ($vs->ipack,$groupby->{gpack});
+  my ($y,$ypack,$ykeys);
+  while (($y,$ykeys)=each %$slice2keys) {
+    $ypack = pack($pack_ix,$y);
+    $f12p->{$s2g->($_).$ypack} = 0 foreach (@$ykeys);
+  }
+
+  ##-- create \%f2p
+  my $tdm     = $vs->{tdm};
+  my $sliceby = $opts->{slice} || 0;
+  my ($f2p);
+  if ($groupby->{how} eq 't') {
+    ##-- extend query: groupby term-attrs
+    $vs->vlog($logLocal, "vextend(): evaluating query (groupby term-attributes only)");
+
+    #$vs->vlog($logDebug, "vprofile(): evaluating query: f2p");
+    my $gkeys2  = pdl($vs->itype, map {unpack($pack_gkey,$_)} keys %$f12p);
+    $gkeys2->reshape(scalar(@{$groupby->{attrs}}), $gkeys2->nelem/scalar(@{$groupby->{attrs}}));
+    my $gti2    = undef;
+    foreach (0..($gkeys2->dim(0)-1)) {
+      #$vs->vlog($logLocal, "vprofile(): evaluating query: f2p: terms[$_]");
+      my $gtia = $vs->termIds($groupby->{attrs}[$_], $gkeys2->slice("($_),")->uniq);
+      $gti2    = _intersect_p($gti2,$gtia);
+    }
+
+    #$vs->vlog($logLocal, "vprofile(): evaluating query: f2p: guts");
+    my $tym = $vs->{tym};
+    my $gfsub = PDL->can('diacollo_tym_gf_t_'.$vs->itype) || \&PDL::diacollo_tym_gf_t_long;
+    $gfsub->($tym->_whichND, $tym->_vals,
+	     $vs->{tvals},
+	     $sliceby, $dlo,$dhi,
+	     ($gti2//null->convert($vs->itype)),
+	     $groupby->{gapos},
+	     $f12p, $f2p={});
+    $vs->vlog($logDebug, "got ", scalar(keys %$f2p), " independent item2 tuple-frequencies via tym");
+  }
+  elsif ($groupby->{how} eq 'c') {
+    ##-- extend query: groupby doc-attrs
+    $vs->vlog($logLocal, "vextend(): evaluating query (groupby metadata-attributes only)");
+
+    #$vs->vlog($logDebug, "vprofile(): evaluating query: f2p");
+    my $gkeys2  = pdl($vs->itype, map {unpack($pack_gkey,$_)} keys %$f12p);
+    $gkeys2->reshape(scalar(@{$groupby->{attrs}}), $gkeys2->nelem/scalar(@{$groupby->{attrs}}));
+    my $gci2    = undef;
+    foreach (0..($gkeys2->dim(0)-1)) {
+      my $gcia = $vs->catIds($groupby->{areqs}[$_][2]{aname}, $gkeys2->slice("($_),")->uniq);
+      $gci2    = _intersect_p($gci2,$gcia);
+    }
+
+    my $gfsub = PDL->can('diacollo_gf_c_'.$vs->itype) || \&PDL::diacollo_gf_c_long;
+    $gfsub->(@$vs{qw(cf mvals c2date)},
+	     $sliceby,
+	     ($gci2//null->convert($vs->itype)),
+	     $groupby->{gapos},
+	     $f12p, $f2p={});
+    $vs->vlog($logDebug, "got ", scalar(keys %$f2p), " independent item2 tuple-frequencies via cf");
+  }
+  elsif ($groupby->{how} eq 'tc') {
+    ##-- extend query: groupby (term+doc)-attrs
+    $vs->vlog($logLocal, "vextend(): evaluating query (groupby term- and metadata-attributes)");
+
+    #$vs->vlog($logDebug, "vprofile(): evaluating query: f2p (scan)");
+    my $gfsub = PDL->can('diacollo_gf_tc_'.$vs->itype) || \&PDL::diacollo_gf_tc_long;
+    $gfsub->($tdm->_whichND, $tdm->_vals,
+	      @$vs{qw(tvals mvals d2c c2date)},
+	      $sliceby, $dlo,$dhi,
+	      @$groupby{qw(gatype gapos)},
+	      $f12p, $f2p={});
+    $vs->vlog($logDebug, "got ", scalar(keys %$f2p), " independent item2 tuple-frequencies via tdm");
+  }
+  else {
+    $vs->logconfess($coldb->{error}="vextend(): unknown groupby mode '$groupby->{how}'");
+  }
+
+  ##-- convert packed to native-style profiles (by date-slice), stringify
+  my %dprfs  = map {($_=>DiaColloDB::Profile->new(label=>$_, N=>0, f1=>0))} keys %$slice2keys;
+  $vs->vlog($logDebug, "vextend(): partionining profile data into ", scalar(keys %dprfs), " slice(s)");
+  my $len_gkey = packsize($pack_gkey);
+  (my $pack_ds = '@'.$len_gkey.$pack_ix) =~ s/\*$//;
+  my ($key2,$gkey,$f2,$ds,$prf);
+  while (($key2,$f2) = each %$f2p) {
+    $ds   = unpack($pack_ds, $key2);
+    $prf  = $dprfs{$ds};
+    $gkey = $g2s->( substr($key2, 0, $len_gkey) );
+    $prf->{f12}{$gkey} = 0;
+    $prf->{f2}{$gkey}  = $f2;
+  }
+
+  ##-- DEBUG
+  #$vs->debug("vextend(): dprfs=", DiaColloDB::Utils::saveJsonString(\%dprfs));
+
+  ##-- collect & return
+  my $mp = DiaColloDB::Profile::Multi->new(profiles=>[@dprfs{sort {$a<=>$b || $a cmp $b} keys %dprfs}]);
   return $mp;
 }
 
@@ -1347,7 +1505,8 @@ sub catSubset {
 ##     ghavingt => $ghavingt, ##-- pdl ($NHavingTOk) : term indices $ti s.t. $ti matches groupby "having" requests, or undef
 ##     ghavingc => $ghavingc, ##-- pdl ($NHavingCOk) : cat  indices $ci s.t. $ci matches groupby "having" requests, or undef
 ##     #gaggr   => \&gaggr,   ##-- code: ($gkeys,$gdist) = gaggr($dist) : where $dist is diced to $ghaving on dim(1) and $gkeys is sorted
-##     g2s     => \&g2s,    ##-- stringification object suitable for DiaColloDB::Profile::stringify() [CODE,enum, or undef]
+##     g2s     => \&g2s,    ##-- stringification object CODE-ref suitable for DiaColloDB::Profile::stringify()
+##     s2g     => \&s2g,    ##-- inverse-stringification CODE-ref suitable for DiaColloDB::Profile::stringify()
 ##     gpack   => $packas,  ##-- pack template for groupby-keys
 ##     ##
 ##     ##-- NEW: pdl utilties
@@ -1428,9 +1587,14 @@ sub groupby {
       @gvals = unpack($gpack,$_[0]);
       return join("\t", map {$genums[$_]->i2s($gvals[$_])//''} (0..$#gvals));
     };
+    $gb->{s2g} = sub {
+      @gvals = split(/\t/,$_);
+      return pack($gpack, map {$genums[$_]->s2i($gvals[$_]//'')//0} (0..$#genums));
+    };
   } else {
     ##-- pseudo-stringify
     $gb->{g2s} = sub { return join("\t", unpack($gpack,$_[0])); };
+    $gb->{s2g} = sub { return pack($gpack, split(/\t/,$_[0])); };
   }
 
 

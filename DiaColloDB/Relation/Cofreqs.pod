@@ -63,23 +63,15 @@ DiaColloDB::Relation::Cofreqs - diachronic collocation db, profiling relation: n
  $bool = $cof->saveTextFh($fh,%opts);
  
  ##========================================================================
- ## Relation API: create
+ ## Relation API: creation
  
- $rel = $CLASS_OR_OBJECT->create($coldb,$tokdat_file,%opts);
- 
- ##========================================================================
- ## Relation API: union
- 
+ $cof = $CLASS_OR_OBJECT->create($coldb,$tokdat_file,%opts);
  $cof = CLASS_OR_OBJECT->union($coldb, \@pairs, %opts);
  
  ##========================================================================
- ## Relation API: default: profiling
+ ## Relation API: default
  
  $prf = $cof->subprofile(\@xids, %opts);
- 
- ##========================================================================
- ## Relation API: default: query info
- 
  \%qinfo = $rel->qinfo($coldb, %opts);
  
 

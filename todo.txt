@@ -1,6 +1,7 @@
 TODO Wed, 14 Sep 2016 14:02:58 +0200
 + implement
-  - extend(): TDF, DDC
+  - extend(): fix for DDC (max ddc-qstr len = DDC_STATIC_BUFLEN = 4096)
+  - lazy union() ?
 + document
   - extend(): DiaColloDB, Relation, Relation::*, Client, Client::*
 

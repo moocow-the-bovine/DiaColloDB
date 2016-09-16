@@ -28,23 +28,16 @@ DiaColloDB::Relation - diachronic collocation db, relation API (abstract & utili
  $rel = $CLASS_OR_OBJECT->new(%args);
  
  ##========================================================================
- ## Relation API: create
+ ## Relation API: creation
  
  $rel = $CLASS_OR_OBJECT->create($coldb, $tokdat_file, %opts);
- 
- ##========================================================================
- ## Relation API: union
- 
  $rel = $CLASS_OR_OBJECT->union($coldb, \@pairs, %opts);
  
  ##========================================================================
- ## Relation API: profile
+ ## Relation API: profiling
  
  $mprf = $rel->profile($coldb, %opts);
- 
- ##========================================================================
- ## Relation API: comparison (diff)
- 
+ $mprf = $rel->extend($coldb, %opts);
  $mpdiff = $rel->compare($coldb, %opts);
  $mpdiff = $rel->diff($coldb, %opts);
  
@@ -52,10 +45,8 @@ DiaColloDB::Relation - diachronic collocation db, relation API (abstract & utili
  ## Relation API: default
  
  \%slice2prf = $rel->subprofile1(\@tids, \%opts);
- \%slice2prf = $rel->subprofile2(\%slice2prf, %opts)
- 
- ##========================================================================
- ## Relation API: default: qinfo()
+ \%slice2prf = $rel->subprofile2(\%slice2prf, %opts);
+ \%slice2prf = $rel->subextend(\%slice2prf, \%opts);
  
  \%qinfo = $rel->qinfo($coldb, %opts);
  (\@q1strs,\@q2strs,\@qxstrs,\@fstrs) = $rel->qinfoData($coldb,%opts);
@@ -114,10 +105,10 @@ L<DiaColloDB::Persistent|DiaColloDB::Persistent>.
 =cut
 
 ##----------------------------------------------------------------
-## DESCRIPTION: DiaColloDB::Relation: Relation API: create
+## DESCRIPTION: DiaColloDB::Relation: Relation API: creation
 =pod
 
-=head2 Relation API: create
+=head2 Relation API: creation
 
 =over 4
 
@@ -133,17 +124,6 @@ a tt-style text file with lines of the form:
 
 %opts: clobber %$rel
 
-=back
-
-=cut
-
-##----------------------------------------------------------------
-## DESCRIPTION: DiaColloDB::Relation: Relation API: union
-=pod
-
-=head2 Relation API: union
-
-=over 4
 
 =item union
 
@@ -178,7 +158,7 @@ should implicitly flush the new relation index
 ## DESCRIPTION: DiaColloDB::Relation: Relation API: profile
 =pod
 
-=head2 Relation API: profile
+=head2 Relation API: profiling
 
 =over 4
 
@@ -235,17 +215,6 @@ collects the result in a L<DiaColloDB::Profile::Multi|DiaColloDB::Profile::Multi
 
 Default values for C<%opts> should be set by a higher-level call, e.g. L<DiaColloDB::profile|DiaColloDB/profile>().
 
-=back
-
-=cut
-
-##----------------------------------------------------------------
-## DESCRIPTION: DiaColloDB::Relation: Relation API: comparison (diff)
-=pod
-
-=head2 Relation API: comparison (diff)
-
-=over 4
 
 =item compare
 

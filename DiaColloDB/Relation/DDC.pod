@@ -45,24 +45,17 @@ DiaColloDB::Relation::DDC - diachronic collocation db, profiling relation: ddc c
  $rel_or_undef = $CLASS_OR_OBJECT->fromDB($coldb,%opts);
  
  ##========================================================================
- ## Relation API: create
+ ## Relation API: creation
  
  $rel = $CLASS_OR_OBJECT->create($coldb,$tokdat_file,%opts);
+ $rel = $CLASS_OR_OBJECT->union($coldb, \@pairs, %opts);      ##-- SKETCHY!
  
  ##========================================================================
- ## Relation API: union (SKETCHY)
+ ## Relation API: profiling
  
- $rel = $CLASS_OR_OBJECT->union($coldb, \@pairs, %opts);
- 
- ##========================================================================
- ## Relation API: profile
- 
- $mprf = $rel->profile($coldb, %opts);
- 
- ##========================================================================
- ## Relation API: compare
- 
- $mprf = $rel->compare($coldb, %opts);
+ $mprf   = $rel->profile($coldb, %opts);
+ $mprf   = $rel->extend($coldb, %opts);
+ $mpdiff = $rel->compare($coldb, %opts);
  
  ##========================================================================
  ## Utils: profiling
@@ -152,10 +145,10 @@ default implementation clobbers $rel-E<gt>headerKeys() from %$coldb, %opts
 =cut
 
 ##----------------------------------------------------------------
-## DESCRIPTION: DiaColloDB::Relation::DDC: Relation API: create
+## DESCRIPTION: DiaColloDB::Relation::DDC: Relation API: creation
 =pod
 
-=head2 Relation API: create
+=head2 Relation API: creation
 
 =over 4
 
@@ -166,30 +159,22 @@ default implementation clobbers $rel-E<gt>headerKeys() from %$coldb, %opts
 nothing really interesting happens here;
 default just calls fromDB() and saveHeaderFile().
 
-=back
-
-=cut
-
-##----------------------------------------------------------------
-## DESCRIPTION: DiaColloDB::Relation::DDC: Relation API: union (SKETCHY)
-=pod
-
-=head2 Relation API: union (SKETCHY)
-
-=over 4
-
 =item union
 
  $rel = $CLASS_OR_OBJECT->union($coldb, \@pairs, %opts);
 
-merge multiple co-frequency indices into new object.
-@pairs is an array of pairs ([$ug,\@xi2u],...)
-of unigram-objects $ug and tuple-id maps \@xi2u for $ug.
+merge multiple ddc relations into new object.
+@pairs is an array of ARRAY-refs ([$ddc,...],...)
+whose initial elements are the DiaColloDB::Relation::DDC objects to be merged.
 
 %opts: clobber %$rel
 
 default implementation just calls create(), but should probably create a list of ddc servers to query,
 which B<isn't supported yet>.
+
+B<TODO>: union() method without a shared DDC server should probably create some kind of
+temporary server-list and use the L<DiaColloDB::Client::list|DiaColloDB::Client::list> routines
+for querying multiple back-end DDC servers.
 
 =back
 
@@ -199,7 +184,7 @@ which B<isn't supported yet>.
 ## DESCRIPTION: DiaColloDB::Relation::DDC: Relation API: profile
 =pod
 
-=head2 Relation API: profile
+=head2 Relation API: profiling
 
 =over 4
 
@@ -215,18 +200,6 @@ get a relation profile for selected items as a DiaColloDB::Profile::Multi object
  sample => $sample,     ##-- ddc sample size; sets $qconfig{qcount} Sample property (default: query "#sample[N]" or $rel->{ddcSample})
  cfmin => $cfmin,       ##-- minimum subcorpus frequency for returned items (default: query "#fmin[N]" or $rel->{cfmin})
  dmax  => $dmax,        ##-- maxmimum distance for implicit near() queries (default: query "#dmax[N]" or $rel->{dmax})
-
-=back
-
-=cut
-
-##----------------------------------------------------------------
-## DESCRIPTION: DiaColloDB::Relation::DDC: Relation API: compare
-=pod
-
-=head2 Relation API: compare
-
-=over 4
 
 =item compare
 
