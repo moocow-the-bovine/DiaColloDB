@@ -201,6 +201,14 @@ get a relation profile for selected items as a DiaColloDB::Profile::Multi object
  cfmin => $cfmin,       ##-- minimum subcorpus frequency for returned items (default: query "#fmin[N]" or $rel->{cfmin})
  dmax  => $dmax,        ##-- maxmimum distance for implicit near() queries (default: query "#dmax[N]" or $rel->{dmax})
 
+=item extend
+
+ $mprf = $rel->extend($coldb, %opts);
+
+Get independent f2 frequencies for C<$opts{slice2keys}> as a L<DiaColloDB::Profile::Multi|DiaColloDB::Profile::Multi>
+object.  Override generates a large approximate DDC batch-query and filters results.  May fail for large extension sets
+if the DDC server's request length limit (CHost.m_maxReceiveBytes = DDC_STATC_BUFLEN ?= 4096) is exceeded.
+
 =item compare
 
  $mprf = $rel->compare($coldb, %opts);

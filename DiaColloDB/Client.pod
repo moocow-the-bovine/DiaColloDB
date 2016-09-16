@@ -58,7 +58,9 @@ DiaColloDB::Client - diachronic collocation db, top-level client API
  ## Profiling: Generic
  
  $mprf = $cli->profile($relation, %opts);
-
+ $mprf = $cli->extend($relation, %opts);
+ $mprf = $cli->compare($relation, %opts);
+ 
 
 =cut
 
@@ -285,9 +287,26 @@ Really just wraps $cli-E<gt>profile('cof', %opts).
 
  $mprf = $cli->profile($relation, %opts);
 
-Get a relation profile for selected items as a L<DiaColloDB::Profile::Multi|DiaColloDB::Profile::Multi> object
+Get a relation profile for selected items as a L<DiaColloDB::Profile::Multi|DiaColloDB::Profile::Multi> object.
 %opts: as for L<DiaColloDB::profile()|DiaColloDB/profile>.
 Sets $cli-E<gt>{error} on error.
+
+=item extend
+
+ $mprf = $cli->extend($relation, %opts);
+
+Get selected independent collocate frequencies as a L<DiaColloDB::Profile::Multi|DiaColloDB::Profile::Multi> object.
+%opts: as for L<DiaColloDB::extend()|DiaColloDB/extend>.
+Sets $cli-E<gt>{error} on error.
+
+=item compare
+
+ $mprf = $cli->compare($relation, %opts);
+
+Get a comparison profile for selected items as a L<DiaColloDB::Profile::Multi|DiaColloDB::Profile::Multi> object.
+%opts: as for L<DiaColloDB::compare()|DiaColloDB/compare>.
+Sets $cli-E<gt>{error} on error.
+
 
 =back
 

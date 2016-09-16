@@ -39,6 +39,7 @@ our %EXPORT_TAGS =
      list  => [qw(luniq sluniq xluniq)],
      regex => [qw(regex)],
      html  => [qw(htmlesc)],
+     ddc   => [qw(ddc_escape)],
      time  => [qw(s2hms s2timestr timestamp)],
      file  => [qw(file_mtime file_timestamp du_file du_glob copyto moveto copyto_a cp_a fh_flush fh_reopen)],
      si    => [qw(si_str)],
@@ -503,6 +504,20 @@ sub htmlesc {
   $str =~ s/\</\&lt;/sg;
   $str =~ s/\>/\&gt;/sg;
   return $str;
+}
+
+##==============================================================================
+## Functions: ddc
+
+## $escaped_str = ddc_escape($str)
+## $escaped_str = ddc_escape($str, $addQuotes=1)
+sub ddc_escape {
+  shift(@_) if (UNIVERSAL::isa($_[0],__PACKAGE__));
+  return $_[0] if ($_[0] =~ /^[a-zA-Z][a-zA-Z0-9]*$/s); ##-- bareword ok
+  my $s = shift;
+  $s =~ s/\\/\\\\/g;
+  $s =~ s/\'/\\'/g;
+  return !exists($_[1]) || $_[1] ? "'$s'" : $s;
 }
 
 ##==============================================================================

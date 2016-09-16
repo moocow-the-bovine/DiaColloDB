@@ -215,6 +215,18 @@ collects the result in a L<DiaColloDB::Profile::Multi|DiaColloDB::Profile::Multi
 
 Default values for C<%opts> should be set by a higher-level call, e.g. L<DiaColloDB::profile|DiaColloDB/profile>().
 
+=item extend
+
+ $mprf = $rel->extend($coldb, %opts);
+
+Get independent f2 frequencies for C<$opts{slice2keys}> as a L<DiaColloDB::Profile::Multi|DiaColloDB::Profile::Multi>
+object; called by L<DiaColloDB::extend()|DiaColloDB/extend>.
+
+%opts: as for L<profile()|/profile>, also:
+
+ slice2keys => \%slice2keys, ##-- target f2-items by slice-label (REQUIRED)
+
+Default implementation calls L<$rel-E<gt>subextend()|/subextend>.
 
 =item compare
 
@@ -280,24 +292,21 @@ default implementation just throws an error.
 
 =item subprofile2
 
- \%slice2prf = $rel->subprofile2(\%slice2prf, %opts)
+ \%slice2prf = $rel->subprofile2(\%slice2prf, %opts);
 
 Native index API low-level second-pass profiling function for independent frequency acquisition (f2);
 default implementation just returns C<\%slice2prf>, which is appropriate for relations which
 use a single-pass strategy to populate C<$prf-E<gt>{f2}> in their implementation of
 L<subprofile1|/subprofile1>().
 
-=back
 
-=cut
+=item subextend
 
-##----------------------------------------------------------------
-## DESCRIPTION: DiaColloDB::Relation: Relation API: default: qinfo()
-=pod
+ \%slice2prf = $rel->subextend(\%slice2prf,\%opts);
 
-=head2 Relation API: default: qinfo()
+Native index API low-level profile-extension function for slice-wise independent frequency acquisition (f2).
+Default implementation throws an error.
 
-=over 4
 
 =item qinfo
 

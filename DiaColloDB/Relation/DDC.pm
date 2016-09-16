@@ -272,11 +272,11 @@ sub extend {
   ##-- sanity check(s)
   my ($slice2keys);
   if (!($slice2keys=$opts{slice2keys})) {
-    $rel->logwarn($coldb->{error}="extend(): no 'slice2keys' parameter specified!");
+    $rel->warn($coldb->{error}="extend(): no 'slice2keys' parameter specified!");
     return undef;
   }
   elsif (!UNIVERSAL::isa($slice2keys,'HASH')) {
-    $rel->logwarn($coldb->{error}="extend(): failed to parse 'slice2keys' parameter");
+    $rel->warn($coldb->{error}="extend(): failed to parse 'slice2keys' parameter");
     return undef;
   }
 
@@ -287,7 +287,7 @@ sub extend {
   $slice2keys->{$_} = {map {($_=>[split(/\t/,$_)])} @{$slice2keys->{$_}}} foreach (keys %$slice2keys);
   my $items         = {map { %$_ } values %$slice2keys};
 
-  ##-- create "extend" query
+  ##-- create "extend" query (batch)
   my $gbexprs   = $opts{gbexprs}->getExprs;
   my $gbfilters = $opts{gbfilters};
   my $qxdtr     = undef;
@@ -597,13 +597,16 @@ sub countQuery {
       ##-- regex transformation: hack
       if ($_->getReplacement eq '' && $_->getPattern =~ /^(.)\.\*\$/) {
 	##-- hack for simple prefix regex transformations (textclass)
-	push(@qtfilters, DDC::Any::CQFHasFieldPrefix->new($_->getSrc->getLabel, "__W2.${xi}__$1"));
+	push(@qtfilters, DDC::Any::CQFHasFieldPrefix->new($_->getSrc->getLabel, "__W2.${xi}__"));
+      } elsif ($_->getReplacement eq '') {
+	##-- hack for simple regex deletions (any substring; not always correct)
+	push(@qtfilters, DDC::Any::CQFHasFieldInfix->new($_->getSrc->getLabel, "__W2.${xi}__"));
       } else {
-	##-- hack for generic regex transformations (any substring)
-	push(@qtfilters, DDC::Any::CQFHasFieldRegex->new($_->getSrc->getLabel, "\\Q__W2.${xi}__\\E"));
+	##-- non-trivial regex transformation
+	$coldb->warn("can't generate template for non-trivial regex transformation \`", $_->toString, "'");
       }
     } else {
-      $coldb->logwarn("can't generate template for groupby expression of type ", ref($_)//'(undefined)', " \`", $_->toString, "'");
+      $coldb->warn("can't generate template for groupby expression of type ", ref($_)//'(undefined)', " \`", $_->toString, "'");
     }
     ++$xi;
   }

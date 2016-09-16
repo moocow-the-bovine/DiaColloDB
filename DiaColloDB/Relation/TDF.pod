@@ -422,6 +422,11 @@ Get a relation profile for selected items as a L<DiaColloDB::Profile::Multi|DiaC
 Really just a wrapper for
 the L<vprofile()|/vprofile> method.
 
+=item extend
+
+Get independent f2 frequencies for C<$opts{slice2keys}> as a L<DiaColloDB::Profile::Multi|DiaColloDB::Profile::Multi>
+object.
+
 
 =item compare
 

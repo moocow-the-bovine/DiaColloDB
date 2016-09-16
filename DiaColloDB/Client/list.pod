@@ -101,11 +101,11 @@ the queried subcorpora were not partitioned explicitly by date,
 even with C<$fudge==0>.
 Although the reported joint frequencies I<f12>
 ought to have been correct in this case, it could easily happen that the independent collocate
-frequencies I<f2> get mis-reported, leading to incorrect computations of I<f2>-sensitive
+frequencies I<f2> got mis-reported, leading to incorrect computations of I<f2>-sensitive
 association scores such as C<milf> (pointwise mutual information * log-frequency product),
 C<ll> (log likelihood), or the default C<ld> (log Dice).  Such errors occurred whenever
 the pre-v0.11.000 list client accessed multiple sub-clients (e.g. C<$a> and C<$b>) and some candidate
-collocate C<$v> occurs in both of the subcorpora, but only occurs together with the target term C<$w>
+collocate C<$v> occured in both of the subcorpora, but only occured together with the target term C<$w>
 in one of the sub-clients' indices.
 
 Suppose C<$v> occurs in subcorpus C<$a> with frequency C<f_a($v)>

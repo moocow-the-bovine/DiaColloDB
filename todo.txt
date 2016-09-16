@@ -1,9 +1,9 @@
 TODO Wed, 14 Sep 2016 14:02:58 +0200
 + implement
-  - extend(): fix for DDC (max ddc-qstr len = DDC_STATIC_BUFLEN = 4096)
+  - extend(): fix for DDC (max ddc-qstr len = DDC_STATIC_BUFLEN = 4096) --> NOT EASY (no "OR" for both token and metadata filters!)
   - lazy union() ?
 + document
-  - extend(): DiaColloDB, Relation, Relation::*, Client, Client::*
+  - extend(): #DiaColloDB, #Relation, #Relation::*, #Client, #Client::*
 
 #DONE TODO Wed, 11 May 2016 14:27:14 +0200
 x+ update kaskade DBs

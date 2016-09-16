@@ -339,6 +339,13 @@ Get slice-wise unigram profile(s) for tuple-IDs C<@tids>.
 C<$ug> must be opened.
 %opts: as for L<DiaColloDB::Relation::subprofile1|DiaColloDB::Relation/subprofile1>().
 
+=item subextend
+
+ \%slice2prf = $rel->subextend(\%slice2prf,\%opts);
+
+Populate independent collocate frequencies in C<%slice2prf> values.
+Override just returns a new empty L<DiaColloDB::Profile::Multi|DiaColloDB::Profile::Multi> object.
+
 
 =item qinfo
 
