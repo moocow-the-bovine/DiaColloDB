@@ -71,12 +71,15 @@ sub DESTROY {
 
 ## $cli_or_undef = $cli->open($url,%opts)
 ## $cli_or_undef = $cli->open()
-##  + calls open_file(), open_http(), or open_list() as appropriate
+##  + calls open_rcfile(), open_file(), open_http(), or open_list() as appropriate
 sub open {
   my ($cli,$url) = (shift,shift);
   $url     //= $cli->{url};
   my $scheme = UNIVERSAL::isa($url,'ARRAY') ? 'list' : (URI->new($url)->scheme // 'file');
-  if ($scheme eq 'file') {
+  if ($scheme =~ /^rcfile|rc$/) {
+    return $cli->open_rcfile($url,@_);
+  }
+  elsif ($scheme eq 'file') {
     return $cli->open_file($url,@_);
   }
   elsif ($scheme =~ /^https?$/) {
@@ -89,6 +92,37 @@ sub open {
   return undef;
 }
 
+## $cli_or_undef = $cli->open_rcfile($rcfile_url,%opts)
+## $cli_or_undef = $cli->open_rcfile()
+##  + opens a local file url
+##  + may re-bless() $cli into an appropriate package
+##  + loads a JSON config file containing one or more of the following keys:
+##    (
+##     class => $CLASS, ##-- bless() client into class $CLASS
+##     url   => $url,   ##-- open client url $url
+##     $key  => $val,   ##-- ... other keys passed to $cli->open($url,%opts)
+##    )
+sub open_rcfile {
+  my ($cli,$rcurl,%opts) = @_;
+  $cli = $cli->new() if (!ref($cli));
+  $cli->close() if ($cli->opened);
+  $cli->{rcurl} = ($rcurl //= $cli->{url});
+  my $uri    = URI->new($rcurl);
+  my $rcpath = ($uri->authority//'') . ($uri->path//'');
+  my %rcopts = $uri->query_form;
+
+  ##-- load data from file
+  my $hdr = $cli->readHeaderFile($rcpath)
+    or $cli->logconfess("open_file() failed to open config file $rcpath: $!");
+  $cli->promote($hdr->{class}) if ($hdr->{class});
+  delete $hdr->{class};
+  @$cli{keys %$hdr}   = values %$hdr;
+  @$cli{keys %rcopts} = values %rcopts;
+
+  ##-- dispatch to lower-level open:// call
+  delete $cli->{url} if (($cli->{url}//'') eq $rcurl);
+  return $cli->opened || !$cli->{url} ? $cli : $cli->open($cli->{url});
+}
 
 ## $cli_or_undef = $cli->open_file($file_url,%opts)
 ## $cli_or_undef = $cli->open_file()
