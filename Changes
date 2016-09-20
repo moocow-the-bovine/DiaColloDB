@@ -2,7 +2,7 @@
 ##
 ## Change log for perl distribution DiaColloDB
 
-v0.11.001 PENDING
+v0.11.001 Tue, 20 Sep 2016 14:14:18 +0200 moocow
 	* added DiaColloDB::Relation::extend() and wrappers DiaColloDB::extend(), DiaColloDB::Client::extend()
 	  - high-level interface to independent f2 acquisition, e.g. for list-clients
 	  - DDC-relation extend() support still experimental: large batch queries can cause server to choke
