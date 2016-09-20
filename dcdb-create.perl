@@ -22,10 +22,11 @@ our ($help,$version);
 our %log        = (level=>'TRACE', rootLevel=>'FATAL');
 our $dbdir      = undef;
 
-our $globargs = 1; ##-- glob @ARGV?
-our $listargs = 0; ##-- args are file-lists?
-our $union    = 0; ##-- args are db-dirs?
-our $dotime   = 1; ##-- report timing?
+our $globargs   = 1; ##-- glob @ARGV?
+our $listargs   = 0; ##-- args are file-lists?
+our $union      = 0; ##-- args are db-dirs?
+our $lazy_union = 0; ##-- union mode: create a list-client config?
+our $dotime     = 1; ##-- report timing?
 our %corpus   = (dclass=>'DDCTabs', dopts=>{});
 our %coldb    = (
 		 pack_id=>'N',
@@ -47,6 +48,7 @@ our %coldb    = (
 			  },
 		 vbreak=>'#file',
 		);
+our %uopts = qw(); ##-- user-options, for lazy-union creation
 
 ##----------------------------------------------------------------------
 ## Command-line processing
@@ -66,6 +68,7 @@ GetOptions(##-- general
 	   'glob|g!' => \$globargs,
 	   'list|l!' => \$listargs,
 	   'union|u|merge!' => \$union,
+	   'lazy-union|list-union|lazy|lu!' => \$lazy_union,
 	   'document-class|dclass|dc=s' => \$corpus{dclass},
 	   'document-option|docoption|dopt|do|dO=s%' => \$corpus{dopts},
 	   'by-sentence|bysentence' => sub { $corpus{dopts}{eosre}='^$' },
@@ -98,7 +101,7 @@ GetOptions(##-- general
 	   'tdf-break-max-size|tdf-break-max|tdf-nmax|vbnmax|vbmax=s' => \$coldb{tdfopts}{maxDocSize},
 	   'tdf-option|tdm-option|tdfopt|tdmopt|tdmo|tdfo|to|tO=s%' => sub { $coldb{tdfopts}{$_[1]}=$_[2] },
 	   'keeptmp|keep!' => \$coldb{keeptmp},
-	   'option|O=s%' => sub { $coldb{$_[1]}=$_[2]; },
+	   'option|O=s%' => sub { $coldb{$_[1]}=$uopts{$_[1]}=$_[2]; },
 
 	   ##-- I/O and logging
 	   'timing|times|time|t!' => \$dotime,
@@ -123,27 +126,39 @@ DiaColloDB::Logger->ensureLog(%log);
 
 ##-- setup corpus
 push(@ARGV,'-') if (!@ARGV);
+$globargs  = 0 if ($lazy_union); ##-- allow "real" remote URLs for lazy union
 my $corpus = DiaColloDB::Corpus->new(%corpus);
 $corpus->open(\@ARGV, 'glob'=>$globargs, 'list'=>$listargs, ($union ? (logOpen=>'off') : qw()))
   or die("$prog: failed to open corpus: $!");
 
-##-- create colloc-db
-my $coldb = DiaColloDB->new(%coldb)
-  or die("$prog: failed to create new DiaColloDB object: $!");
+##-- create db
 my $timer = DiaColloDB::Timer->start();
-if ($union) {
-  ##-- union: create from dbdirs
-  $coldb->union($corpus->{files}, dbdir=>$dbdir, flags=>'rw')
-    or die("$prog: DiaColloDB::union() failed: $!");
-} else {
-  ##-- !union: create from corpus
-  $coldb->create($corpus, dbdir=>$dbdir, flags=>'rw', attrs=>($coldb{attrs}||'l,p'))
-    or die("$prog: DiaColloDB::create() failed: $!");
+my ($coldb);
+if ($lazy_union) {
+  $coldb = DiaColloDB::Client::list->new(%uopts)
+    or die("$prog: failed to create lazy union list-client: $!");
+  $coldb->open($corpus->{files})
+    or die("$prog: failed to open lazy union list-client: $!");
+  $coldb->saveHeaderFile($dbdir)
+    or die("$prog: failed to save lazy union list-client configuration to 'rcfile://$dbdir': $!");
+}
+else {
+  $coldb = DiaColloDB->new(%coldb)
+    or die("$prog: failed to create new DiaColloDB object: $!");
+  if ($union) {
+    ##-- union: create from dbdirs
+    $coldb->union($corpus->{files}, dbdir=>$dbdir, flags=>'rw')
+      or die("$prog: DiaColloDB::union() failed: $!");
+  } else {
+    ##-- !union: create from corpus
+    $coldb->create($corpus, dbdir=>$dbdir, flags=>'rw', attrs=>($coldb{attrs}||'l,p'))
+      or die("$prog: DiaColloDB::create() failed: $!");
+  }
 }
 
 ##-- cleanup
 #my $du = si_str($coldb->du());
-$coldb->close();
+$coldb->close() if ($coldb);
 
 ##-- timing
 if ($dotime) {
@@ -174,7 +189,8 @@ dcdb-create.perl - create a DiaColloDB diachronic collocation database
  Corpus Options:
    -list , -nolist      ##-- INPUT(s) are/aren't file-lists (default=no)
    -glob , -noglob      ##-- do/don't glob INPUT(s) argument(s) (default=do)
-   -union , -nounion    ##-- do/don't trate INPUT(s) as DB directories to be merged (default=don't)
+   -union, -nounion     ##-- do/don't trate INPUT(s) as DB directories to be merged (default=don't)
+   -lazy , -nolazy      ##-- do/don't create "lazy" list-client (union mode only; default=don't)
    -dclass CLASS        ##-- set corpus document class (default=DDCTabs)
    -dopt OPT=VAL        ##-- set corpus document option, e.g.
                         ##   eosre=EOSRE  # eos regex (default='^$')
@@ -226,7 +242,7 @@ dcdb-create.perl - create a DiaColloDB diachronic collocation database
    -[no]mmap            ##-- do/don't use mmap for file access (default=do)
    -[no]debug           ##-- do/don't enable painful debugging checks (default=don't)
    -[no]times           ##-- do/don't report operating timing (default=do)
-   -output DIR          ##-- output directory (required)
+   -output OUT          ##-- output directory (required)
 
 =cut
 
@@ -273,7 +289,8 @@ which see for details.
 =item INPUT(s)
 
 File(s), glob(s), file-list(s) to be indexed or existing indices to be merged.
-Interpretation depends on the L<-glob|/-glob>, L<-list|/-list> and L<-union|/-union>
+Interpretation depends on the L<-glob|/-glob>, L<-list|/-list>, L<-union|/-union>,
+and L<-lazy|/-lazy>
 options.
 
 =back
@@ -329,7 +346,33 @@ Default=do.
 =item -nounion
 
 Do/don't trate INPUT(s) as DB directories to be merged.
+Creates a new physical DB by merging data from the argument
+INPUT(s).
 Default=don't.
+
+=item -lazy
+
+=item -nolazy
+
+Enable/disable "lazy union" mode.
+If enabled, INPUT(s) are treated as DB URLs to be merged "lazily",
+and only a simple L<DiaColloDB::Client::list|DiaColloDB::Client::list>
+configuration file F<OUT> is created, suitable for passing to
+L<dcdb-query.perl|dcdb-query.perl> as F<rcfile://OUT>.  User
+options specified with L<-option OPT=VAL|/-option-OPT-VAL> will
+clobber the L<DiaColloDB::Client::list|DiaColloDB::Client::list> defaults
+(e.g. C<fudge>, C<fork>, etc.). Unlike L<-union|/-union> mode,
+no physical DB is created in L<-lazy|/-lazy> mode; queries to the lazy
+client are deferred to the underlying DB URLs specified in the configuration
+file.  The lazy configuration should behave like a physical DB created with L<-union|/-union>,
+can be created in near constant time,
+requires only a few bytes of disk space,
+and may even process queries faster than a physical DB if you have the
+L<forks|forks> module installed.
+
+Default=off.
+
+Aliases: -lazy-union, -list-union, -lu
 
 =item -dclass CLASS
 
@@ -347,7 +390,7 @@ L<C<-dopt eosre=EOSRE>|DDCTabs/new> sets the end-of-sentence regex
 for the default L<DDCTabs|DiaColloDB::Document::DDCTabs> document class,
 and L<C<-dopt foreign=1|DDCTabs/new> disables D*-specific hacks.
 
-Aliases: -document-option, -docoption -dO
+Aliases: -document-option, -docoption, -dO
 
 =item -bysent
 
@@ -521,9 +564,9 @@ Do/don't enable painful debugging checks (default=don't)
 
 Do/don't report operating timing (default=do)
 
-=item -output DIR
+=item -output OUT
 
-Output directory (required).
+Output directory or filename (required).
 
 =back
 

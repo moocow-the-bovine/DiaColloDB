@@ -2,13 +2,13 @@
 ##
 ## Change log for perl distribution DiaColloDB
 
-v0.11.000 PENDING
-	* added DiaColloDB::Relation::extend() and wrapper DiaColloDB::extend()
+v0.11.001 PENDING
+	* added DiaColloDB::Relation::extend() and wrappers DiaColloDB::extend(), DiaColloDB::Client::extend()
 	  - high-level interface to independent f2 acquisition, e.g. for list-clients
-	  - as yet only implemented in Cofreqs
-	  - TODO: integrate into Client::list (including www-wrapper support)
-	  - TODO: integrate into www-wrapper
-  	  - TODO: add extend() implementations for Unigrams and TDF relations
+	  - DDC-relation extend() support still experimental: large batch queries can cause server to choke
+	* fixed Client::list incorrect f2 acquisition bug
+	* added support for parallel sub-client processing in Client::list (requires 'forks' module)
+	* added dcdb-create.perl -lazy option for "lazy union" list-client creation
 	* renamed 'mi' score function to more accurate 'milf'
 	* added 'mi1' score function (raw PMI)
 	  - not too useful without pre-filtered corpus: too sensitive to low-frequency outliers

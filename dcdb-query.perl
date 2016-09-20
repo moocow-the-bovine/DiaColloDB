@@ -150,7 +150,7 @@ if ($http_user) {
 ##-- open db client
 $dburl = shift(@ARGV);
 my ($cli);
-if ($dburl !~ m{^[a-zA-Z]+://}) {
+if ($dburl !~ m{^[a-zA-Z]+://} && -d $dburl) {
   ##-- hack for local directory URLs without scheme
   $cli = DiaColloDB->new(dbdir=>$dburl,%cli);
 } else {
@@ -288,7 +288,7 @@ dcdb-query.perl - query a DiaColloDB diachronic collocation database
    -log-level LEVEL      # set minimum DiaColloDB log-level
 
  Arguments:
-   DBURL                # DB URL (file://, http://, or list:// ; query part sets local options)
+   DBURL                # DB URL (file://, rcfile://, http://, or list://)
    QUERY1               # space-separated target1 string(s) LIST or /REGEX/ or DDC-query
    QUERY2               # space-separated target2 string(s) LIST or /REGEX/ or DDC-query (for diff profiles)
 
@@ -341,6 +341,8 @@ in a form accepted by L<DiaColloDB::Client-E<gt>open()|DiaColloDB::Client/open>.
 In particular, I<DBURL> can be a local L<DiaColloDB|DiaColloDB> database directory,
 in which case it will be queried via
 the L<DiaColloDB::Client::file|DiaColloDB::Client::file> class.
+A local L<DiaColloDB::Client|DiaColloDB::Client> configuration file L<RCFILE>
+can be specified using the F<rcfile://RCFILE> syntax.
 
 =item QUERY1
 

@@ -160,6 +160,18 @@ sub client {
 }
 
 ##==============================================================================
+## I/O: Persistent API: header
+##  + largely INHERITED from DiaColloDB::Persistent
+
+## @keys = $coldb->headerKeys()
+##  + keys to save as header
+sub headerKeys {
+  return (qw(url urls), grep {!ref($_[0]{$_}) && $_ !~ m{^log}} keys %{$_[0]});
+}
+
+
+
+##==============================================================================
 ## utils: threaded sub-client calls
 
 ##  @results = $cli->subcall(\&CODE, @args)

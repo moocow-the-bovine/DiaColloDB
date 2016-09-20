@@ -51,7 +51,7 @@ DiaColloDB::Logger->ensureLog(%log);
 ##-- open colloc-db
 $dburl = shift(@ARGV);
 my ($cli);
-if ($dburl !~ m{^[a-zA-Z]+://}) {
+if ($dburl !~ m{^[a-zA-Z]+://} && -d $dburl) {
   ##-- hack for local directory URLs without scheme
   $cli = DiaColloDB->new(dbdir=>$dburl,%cli);
 } else {
