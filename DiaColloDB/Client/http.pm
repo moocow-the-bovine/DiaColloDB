@@ -8,6 +8,7 @@ use DiaColloDB::Client;
 use URI;
 use LWP::UserAgent;
 use HTTP::Request;
+use HTTP::Request::Common; ##-- for POST()
 use strict;
 
 ##==============================================================================
@@ -93,7 +94,7 @@ sub opened {
 ## Profiling: Generic: HTTP wrappers
 
 ## $obj_or_undef = $cli->jget($url,\%query_form,$class)
-##  + wrapper for json http requests
+##  + wrapper for http json GET requests
 sub jget {
   my ($cli,$url,$form,$class) = @_;
   my $uri = URI->new($url // $cli->{url});
@@ -101,6 +102,24 @@ sub jget {
   my $req = HTTP::Request->new('GET',"$uri");
   $req->authorization_basic($cli->{user}, $cli->{password}) if (defined($cli->{user}) && defined($cli->{password}));
   $cli->vlog($cli->{logRequest}, "GET $uri");
+  my $rsp = $cli->{ua}->request($req);
+  if (!$rsp->is_success) {
+    $cli->{error} = $rsp->status_line;
+    return undef;
+  }
+  my $cref = $rsp->content_ref;
+  return $class->loadJsonString($cref,utf8=>!utf8::is_utf8($$cref));
+}
+
+## $obj_or_undef = $cli->jpost($url,\%query_form,$class)
+##  + wrapper for json http POST requests
+sub jpost {
+  my ($cli,$url,$form,$class) = @_;
+  $url //= $cli->{url};
+  my $req = POST($url, Content => {%{$cli->{params}//{}}, %$form});
+  $req->authorization_basic($cli->{user}, $cli->{password}) if (defined($cli->{user}) && defined($cli->{password}));
+  $cli->vlog($cli->{logRequest}, "POST $url");
+  #$cli->trace("REQUEST = ", $req->as_string);
   my $rsp = $cli->{ua}->request($req);
   if (!$rsp->is_success) {
     $cli->{error} = $rsp->status_line;
@@ -149,7 +168,7 @@ sub extend {
 		qw(eps score kbest cutoff global),
 		qw(onepass),
 	       )};
-  return $cli->jget($cli->{url}, {profile=>"extend-$rel", %opts, format=>'json'},'DiaColloDB::Profile::Multi');
+  return $cli->jpost($cli->{url}, {profile=>"extend-$rel", %opts, format=>'json'},'DiaColloDB::Profile::Multi');
 }
 
 ##--------------------------------------------------------------
