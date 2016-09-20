@@ -41,7 +41,7 @@ use strict;
 ##==============================================================================
 ## Globals & Constants
 
-our $VERSION = "0.10.009";
+our $VERSION = "0.11.001";
 our @ISA = qw(DiaColloDB::Client);
 
 ## $PGOOD_DEFAULT
@@ -2309,7 +2309,7 @@ sub profileOptions {
 ##--------------------------------------------------------------
 ## Profiling: extend (pass-2 for multi-clients)
 
-## $mprf = $coldb->complete($relation, %opts)
+## $mprf = $coldb->extend($relation, %opts)
 ##  + get independent f2 frequencies for $opts{slice2keys}, which is EITHER
 ##    - a HASH-ref {$slice1=>\@keys1, ...},
 ##      OR
@@ -2317,7 +2317,7 @@ sub profileOptions {
 ##  + %opts, as for profile(), except:
 ##    (
 ##     ##-- selection parameters
-##     #query => $query,           ##-- target request ATTR:REQ... : IGNORED (but reported in log for debbugging)
+##     query => $query,           ##-- target request ATTR:REQ... : mostly IGNORED (but used e.g. by ddc back-end)
 ##     slice2keys => \%slice2keys, ##-- target f2-items or JSON-string
 ##     ##-- scoring and trimming parameters : IGNORED
 ##     ##-- profiling and debugging parameters: IGNORED
@@ -2331,7 +2331,7 @@ sub extend {
 
   ##-- items
   $opts{slice2keys} //= '';
-  $opts{slice2keys}   = DiaColloDB::Utils::loadJsonString($opts{slice2keys}, allow_nonref=>0)
+  $opts{slice2keys}   = DiaColloDB::Utils::loadJsonString($opts{slice2keys})
     if ($opts{slice2keys} && !ref($opts{slice2keys}));
 
   ##-- debug

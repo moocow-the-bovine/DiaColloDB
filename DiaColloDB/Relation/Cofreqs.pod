@@ -63,22 +63,17 @@ DiaColloDB::Relation::Cofreqs - diachronic collocation db, profiling relation: n
  $bool = $cof->saveTextFh($fh,%opts);
  
  ##========================================================================
- ## Relation API: create
+ ## Relation API: creation
  
- $rel = $CLASS_OR_OBJECT->create($coldb,$tokdat_file,%opts);
- 
- ##========================================================================
- ## Relation API: union
- 
+ $cof = $CLASS_OR_OBJECT->create($coldb,$tokdat_file,%opts);
  $cof = CLASS_OR_OBJECT->union($coldb, \@pairs, %opts);
  
  ##========================================================================
- ## Relation API: default: profiling
+ ## Relation API: default
  
- $prf = $cof->subprofile(\@xids, %opts);
- 
- ##========================================================================
- ## Relation API: default: query info
+ \%slice2prf = $cof->subprofile1(\@tids, \%opts);
+ \%slice2prf = $cof->subprofile2(\%slice2prf, \%opts);
+ \%slice2prf = $cof->subextend(\%slice2prf, \%opts);
  
  \%qinfo = $rel->qinfo($coldb, %opts);
  
@@ -296,10 +291,10 @@ save to text filehandle with lines of the form:
 =cut
 
 ##----------------------------------------------------------------
-## DESCRIPTION: DiaColloDB::Relation::Cofreqs: Relation API: create
+## DESCRIPTION: DiaColloDB::Relation::Cofreqs: Relation API: creation
 =pod
 
-=head2 Relation API: create
+=head2 Relation API: creation
 
 =over 4
 
@@ -315,17 +310,7 @@ a tt-style text file with lines of the form:
 
 C<%opts>: clobber C<%$cof>.
 
-=back
 
-=cut
-
-##----------------------------------------------------------------
-## DESCRIPTION: DiaColloDB::Relation::Cofreqs: Relation API: union
-=pod
-
-=head2 Relation API: union
-
-=over 4
 
 =item union
 
@@ -346,7 +331,7 @@ implicitly flushes the new index.
 ## DESCRIPTION: DiaColloDB::Relation::Cofreqs: Relation API: default: profiling
 =pod
 
-=head2 Relation API: default: profiling
+=head2 Relation API: default
 
 =over 4
 
@@ -360,23 +345,20 @@ C<$cof> must be opened.
 
 =item subprofile2
 
- \%slice2prf = $rel->subprofile2(\%slice2prf, %opts)
+ \%slice2prf = $rel->subprofile2(\%slice2prf, %opts);
 
 Populate independent collocate frequencies in C<%slice2prf> values.
 C<$cof> must be opened.
 %opts: as for L<DiaColloDB::Relation::subprofile2|DiaColloDB::Relation/subprofile2>().
 
-=back
 
-=cut
+=item subextend
 
-##----------------------------------------------------------------
-## DESCRIPTION: DiaColloDB::Relation::Cofreqs: Relation API: default: query info
-=pod
+ \%slice2prf = $rel->subextend(\%slice2prf,\%opts);
 
-=head2 Relation API: default: query info
+Populate independent collocate frequencies in C<%slice2prf> values;
+wraps L<subprofile2()|/subprofile2>.
 
-=over 4
 
 =item qinfo
 

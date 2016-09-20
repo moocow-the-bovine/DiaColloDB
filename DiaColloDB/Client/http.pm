@@ -137,6 +137,22 @@ sub profile {
 }
 
 ##--------------------------------------------------------------
+## Profiling: extend (pass-2 for multi-clients)
+
+## $mprf = $cli->extend($relation, %opts)
+##  + get an extension-profile for selected items as a DiaColloDB::Profile::Multi object
+##  + %opts: as for DiaColloDB::extend()
+##  + sets $cli->{error} on error
+sub extend {
+  my ($cli,$rel,%opts) = @_;
+  delete @opts{(qw(alemma adate aslice blemma bdate bslice),
+		qw(eps score kbest cutoff global),
+		qw(onepass),
+	       )};
+  return $cli->jget($cli->{url}, {profile=>"extend-$rel", %opts, format=>'json'},'DiaColloDB::Profile::Multi');
+}
+
+##--------------------------------------------------------------
 ## Profiling: Comparison (diff)
 
 ## $mprf = $cli->compare($relation, %opts)

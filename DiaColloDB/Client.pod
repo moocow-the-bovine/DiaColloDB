@@ -34,6 +34,7 @@ DiaColloDB::Client - diachronic collocation db, top-level client API
  ## I/O: open/close
  
  $cli_or_undef = $cli->open($url,%opts);
+ $cli_or_undef = $cli->open_rcfile($rcfile_url,%opts);
  $cli_or_undef = $cli->open_file($file_url,%opts);
  $cli_or_undef = $cli->open_http($http_url,%opts);
  $cli_or_undef = $cli->open_list($list_url,%opts);
@@ -58,7 +59,9 @@ DiaColloDB::Client - diachronic collocation db, top-level client API
  ## Profiling: Generic
  
  $mprf = $cli->profile($relation, %opts);
-
+ $mprf = $cli->extend($relation, %opts);
+ $mprf = $cli->compare($relation, %opts);
+ 
 
 =cut
 
@@ -142,13 +145,33 @@ destructor calls L<close()|/close> if necessary.
  $cli_or_undef = $cli->open($url,%opts);
  $cli_or_undef = $cli->open();
 
-calls L<open_list()|/open_list>, L<open_file()|/open_file>, or L<open_http()|/open_http> as appropriate
+calls L<open_file()|/open_file>, L<open_rcfile()|/open_rcfile>, or L<open_http()|/open_http>, or L<open_list()|/open_list> as appropriate,
 depending on the datatype or scheme of C<$url>;
-may re-bless() $cli into an appropriate package.
+may re-bless() C<$cli> into an appropriate package.
 If C<$url> is passed as a string, its query string
 will be parsed by the <URI::query_form()|URI/uri-query_form> method
 and used to pass options to the (promoted) client subclass.
 
+=item open_rcfile
+
+ $cli_or_undef = $cli->open_rcfile($rcfile_url,%opts);
+ $cli_or_undef = $cli->open_rcfile();
+
+Opens a local configuration file URL.  Called by the default
+L<open|/open>() implementation for the URLS using the C<rcfile://> scheme,
+as well as for C<file://> schemes or scheme-less URLs which resolve to a
+local non-directory path.  Configuration files accepted by this method
+are expected to be in JSON format as accepted by
+L<DiaColloDB::Persistent::readHeaderFile()|DiaColloDB::Persistent/readHeaderFile>,
+and contain one or more of the following keys:
+
+ class => $CLASS, ##-- bless() client into class $CLASS
+ url   => $url,   ##-- open client url $url
+ $key  => $val,   ##-- ... other keys passed to (promoted) $cli->open($url,%opts)
+
+Client options specified in the query portion of C<$rcfile_url> will override
+options read from the configuration file if there are any conflicts,
+and the original URL of the configuration file will be placed in C<$cli-E<gt>{rcurl}>.
 
 =item open_file
 
@@ -235,7 +258,7 @@ Abstract method; should return db info hash for underlying db(s).
  $mprf = $cli->query($rel,%opts);
 
 Get a generic L<DiaColloDB::Profile::Multi|DiaColloDB::Profile::Multi> object for relation $rel.
-Calls $cli-E<gt>profile() or $cli-E<gt>compare() as appropriate.
+Calls $cli method L<profile|/profile>(), L<extend|/extend>(), or L<compare|/compare>() as appropriate.
 
 =item profile1
 
@@ -285,9 +308,26 @@ Really just wraps $cli-E<gt>profile('cof', %opts).
 
  $mprf = $cli->profile($relation, %opts);
 
-Get a relation profile for selected items as a L<DiaColloDB::Profile::Multi|DiaColloDB::Profile::Multi> object
+Get a relation profile for selected items as a L<DiaColloDB::Profile::Multi|DiaColloDB::Profile::Multi> object.
 %opts: as for L<DiaColloDB::profile()|DiaColloDB/profile>.
 Sets $cli-E<gt>{error} on error.
+
+=item extend
+
+ $mprf = $cli->extend($relation, %opts);
+
+Get selected independent collocate frequencies as a L<DiaColloDB::Profile::Multi|DiaColloDB::Profile::Multi> object.
+%opts: as for L<DiaColloDB::extend()|DiaColloDB/extend>.
+Sets $cli-E<gt>{error} on error.
+
+=item compare
+
+ $mprf = $cli->compare($relation, %opts);
+
+Get a comparison profile for selected items as a L<DiaColloDB::Profile::Multi|DiaColloDB::Profile::Multi> object.
+%opts: as for L<DiaColloDB::compare()|DiaColloDB/compare>.
+Sets $cli-E<gt>{error} on error.
+
 
 =back
 

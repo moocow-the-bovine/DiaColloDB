@@ -51,7 +51,7 @@ DiaColloDB::Logger->ensureLog(%log);
 ##-- open colloc-db
 $dburl = shift(@ARGV);
 my ($cli);
-if ($dburl !~ m{^[a-zA-Z]+://}) {
+if ($dburl !~ m{^[a-zA-Z]+://} && -d $dburl) {
   ##-- hack for local directory URLs without scheme
   $cli = DiaColloDB->new(dbdir=>$dburl,%cli);
 } else {
@@ -84,7 +84,7 @@ dcdb-info.perl - get administrative info from a DiaColloDB diachronic collocatio
 
 =head1 SYNOPSIS
 
- dcdb-info.perl [OPTIONS] DBDIR
+ dcdb-info.perl [OPTIONS] DBDIR_OR_URL
 
  Options:
    -h, -help              # display a brief usage summary

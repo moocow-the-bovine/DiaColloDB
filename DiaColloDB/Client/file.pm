@@ -40,9 +40,14 @@ sub open_file {
   $cli  = $cli->new() if (!ref($cli));
   $cli->close() if ($cli->opened);
   $cli->{url} = $url = ($url // $cli->{url});
-  my ($path,%dbopts);
-  ($path = $url) =~ s{^file://}{}i;
-  %dbopts = URI->new($url)->query_form() if ($path =~ s{\?.*$}{});
+  my $uri    = URI->new($url);
+  my $path   = ($uri->authority//'') . ($uri->path//'');
+  my %dbopts = $uri->query_form();
+
+  ##-- check whether the path looks like an rc-file; if so, try to open it as one
+  return $cli->open_rcfile($cli->{url})
+    if (!-d $path && !-e "$path/header.json");
+
   $cli->{db} = DiaColloDB->new(%dbopts,dbdir=>$path)
     or $cli->logconfess("open_file() failed to open DB directory $path: $!");
   return $cli;
@@ -91,6 +96,22 @@ sub profile {
   $cli->{error} = $cli->{db}{error} if (!defined(my $mp = $cli->{db}->profile(@_)));
   return $mp;
 }
+
+##--------------------------------------------------------------
+## Profiling: extend (pass-2 for multi-clients)
+
+## $mprf = $cli->extend($relation, %opts)
+##  + get an extension-profile for selected items as a DiaColloDB::Profile::Multi object
+##  + %opts: as for DiaColloDB::extend()
+##  + sets $cli->{error} on error
+sub extend {
+  my $cli = shift;
+  $cli->logconfess($cli->{error}="extend(): no db opened!") if (!$cli->opened);
+  delete $cli->{error};
+  $cli->{error} = $cli->{db}{error} if (!defined(my $mp = $cli->{db}->extend(@_)));
+  return $mp;
+}
+
 
 ##--------------------------------------------------------------
 ## Profiling: Comparison (diff)

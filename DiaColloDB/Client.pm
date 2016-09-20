@@ -61,6 +61,8 @@ sub promote {
 ## undef = $obj->DESTROY
 ##  + destructor calls close() if necessary
 sub DESTROY {
+  #$_[0]->trace("DESTROY (tid=", (UNIVERSAL::can('threads','tid') ? threads->tid : '-undef-'), ')'); ##-- DEBUG:thrads
+  return if (UNIVERSAL::can('threads','tid') && threads->tid!=0); ##-- don't implicitly close if we're not in main thread
   $_[0]->close() if ($_[0]->opened);
 }
 
@@ -69,12 +71,15 @@ sub DESTROY {
 
 ## $cli_or_undef = $cli->open($url,%opts)
 ## $cli_or_undef = $cli->open()
-##  + calls open_file(), open_http(), or open_list() as appropriate
+##  + calls open_rcfile(), open_file(), open_http(), or open_list() as appropriate
 sub open {
   my ($cli,$url) = (shift,shift);
   $url     //= $cli->{url};
   my $scheme = UNIVERSAL::isa($url,'ARRAY') ? 'list' : (URI->new($url)->scheme // 'file');
-  if ($scheme eq 'file') {
+  if ($scheme =~ /^rcfile|rc$/) {
+    return $cli->open_rcfile($url,@_);
+  }
+  elsif ($scheme eq 'file') {
     return $cli->open_file($url,@_);
   }
   elsif ($scheme =~ /^https?$/) {
@@ -87,6 +92,37 @@ sub open {
   return undef;
 }
 
+## $cli_or_undef = $cli->open_rcfile($rcfile_url,%opts)
+## $cli_or_undef = $cli->open_rcfile()
+##  + opens a local file url
+##  + may re-bless() $cli into an appropriate package
+##  + loads a JSON config file containing one or more of the following keys:
+##    (
+##     class => $CLASS, ##-- bless() client into class $CLASS
+##     url   => $url,   ##-- open client url $url
+##     $key  => $val,   ##-- ... other keys passed to $cli->open($url,%opts)
+##    )
+sub open_rcfile {
+  my ($cli,$rcurl,%opts) = @_;
+  $cli = $cli->new() if (!ref($cli));
+  $cli->close() if ($cli->opened);
+  $cli->{rcurl} = ($rcurl //= $cli->{url});
+  my $uri    = URI->new($rcurl);
+  my $rcpath = ($uri->authority//'') . ($uri->path//'');
+  my %rcopts = $uri->query_form;
+
+  ##-- load data from file
+  my $hdr = $cli->readHeaderFile($rcpath)
+    or $cli->logconfess("open_file() failed to open config file $rcpath: $!");
+  $cli->promote($hdr->{class}) if ($hdr->{class});
+  delete $hdr->{class};
+  @$cli{keys %$hdr}   = values %$hdr;
+  @$cli{keys %rcopts} = values %rcopts;
+
+  ##-- dispatch to lower-level open:// call
+  delete $cli->{url} if (($cli->{url}//'') eq $rcurl);
+  return $cli->opened || !$cli->{url} ? $cli : $cli->open($cli->{url});
+}
 
 ## $cli_or_undef = $cli->open_file($file_url,%opts)
 ## $cli_or_undef = $cli->open_file()
@@ -166,6 +202,9 @@ sub query {
   if ($rel =~ s{^(?:d(?!dc)(?:iff)?|co?mp(?:are)?)[\-\/\.\:]?}{}) {
     return $cli->compare($rel,@_);
   }
+  elsif ($rel =~ s{^ext(?:end)?[\-\/\.\:]?}{}) {
+    return $cli->extend($rel,@_);
+  }
   return $cli->profile($rel,@_);
 }
 
@@ -214,6 +253,18 @@ sub compare2 {
 sub profile {
   my ($cli,$rel,%opts) = @_;
   $cli->logconfess("profile(): not implemented");
+}
+
+##--------------------------------------------------------------
+## Profiling: extend (pass-2 for multi-clients)
+
+## $mprf = $cli->extend($relation, %opts)
+##  + get an extension-profile for selected items as a DiaColloDB::Profile::Multi object
+##  + %opts: as for DiaColloDB::extend()
+##  + sets $cli->{error} on error
+sub extend {
+  my ($cli,$rel,%opts) = @_;
+  $cli->logconfess("extend(): not implemented");
 }
 
 ##--------------------------------------------------------------

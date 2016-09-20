@@ -100,6 +100,7 @@ DiaColloDB - diachronic collocation database, top-level
  ## Profiling: Generic
  
  $mprf  = $coldb->profile($relation, %opts);
+ $mprf  = $coldb->extend($relation,%opts);
  \%opts = $CLASS_OR_OBJECT->profileOptions(\%opts);
  
  ##========================================================================
@@ -877,6 +878,24 @@ Get a relation profile for selected items as a L<DiaColloDB::Profile::Multi|DiaC
  onepass => $bool,          ##-- if true, use old, fast, incorrect 1-pass method (default=0)
 
 Sets default %opts and wraps $coldb-E<gt>L<relation|/relation>($rel)-E<gt>L<profile|DiaColloDB::Relation/profile>($coldb, %opts).
+
+=item extend
+
+ $mprf = $coldb->extend($relation, %opts);
+
+Get independent f2 frequencies for C<$opts{slice2keys}>, which is B<EITHER>
+a HASH-ref C<{$sliceLabel1=E<gt>\@sliceKeys1, ...}>,
+B<OR>
+a JSON-string encoding such a HASH-ref.
+Options C<%opts> are as for the L<profile()|/profile> method (mostly ignored),
+and also:
+
+ slice2keys => \%slice2keys, ##-- target f2-items or JSON-string (REQUIRED)
+
+Returns a L<DiaColloDB::Profile::Multi|DiaColloDB::Profile::Multi> object
+containing the appropriate f2 entries.  Used by C<list-clients|DiaColloDB::Client::list>
+to ensure correct f2 counts for "missing" collocate items;
+see L<DiaColloDB::Client::list/"Incorrect Independent Collocate Frequencies"> for details.
 
 =item profileOptions
 

@@ -5,13 +5,12 @@
 
 package DiaColloDB::Client::list;
 use DiaColloDB::Client;
-use DiaColloDB::Utils qw(:list :math :si);
 use strict;
 
 ##-- try to use threads
-our ($HAVE_FORKS);
+our ($HAVE_THREADS);
 BEGIN {
-  $HAVE_FORKS = eval <<EOF;
+  $HAVE_THREADS = eval <<EOF;
 #use threads; ##-- segfaults on join()ing 2nd thread (possibly bogus destruction)
 use forks;
 1
@@ -38,14 +37,12 @@ our @ISA = qw(DiaColloDB::Client);
 ##    urls  => \@urls,     ##-- db urls
 ##    opts  => \%opts,     ##-- sub-client options
 ##    fudge => $coef,      ##-- get ($coef*$kbest) items from sub-clients (0:all, default=10)
-##    fork  => $bool,      ##-- run each subclient query in its own fork? (default=if available)
-##    lazy => $bool,       ##-- use temporary on-demand sub-clients (true,default) or persistent sub-clients (false)
-##    extend => $bool,     ##-- use extend() queries to acquire correct f2 counts? (default=true)
 ##    logFudge => $level,  ##-- log-level for fudge-factor debugging (default='debug')
-##    logFork => $level,   ##-- log-level for thread (fork) options (default='none')
+##    logThread => $level,  ##-- log-level for thread (fork) options (default='none')
+##    threads => $bool,    ##-- use threads if available? (default=0)
 ##    ##
 ##    ##-- guts
-##    #clis => \@clis,     ##-- per-url clients for mode, v0.11.000
+##    #clis => \@clis,     ##-- per-url clients (created & destroyed on-demand as of v0.11.000)
 ##   )
 
 ## %defaults = $CLASS_OR_OBJ->defaults()
@@ -58,9 +55,7 @@ sub defaults {
 	  fudge=>10,
 	  logFudge => 'debug',
 	  logThread => 'none',
-	  fork => $HAVE_FORKS,
-	  lazy => 1,
-	  extend => 1,
+	  threads => $HAVE_THREADS,
 	 );
 }
 
@@ -105,20 +100,20 @@ sub open_list {
   }
   @$cli{qw(url urls)} = ($url,$curls);
 
-  ##-- sanity check(s)
-  if ($cli->{fork} && !$HAVE_FORKS) {
-    $cli->warn("fork-mode requested, but 'forks' module unavailable");
-    $cli->{fork} = 0;
-  }
+  ##-- open sub-clients
+#  my ($c);
+#  my $clis = $cli->{clis} = [];
+#  foreach (@$curls) {
+#    $c = DiaColloDB::Client->new($_,%{$cli->{opts}//{}},@_)
+#      or $cli->logconfess("open(): failed to create client for URL '$_': $!");
+#    push(@$clis, $c);
+  #  }
 
   ##-- save sub-client options in $cli->{opts}
   if (@_) {
     my %opts = @_;
     $cli->{opts}{keys %opts} = values %opts;
   }
-
-  ##-- open sub-clients (non-lazy mode)
-  $cli->{clis} = [map {$cli->client($_)} (0..$#$curls)] if (!$cli->{lazy});
 
   return $cli;
 }
@@ -134,16 +129,10 @@ sub close {
 
 ## $bool = $cli->opened()
 ##  + override checks for non-empty $cli->{urls}
-##  + ensures all sub-clients are opened in non-lazy mode
 sub opened {
   return (ref($_[0])
 	  && $_[0]{urls}
 	  && @{$_[0]{urls}}
-	  && ($_[0]{lazy} || (
-			      $_[0]{clis}
-			      && @{$_[0]{clis}}==@{$_[0]{urls}}
-			      && !grep {!defined($_) || !$_->opened} @{$_[0]{clis}}
-			     ))
 	 );
 }
 
@@ -151,48 +140,48 @@ sub opened {
 ##  + open (temporary) sub-client #$i
 sub client {
   my ($cli,$i,%opts) = @_;
-  return $cli->{clis}[$i] if (!$cli->{lazy} && $cli->{clis} && $cli->{clis}[$i]); ##-- non-lazy mode
   my $url = $cli->{urls}[$i]
     or $cli->logconfess("client(): no URL for client #$i");
   my $sub = DiaColloDB::Client->new($url,%{$cli->{opts}//{}},%opts)
-    or $cli->logconfess("client(): failed to create client for URL '$url': $!");
+    or $cli->logconfess("open(): failed to open client for URL '$url': $!");
   return $sub;
 }
 
 ##==============================================================================
-## I/O: Persistent API: header
-##  + largely INHERITED from DiaColloDB::Persistent
+## dbinfo
 
-## @keys = $coldb->headerKeys()
-##  + keys to save as header
-sub headerKeys {
-  return (qw(url urls), grep {!ref($_[0]{$_}) && $_ !~ m{^log}} keys %{$_[0]});
+## \%info = $cli->dbinfo()
+##   + returned info is {dtrs=>\@dtr_info, fudge=>$coef},
+sub dbinfo {
+  my $cli  = shift;
+  my @info = $cli->subcall(sub {
+			     my $sub = $_[0]->client($_[1]);
+			     $sub->dbinfo()
+			       or $_[0]->logconfess("dbinfo() failed for client URL $sub->{url}: $sub->{error}");
+			   });
+  return {dtrs=>\@info, fudge=>$cli->{fudge}, threads=>$cli->{threads}};
 }
 
-
-
 ##==============================================================================
-## utils: threaded sub-client calls
+## threaded sub-client calls
 
 ##  @results = $cli->subcall(\&CODE, @args)
 ## \@results = $cli->subcall(\&CODE, @args)
 ##  + calls CODE($cli, $i, @args) in scalar context foreach $i (0..$#{$cli->{urls}})
-##  + CODE is expected to return anything other than undef
 sub subcall {
   my ($cli,$code,@args) = @_;
   my ($i,@results);
-  if ($HAVE_FORKS && $cli->{fork}) {
+  if ($HAVE_THREADS && $cli->{threads}) {
     ##-- threaded call
-    #PDL::no_clone_skip_warning() if (UNIVERSAL::can('PDL','no_clone_skip_warning')); ##-- ithreads warning
+    PDL::no_clone_skip_warning() if (UNIVERSAL::can('PDL','no_clone_skip_warning'));
     my (@thrs);
     for ($i=0; $i <= $#{$cli->{urls}}; ++$i) {
-      $cli->vlog($cli->{logThread}, "subcall(): spawning thread for subclient[$i]");
+      $cli->vlog($cli->{logThread}, "subcall: spawning thread for sub-client #$i");
       push(@thrs, threads->create({context=>'scalar'}, $code, $cli, $i, @args));
     }
     for ($i=0; $i <= $#{$cli->{urls}}; ++$i) {
-      $cli->vlog($cli->{logThread}, "subcall(): joining thread for subclient[$i]");
+      $cli->vlog($cli->{logThread}, "subcall: joining thread for sub-client #$i");
       my $rv = $thrs[$i]->join(); ##-- perl 'threads' module (ithreads) segfaults here at 2nd encounter (client #0:ok, client #1:segfault)
-      $cli->logconfess("subcall(): error processing subclient[$i] ($cli->{urls}[$i])") if ($thrs[$i]->error);
       push(@results, $rv);
     }
   }
@@ -204,75 +193,6 @@ sub subcall {
   }
   return wantarray ? @results : \@results;
 }
-
-##==============================================================================
-## dbinfo
-
-## \%info = $cli->dbinfo()
-##   + returned info is {dtrs=>\@dtr_info, fudge=>$coef},
-sub dbinfo {
-  my $cli  = shift;
-  my @dtrs = $cli->subcall(sub {
-			     my $sub = $_[0]->client($_[1]);
-			     $sub->dbinfo()
-			       or $_[0]->logconfess("dbinfo() failed for client URL $sub->{url}: $sub->{error}");
-			   });
-
-  ##-- collect & merge daughter info
-  my $info  = {dtrs=>\@dtrs, (map {($_=>$cli->{$_})} qw(fudge fork lazy)), urls=>join(' ',@{$cli->{urls}})};
-  my %attrs = qw();
-  my %rels  = qw();
-  my ($di,$d);
-  foreach $di (0..$#dtrs) {
-    $d = $dtrs[$di];
-    $d->{url} = $cli->{urls}[$di];
-    foreach (@{$d->{attrs}}) {
-      $attrs{$_->{name}}[$di] = $_;
-    }
-    foreach (keys %{$d->{relations}}) {
-      $rels{$_}[$di] = $d->{relations}{$_};
-    }
-  }
-  $info->{timestamp} = (sort map {$_->{timestamp}||''} @dtrs)[$#dtrs];
-  $info->{xdmax}     = lmax(map {$_->{xdmax}} @dtrs);
-  $info->{xdmin}     = lmin(map {$_->{xdmax}} @dtrs);
-  $info->{du_b}      = lsum(map {$_->{du_b}} @dtrs);
-  $info->{du_h}      = si_str($info->{du_b});
-  $info->{version}   = $DiaColloDB::VERSION;
-
-  ##-- extract common attributes
-  my ($aname,$avals,$a,$counts);
-  foreach $aname (keys %attrs) {
-    $avals = $attrs{$aname};
-    next if ((grep {defined $_} @$avals) != @dtrs);
-    $a = { name=>$aname, title=>$avals->[0]{title} };
-    $a->{size} = join('+', map {$_->{size}} @$avals);
-    $a->{alias} = [sort grep {$counts->{$_} >= @dtrs} keys %{$counts = lcounts([map {@{$_->{alias}//[]}} @$avals])}];
-    push(@{$info->{attrs}}, $a);
-  }
-
-  ##-- extract common relations
-  my ($rname,$rvals,$r);
-  foreach $rname (keys %rels) {
-    $rvals = $rels{$rname};
-    next if ((grep {defined $_} @$rvals) != @dtrs);
-    $r = { };
-    $r->{class} = join(' ', @{luniq([map {$_->{class}} @$rvals])});
-    $r->{du_b}  = lsum(map {$_->{du_b}} @$rvals);
-    $r->{du_h}  = si_str($r->{du_b});
-
-
-    $r->{attrs} = [sort grep {$counts->{$_} >= @dtrs} keys %{$counts = lcounts([map {@{$_->{attrs}//[]}} @$rvals])}]
-      if (grep {$_->{attrs}} @$rvals);
-    $r->{meta} = [sort grep {$counts->{$_} >= @dtrs} keys %{$counts = lcounts([map {@{$_->{meta}//[]}} @$rvals])}]
-      if (grep {$_->{meta}} @$rvals);
-
-    $info->{relations}{$rname} = $r;
-  }
-
-  return $info;
-}
-
 
 ##==============================================================================
 ## Profiling
@@ -287,7 +207,7 @@ sub dbinfo {
 sub profile {
   my ($cli,$rel,%opts) = @_;
 
-  ##-- defaults
+  ##-- defualts
   DiaColloDB->profileOptions(\%opts);
 
   ##-- fudge coefficient
@@ -302,13 +222,10 @@ sub profile {
 			      or $_[0]->logconfess("profile() failed for client URL $sub->{url}: $sub->{error}");
 			  });
 
-  if ($cli->{extend} && @mps > 1) {
-    $cli->vlog($cli->{logFudge}, "profile(): extending sub-profiles");
-
+  if (@mps > 1) {
     ##-- fill-out multi-profiles (ensure compatible slice-partitioning & find "missing" keys)
     DiaColloDB::Profile::Multi->xfill(\@mps);
     my $xkeys = DiaColloDB::Profile::Multi->xkeys(\@mps);
-    #$cli->trace("extend(): xkeys=", DiaColloDB::Utils::saveJsonString($xkeys, utf8=>0));
 
     ##-- extend multi-profiles with "missing" keys
     my @mpx = $cli->subcall(sub {
@@ -338,33 +255,6 @@ sub profile {
 }
 
 ##--------------------------------------------------------------
-## Profiling: extend (pass-2 for multi-clients)
-
-## $mprf = $cli->extend($relation, %opts)
-##  + get an extension-profile for selected items as a DiaColloDB::Profile::Multi object
-##  + %opts: as for DiaColloDB::extend()
-##  + sets $cli->{error} on error
-sub extend {
-  my ($cli,$rel,%opts) = @_;
-
-  ##-- defaults
-  DiaColloDB->profileOptions(\%opts);
-
-  ##-- query clients
-  my @mps = $cli->subcall(sub {
-			    my $sub = $_[0]->client($_[1]);
-			    $sub->extend($rel,%opts,strings=>1)
-			      or $_[0]->logconfess("extend() failed for client URL $sub->{url}: $sub->{error}");
-			  });
-
-  ##-- create final profile
-  my $mp = shift(@mps) or return undef;
-  $mp->_add($_) foreach (@mps);
-
-  return $mp;
-}
-
-##--------------------------------------------------------------
 ## Profiling: Comparison (diff)
 
 ## $mprf = $cli->compare($relation, %opts)
@@ -375,7 +265,7 @@ sub extend {
 sub compare {
   my ($cli,$rel,%opts) = @_;
 
-  ##-- defaults
+  ##-- defaults ::: CONTINUE HERE
   DiaColloDB->compareOptions(\%opts);
 
   ##-- common variables
@@ -402,3 +292,7 @@ sub compare {
 1;
 
 __END__
+
+
+
+
