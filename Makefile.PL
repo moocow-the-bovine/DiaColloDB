@@ -40,7 +40,7 @@ WriteMakefile
 				runtime => {
 					    recommends => {
 							   'DDC::XS' => 0.15,
-							   'forks' => 0.36,   ##-- for list-clients
+							   'forks'   => 0.36, ##-- pseudo-threads for list-clients
 							   %pdl_deps
 							  },
 					    #suggests => {},
