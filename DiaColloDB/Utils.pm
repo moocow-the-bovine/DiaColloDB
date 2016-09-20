@@ -36,7 +36,7 @@ our %EXPORT_TAGS =
      env   => [qw(env_set env_push env_pop)],
      pack  => [qw(packsize packsingle packFilterFetch packFilterStore)],
      math  => [qw($LOG2 log2 min2 max2 lmax lmin lsum)],
-     list  => [qw(luniq sluniq xluniq)],
+     list  => [qw(luniq sluniq xluniq lcounts)],
      regex => [qw(regex)],
      html  => [qw(htmlesc)],
      ddc   => [qw(ddc_escape)],
@@ -467,6 +467,14 @@ sub xluniq {
 	  map  {[$keyfunc->($_),$_]}
 	  @{$l//[]}
 	 ];
+}
+
+## \%l_counts = lcounts(\@l)
+##  + return occurrence counts for elements of @l
+sub lcounts {
+  my %counts = qw();
+  ++$counts{$_} foreach (grep {defined($_)} @{$_[0]//[]});
+  return \%counts;
 }
 
 ##==============================================================================

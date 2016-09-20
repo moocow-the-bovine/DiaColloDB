@@ -5,6 +5,7 @@
 
 package DiaColloDB::Client::list;
 use DiaColloDB::Client;
+use DiaColloDB::Utils qw(:list :math :si);
 use strict;
 
 ##-- try to use threads
@@ -199,12 +200,65 @@ sub subcall {
 ##   + returned info is {dtrs=>\@dtr_info, fudge=>$coef},
 sub dbinfo {
   my $cli  = shift;
-  my @info = $cli->subcall(sub {
+  my @dtrs = $cli->subcall(sub {
 			     my $sub = $_[0]->client($_[1]);
 			     $sub->dbinfo()
 			       or $_[0]->logconfess("dbinfo() failed for client URL $sub->{url}: $sub->{error}");
 			   });
-  return {dtrs=>\@info, (map {($_=>$cli->{$_})} qw(fudge fork lazy))};
+
+  ##-- collect & merge daughter info
+  my $info  = {dtrs=>\@dtrs, (map {($_=>$cli->{$_})} qw(fudge fork lazy)), urls=>join(' ',@{$cli->{urls}})};
+  my %attrs = qw();
+  my %rels  = qw();
+  my ($di,$d);
+  foreach $di (0..$#dtrs) {
+    $d = $dtrs[$di];
+    $d->{url} = $cli->{urls}[$di];
+    foreach (@{$d->{attrs}}) {
+      $attrs{$_->{name}}[$di] = $_;
+    }
+    foreach (keys %{$d->{relations}}) {
+      $rels{$_}[$di] = $d->{relations}{$_};
+    }
+  }
+  $info->{timestamp} = (sort map {$_->{timestamp}||''} @dtrs)[$#dtrs];
+  $info->{xdmax}     = lmax(map {$_->{xdmax}} @dtrs);
+  $info->{xdmin}     = lmin(map {$_->{xdmax}} @dtrs);
+  $info->{du_b}      = lsum(map {$_->{du_b}} @dtrs);
+  $info->{du_h}      = si_str($info->{du_b});
+  $info->{version}   = $DiaColloDB::VERSION;
+
+  ##-- extract common attributes
+  my ($aname,$avals,$a,$counts);
+  foreach $aname (keys %attrs) {
+    $avals = $attrs{$aname};
+    next if ((grep {defined $_} @$avals) != @dtrs);
+    $a = { name=>$aname, title=>$avals->[0]{title} };
+    $a->{size} = join('+', map {$_->{size}} @$avals);
+    $a->{alias} = [sort grep {$counts->{$_} >= @dtrs} keys %{$counts = lcounts([map {@{$_->{alias}//[]}} @$avals])}];
+    push(@{$info->{attrs}}, $a);
+  }
+
+  ##-- extract common relations
+  my ($rname,$rvals,$r);
+  foreach $rname (keys %rels) {
+    $rvals = $rels{$rname};
+    next if ((grep {defined $_} @$rvals) != @dtrs);
+    $r = { };
+    $r->{class} = join(' ', @{luniq([map {$_->{class}} @$rvals])});
+    $r->{du_b}  = lsum(map {$_->{du_b}} @$rvals);
+    $r->{du_h}  = si_str($r->{du_b});
+
+
+    $r->{attrs} = [sort grep {$counts->{$_} >= @dtrs} keys %{$counts = lcounts([map {@{$_->{attrs}//[]}} @$rvals])}]
+      if (grep {$_->{attrs}} @$rvals);
+    $r->{meta} = [sort grep {$counts->{$_} >= @dtrs} keys %{$counts = lcounts([map {@{$_->{meta}//[]}} @$rvals])}]
+      if (grep {$_->{meta}} @$rvals);
+
+    $info->{relations}{$rname} = $r;
+  }
+
+  return $info;
 }
 
 
@@ -336,7 +390,3 @@ sub compare {
 1;
 
 __END__
-
-
-
-

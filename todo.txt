@@ -1,11 +1,11 @@
 TODO Wed, 14 Sep 2016 14:02:58 +0200
 + implement
   x- extend(): fix for DDC (max ddc-qstr len = DDC_STATIC_BUFLEN = 4096) --> NOT EASY (no "OR" for both token and metadata filters!)
-  - load client config from rc-file
+  x- load client config from rc-file
   - lazy union() ?
 + document
   x- extend(): #DiaColloDB, #Relation, #Relation::*, #Client, #Client::*
-  - client rcfile:// scheme
+  x- client rcfile:// scheme
 
 #DONE TODO Wed, 11 May 2016 14:27:14 +0200
 x+ update kaskade DBs
