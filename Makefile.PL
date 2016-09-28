@@ -29,11 +29,11 @@ WriteMakefile
    META_MERGE   => {
 		    'meta-spec' => { version => 2 }, ##-- doesn't seem to work
 		    resources  => {
-				   repository => {
-						  type => 'svn',
-						  url => 'svn://svn.code.sf.net/p/ddc-concordance/code/ddc-perl/',
-						  web => 'https://sourceforge.net/p/ddc-concordance/code/HEAD/tree/ddc-perl/',
-						 },
+#				   repository => {
+#						  type => 'svn',
+#						  url => 'svn://svn.code.sf.net/p/ddc-concordance/code/ddc-perl/',
+#						  web => 'https://sourceforge.net/p/ddc-concordance/code/HEAD/tree/ddc-perl/',
+#						 },
 				  },
 		    ##-- prereqs: for Meta::Spec v2
 		    prereqs => {
