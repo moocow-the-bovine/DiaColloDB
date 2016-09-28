@@ -2,6 +2,9 @@
 ##
 ## Change log for perl distribution DiaColloDB
 
+PENDING
+	* fixed bogus repsitory in Makefile.PL
+
 v0.11.001 Tue, 20 Sep 2016 14:14:18 +0200 moocow
 	* added DiaColloDB::Relation::extend() and wrappers DiaColloDB::extend(), DiaColloDB::Client::extend()
 	  - high-level interface to independent f2 acquisition, e.g. for list-clients
