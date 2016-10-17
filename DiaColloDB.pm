@@ -958,11 +958,11 @@ sub create {
   }
 
   CORE::close($atokfh)
-      or $coldb->logconfess("create(): failed to temporary attribute-token-file $atokfile: $!");
+      or $coldb->logconfess("create(): failed to close temporary attribute-token-file $atokfile: $!");
   CORE::close($tokfh)
-      or $coldb->logconfess("create(): failed to temporary token-file $tokfile: $!");
+      or $coldb->logconfess("create(): failed to close temporary token-file $tokfile: $!");
   CORE::close($vtokfh)
-      or $coldb->logconfess("create(): failed to temporary tdf-token-file $vtokfile: $!");
+      or $coldb->logconfess("create(): failed to close temporary tdf-token-file $vtokfile: $!");
   my $ntok_out = $toki_out;
   my $ptokbad = $ntok_in ? sprintf("%.2f%%",100*($ntok_in-$ntok_out)/$ntok_in) : 'nan%';
   $coldb->vlog($coldb->{logCreate}, "create(): assigned $nt term tuple-IDs to $ntok_out of $ntok_in tokens (pruned $ptokbad)");
