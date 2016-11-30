@@ -424,7 +424,7 @@ sub qinfoData {
   my $xi=1;
   foreach (@{$opts{gbreq}{areqs}}) {
     if ($_->[0] =~ /^doc\.(.*)/) {
-      push(@fstrs, DDC::Any::CQFHasField->new($1,"__W2.${xi}__")->toString);
+      push(@fstrs, DDC::Any::CQFHasField->new("$1","__W2.${xi}__")->toString);
     }
     else {
       push(@q2strs, DDC::Any::CQTokExact->new($_->[0],"__W2.${xi}__")->toString);

@@ -2,8 +2,11 @@
 ##
 ## Change log for perl distribution DiaColloDB
 
-PENDING
+v0.11.002 Wed, 30 Nov 2016 15:38:39 +0100 moocow
 	* fixed bogus repsitory in Makefile.PL
+	* fixed meta-attribute parsing "doc.ATTR", "doc.ATTR=VAL" for native query syntax
+	* fixed buglet calling DDC::Any::Object::new() with temporary $1 argument (quote it to save it)
+	* TODO: figure out why DDC::PP Descendants() returns in reverse order vs. DDC::XS::Descendants() (--> diacollo item tuple order)
 
 v0.11.001 Tue, 20 Sep 2016 14:14:18 +0200 moocow
 	* added DiaColloDB::Relation::extend() and wrappers DiaColloDB::extend(), DiaColloDB::Client::extend()

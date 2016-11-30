@@ -41,7 +41,7 @@ use strict;
 ##==============================================================================
 ## Globals & Constants
 
-our $VERSION = "0.11.001";
+our $VERSION = "0.11.002";
 our @ISA = qw(DiaColloDB::Client);
 
 ## $PGOOD_DEFAULT
@@ -1749,12 +1749,12 @@ sub parseQuery {
   ##-- compat: parse into attribute-local requests $areqs=[[$attr1,$areq1],...]
   my $sepre  = qr{[\s\,]};
   my $charre = qr{(?:\\[^ux0-9]|[\w\x{80}-\x{ffff}])};
-  my $attrre = qr{(?:\$?${charre}+)};
+  my $attrre = qr{(?:\$?(?:doc\.)?${charre}+)};
   my $orre   = qr{(?:\s*\|?\s*)};
   my $setre  = qr{(?:(?:${charre}+)(?:${orre}${charre}+)*)};	##-- value: |-separated barewords
   my $regre  = qr{(?:/(?:\\/|[^/]*)/(?:[gimsadlux]*))};		##-- value regexes
   my $valre  = qr{(?:${setre}|${regre})};
-  my $reqre  = qr{(?:(?:${attrre}[:=])?${valre})};
+  my $reqre  = qr{(?:(?:${attrre}(?:[:=]${valre})?)|${valre})};
   if (!$areqs
       && ($ddcmode <= 0)			##-- allow native parsing?
       && $req =~ m/^${sepre}*			##-- initial separators (optional)
