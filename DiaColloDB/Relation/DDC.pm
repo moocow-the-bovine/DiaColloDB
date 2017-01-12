@@ -26,7 +26,7 @@ our @ISA = qw(DiaColloDB::Relation);
 ##    ##
 ##    ##-- ddc client options
 ##    ddcServer => "$server:$port",    ##-- ddc server (required; default=$coldb->{ddcServer} via fromDB() method)
-##    ddcTimeout => $timeout,          ##-- ddc timeout; default=120
+##    ddcTimeout => $timeout,          ##-- ddc timeout; default=300
 ##    ddcLimit   => $limit,            ##-- default limit for ddc queries (default=-1)
 ##    ddcSample  => $sample,           ##-- default sample size for ddc queries (default=-1:all)
 ##    dmax    => $maxDistance,         ##-- default distance for near() queries (default=5; 1=immediate adjacency; ~ ddc CQNear.Dist+1)
@@ -40,7 +40,7 @@ sub new {
   my $rel  = $that->SUPER::new(
 			       #base       => undef,
 			       ddcServer  => undef,
-			       ddcTimeout => 120,
+			       ddcTimeout => 300,
 			       ddcLimit   => -1,
 			       ddcSample  => -1,
 			       dmax       => 5,
@@ -402,7 +402,7 @@ sub ddcClient {
   $port   ||= 50000;
 
   return $rel->{dclient} = DDC::Client::Distributed->new(
-							 timeout=>($rel->{ddcTimeout}//120),
+							 timeout=>($rel->{ddcTimeout}//300),
 							 connect=>{PeerAddr=>$server,PeerPort=>$port},
 							 mode=>'json',
 							 %opts

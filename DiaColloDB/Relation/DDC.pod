@@ -125,7 +125,7 @@ L<DiaColloDB::Relation|DiaColloDB::Relation>.
  ##
  ##-- ddc client options
  ddcServer => "$server:$port",    ##-- ddc server (required; default=$coldb->{ddcServer} via fromDB() method)
- ddcTimeout => $timeout,          ##-- ddc timeout; default=120
+ ddcTimeout => $timeout,          ##-- ddc timeout; default=300
  ddcLimit   => $limit,            ##-- default limit for ddc queries (default=-1)
  ddcSample  => $sample,           ##-- default sample size for ddc queries (default=-1:all)
  dmax       => $maxDistance,      ##-- default distance for near() queries (default=5; 1=immediate adjacency; ~ ddc CQNear.Dist+1)
