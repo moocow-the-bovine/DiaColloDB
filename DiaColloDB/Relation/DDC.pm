@@ -426,7 +426,7 @@ sub ddcQuery {
   my $cli  = $rel->ddcClient();
   $cli->{limit} = $opts{limit}//-1 if (exists($opts{limit}));
 
-  $rel->vlog($level, "$logas: query[server=$rel->{ddcServer},limit=$cli->{limit}]: ",
+  $rel->vlog($level, "$logas: query[server=$rel->{ddcServer},limit=$cli->{limit},timeout=$cli->{timeout}]: ",
 	     ($trunc < 0 || length($qstr) <= $trunc ? $qstr : (substr($qstr,0,$trunc)."...")));
   $cli->open()
     or $rel->logconfess($coldb->{error}="$logas: failed to connect to DDC server on $rel->{ddcServer}: $!")
