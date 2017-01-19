@@ -19,9 +19,6 @@ use strict;
 
 our @ISA = qw(DiaColloDB::Relation::Cofreqs DiaColloDB::Compat);
 
-## $PFCLASS : object class for nested PackedFile objects
-our $PFCLASS = $DiaColloDB::Relation::Cofreqs::PFCLASS;
-
 ##==============================================================================
 ## Constructors etc.
 
@@ -153,7 +150,7 @@ sub opened {
 ##  + supports multiple lines for pairs ($i1,$d1,$i2) provided the above conditions hold
 ##  + supports loading of $cof->{N} from single-value lines
 ##  + %opts: clobber %$cof
-
+*loadTextFh = __PACKAGE__->nocompat('loadTextFh');
 
 ## $bool = $cof->saveTextFh($fh,%opts)
 ##  + save from text file with lines of the form:
@@ -166,28 +163,11 @@ sub opened {
 ##      i2s2 => \&CODE,   ##-- code-ref for formatting item2 indices (overrides 'i2s')
 
 ##==============================================================================
-## Relation API: create
+## Relation API: create, union
+##  + disabled
 
-## $rel = $CLASS_OR_OBJECT->create($coldb,$tokdat_file,%opts)
-##  + populates current database from $tokdat_file,
-##    a tt-style text file with lines of the form:
-##      TID DATE	##-- single token
-##	"\n"		##-- blank line: EOS
-##  + %opts: clobber %$ug
 *create = __PACKAGE__->nocompat('create');
-
-##==============================================================================
-## Relation API: union
-
-
-## $cof = CLASS_OR_OBJECT->union($coldb, \@pairs, %opts)
-##  + merge multiple unigram unigram indices from \@pairs into new object
-##  + @pairs : array of pairs ([$cof,\@ti2u],...)
-##    of unigram-objects $cof and tuple-id maps \@ti2u for $cof
-##    - \@ti2u may also be a mapping object supporting a toArray() method
-##  + %opts: clobber %$cof
-##  + implicitly flushes the new index
-*union = __PACKAGE__->nocompat('union');
+*union  = __PACKAGE__->nocompat('union');
 
 ##==============================================================================
 ## Relation API: dbinfo

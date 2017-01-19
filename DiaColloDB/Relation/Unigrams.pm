@@ -40,11 +40,14 @@ our $PFCLASS = 'DiaColloDB::PackedFile::MMap';
 ##    ##-- size info (after open() or load())
 ##    size1    => $size1,      ##-- == $r1->size()
 ##    size2    => $size2,      ##-- == $r2->size()
+##    sizeN    => $sizeN,      ##-- == $rN->size()
 ##    ##
 ##    ##-- low-level data
 ##    r1 => $r1,               ##-- pf: [$end2]      @ $i1				: constant (logical index)
 ##    r2 => $r2,               ##-- pf: [$d1,$f1]*   @ end2($i1-1)..(end2($i1+1)-1)	: sorted by $d1 for each $i1
-##    N  => $N,                ##-- sum($f1)
+##    rN => $rN,               ##-- pf: [$fN]        @ $date - $ymin                    : totals by date
+##    ymin => $dmin,           ##-- constant == $coldb->{xdmin}
+##    N  => $N,                ##-- sum($f12) [always used for version <= 0.11; used here only for slice==0]
 ##    version => $version,     ##-- file version, for compatibility checks
 ##   )
 sub new {
@@ -63,7 +66,7 @@ sub new {
 		    #mmap => 1,
 		    @_
 		   }, (ref($that)||$that));
-  $ug->{$_} //= $ug->mmclass($PFCLASS)->new() foreach (qw(r1 r2));
+  $ug->{$_} //= $ug->mmclass($PFCLASS)->new() foreach (qw(r1 r2 rN));
   $ug->{class} = ref($ug);
   return $ug->open() if (defined($ug->{base}));
   return $ug;
@@ -107,13 +110,13 @@ sub open {
   }
 
   ##-- check compatibility
-  my $min_version = qv(0.10.000);
+  my $min_version = qv(0.12.000);
   if ($hdr && (!defined($hdr->{version}) || version->parse($hdr->{version}) < $min_version)) {
-    $ug->vlog($ug->{logCompat}, "using compatibility mode for $ug->{base}.*; consider running \`dcdb-upgrade.perl ", dirname($ug->{base}), "\'");
-    DiaColloDB::Compat->usecompat('v0_09');
-    bless($ug, 'DiaColloDB::Compat::v0_09::Relation::Unigrams');
+    $ug->vlog($ug->{logCompat}, "using v0.11 compatibility mode for $ug->{base}.*; consider running \`dcdb-upgrade.perl ", dirname($ug->{base}), "\'");
+    DiaColloDB::Compat->usecompat('v0_11');
+    bless($ug, 'DiaColloDB::Compat::v0_11::Relation::Unigrams');
     $ug->{version} = $hdr->{version};
-    return $ug->open("$base.dba",$flags);
+    return $ug->open($base,$flags);
   }
 
   ##-- open low-level data structures
@@ -121,8 +124,11 @@ sub open {
     or $ug->logconfess("open failed for $base.dba1: $!");
   $ug->{r2}->open("$base.dba2", $flags, perms=>$ug->{perms}, packas=>"$ug->{pack_d}$ug->{pack_f}")
     or $ug->logconfess("open failed for $base.dba2: $!");
+  $ug->{rN}->open("$base.dbaN", $flags, perms=>$ug->{perms}, packas=>"$ug->{pack_f}")
+    or $ug->logconfess("open failed for $base.dbaN: $!");
   $ug->{size1} = $ug->{r1}->size;
   $ug->{size2} = $ug->{r2}->size;
+  $ug->{sizeN} = $ug->{rN}->size;
 
   return $ug;
 }
@@ -135,6 +141,7 @@ sub close {
   }
   $ug->{r1}->close() or return undef;
   $ug->{r2}->close() or return undef;
+  $ug->{rN}->close() or return undef;
   undef $ug->{base};
   return $ug;
 }
@@ -146,6 +153,7 @@ sub opened {
     (defined($ug->{base})
      && defined($ug->{r1}) && $ug->{r1}->opened
      && defined($ug->{r2}) && $ug->{r2}->opened
+     && defined($ug->{rN}) && $ug->{rN}->opened
     );
 }
 
@@ -202,10 +210,11 @@ sub loadTextFh {
   ##-- common variables
   ##   $r1 : [$end2]      @ $i1
   ##   $r2 : [$d1,$f1]*   @ end2($i1-1)..(end2($i1+1)-1)
-  my ($r1,$r2)           = @$ug{qw(r1 r2)};
+  my ($r1,$r2,$rN)       = @$ug{qw(r1 r2 rN)};
   my ($pack_r1,$pack_r2) = map {$_->{packas}} ($r1,$r2);
   $r1->truncate();
   $r2->truncate();
+  $rN->truncate();
   my ($fh1,$fh2) = ($r1->{fh},$r2->{fh});
 
   ##-- iteration variables
@@ -215,8 +224,9 @@ sub loadTextFh {
   my $N  = 0;	  ##-- total marginal frequency as extracted from %fd
   my $N1 = 0;     ##-- total N as extracted from single-element records
   my %fd = qw();  ##-- ($d=>$f1d, ...) for $i1_cur
+  my %fN  = qw(); ##-- ($d=>$fd, ...) global
 
-  ##-- guts for inserting records from $i1_cur,$d1_cur,%f12,$pos1,$pos2 : call on changed ($i1_cur,$d1_cur)
+  ##-- guts for inserting records from $i1_cur,%fd,$pos1,$pos2 : call on changed ($i1_cur)
   my $insert = sub {
     if ($i1_cur >= 0) {
       if ($i1_cur != $pos1) {
@@ -257,14 +267,20 @@ sub loadTextFh {
     $insert->()			      ##-- insert record(s) for ($i1_cur)
       if ($i1 != $i1_cur);
     $fd{$d1} += $f1;                  ##-- buffer frequencies for ($i1_cur,$d1_cur)
+    $fN{$d1} += $f1;                  ##-- track N by date
     $N       += $f1;		      ##-- track marginal N
   }
   $i1 = -1;
   $insert->();                        ##-- write record(s) for final ($i1_cur)
 
+  ##-- create $rN by date
+  my @dates  = sort {$a<=>$b} keys %fN;
+  my $ymin   = $ug->{ymin} = $dates[0];
+  $rN->{fh}->print(pack("($rN->{packas})*", @fN{@dates}));
+
   ##-- adopt final $N and sizes
   $ug->{N} = $N1>$N ? $N1 : $N;
-  foreach (qw(1 2)) {
+  foreach (qw(1 2 N)) {
     my $r = $ug->{"r$_"};
     $r->flush();
     $ug->{"size$_"} = $r->size;
@@ -423,10 +439,29 @@ sub union {
 sub dbinfo {
   my $ug = shift;
   my $info = $ug->SUPER::dbinfo();
-  @$info{qw(size1 size2 N)} = @$ug{qw(size1 size2 N)};
+  @$info{qw(size1 size2 sizeN N)} = @$ug{qw(size1 size2 sizeN N)};
   return $info;
 }
 
+
+##==============================================================================
+## Utils: lookup
+
+## $N = $cof->sliceN($slice, $dateLo)
+##  + get total slice co-occurrence count, used by subprofile1()
+sub sliceN {
+  my ($ug,$slice,$dlo) = @_;
+  return $ug->{N} if ($slice==0);
+  my $ymin = $ug->{ymin};
+  my $ihi  = ($dlo-$ymin+$slice) <= $ug->{sizeN} ? ($dlo-$ymin+$slice) : $ug->{sizeN};
+  my $ilo  = $dlo < $ymin ? 0 : ($dlo-$ymin);
+  my $rN   = $ug->{rN};
+  my $N    = 0;
+  for (my $i=$ilo; $i < $ihi; ++$i) {
+    $N += $rN->fetch($i);
+  }
+  return $N;
+}
 
 ##==============================================================================
 ## Relation API: default
@@ -464,7 +499,7 @@ sub subprofile1 {
 
   ##-- setup %slice2prf
   my %slice2prf = map {
-    ($_ => DiaColloDB::Profile->new(f1=>0, N=>$ug->{N}))
+    ($_ => DiaColloDB::Profile->new(f1=>0, N=>$ug->sliceN($slice,$_)))
   } ($slice ? (map {$_*$slice} (($dreq->{slo}/$slice)..($dreq->{shi}/$slice))) : 0);
 
 

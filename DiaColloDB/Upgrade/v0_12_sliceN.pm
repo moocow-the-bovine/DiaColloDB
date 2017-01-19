@@ -33,13 +33,44 @@ sub upgrade {
   my $dbdir = $up->{dbdir};
   my $hdr   = $up->dbheader();
 
-  ##-- convert relations: unigrams : TODO
+  ##-- convert relations: unigrams
+  {
+    my $ug = DiaColloDB::Relation::Unigrams->new(base=>"$dbdir/xf", logCompat=>'off')
+      or $up->logconfess("failed to open unigram index $dbdir/xf.*: $!");
+    $up->info("upgrading unigram index $dbdir/xf.*");
+    $up->warn("unigram data in $dbdir/xf.* doesn't seem to be v0.11 format; trying to upgrade anyways")
+      if (!$ug->isa('DiaColloDB::Compat::v0_11::Relation::Unigrams'));
+
+    ##-- extract total counts by date
+    my $r2     = $ug->{r2}; ##-- pf: [$d1,$f1]*   @ end2($i1-1)..(end2($i1+1)-1)
+    my $packas = $r2->{packas};
+    my ($buf, $d,$f);
+    my %fN = qw();
+    for (my $i=0; $i < $ug->{size2}; ++$i) {
+      $r2->read(\$buf);
+      ($d,$f) = unpack($packas,$buf);
+      $fN{$d} += $f;
+    }
+
+    ##-- create $rN by date
+    my @dates  = sort {$a<=>$b} keys %fN;
+    my $ymin   = $dates[0];
+    my $rN     = $ug->{rN} = DiaColloDB::PackedFile->new(file=>"$dbdir/xf.dbaN", flags=>'rw', perms=>$ug->{perms}, packas=>"$ug->{pack_f}");
+    $rN->fromArray([@fN{@dates}]);
+    $rN->flush();
+
+    ##-- update header
+    $ug->{ymin}    = $ymin;
+    $ug->{sizeN}   = $rN->size;
+    $ug->{version} = $up->toversion;
+    $ug->saveHeader()
+      or $up->logconfess("failed to save new unigram index header $dbdir/xf.hdr");
+  }
 
   ##-- convert relations: cofreqs
   {
     my $cof = DiaColloDB::Relation::Cofreqs->new(base=>"$dbdir/cof", logCompat=>'off')
       or $up->logconfess("failed to open co-frequency index $dbdir/cof.*: $!");
-    my %cofopts = (map {($_=>$cof->{$_})} qw(pack_i pack_f fmin dmax));
     $up->info("upgrading co-frequency index $dbdir/cof.*");
     $up->warn("co-frequency data in $dbdir/cof.* doesn't seem to be v0.11 format; trying to upgrade anyways")
       if (!$cof->isa('DiaColloDB::Compat::v0_11::Relation::Cofreqs'));
@@ -67,7 +98,7 @@ sub upgrade {
     $cof->{sizeN}   = $rN->size;
     $cof->{version} = $up->toversion;
     $cof->saveHeader()
-      or $up->logconfess("failed to save new header for $dbdir/cof.*");
+      or $up->logconfess("failed to save new co-frequency index header $dbdir/cof.hdr");
   }
 
   ##-- cleanup
@@ -93,23 +124,11 @@ sub backup {
   my $hdr   = $up->dbheader;
   my $backd = $up->backupdir;
 
-  ##-- backup: xenum
-  $up->info("backing up $dbdir/xenum.*");
-  copyto_a([glob "$dbdir/xenum.*"], $backd)
-      or $up->logconfess("backup failed for $dbdir/xenum.*: $!");
-
-  ##-- backup: by attribute: multimaps
-  foreach my $base (map {"$dbdir/${_}_2x"} @{$hdr->{attrs}}) {
-    $up->info("backing up $base.*");
-    copyto_a([glob "$base.*"], $backd)
-      or $up->logconfess("backup failed for $base.*: $!");
-  }
-
   ##-- backup: relations
   foreach my $base (map {"$dbdir/$_"} qw(xf cof)) {
     $up->info("backing up $base.hdr");
-    copyto_a([glob "$base.hdr"], $backd)
-      or $up->logconfess("backup failed for $base.hdr: $!");
+    copyto_a([grep {-e $_} ("$base.hdr","$base.dbaN")], $backd)
+      or $up->logconfess("backup failed for $base.*: $!");
   }
 
   return 1;
@@ -123,13 +142,13 @@ sub revert_created {
 
   return (
 	  ##-- unigrams
-	  #(map {"xf.$_"} qw(dba1 dba1.hdr dba2 dba2.hdr hdr)),
+	  (map {"xf.$_"} qw(dbaN dbaN.hdr)),
 
 	  ##-- cofreqs
 	  (map {"cof.$_"} qw(dbaN dbaN.hdr)),
 
 	  ##-- header
-	  'header.json',
+	  #'header.json',
 	 );
 }
 
@@ -141,7 +160,7 @@ sub revert_updated {
 
   return (
 	  ##-- unigrams
-	  #(map {"xf.$_"} qw(hdr)),
+	  (map {"xf.$_"} qw(hdr)),
 
 	  ##-- cofreqs
 	  (map {"cof.$_"} qw(hdr)),

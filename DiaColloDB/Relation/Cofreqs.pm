@@ -51,9 +51,9 @@ our $PFCLASS = 'DiaColloDB::PackedFile::MMap';
 ##    r1 => $r1,               ##-- pf: [$end2]            @ $i1				: constant (logical index)
 ##    r2 => $r2,               ##-- pf: [$end3,$d1,$f1]*   @ end2($i1-1)..(end2($i1+1)-1)	: sorted by $d1 for each $i1
 ##    r3 => $r3,               ##-- pf: [$i2,$f12]*        @ end3($d1-1)..(end3($d1+1)-1)	: sorted by $i2 for each ($i1,$d1)
-##    rN => $rN,               ##-- pf: [$fN]              @ $date - $dmin                      : totals by date
+##    rN => $rN,               ##-- pf: [$fN]              @ $date - $ymin                      : totals by date
 ##    ymin => $dmin,           ##-- constant == $coldb->{xdmin}
-##    N  => $N,                ##-- sum($f12) [only used for version <= 0.11; thereafter replaced by rN]
+##    N  => $N,                ##-- sum($f12) [always used for version <= 0.11; used here only for slice==0]
 ##    version => $version,     ##-- file version, for compatibility checks
 ##   )
 sub new {
@@ -548,7 +548,7 @@ sub f12 {
 }
 
 ## $N = $cof->sliceN($slice, $dateLo)
-##  + get total slice co-occurrence count
+##  + get total slice co-occurrence count, used by subprofile1()
 sub sliceN {
   my ($cof,$slice,$dlo) = @_;
   return $cof->{N} if ($slice==0);

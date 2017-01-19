@@ -6,7 +6,7 @@
 
 package DiaColloDB::Compat::v0_11;
 use DiaColloDB::Compat::v0_11::Relation::Cofreqs;
-#use DiaColloDB::Compat::v0_11::Relation::Unigrams;
+use DiaColloDB::Compat::v0_11::Relation::Unigrams;
 #use DiaColloDB::Compat::v0_11::Relation::DDC;
 #use DiaColloDB::Compat::v0_11::Relation::TDF;
 use Carp;
