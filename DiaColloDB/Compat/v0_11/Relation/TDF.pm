@@ -1,10 +1,14 @@
 ## -*- Mode: CPerl -*-
-## File: DiaColloDB::Relation::TDF.pm
+##
+## File: DiaColloDB::Compat::v0_11::Relation::TDF.pm
 ## Author: Bryan Jurish <moocow@cpan.org>
 ## Description: collocation db, profiling relation: co-occurence frequencies via (term x document) raw-frequency matrix
 ##  + formerly DiaColloDB::Relation::Vsem.pm ("vector-space distributional semantic index")
 
-package DiaColloDB::Relation::TDF;
+package DiaColloDB::Compat::v0_11::Relation::TDF;
+use DiaColloDB::Compat;
+use DiaColloDB::Relation::TDF;
+
 use DiaColloDB::Relation;
 use DiaColloDB::Relation::TDF::Query;
 use DiaColloDB::Utils qw(:pack :fcntl :file :math :json :list :pdl :temp :env :run);
@@ -24,162 +28,15 @@ use strict;
 ##==============================================================================
 ## Globals & Constants
 
-our @ISA = qw(DiaColloDB::Relation);
-BEGIN {
-  no warnings 'once';
-  $PDL::BIGPDL = 1; ##-- avoid 'Probably false alloc of over 1Gb PDL' errors
-}
+our @ISA = qw(DiaColloDB::Relation::TDF DiaColloDB::Compat);
 
 ##==============================================================================
 ## Constructors etc.
-
-## $vs = CLASS_OR_OBJECT->new(%args)
-## + %args, object structure:
-##   (
-##   ##-- user options
-##   base   => $basename,   ##-- relation basename
-##   flags  => $flags,      ##-- i/o flags (default: 'r')
-##   mgood  => $regex,      ##-- positive filter regex for metadata attributes
-##   mbad   => $regex,      ##-- negative filter regex for metadata attributes
-##   submax => $submax,     ##-- choke on requested tdm cross-subsets if dense subset size ($NT_sub * $ND_sub) > $submax; default=2**29 (512M)
-##   mquery => \%mquery,    ##-- qinfo templates for meta-fields (default: textClass hack for genre): ($mattr=>$TEMPLATE, ...)
-##   ##
-##   ##-- logging options
-##   logvprofile => $level, ##-- log-level for vprofile() (default=undef:none)
-##   logio => $level,       ##-- log-level for low-level I/O operations (default=undef:none)
-##   ##
-##   ##-- modelling options (formerly via DocClassify)
-##   minFreq    => $fmin,   ##-- minimum total term-frequency for model inclusion (default=undef:use $coldb->{tfmin})
-##   minDocFreq => $dfmin,  ##-- minimim "doc-frequency" (#/docs per term) for model inclusion (default=4)
-##   minDocSize => $dnmin,  ##-- minimum doc size (#/tokens per doc) for model inclusion (default=4; formerly $coldb->{vbnmin})
-##   maxDocSize => $dnmax,  ##-- maximum doc size (#/tokens per doc) for model inclusion (default=inf; formerly $coldb->{vbnmax})
-##   #smoothf    => $f0,     ##-- smoothing constant to avoid log(0); default=1
-##   vtype      => $vtype,  ##-- PDL::Type for storing compiled values (default=float; auto-promoted if required)
-##   itype      => $itype,  ##-- PDL::Type for storing compiled integers (default=long)
-##   ##
-##   ##-- guts: aux: info
-##   N => $tdm0Total,       ##-- total number of (doc,term) frequencies counted
-##   dbreak => $dbreak,     ##-- inherited from $coldb on create()
-##   ##
-##   ##-- guts: aux: term-tuples ($NA:number of term-attributes, $NT:number of term-tuples)
-##   attrs  => \@attrs,       ##-- known term attributes
-##   tvals  => $tvals,        ##-- pdl($NA,$NT) : [$apos,$ti] => $avali_at_term_ti
-##   tsorti => $tsorti,       ##-- pdl($NT,$NA) : [,($apos)]  => $tvals->slice("($apos),")->qsorti
-##   tpos   => \%a2pos,       ##-- term-attribute positions: $apos=$a2pos{$aname}
-##   ##
-##   ##-- guts: aux: metadata ($NM:number of metas-attributes, $NC:number of cats (source files))
-##   meta => \@mattrs         ##-- known metadata attributes
-##   meta_e_${ATTR} => $enum, ##-- metadata-attribute enum
-##   mvals => $mvals,         ##-- pdl($NM,$NC) : [$mpos,$ci] => $mvali_at_ci
-##   msorti => $msorti,       ##-- pdl($NC,$NM) : [,($mpos)]  => $mvals->slice("($mpos),")->qsorti
-##   mpos  => \%m2pos,        ##-- meta-attribute positions: $mpos=$m2pos{$mattr}
-##   ##
-##   ##-- guts: model (formerly via DocClassify dcmap=>$dcmap)
-##   tdm => $tdm,             ##-- term-doc matrix : PDL::CCS::Nd ($NT,$ND): [$ti,$di] -> f($ti,$di)
-##   tym => $tym,             ##-- term-year matrix: PDL::CCS::Nd ($NT,$NY): [$ti,$yi] -> f($ti,$yi)
-##   cf  => $cf_pdl,          ##-- cat-freq pdl:     dense:       ($NC)    : [$ci]     -> f($ci)
-##   yf  => $yf_pdl,          ##-- year-freq pdl:    dense:       ($NY)    : [$yi-$y0] -> f($yi)
-##   y0  => $y0,              ##-- minimum year: scalar
-##   #tf  => $tf_pdl,          ##-- term-freq pdl:   dense:       ($NT)    : [$ti]     -> f($ti)
-##   #tw  => $tw_pdl,          ##-- term-weight pdl: dense:       ($NT)    : [$ti]     -> ($wRaw=0) + ($wCooked=1)*w($ti)
-##   #                         ##   + where w($t) = 1 - H(Doc|T=$t) / H_max(Doc) ~ DocClassify termWeight=>'max-entropy-quotient'
-##   c2date => $c2date,       ##-- cat-dates   : dense ($NC)   : [$ci]   -> $date
-##   c2d    => $c2d,          ##-- cat->doc map: dense (2,$NC) : [*,$ci] -> [$di_off,$di_len]
-##   d2c    => $d2c,          ##-- doc->cat map: dense ($ND)   : [$di]   -> $ci
-##   #...
-##   )
-sub new {
-  my $that = shift;
-  my $vs   = $that->SUPER::new(
-			       flags => 'r',
-			       mgood => $DiaColloDB::TDF_MGOOD_DEFAULT,
-			       mbad  => $DiaColloDB::TDF_MBAD_DEFAULT,
-			       submax => 2**29,
-			       mquery => {
-					  'doc.genre' => '* #HAS[textClass,/^\Q__W2__\E/]',
-					  'doc.pnd'   => '* #has[author,/\Q__W2__\E/]',
-					 },
-			       minFreq => undef,
-			       minDocFreq => 4,
-			       minDocSize => 4,
-			       maxDocSize => 'inf',
-			       #smoothf => 1,
-			       vtype => 'float',
-			       itype => 'long',
-			       meta  => [],
-			       attrs => [],
-			       ##
-			       logvprofile  => 'trace',
-			       logio => 'trace',
-			       ##
-			       @_
-			      );
-  return $vs->open() if ($vs->{base});
-  return $vs;
-}
+##  + inherited
 
 ##==============================================================================
 ## TDF API: Utils
-
-## $vtype = $vs->vtype()
-##  + get PDL::Type for storing compiled values
-sub vtype {
-  return $_[0]{vtype} if (UNIVERSAL::isa($_[0]{vtype},'PDL::Type'));
-  return $_[0]{vtype} = (PDL->can($_[0]{vtype}//'float') // PDL->can('float'))->();
-}
-
-## $itype = $vs->itype()
-##  + get PDL::Type for storing indices
-sub itype {
-  return $_[0]{itype} if (UNIVERSAL::isa($_[0]{vtype},'PDL::Type'));
-  foreach ($_[0]{itype}, 'indx', 'long') {
-    return $_[0]{itype} = PDL->can($_)->() if (defined($_) && PDL->can($_));
-  }
-}
-
-## $packas = $vs->vpack()
-##  + pack-template for $vs->vtype e.g. "f*"
-sub vpack {
-  return $PDL::Types::pack[ $_[0]->vtype->enum ];
-}
-
-## $packas = $vs->ipack()
-##  + pack-template for $vs->itype e.g. "l*"
-sub ipack {
-  return $PDL::Types::pack[ $_[0]->itype->enum ];
-}
-
-
-##==============================================================================
-## Persistent API: disk usage
-
-## @files = $obj->diskFiles()
-##  + returns disk storage files, used by du() and timestamp()
-sub diskFiles {
-  return ("$_[0]{base}.hdr", "$_[0]{base}.d");
-}
-
-##==============================================================================
-## Persistent API: header
-
-## @keys = $obj->headerKeys()
-##  + keys to save as header; default implementation returns all keys of all non-references
-sub headerKeys {
-  my $obj = shift;
-  return (qw(meta attrs vtype itype), grep {$_ !~ m/(?:flags|perms|base|log)/} $obj->SUPER::headerKeys);
-}
-
-## $hdr = $obj->headerData()
-##  + returns reference to object header data; default returns anonymous HASH-ref for $obj->headerKeys()
-##  + override stringifies {vtype}, {itype}
-sub headerData {
-  my $obj = shift;
-  my $hdr = $obj->SUPER::headerData(@_);
-  $hdr->{vtype} = "$hdr->{vtype}" if (ref($hdr->{vtype}));
-  $hdr->{itype} = "$hdr->{itype}" if (ref($hdr->{itype}));
-  return $hdr;
-}
-
+## + inherited
 
 ##==============================================================================
 ## Relation API: open/close
@@ -195,22 +52,9 @@ sub open {
   $vs->{base}  = $base;
   $vs->{flags} = $flags = fcflags($flags);
 
-  my ($hdr); ##-- save header, for version-checking
   if (fcread($flags) && !fctrunc($flags)) {
-    $hdr = $vs->readHeader()
-      or $vs->logconess("failed to read header data from '$vs->{base}.hdr': $!");
-    $vs->loadHeaderData($hdr)
-      or $vs->logconess("failed to load header data from '$vs->{base}.hdr': $!");
-  }
-
-  ##-- check compatibility
-  my $min_version = qv(0.12.000);
-  if ($hdr && (!defined($hdr->{version}) || version->parse($hdr->{version}) < $min_version)) {
-    $cof->vlog($cof->{logCompat}, "using v0.11 compatibility mode for $vs->{base}.*; consider running \`dcdb-upgrade.perl ", dirname($vs->{base}), "\'");
-    DiaColloDB::Compat->usecompat('v0_11');
-    bless($vs, 'DiaColloDB::Compat::v0_11::Relation::TDF');
-    $vs->{version} = $hdr->{version};
-    return $vs->open($base,$flags);
+    $vs->loadHeader()
+      or $vs->logconess("failed to load header from '$vs->{base}.hdr': $!");
   }
 
   ##-- open: maybe create directory
@@ -229,8 +73,6 @@ sub open {
     or $vs->logconfess("open(): failed to load term-year frequency matrix from $vsdir/tym.*: $!");
   defined($vs->{cf}  = readPdlFile("$vsdir/cf.pdl", %ioopts))
     or $vs->logconfess("open(): failed to load cat-frequencies from $vsdir/cf.pdl: $!");
-  defined($vs->{yf}  = readPdlFile("$vsdir/yf.pdl", %ioopts))
-    or $vs->logconfess("open(): failed to load year-frequencies from $vsdir/yf.pdl: $!");
 
   defined(my $ptr0 = $vs->{ptr0} = readPdlFile("$vsdir/tdm.ptr0.pdl", %ioopts))
     or $vs->logwarn("open(): failed to load Harwell-Boeing pointer from $vsdir/tdm.ptr0.pdl: $!");
@@ -634,23 +476,12 @@ sub create {
   ##-- create: cf: ($NC): [$ci] -> f($ci)
   $vs->vlog($logCreate, "$logas: creating cat-frequency piddle $vsdir/cf.pdl (NC=$NC)");
   $tdm->_nzvals->indadd( $d2c->index($tdm->_whichND->slice("(1),")), my $cf=mmzeroes("$vsdir/cf.pdl",$vtype,$NC));
-  #undef $cf;
-
-  ##-- create: yf: ($NY): [$yi] -> f($yi)
-  defined(my $c2date = readPdlFile("$c2datefile"))
-    or $vs->logconfess("$logas: failed to mmap $c2datefile");
-  my ($ymin,$ymax) = $c2date->minmax;
-  my $NY = $ymax-$ymin+1;
-  $vs->vlog($logCreate, "$logas: creating year-frequency piddle $vsdir/yf.pdl (NY=$NY)");
-  $cf->indadd( ($cf-$ymin), my $yf=mmzeroes("$vsdir/yf.pdl",$vtype,$NY) );
-  $vs->{y0} = $ymin;
-
-  ##-- cleanup: yf,cf
-  undef $yf;
   undef $cf;
 
   ##-- create: tym: ($NT,$NY): [$ti,$yi] -> f($ti,$yi)
   $vs->vlog($logCreate, "$logas: creating term-year matrix $vsdir/tym.*");
+  defined(my $c2date = readPdlFile("$c2datefile"))
+    or $vs->logconfess("$logas: failed to mmap $c2datefile");
 
   ##-- tym: create using local memory-optimized pdl-pp method
   my $ymax = $c2date->max;
@@ -667,11 +498,6 @@ sub create {
   undef $c2date;
   undef $c2d;
   undef $d2c;
-
-  ##-- create: yf: ($NY): [$yi-$y0] -> f($yi)
-  $vs->vlog($logCreate, "$logas: creating cat-frequency piddle $vsdir/cf.pdl (NC=$NC)");
-  $tdm->_nzvals->indadd( $d2c->index($tdm->_whichND->slice("(1),")), my $cf=mmzeroes("$vsdir/cf.pdl",$vtype,$NC));
-  undef $cf;
 
   ##-- create: tdm: pointers
   $vs->vlog($logCreate, "$logas: creating tdm matrix Harwell-Boeing pointers");
@@ -918,7 +744,7 @@ sub export {
   ##-- export: PDLs: dense (mm format)
   require 'PDL/CCS/IO/MatrixMarket.pm'
     or $vs->logconfess("export(): failed to load PDL::CCS::IO::MatrixMarket");
-  foreach my $key (qw(tvals tsorti mvals msorti cf c2date c2d d2c yf)) {
+  foreach my $key (qw(tvals tsorti mvals msorti cf c2date c2d d2c)) {
     $vs->vlog($logLocal,"exporting $outdir/$key.mm");
     $vs->{$key}->writemm("$outdir/$key.mm")
       or $vs->logconfess("export() failed for $outdir/$key.mm: $!");
@@ -947,7 +773,6 @@ sub dbinfo {
   $info->{nTerms} = $vs->nTerms;
   $info->{nDocs}  = $vs->nDocs;
   $info->{nCats}  = $vs->nCats;
-  $info->{nDates} = $vs->nDates;
   return $info;
 }
 
@@ -1190,7 +1015,7 @@ sub vprofile {
 
   ##-- convert packed to native-style profiles (by date-slice)
   my @slices = $sliceby ? (map {$sliceby*$_} (($dlo/$sliceby)..($dhi/$sliceby))) : qw(0);
-  my %dprfs  = map {($_=>DiaColloDB::Profile->new(label=>$_, titles=>$groupby->{titles}, N=>$vs->sliceN($sliceby,$_), f1=>($f1p->{pack($pack_ix,$_)}//0)))} @slices;
+  my %dprfs  = map {($_=>DiaColloDB::Profile->new(label=>$_, titles=>$groupby->{titles}, N=>$vs->{N}, f1=>($f1p->{pack($pack_ix,$_)}//0)))} @slices;
   if (@slices > 1) {
     $vs->vlog($logDebug, "vprofile(): partionining profile data into ", scalar(@slices), " slice(s)");
     my $len_gkey = packsize($pack_gkey);
@@ -1392,12 +1217,6 @@ sub nFiles {
   return $_[0]{c2date}->nelem;
 }
 
-## $NY = $vs->nDates()
-BEGIN { *nYears = \&nDates; }
-sub nDates {
-  return $_[0]{yf}->nelem;
-}
-
 ## $NA = $vs->nAttrs()
 ##  + returns number of term-attributes
 sub nAttrs {
@@ -1520,22 +1339,6 @@ sub catSubset {
 
 
 ##----------------------------------------------------------------------
-## Profile Utils: slice frequency
-
-## $N = $vs->sliceN($sliceBy, $dateLo)
-##  + get total slice co-occurrence count, used by vprofile()
-sub sliceN {
-  my ($vs,$sliceby,$dlo) = @_;
-  return $vs->{N} if ($slice==0);
-  my $ymin = $vs->{y0};
-  my $ihi  = ($dlo-$ymin+$slice) <= $vs->nDates ? ($dlo-$ymin+$slice) : $vs->nDates;
-  my $ilo  = $dlo < $ymin ? 0 : ($dlo-$ymin);
-  return $vs->{yf}->slice("$ilo:".($ihi-1))->sum;
-}
-
-
-##----------------------------------------------------------------------
-## Profile Utils: groupby
 
 ## \%groupby = $vs->groupby($coldb, $groupby_request, %opts)
 ## \%groupby = $vs->groupby($coldb, \%groupby,        %opts)
