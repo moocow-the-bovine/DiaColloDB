@@ -197,14 +197,17 @@ sub profile {
     }
   }
 
-  ##-- query independent N
-  my $qstrN   = "count(* #sep)";
-  my $resultN = $rel->ddcQuery($coldb, $qstrN, limit=>1, logas=>'fN');
-  my $N       = $resultN->{counts_}[0][0] * $fcoef;
+  ##-- query independent N (by epoch)
+  my $qstrN   = "COUNT(* #SEP) #BY[".($opts{slice} ? "date/$opts{slice}" : q{@'0'})."]";
+  my $resultN = $rel->ddcQuery($coldb, $qstrN, limit=>-1, logas=>'fN');
+  my %fN      = qw();
+  my $N       = 0; ##-- total N
+  foreach (@{$resultN->{counts_}}) {
+    $fN{$_->[1]} = $_->[0] * $fcoef;
+    $N          += $_->[1] * $fcoef;
+  }
 
   ##-- finalize sub-profiles: label, titles, N, compile
-  my $N1 = 0; $N1 += $_->{f1} foreach (values %y2prf);
-  $N     = $N1 if ($N1 > $N);
   my ($f1);
   foreach $prf (values %y2prf) {
     $prf->{titles} = \@titles;
@@ -215,7 +218,8 @@ sub profile {
       $prf->{f1} = $f1;
     }
 
-    $prf->{N} = $N;
+    $prf->{N} = $fN{$prf->{label}} || $N;
+    $prf->{N} = $f1 if ($f1 > $prf->{N});
     $prf->compile($opts{score}, eps=>$opts{eps});
   }
 
@@ -223,7 +227,7 @@ sub profile {
   if ($opts{fill}) {
     for ($y=$opts{dslo}; $y <= $opts{dshi}; $y += ($opts{slice}||1)) {
       next if (exists($y2prf{$y}));
-      $prf = $y2prf{$y} = DiaColloDB::Profile->new(N=>$N,f1=>0,label=>$y,titles=>\@titles)->compile($opts{score},eps=>$opts{eps});
+      $prf = $y2prf{$y} = DiaColloDB::Profile->new(N=>($fN{$y}||$N||0),f1=>0,label=>$y,titles=>\@titles)->compile($opts{score},eps=>$opts{eps});
     }
   }
 
