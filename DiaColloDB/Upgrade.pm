@@ -10,6 +10,7 @@ use DiaColloDB::Upgrade::Base;
 use DiaColloDB::Upgrade::v0_04_dlimits;
 use DiaColloDB::Upgrade::v0_09_multimap;
 use DiaColloDB::Upgrade::v0_10_x2t;
+use DiaColloDB::Upgrade::v0_12_sliceN;
 use Carp;
 use strict;
 
@@ -23,6 +24,7 @@ our @upgrades = (
 		 'v0_04_dlimits',
 		 'v0_09_multimap',
 		 'v0_10_x2t',
+		 'v0_12_sliceN',
 		);
 
 ##==============================================================================

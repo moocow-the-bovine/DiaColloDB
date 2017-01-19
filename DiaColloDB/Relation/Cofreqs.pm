@@ -30,7 +30,7 @@ our $PFCLASS = 'DiaColloDB::PackedFile::MMap';
 ##   (
 ##    ##-- user options
 ##    class    => $class,      ##-- optional, useful for debugging from header file
-##    base     => $basename,   ##-- file basename (default=undef:none); use files "${base}.dba1", "${base}.dba2", "${base}.dba3", "${base}.hdr"
+##    base     => $basename,   ##-- file basename (default=undef:none); use files "${base}.dba1", "${base}.dba2", "${base}.dba3", "${base}.dbaN", "${base}.hdr"
 ##    flags    => $flags,      ##-- fcntl flags or open-mode (default='r')
 ##    perms    => $perms,      ##-- creation permissions (default=(0666 &~umask))
 ##    dmax     => $dmax,       ##-- maximum distance for co-occurrences (default=5)
@@ -45,12 +45,15 @@ our $PFCLASS = 'DiaColloDB::PackedFile::MMap';
 ##    size1    => $size1,      ##-- == $r1->size()
 ##    size2    => $size2,      ##-- == $r2->size()
 ##    size3    => $size3,      ##-- == $r3->size()
+##    sizeN    => $sizeN,      ##-- == $rN->size()
 ##    ##
 ##    ##-- low-level data
 ##    r1 => $r1,               ##-- pf: [$end2]            @ $i1				: constant (logical index)
 ##    r2 => $r2,               ##-- pf: [$end3,$d1,$f1]*   @ end2($i1-1)..(end2($i1+1)-1)	: sorted by $d1 for each $i1
 ##    r3 => $r3,               ##-- pf: [$i2,$f12]*        @ end3($d1-1)..(end3($d1+1)-1)	: sorted by $i2 for each ($i1,$d1)
-##    N  => $N,                ##-- sum($f12)
+##    rN => $rN,               ##-- pf: [$fN]              @ $date - $dmin                      : totals by date
+##    ymin => $dmin,           ##-- constant == $coldb->{xdmin}
+##    N  => $N,                ##-- sum($f12) [only used for version <= 0.11; thereafter replaced by rN]
 ##    version => $version,     ##-- file version, for compatibility checks
 ##   )
 sub new {
@@ -69,7 +72,7 @@ sub new {
 		    logCompat => 'warn',
 		    @_
 		   }, (ref($that)||$that));
-  $cof->{$_} //= $cof->mmclass($PFCLASS)->new() foreach (qw(r1 r2 r3));
+  $cof->{$_} //= $cof->mmclass($PFCLASS)->new() foreach (qw(r1 r2 r3 rN));
   $cof->{class} = ref($cof);
   return $cof->open() if (defined($cof->{base}));
   return $cof;
@@ -104,11 +107,11 @@ sub open {
   }
 
   ##-- check compatibility
-  my $min_version = qv(0.10.000);
+  my $min_version = qv(0.12.000);
   if ($hdr && (!defined($hdr->{version}) || version->parse($hdr->{version}) < $min_version)) {
-    $cof->vlog($cof->{logCompat}, "using compatibility mode for $cof->{base}.*; consider running \`dcdb-upgrade.perl ", dirname($cof->{base}), "\'");
-    DiaColloDB::Compat->usecompat('v0_09');
-    bless($cof, 'DiaColloDB::Compat::v0_09::Relation::Cofreqs');
+    $cof->vlog($cof->{logCompat}, "using v0.11 compatibility mode for $cof->{base}.*; consider running \`dcdb-upgrade.perl ", dirname($cof->{base}), "\'");
+    DiaColloDB::Compat->usecompat('v0_11');
+    bless($cof, 'DiaColloDB::Compat::v0_11::Relation::Cofreqs');
     $cof->{version} = $hdr->{version};
     return $cof->open($base,$flags);
   }
@@ -120,9 +123,12 @@ sub open {
     or $cof->logconfess("open failed for $base.dba2: $!");
   $cof->{r3}->open("$base.dba3", $flags, perms=>$cof->{perms}, packas=>"$cof->{pack_i}$cof->{pack_f}")
     or $cof->logconfess("open failed for $base.dba3: $!");
+  $cof->{rN}->open("$base.dbaN", $flags, perms=>$cof->{perms}, packas=>"$cof->{pack_f}")
+    or $cof->logconfess("open failed for $base.dbaN: $!");
   $cof->{size1} = $cof->{r1}->size;
   $cof->{size2} = $cof->{r2}->size;
   $cof->{size3} = $cof->{r3}->size;
+  $cof->{sizeN} = $cof->{rN}->size;
 
   return $cof;
 }
@@ -136,6 +142,7 @@ sub close {
   $cof->{r1}->close() or return undef;
   $cof->{r2}->close() or return undef;
   $cof->{r3}->close() or return undef;
+  $cof->{rN}->close() or return undef;
   undef $cof->{base};
   return $cof;
 }
@@ -148,6 +155,7 @@ sub opened {
      && defined($cof->{r1}) && $cof->{r1}->opened
      && defined($cof->{r2}) && $cof->{r2}->opened
      && defined($cof->{r3}) && $cof->{r3}->opened
+     && defined($cof->{rN}) && $cof->{rN}->opened
     );
 }
 
@@ -211,11 +219,12 @@ sub loadTextFh {
   ##   $r2 : [$end3,$d1,$f1]*   @ end2($i1-1)..(end2($i1+1)-1)
   ##   $r3 : [$i2,$f12]*        @ end3($d1-1)..(end3($d1+1)-1)
   my $fmin  = $cof->{fmin} // 0;
-  my ($r1,$r2,$r3)                = @$cof{qw(r1 r2 r3)};
+  my ($r1,$r2,$r3,$rN)            = @$cof{qw(r1 r2 r3 rN)};
   my ($pack_r1,$pack_r2,$pack_r3) = map {$_->{packas}} ($r1,$r2,$r3);
   $r1->truncate();
   $r2->truncate();
   $r3->truncate();
+  $rN->truncate();
   my ($fh1,$fh2,$fh3) = ($r1->{fh},$r2->{fh},$r3->{fh});
 
   ##-- iteration variables
@@ -225,6 +234,7 @@ sub loadTextFh {
   my $N  = 0;	  ##-- total marginal frequency as extracted from %f12
   my $N1 = 0;     ##-- total N as extracted from single-element records
   my %f12 = qw(); ##-- ($i2=>$f12, ...) for $i1_cur
+  my %fN  = qw(); ##-- ($d=>$Nd, ...)
 
   ##-- guts for inserting records from $i1_cur,$d1_cur,%f12,$pos1,$pos2 : call on changed ($i1_cur,$d1_cur)
   my $insert = sub {
@@ -245,9 +255,10 @@ sub loadTextFh {
 	++$pos3;
       }
 
-      ##-- dump r2-record for ($i1_cur,$d1_cur)
+      ##-- dump r2-record for ($i1_cur,$d1_cur), and track $fN by date
       if (defined($d1_cur)) {
 	$fh2->print(pack($pack_r2, $pos3,$d1_cur,$f1));
+	$fN{$d1_cur} += $f1;
 	++$pos2;
       }
 
@@ -283,10 +294,15 @@ sub loadTextFh {
   $i1 = -1;
   $insert->();                        ##-- write record(s) for final ($i1_cur,$d1_cur)
 
+  ##-- create $rN by date
+  my @dates  = sort {$a<=>$b} keys %fN;
+  my $ymin   = $cof->{ymin} = $dates[0];
+  $rN->{fh}->print(pack("($rN->{packas})*", @fN{@dates}));
+
   ##-- adopt final $N and sizes
   #$cof->debug("FINAL: N1=$N1, N=$N");
   $cof->{N} = $N1>$N ? $N1 : $N;
-  foreach (qw(1 2 3)) {
+  foreach (qw(1 2 3 N)) {
     my $r = $cof->{"r$_"};
     $r->flush();
     $cof->{"size$_"} = $r->size;
@@ -508,14 +524,13 @@ sub union {
 sub dbinfo {
   my $cof = shift;
   my $info = $cof->SUPER::dbinfo();
-  @$info{qw(fmin dmax size1 size2 size3 N)} = @$cof{qw(fmin dmax size1 size2 size3 N)};
+  @$info{qw(fmin dmax size1 size2 size3 sizeN N)} = @$cof{qw(fmin dmax size1 size2 size3 sizeN N)};
   return $info;
 }
 
 
 ##==============================================================================
 ## Utilities: lookup
-##  + BROKEN in v0.10.000 (x(+date)->t(-date) db tuples)
 
 ## $f = $cof->f1( @xids)
 ## $f = $cof->f1(\@xids)
@@ -531,6 +546,23 @@ sub f1 {
 sub f12 {
   $_[0]->logconfess("f12(): method no longer supported");
 }
+
+## $N = $cof->sliceN($slice, $dateLo)
+##  + get total slice co-occurrence count
+sub sliceN {
+  my ($cof,$slice,$dlo) = @_;
+  return $cof->{N} if ($slice==0);
+  my $ymin = $cof->{ymin};
+  my $ihi  = ($dlo-$ymin+$slice) <= $cof->{sizeN} ? ($dlo-$ymin+$slice) : $cof->{sizeN};
+  my $ilo  = $dlo < $ymin ? 0 : ($dlo-$ymin);
+  my $rN   = $cof->{rN};
+  my $N    = 0;
+  for (my $i=$ilo; $i < $ihi; ++$i) {
+    $N += $rN->fetch($i);
+  }
+  return $N;
+}
+
 
 ##==============================================================================
 ## Relation API: default
@@ -571,7 +603,7 @@ sub subprofile1 {
 
   ##-- setup %slice2prf
   my %slice2prf = map {
-    ($_ => DiaColloDB::Profile->new(f1=>0, N=>$cof->{N}))
+    ($_ => DiaColloDB::Profile->new(f1=>0, N=>$cof->sliceN($slice,$_)))
   } ($slice ? (map {$_*$slice} (($dreq->{slo}/$slice)..($dreq->{shi}/$slice))) : 0);
 
   ##-- ye olde loope

@@ -354,7 +354,7 @@ sub fromArray {
   foreach (@$data) {
     $filter_store->() if ($filter_store);
     $fh->print($_)
-      or $pf->logconfess("toArray(): failed to write record number $i: $!");
+      or $pf->logconfess("fromArray(): failed to write record number $i: $!");
     ++$i;
   }
   $pf->setFilters();
