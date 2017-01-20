@@ -547,25 +547,15 @@ sub f12 {
   $_[0]->logconfess("f12(): method no longer supported");
 }
 
-## $N = $cof->sliceN($slice, $dateLo)
-##  + get total slice co-occurrence count, used by subprofile1()
-sub sliceN {
-  my ($cof,$slice,$dlo) = @_;
-  return $cof->{N} if ($slice==0);
-  my $ymin = $cof->{ymin};
-  my $ihi  = ($dlo-$ymin+$slice) <= $cof->{sizeN} ? ($dlo-$ymin+$slice) : $cof->{sizeN};
-  my $ilo  = $dlo < $ymin ? 0 : ($dlo-$ymin);
-  my $rN   = $cof->{rN};
-  my $N    = 0;
-  for (my $i=$ilo; $i < $ihi; ++$i) {
-    $N += $rN->fetch($i);
-  }
-  return $N;
-}
-
-
 ##==============================================================================
 ## Relation API: default
+
+##--------------------------------------------------------------
+## Relation API: default: sliceN
+
+## $N = $rel->sliceN($sliceBy, $dateLo)
+##  + get total slice-wise co-occurrence count for a slice of size $sliceBy starting at $dateLo
+##  + INHERITED from DiaColloDB::Relation
 
 ##--------------------------------------------------------------
 ## Relation API: default: profile

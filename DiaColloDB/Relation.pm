@@ -7,7 +7,7 @@ package DiaColloDB::Relation;
 use DiaColloDB::Persistent;
 use DiaColloDB::Profile;
 use DiaColloDB::Profile::Multi;
-use DiaColloDB::Utils qw(:si :pack);
+use DiaColloDB::Utils qw(:si :pack :math);
 use Algorithm::BinarySearch::Vec qw(:api);
 use strict;
 
@@ -343,6 +343,28 @@ sub diff {
 
 ##==============================================================================
 ## Relation API: default
+
+##--------------------------------------------------------------
+## Relation API: default: sliceN
+
+## $N = $rel->sliceN($sliceBy, $dateLo)
+##  + get total slice-wise co-occurrence count for a slice of size $sliceBy starting at $dateLo
+##  + not called by any default methods, but useful for sub-classes
+##  + default implementation is really only appropriate for Cofreqs and Unigrams relations;
+##    uses $rel properties 'N', 'sizeN', 'ymin', 'rN'
+sub sliceN {
+  my ($rel,$slice,$dlo) = @_;
+  return $rel->{N} if ($slice==0 || !UNIVERSAL::can($rel->{rN},'fetch'));
+  my $ymin  = ($rel->{ymin}//0);
+  my $rN    = $rel->{rN};
+  my $ihi   = min2( $dlo-$ymin+$slice, $rel->{sizeN}//$rN->size );
+  my $ilo   = max2( $dlo-$ymin,        0);
+  my $N     = 0;
+  for (my $i=$ilo; $i < $ihi; ++$i) {
+    $N += $rN->fetch($i);
+  }
+  return $N;
+}
 
 ##--------------------------------------------------------------
 ## Relation API: default: subprofile1

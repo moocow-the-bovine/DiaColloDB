@@ -447,24 +447,19 @@ sub dbinfo {
 ##==============================================================================
 ## Utils: lookup
 
-## $N = $cof->sliceN($slice, $dateLo)
+## $N = $cof->sliceN($sliceBy, $dateLo)
 ##  + get total slice co-occurrence count, used by subprofile1()
-sub sliceN {
-  my ($ug,$slice,$dlo) = @_;
-  return $ug->{N} if ($slice==0);
-  my $ymin = $ug->{ymin};
-  my $ihi  = ($dlo-$ymin+$slice) <= $ug->{sizeN} ? ($dlo-$ymin+$slice) : $ug->{sizeN};
-  my $ilo  = $dlo < $ymin ? 0 : ($dlo-$ymin);
-  my $rN   = $ug->{rN};
-  my $N    = 0;
-  for (my $i=$ilo; $i < $ihi; ++$i) {
-    $N += $rN->fetch($i);
-  }
-  return $N;
-}
+##  + INHERITED from DiaColloDB::Relation
 
 ##==============================================================================
 ## Relation API: default
+
+##--------------------------------------------------------------
+## Relation API: default: sliceN
+
+## $N = $rel->sliceN($sliceBy, $dateLo)
+##  + get total slice-wise co-occurrence count for a slice of size $sliceBy starting at $dateLo
+##  + INHERITED from DiaColloDB::Relation
 
 ##--------------------------------------------------------------
 ## Relation API: default: profile

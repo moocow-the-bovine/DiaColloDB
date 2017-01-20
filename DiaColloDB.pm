@@ -630,7 +630,7 @@ sub create {
   my $dbdir = $coldb->{dbdir}
     or $coldb->logconfess("create() called but 'dbdir' key not set!");
   $dbdir =~ s{/$}{};
-  $coldb->vlog('info', "create($dbdir)");
+  $coldb->vlog('info', "create($dbdir) v$coldb->{version}");
   !-d $dbdir
     or remove_tree($dbdir)
       or $coldb->logconfess("create(): could not remove stale $dbdir: $!");
@@ -1089,7 +1089,7 @@ sub union {
   my $dbdir = $coldb->{dbdir}
     or $coldb->logconfess("union() called but 'dbdir' key not set!");
   $dbdir =~ s{/$}{};
-  $coldb->vlog('info', "union($dbdir): ", join(' ', map {$_->{dbdir}//''} @dbargs));
+  $coldb->vlog('info', "union($dbdir) v$coldb->{version}: ", join(' ', map {$_->{dbdir}//''} @dbargs));
   !-d $dbdir
     or remove_tree($dbdir)
       or $coldb->logconfess("union(): could not remove stale $dbdir: $!");

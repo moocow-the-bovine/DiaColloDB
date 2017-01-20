@@ -7,7 +7,7 @@
 package DiaColloDB::Upgrade::v0_12_sliceN;
 use DiaColloDB::Upgrade::Base;
 use DiaColloDB::Compat::v0_11;
-use DiaColloDB::Utils qw(:pack :env :run :file);
+use DiaColloDB::Utils qw(:pack :env :run :file :pdl);
 use version;
 use strict;
 our @ISA = qw(DiaColloDB::Upgrade::Base);
@@ -41,7 +41,7 @@ sub upgrade {
     $up->warn("unigram data in $dbdir/xf.* doesn't seem to be v0.11 format; trying to upgrade anyways")
       if (!$ug->isa('DiaColloDB::Compat::v0_11::Relation::Unigrams'));
 
-    ##-- extract total counts by date
+    ##-- xf: extract total counts by date
     my $r2     = $ug->{r2}; ##-- pf: [$d1,$f1]*   @ end2($i1-1)..(end2($i1+1)-1)
     my $packas = $r2->{packas};
     my ($buf, $d,$f);
@@ -52,14 +52,14 @@ sub upgrade {
       $fN{$d} += $f;
     }
 
-    ##-- create $rN by date
+    ##-- xf: create $rN by date
     my @dates  = sort {$a<=>$b} keys %fN;
     my $ymin   = $dates[0];
     my $rN     = $ug->{rN} = DiaColloDB::PackedFile->new(file=>"$dbdir/xf.dbaN", flags=>'rw', perms=>$ug->{perms}, packas=>"$ug->{pack_f}");
     $rN->fromArray([@fN{@dates}]);
     $rN->flush();
 
-    ##-- update header
+    ##-- xf: update header
     $ug->{ymin}    = $ymin;
     $ug->{sizeN}   = $rN->size;
     $ug->{version} = $up->toversion;
@@ -75,7 +75,7 @@ sub upgrade {
     $up->warn("co-frequency data in $dbdir/cof.* doesn't seem to be v0.11 format; trying to upgrade anyways")
       if (!$cof->isa('DiaColloDB::Compat::v0_11::Relation::Cofreqs'));
 
-    ##-- extract total counts by date
+    ##-- cof: extract total counts by date
     my $r2     = $cof->{r2}; ##-- pf: [$end3,$d1,$f1]*   @ end2($i1-1)..(end2($i1+1)-1)
     my $packas = $r2->{packas};
     my ($buf, $end3,$d,$f);
@@ -86,19 +86,42 @@ sub upgrade {
       $fN{$d} += $f;
     }
 
-    ##-- create $rN by date
+    ##-- cof: create $rN by date
     my @dates  = sort {$a<=>$b} keys %fN;
     my $ymin   = $dates[0];
     my $rN     = $cof->{rN} = DiaColloDB::PackedFile->new(file=>"$dbdir/cof.dbaN", flags=>'rw', perms=>$cof->{perms}, packas=>"$cof->{pack_f}");
     $rN->fromArray([@fN{@dates}]);
     $rN->flush();
 
-    ##-- update header
+    ##-- cof: update header
     $cof->{ymin}    = $ymin;
     $cof->{sizeN}   = $rN->size;
     $cof->{version} = $up->toversion;
     $cof->saveHeader()
       or $up->logconfess("failed to save new co-frequency index header $dbdir/cof.hdr");
+  }
+
+  ##-- convert relations: tdf
+  if ($hdr->{index_tdf} && -r "$dbdir/tdf.hdr") {
+    DiaColloDB::Compat->usecompat('v0_11::Relation::TDF');
+    my $vs = DiaColloDB::Relation::TDF->new(base=>"$dbdir/tdf", logCompat=>'off')
+      or $up->logconfess("failed to open (term x document) index $dbdir/tdf.*: $!");
+    $up->info("upgrading (term x document)  index $dbdir/tdf.*");
+    $up->warn("term-document data in $dbdir/tdf.* doesn't seem to be v0.11 format; trying to upgrade anyways")
+      if (!$vs->isa('DiaColloDB::Compat::v0_11::Relation::TDF'));
+
+    ##-- tdf: create {yf}, {ymin}
+    my ($cf,$c2date) = @$vs{qw(cf c2date)};
+    my ($ymin,$ymax) = $c2date->minmax;
+    my $NY           = $ymax-$ymin+1;
+    $cf->indadd( ($c2date-$ymin), my $yf=mmzeroes("$dbdir/tdf.d/yf.pdl",$vs->vtype,$NY) );
+    undef $yf;
+
+    ##-- tdf: update header
+    $vs->{y0}      = $ymin;
+    $vs->{version} = $up->toversion;
+    $vs->saveHeader()
+      or $up->logconfess("failed to save new (term x document) index header $dbdir/tdf.hdr");
   }
 
   ##-- cleanup
@@ -124,11 +147,18 @@ sub backup {
   my $hdr   = $up->dbheader;
   my $backd = $up->backupdir;
 
-  ##-- backup: relations
-  foreach my $base (map {"$dbdir/$_"} qw(xf cof)) {
-    $up->info("backing up $base.hdr");
-    copyto_a([grep {-e $_} ("$base.hdr","$base.dbaN")], $backd)
+  ##-- backup: top-level
+  foreach my $base (map {"$dbdir/$_"} qw(xf cof tdf)) {
+    $up->info("backing up $base.*");
+    copyto_a([grep {-e $_} map {($_,"$_.hdr")} ($base,"$base.dbaN")], $backd)
       or $up->logconfess("backup failed for $base.*: $!");
+  }
+
+  ##-- backup: tdf.d
+  foreach my $base (map {"$dbdir/tdf.d/$_"} qw(yf.pdl)) {
+    $up->info("backing up $base.*");
+    copyto_a([grep {-e $_} map {($_,"$_.hdr")} ($base)], "$backd/tdf.d")
+      or $up->logconfess("backup failed for $base*: $!");
   }
 
   return 1;
@@ -142,10 +172,13 @@ sub revert_created {
 
   return (
 	  ##-- unigrams
-	  (map {"xf.$_"} qw(dbaN dbaN.hdr)),
+	  (grep {!-e $up->backupdir."/$_"} map {"xf.$_"} qw(dbaN dbaN.hdr)),
 
 	  ##-- cofreqs
-	  (map {"cof.$_"} qw(dbaN dbaN.hdr)),
+	  (grep {!-e $up->backupdir."/$_"} map {"cof.$_"} qw(dbaN dbaN.hdr)),
+
+	  ##-- tdf
+	  (grep {-e "$up->{dbdir}/$_" && !-e $up->backupdir."/$_"} map {"tdf.d/$_"} qw(yf.pdl yf.pdl.hdr)),
 
 	  ##-- header
 	  #'header.json',
@@ -160,10 +193,15 @@ sub revert_updated {
 
   return (
 	  ##-- unigrams
-	  (map {"xf.$_"} qw(hdr)),
+	  "xf.hdr",
+	  (grep {-e $up->backupdir."/$_"} map {"xf.$_"} qw(dbaN dbaN.hdr)),
 
 	  ##-- cofreqs
-	  (map {"cof.$_"} qw(hdr)),
+	  "cof.hdr",
+	  (grep {-e $up->backupdir."/$_"} map {"cof.$_"} qw(dbaN dbaN.hdr)),
+
+	  ##-- tdf
+	  (grep {-e $up->backupdir."/$_"} map {"tdf.$_"} qw(hdr d/yf.pdl d/yf.pdl.hdr)),
 
 	  ##-- header
 	  'header.json',

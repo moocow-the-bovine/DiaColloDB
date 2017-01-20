@@ -19,6 +19,8 @@ use PDL::IO::FastRaw;
 use PDL::CCS;
 use PDL::CCS::IO::FastRaw;
 use Fcntl qw(:DEFAULT SEEK_SET SEEK_CUR SEEK_END);
+use File::Basename qw(dirname);
+use version;
 use strict;
 
 ##==============================================================================
@@ -47,6 +49,7 @@ BEGIN {
 ##   ##-- logging options
 ##   logvprofile => $level, ##-- log-level for vprofile() (default=undef:none)
 ##   logio => $level,       ##-- log-level for low-level I/O operations (default=undef:none)
+##   logCompat => $level,   ##-- log-level for compatibility warnings (default='warn')
 ##   ##
 ##   ##-- modelling options (formerly via DocClassify)
 ##   minFreq    => $fmin,   ##-- minimum total term-frequency for model inclusion (default=undef:use $coldb->{tfmin})
@@ -60,6 +63,7 @@ BEGIN {
 ##   ##-- guts: aux: info
 ##   N => $tdm0Total,       ##-- total number of (doc,term) frequencies counted
 ##   dbreak => $dbreak,     ##-- inherited from $coldb on create()
+##   version => $version,   ##-- file version, for compatibility checks
 ##   ##
 ##   ##-- guts: aux: term-tuples ($NA:number of term-attributes, $NT:number of term-tuples)
 ##   attrs  => \@attrs,       ##-- known term attributes
@@ -111,6 +115,9 @@ sub new {
 			       ##
 			       logvprofile  => 'trace',
 			       logio => 'trace',
+			       logCompat => 'warn',
+			       ##
+			       version => $DiaColloDB::VERSION,
 			       ##
 			       @_
 			      );
@@ -206,8 +213,9 @@ sub open {
   ##-- check compatibility
   my $min_version = qv(0.12.000);
   if ($hdr && (!defined($hdr->{version}) || version->parse($hdr->{version}) < $min_version)) {
-    $cof->vlog($cof->{logCompat}, "using v0.11 compatibility mode for $vs->{base}.*; consider running \`dcdb-upgrade.perl ", dirname($vs->{base}), "\'");
-    DiaColloDB::Compat->usecompat('v0_11');
+    $vs->vlog($vs->{logCompat}, "using v0.11 compatibility mode for $vs->{base}.*; consider running \`dcdb-upgrade.perl ", dirname($vs->{base}), "\'");
+    #DiaColloDB::Compat->usecompat('v0_11');
+    DiaColloDB::Compat->usecompat('v0_11::Relation::TDF');
     bless($vs, 'DiaColloDB::Compat::v0_11::Relation::TDF');
     $vs->{version} = $hdr->{version};
     return $vs->open($base,$flags);
@@ -222,7 +230,7 @@ sub open {
   }
 
   ##-- open: model data
-  my %ioopts = (ReadOnly=>!fcwrite($flags), mmap=>1, log=>$vs->{logIO});
+  my %ioopts = (ReadOnly=>!fcwrite($flags), mmap=>1, log=>$vs->{logio});
   defined($vs->{tdm} = readPdlFile("$vsdir/tdm", class=>'PDL::CCS::Nd', %ioopts))
     or $vs->logconfess("open(): failed to load term-document frequency matrix from $vsdir/tdm.*: $!");
   defined($vs->{tym} = readPdlFile("$vsdir/tym", class=>'PDL::CCS::Nd', %ioopts))
@@ -265,7 +273,7 @@ sub close {
 #   $vs->{dcmap}->saveDir("$vs->{base}_map.d", %{$vs->{dcio}//{}})
 #     or $vs->logconfess("close(): failed to save mapper data to $vs->{base}_map.d: $!");
   }
-  delete @$vs{qw(base N tdm tw attrs tvals tsorti tpos meta mvals msorti mpos tdm tw)};
+  delete @$vs{qw(base N tdm tym cf yf tw attrs tvals tsorti tpos meta mvals msorti mpos d2c c2d d2date)};
   return $vs;
 }
 
@@ -642,7 +650,7 @@ sub create {
   my ($ymin,$ymax) = $c2date->minmax;
   my $NY = $ymax-$ymin+1;
   $vs->vlog($logCreate, "$logas: creating year-frequency piddle $vsdir/yf.pdl (NY=$NY)");
-  $cf->indadd( ($cf-$ymin), my $yf=mmzeroes("$vsdir/yf.pdl",$vtype,$NY) );
+  $cf->indadd( ($c2date-$ymin), my $yf=mmzeroes("$vsdir/yf.pdl",$vtype,$NY) );
   $vs->{y0} = $ymin;
 
   ##-- cleanup: yf,cf
@@ -653,7 +661,6 @@ sub create {
   $vs->vlog($logCreate, "$logas: creating term-year matrix $vsdir/tym.*");
 
   ##-- tym: create using local memory-optimized pdl-pp method
-  my $ymax = $c2date->max;
   my $tymsub = PDL->can('diacollo_tym_create_'.$vs->itype) || \&PDL::diacollo_tym_create_long;
   $tymsub->($tdm->_whichND, $tdm->_vals, $d2c, $c2date, (my $tym_nnz=pdl($itype,0)), "$vsdir/tym.ix", "$vsdir/tym.nz");
   writePdlHeader("$vsdir/tym.ix.hdr", $itype, 2, 2,$tym_nnz)
@@ -667,11 +674,6 @@ sub create {
   undef $c2date;
   undef $c2d;
   undef $d2c;
-
-  ##-- create: yf: ($NY): [$yi-$y0] -> f($yi)
-  $vs->vlog($logCreate, "$logas: creating cat-frequency piddle $vsdir/cf.pdl (NC=$NC)");
-  $tdm->_nzvals->indadd( $d2c->index($tdm->_whichND->slice("(1),")), my $cf=mmzeroes("$vsdir/cf.pdl",$vtype,$NC));
-  undef $cf;
 
   ##-- create: tdm: pointers
   $vs->vlog($logCreate, "$logas: creating tdm matrix Harwell-Boeing pointers");
@@ -919,6 +921,10 @@ sub export {
   require 'PDL/CCS/IO/MatrixMarket.pm'
     or $vs->logconfess("export(): failed to load PDL::CCS::IO::MatrixMarket");
   foreach my $key (qw(tvals tsorti mvals msorti cf c2date c2d d2c yf)) {
+    if (!defined($vs->{$key})) {
+      $vs->logwarn("cannot export $outdir/$key.mm : object property {$key} is undefined!");
+      next;
+    }
     $vs->vlog($logLocal,"exporting $outdir/$key.mm");
     $vs->{$key}->writemm("$outdir/$key.mm")
       or $vs->logconfess("export() failed for $outdir/$key.mm: $!");
@@ -1526,10 +1532,10 @@ sub catSubset {
 ##  + get total slice co-occurrence count, used by vprofile()
 sub sliceN {
   my ($vs,$sliceby,$dlo) = @_;
-  return $vs->{N} if ($slice==0);
+  return $vs->{N} if ($sliceby==0);
   my $ymin = $vs->{y0};
-  my $ihi  = ($dlo-$ymin+$slice) <= $vs->nDates ? ($dlo-$ymin+$slice) : $vs->nDates;
-  my $ilo  = $dlo < $ymin ? 0 : ($dlo-$ymin);
+  my $ihi  = min2( $dlo-$ymin+$sliceby, $vs->nDates );
+  my $ilo  = max2( $dlo-$ymin,          0 );
   return $vs->{yf}->slice("$ilo:".($ihi-1))->sum;
 }
 
