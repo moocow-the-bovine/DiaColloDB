@@ -56,7 +56,7 @@ WriteMakefile
 		    'Algorithm::BinarySearch::Vec' => '0.07', ##-- for fast integer-set operations
 		    #'Cwd' => 0, ##-- for abs_path
 		    'DB_File' => 0,  ##-- for temporary hashes; 1.831
-		    'DDC::Concordance' => 0.28, ##-- for DDC::Any
+		    'DDC::Concordance' => 0.34, ##-- for DDC::Any (+ order and quoting fixes)
 		    'File::Copy'    => 0, ##-- for move()
 		    'File::Find'    => 0,
 		    'File::Map'     => 0,  # 0.63
