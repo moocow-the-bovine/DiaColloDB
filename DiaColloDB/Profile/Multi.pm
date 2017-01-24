@@ -181,13 +181,23 @@ sub pclass {
 ## $prf = $mp->sumover()
 ## $prf = $CLASS_OR_OBJECT->sumover(\@profiles,%opts)
 ##  + sum of sub-profiles, compiled as for $profiles[0]
-##  + used for global trimming
-##  + %opts are passed to sum-profile compile() method if called
+##  + used for global trimming,
+##  + local %opts:
+##     autoN => $bool,   ##-- whether to guess whether we're using a pre-v0.12 style shared N (default=true)
+##  + other %opts are passed to sub-profile compile() method if called
 sub sumover {
   my $that = shift;
   my $prfs = (@_ ? shift : undef) // (ref($that) ? $that->{profiles} : undef) // [];
-  my $psum = $that->pclass->new(N=>$prfs->[0]{N})->_sum($prfs,N=>0,f1=>1);
-  $psum->compile($prfs->[0]{score}, @_) if ($prfs->[0] && $prfs->[0]{score});
+  my %opts = @_;
+
+  ##-- guess whether to sum sub-profile N (for compatibility with diacollo <= v0.11)
+  my $sumN = (!defined($opts{autoN}) || $opts{autoN}
+	      ? (grep {$_->{N} != $prfs->[0]{N}} @$prfs)
+	      : (@$prfs <= 1));
+  delete $opts{autoN};
+
+  my $psum = $that->pclass->new(N=>($sumN ? 0 : $prfs->[0]{N}))->_sum($prfs,N=>$sumN,f1=>1);
+  $psum->compile($prfs->[0]{score}, %opts) if ($prfs->[0] && $prfs->[0]{score});
   return $psum;
 }
 
@@ -215,6 +225,11 @@ sub trim {
   } else {
     ##-- global trimming
     my $psum  = $mp->sumover();
+
+    ##-- DEBUG: dump sum
+    $psum->logwarn("global trimming basis:");
+    $psum->saveTextFh(\*STDERR);
+
     my %pkeys = map {($_=>undef)} @{$psum->which(%opts)};
     $_->trim(keep=>\%pkeys) or return undef foreach (@{$mp->{profiles}});
   }
