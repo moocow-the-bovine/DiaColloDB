@@ -2,10 +2,10 @@
 ##
 ## Change log for perl distribution DiaColloDB
 
-v0.12.001 PENDING
+v0.12.001 Tue, 24 Jan 2017 15:01:24 +0100 moocow
 	* made profile parameter N dependent on epoch size (fixes mantis bug #17036)
 	* adapted Profile::Multi::sumover() to heuristically guess whether to sum sub-profile N for diacollo <= v0.11 compatibility
-	* TODO: re-instante 'use forks' in list.pm
+	* reverse-order from DDC::PP Descendants() fixed in DDC::Concordance v0.33
 
 v0.11.002 Wed, 30 Nov 2016 15:38:39 +0100 moocow
 	* fixed bogus repsitory in Makefile.PL
