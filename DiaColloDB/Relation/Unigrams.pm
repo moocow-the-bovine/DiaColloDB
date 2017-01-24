@@ -469,6 +469,7 @@ sub dbinfo {
 ##  + %opts: as for profile(), also:
 ##     coldb => $coldb,   ##-- parent DiaColloDB object (for shared data, debugging)
 ##     dreq  => \%dreq,   ##-- parsed date request
+##     onepass => $onepass, ##-- compat: if true, then N=N_epoch, f1=f12=f(w,e); otherwise N=N_global, f1=N_epoch, f2=f(w), f12=f(w,e)
 sub subprofile1 {
   my ($ug,$tids,$opts) = @_;
 
@@ -520,7 +521,15 @@ sub subprofile1 {
 
       next if (!defined($key2)); ##-- item2 selection via groupby CODE-ref
       $dprf->{f12}{$key2} += $f1;
-      $dprf->{f2}{$key2}  += $f1;
+      $dprf->{f2}{$key2}  += ($onepass ? $f1 : 0);
+    }
+  }
+
+  ##-- re-interpret N=N_global, f1=N_epoch if requested
+  if (!$onepass) {
+    foreach $dprf (values %slice2prf) {
+      $dprf->{f1} = $dprf->{N};
+      $dprf->{N}  = $ug->{N};
     }
   }
 
@@ -533,7 +542,78 @@ sub subprofile1 {
 ##  \%slice2prf = $rel->subprofile2(\%slice2prf, \%opts)
 ##  + populate f2 frequencies for profiles in \%slice2prf
 ##  + %opts: as for subprofile1()
-##  + INHERITED from DiaColloDB::Relation : no-op
+sub subprofile2 {
+  my ($cof,$slice2prf,$opts) = @_;
+  return $cof->SUPER::subprofile2($slice2prf,$opts) if ($opts->{onepass});
+
+  ##-- vars: common
+  my $coldb   = $opts->{coldb};
+  my $groupby = $opts->{groupby};
+  my $a2data  = $opts->{a2data};
+  my $slice   = $opts->{slice};
+  my $dfilter = $opts->{dreq}{dfilter};
+
+  ##-- vars: relation-wise
+  ##   $r1 : [$end2]      @ $i1
+  ##   $r2 : [$d1,$f1]*   @ end2($i1-1)..(end2($i1+1)-1)
+  my ($r1,$r2) = @$cof{qw(r1 r2)};
+  my $pack1   = $r1->{packas};
+  my $pack2df = $r2->{packas};
+
+  ##-- optimize tightest loop for direct mmap buffer access if available
+  my $bufr2 = UNIVERSAL::isa($r2,'DiaColloDB::PackedFile::MMap') ? $r2->{bufr} : undef;
+  my $len2  = $r2->{reclen};
+
+  ##-- get "most specific projected attribute" ("MSPA"): that projected attribute with largest enum
+  #my $gb1      = scalar(@{$groupby->{attrs}})==1; ##-- are we grouping by a single attribute? -->optimize!
+  my $mspai    = (sort {$b->[1]<=>$a->[1]} map {[$_,$a2data->{$groupby->{attrs}[$_]}{enum}->size]} (0..$#{$groupby->{attrs}}))[0][0];
+  my $mspa     = $groupby->{attrs}[$mspai];
+  my $mspgpack = $groupby->{gpack}[$mspai];
+  my $msptpack = $groupby->{tpack}[$mspai];
+  my $msp2t    = $a2data->{$mspa}{a2t};
+  my %mspv     = qw(); ##-- checked MSPA-values ($mspvi)
+  my $tenum    = $coldb->{tenum};
+  my $ts2g     = $groupby->{ts2g};
+
+  my ($prf1, $mspvi,$i2,$t2,$key2, $beg2,$end2,$pos2, $d2,$f2,$ds2,$prf2, $buf);
+  foreach $prf1 (values %$slice2prf) {
+    foreach (keys %{$prf1->{f12}}) {
+      $mspvi = unpack($mspgpack,$_);
+      next if (exists $mspv{$mspvi});
+      $mspv{$mspvi} = undef;
+
+      foreach $i2 (@{$msp2t->fetch($mspvi)}) {
+	##-- get item2 t-tuple
+	$t2 = $tenum->i2s($i2);
+
+	##-- get groupby-key from tuple-string
+	next if (!defined($key2 = $ts2g ? $ts2g->($t2) : pack($mspgpack, $i2))); ##-- having() failure
+
+	##-- scan all dates for $i2
+	$beg2 = ($i2==0 ? 0 : unpack($pack1,$r1->fetchraw($i2-1,\$buf)));
+	$end2 = unpack($pack1, $r1->fetchraw($i2,\$buf));
+	for ($pos2=$beg2; $pos2 < $end2; ++$pos2) {
+	  ($d2,$f2) = unpack($pack2df, $bufr2 ? substr($$bufr2, $pos2*$len2, $len2) : $r2->fetchraw($pos2,\$buf));
+
+	  ##-- check date-filter & get slice
+	  next if ($dfilter && !$dfilter->($d2));
+	  $ds2 = $slice ? int($d2/$slice)*$slice : 0;
+
+	  ##-- ignore if item2 isn't in target slice
+	  foreach $prf2 (values %$slice2prf) {
+	    next if (!exists($prf2->{f12}{$key2}));
+
+	    ##-- add independent f2
+	    $prf2->{f2}{$key2} += $f2;
+	  }
+	}
+      }
+    }
+  }
+
+  return $slice2prf;
+}
+
 
 ##--------------------------------------------------------------
 ## Relation API: default: subextend
@@ -541,9 +621,10 @@ sub subprofile1 {
 ## \%slice2prf = $rel->subextend(\%slice2prf,\%opts)
 ##  + populate f2 frequencies for profiles in \%slice2prf
 ##  + %opts: as for subprofile1()
-##  + override returns empty meta-profile (no-op)
+##  + override calls subprofile2()
 sub subextend {
-  return DiaColloDB::Profile::Multi->new();
+  my $cof = shift;
+  return $cof->subprofile2(@_);
 }
 
 ##--------------------------------------------------------------
