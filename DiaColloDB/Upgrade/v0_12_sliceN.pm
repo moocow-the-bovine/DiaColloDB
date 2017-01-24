@@ -56,7 +56,7 @@ sub upgrade {
     my @dates  = sort {$a<=>$b} keys %fN;
     my $ymin   = $dates[0];
     my $rN     = $ug->{rN} = DiaColloDB::PackedFile->new(file=>"$dbdir/xf.dbaN", flags=>'rw', perms=>$ug->{perms}, packas=>"$ug->{pack_f}");
-    $rN->fromArray([@fN{@dates}]);
+    $rN->store(($_-$ymin)=>$fN{$_}) foreach (@dates);
     $rN->flush();
 
     ##-- xf: update header
@@ -90,7 +90,7 @@ sub upgrade {
     my @dates  = sort {$a<=>$b} keys %fN;
     my $ymin   = $dates[0];
     my $rN     = $cof->{rN} = DiaColloDB::PackedFile->new(file=>"$dbdir/cof.dbaN", flags=>'rw', perms=>$cof->{perms}, packas=>"$cof->{pack_f}");
-    $rN->fromArray([@fN{@dates}]);
+    $rN->store(($_-$ymin)=>$fN{$_}) foreach (@dates);
     $rN->flush();
 
     ##-- cof: update header

@@ -276,7 +276,7 @@ sub loadTextFh {
   ##-- create $rN by date
   my @dates  = sort {$a<=>$b} keys %fN;
   my $ymin   = $ug->{ymin} = $dates[0];
-  $rN->{fh}->print(pack("($rN->{packas})*", @fN{@dates}));
+  $rN->{fh}->print(pack("($rN->{packas})*", map {$fN{$_}//0} ($ymin..$dates[$#dates])));
 
   ##-- adopt final $N and sizes
   $ug->{N} = $N1>$N ? $N1 : $N;
