@@ -114,7 +114,7 @@ sub new {
 			       attrs => [],
 			       ##
 			       logvprofile  => 'trace',
-			       logio => 'trace',
+			       logio => undef, #'trace',
 			       logCompat => 'warn',
 			       ##
 			       version => $DiaColloDB::VERSION,
