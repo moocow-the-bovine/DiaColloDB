@@ -14,6 +14,7 @@ BEGIN {
   $HAVE_FORKS = eval <<EOF;
 #use threads; ##-- segfaults on join()ing 2nd thread (possibly bogus destruction)
 use forks; 1
+#0 ##-- disable forks for easier debugging
 EOF
   $@ = '';
 }

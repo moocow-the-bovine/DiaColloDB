@@ -2,6 +2,9 @@
 ##
 ## Change log for perl distribution DiaColloDB
 
+v0.12.002 Mon, 27 Feb 2017 10:40:08 +0100 moocow
+	* fixed f1 acquisition bug when using DDC back-end for "macro-event" diffs using e.g. -groupby='[@constant]'
+
 v0.12.001 Tue, 24 Jan 2017 15:01:24 +0100 moocow
 	* made profile parameter N dependent on epoch size (fixes mantis bug #17036)
 	* adapted Profile::Multi::sumover() to heuristically guess whether to sum sub-profile N for diacollo <= v0.11 compatibility

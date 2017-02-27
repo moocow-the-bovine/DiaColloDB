@@ -189,7 +189,35 @@ sub profile {
       $prf->{f1} += $_->[0]*$fcoef;
     }
     undef $result1; ##-- save some memory (but not much)
-  } else {
+  }
+  elsif (grep {UNIVERSAL::isa($_,'DDC::Any::CQToken') && $_->getMatchId==2 && !UNIVERSAL::isa($_,'DDC::Any::CQTokAny')} @{$qcount->Descendants}) {
+    ##-- no item2 keys in groupby clause, but real item2 restriction: count f1 anyways
+    my $qcount1 = $qcount->clone();
+    my $qdtr1    = $qcount1->getDtr;
+    my ($nod,$newnod);
+    $qdtr1->mapTraverse(sub {
+			  $nod = shift;
+			  if (UNIVERSAL::isa($nod,'DDC::Any::CQToken') && $nod->getMatchId==2 && !UNIVERSAL::isa($nod,'DDC::Any::CQTokAny')) {
+			    $newnod = DDC::Any::CQTokAny->new();
+			    $newnod->setMatchId('2');
+			    $newnod->setOptions($nod->getOptions);
+			    $nod->setOptions(undef);
+			    return $newnod;
+			  }
+			  return $nod;
+			});
+    $qcount1->getKeys->setExprs([grep
+				 {!(UNIVERSAL::isa($_,'DDC::Any::CQCountKeyExprToken') && $_->getMatchId==2)}
+				 @{$qcount1->getKeys->getExprs}]);
+    my $result1 = $rel->ddcQuery($coldb, $qcount1, limit=>-1, logas=>'f1');
+    foreach (@{$result1->{counts_}}) {
+      next if (!defined($prf=$y2prf{$y=$_->[1]}));
+      $prf->{f1} += $_->[0];
+    }
+    undef $result1; ##-- save some memory (but not much)
+  }
+  else {
+    ##-- no f1 query required (item2 is universal wildcard)
     foreach $prf (values %y2prf) {
       my $f1=0;
       $f1 += $_ foreach (values %{$prf->{f12}});
@@ -212,7 +240,7 @@ sub profile {
   foreach $prf (values %y2prf) {
     $prf->{titles} = \@titles;
 
-    if (!$prf->{f1}) {
+    if (!($f1=$prf->{f1})) {
       $f1  = 0;
       $f1 += $_ foreach (values %{$prf->{f12}});
       $prf->{f1} = $f1;
