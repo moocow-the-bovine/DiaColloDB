@@ -2,6 +2,9 @@
 ##
 ## Change log for perl distribution DiaColloDB
 
+v0.12.003 Wed, 01 Mar 2017 15:47:02 +0100 moocow
+	* fixed default match-id =2 in ddc groupby
+
 v0.12.002 Mon, 27 Feb 2017 10:44:04 +0100 moocow
 	* fixed f1 acquisition bug when using DDC back-end for "macro-event" diffs using e.g. -groupby='[@constant]'
 

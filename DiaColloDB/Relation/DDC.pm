@@ -177,6 +177,7 @@ sub profile {
 
   ##-- query independent f1 and update slice-wise profiles
   if ($needKeys) {
+    ##-- not sure why we're using count(keys(...)) #by[$l=1] here
     my $qcount1 = $qcount2->clone();
     $_->setMatchId(1) foreach (grep {UNIVERSAL::isa($_,'DDC::Any::CQCountKeyExprToken') && $_->getMatchId==2}
 			       @{$qcount1->getDtr->getQCount->getKeys->getExprs},
@@ -620,6 +621,7 @@ sub countQuery {
       ##-- token expression
       $qtcond  = DDC::Any::CQTokExact->new($_->getIndexName, "__W2.${xi}__");
       $qtconds = defined($qtconds) ? DDC::Any::CQWith->new($qtconds,$qtcond) : $qtcond;
+      $_->setMatchId(2) if ($_->getMatchId==0);
     } elsif (UNIVERSAL::isa($_, 'DDC::Any::CQCountKeyExprBibl')) {
       ##-- bibl expression
       my $label = $_->getLabel;
