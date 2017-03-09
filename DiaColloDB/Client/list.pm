@@ -13,8 +13,7 @@ our ($HAVE_FORKS);
 BEGIN {
   $HAVE_FORKS = eval <<EOF;
 #use threads; ##-- segfaults on join()ing 2nd thread (possibly bogus destruction)
-#use forks; 1
-0
+use forks; 1
 EOF
   $@ = '';
 }

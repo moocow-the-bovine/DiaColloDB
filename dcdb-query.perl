@@ -82,9 +82,6 @@ GetOptions(##-- general
 	   (map {("${_}date|${_}d=s"=>\$query{"${_}date"})} ('',qw(a b))), 				  ##-- date,adate,bdate
 	   (map {("${_}date-slice|${_}ds|${_}slice|${_}sl|${_}s=s"=>\$query{"${_}slice"})} ('',qw(a b))), ##-- slice,aslice,bslice
 	   ##
-	   (map {("${_}f2min|${_}fmin2=s"=>\$query{"${_}fmin2"})} ('',qw(a b))),			  ##-- fmin2,afmin2,bfmin2
-	   (map {("${_}f12min|${_}fmin12=s"=>\$query{"${_}fmin12"})} ('',qw(a b))),			  ##-- fmin12,afmin12,bfmin12
-	   ##
 	   'group-by|groupby|group|gb|g=s' => \$query{groupby},
 	   ##
 	   'difference|diff|D|compare|comp|cmp=s' => \$query{diff},
@@ -258,8 +255,6 @@ dcdb-query.perl - query a DiaColloDB diachronic collocation database
    -col, -ug, -ddc, -tdf # select profile type (collocations, unigrams, ddc client, tdf matrix; default=-col)
    -(a|b)?date DATES     # set target DATE or /REGEX/ or MIN-MAX
    -(a|b)?slice SLICE    # set target date slice (default=1)
-   -(a|b)?fmin2 F2MIN    # minimum independent collocate frequency (default=0)
-   -(a|b)?fmin12 F12MIN  # minimum joint collocation-pair frequency (default=0)
    -groupby GROUPBY      # set result aggregation (default=l)
    -kbest KBEST          # return only KBEST items per date-slice (default=10)
    -nokbest              # disable k-best pruning

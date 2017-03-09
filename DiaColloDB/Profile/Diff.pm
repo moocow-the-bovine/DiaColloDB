@@ -28,9 +28,7 @@ our @ISA = qw(DiaColloDB::Profile);
 ##    prf2 => $prf2,     ##-- 2nd operand
 ##    diff => $diff,     ##-- low-level score-diff binary operation (default='abs-diff'); known values:
 ##                       ##    abs-diff  # $score=$a-$b ; aliases=qw(absolute-difference abs-difference abs-diff adiff adifference a-) ; select=kbesta ; default
-##                       ##    diff      # $score=$a-$b ; aliases=qw(difference diff d minus -); pre-trim
-##                       ##    xdiff     # $score=$a-$b ; aliases=qw(difference diff d minus -); no pre-trim
-##                       ##    idiff     # $score=$a-$b ; aliases=qw(difference diff d minus -); restricted
+##                       ##    diff      # $score=$a-$b ; aliases=qw(difference diff d minus -)
 ##                       ##    sum       # $score=$a+$b ; aliases=qw(sum add plus +)
 ##                       ##    min       # $score=min($a,$b)
 ##                       ##    max       # $score=max($a,$b)
@@ -241,8 +239,6 @@ our %DIFFOPS =
   (
    (map {($_=>'diff')} qw(difference diff d minus -)),
    (map {($_=>'adiff')} qw(absolute-difference abs-difference abs-diff adiff adifference a- DEFAULT)),
-   (map {($_=>'xdiff')} qw(xdifference xdiff xd xminus x-)),
-   (map {($_=>'idiff')} qw(idifference idiff id iminus i-)),
    (map {($_=>'sum')} qw(add plus sum +)),
    (map {($_=>'min')} qw(minimum min)),
    (map {($_=>'max')} qw(maximum max)),
@@ -283,7 +279,7 @@ sub diffsub {
 sub diffpretrim {
   my ($that,$op) = @_;
   $op = $that->diffop($op);
-  if ($op =~ /^min|avg|idiff/) {
+  if ($op =~ /^min|avg/) {
     return 'restrict';
   }
   elsif ($op =~ m/^a?diff|max/) {
@@ -301,7 +297,7 @@ sub diffkbest {
 }
 
 
-BEGIN { *diffop_adiff = *diffop_xdiff = *diffop_idiff = \&diffop_diff; }
+BEGIN { *diffop_adiff = \&diffop_diff; }
 sub diffop_diff  { return $_[0]-$_[1]; }
 sub diffop_sum   { return $_[0]+$_[1]; }
 sub diffop_min   { return $_[0]<$_[1] ? $_[0] : $_[1]; }
@@ -437,13 +433,12 @@ sub pretrim {
   my $pretrim = $that->diffpretrim($opts{diff});
 
   if ($pretrim eq 'kbest') {
-    ##-- pre-trim: 'kbest': union of k-best collocates
+    ##-- pre-trim: union of k-best collocates
     my %keep = map {($_=>undef)} (($pa ? @{$pa->which(%opts)} : qw()), ($pb ? @{$pb->which(%opts)} : qw()));
     $pa->trim(keep=>\%keep) if ($pa);
     $pb->trim(keep=>\%keep) if ($pb);
   }
   elsif ($pretrim eq 'restrict' && $pa && $pb) {
-    ##-- pre-trim: 'restrict' : intersect defined collocates
     my @drop = (
 		(grep {!exists $pa->{f12}{$_}} keys %{$pb->{f12}}),
 		(grep {!exists $pb->{f12}{$_}} keys %{$pa->{f12}}),

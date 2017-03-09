@@ -2248,8 +2248,6 @@ sub parseGroupBy {
 ##     kbest   => $k,             ##-- return only $k best collocates per date (slice) : default=-1:all
 ##     cutoff  => $cutoff,        ##-- minimum score
 ##     global  => $bool,          ##-- trim profiles globally (vs. locally for each date-slice?) (default=0)
-##     fmin2   => $fmin2,         ##-- minimum independent item2 frequency f2 (default=0)
-##     fmin12  => $fmin12,        ##-- minimum joint (item1,item2) frequency f12 (default=0)
 ##     ##
 ##     ##-- profiling and debugging parameters
 ##     strings => $bool,          ##-- do/don't stringify output profile(s) (default=do)
@@ -2271,7 +2269,7 @@ sub profile {
 		     ([rel=>$rel],
 		      [query=>$opts{query}],
 		      [groupby=>UNIVERSAL::isa($opts{groupby},'ARRAY') ? join(',', @{$opts{groupby}}) : $opts{groupby}],
-		      (map {[$_=>$opts{$_}]} qw(date slice score eps kbest cutoff global onepass fmin2 fmin12)),
+		      (map {[$_=>$opts{$_}]} qw(date slice score eps kbest cutoff global onepass)),
 		     ))
 	       .")");
 
@@ -2301,8 +2299,6 @@ sub profileOptions {
   $opts->{kbest}   //= -1;
   $opts->{cutoff}  //= '';
   $opts->{global}  //= 0;
-  $opts->{fmin2}   //= 0;
-  $opts->{fmin12}  //= 0;
   $opts->{strings} //= 1;
   $opts->{fill}    //= 0;
   $opts->{onepass} //= 0;
@@ -2385,8 +2381,6 @@ sub extend {
 ##     cutoff  => $cutoff,        ##-- minimum score (UNUSED for comparison profiles)
 ##     global  => $bool,          ##-- trim profiles globally (vs. locally for each date-slice?) (default=0)
 ##     diff    => $diff,          ##-- low-level score-diff operation (diff|adiff|sum|min|max|avg|havg); default='adiff'
-##     (a|b)?fmin2   => $fmin2,   ##-- minimum independent item2 frequency f2 (default=0)
-##     (a|b)?fmin12  => $fmin12,  ##-- minimum joint (item1,item2) frequency f12 (default=0)
 ##     ##
 ##     ##-- profiling and debugging parameters
 ##     strings => $bool,          ##-- do/don't stringify (default=do)
@@ -2404,10 +2398,10 @@ sub compare {
   $coldb->vlog($coldb->{logRequest},
 	       "compare("
 	       .join(', ',
-		     map {"$_->[0]='".quotemeta($_->[1]//'')."'"}
+		     map {"$_->[0]=".quotemeta($_->[1]//'')."'"}
 		     ([rel=>$rel],
-		      (map {["a$_"=>$opts{"a$_"}]} (qw(query date slice fmin2 fmin12))),
-		      (map {["b$_"=>$opts{"b$_"}]} (qw(query date slice fmin2 fmin12))),
+		      (map {["a$_"=>$opts{"a$_"}]} (qw(query date slice))),
+		      (map {["b$_"=>$opts{"b$_"}]} (qw(query date slice))),
 		      [groupby=>(UNIVERSAL::isa($opts{groupby},'ARRAY') ? join(',',@{$opts{groupby}}) : $opts{groupby})],
 		      (map {[$_=>$opts{$_}]} qw(score eps kbest cutoff global diff)),
 		     ))
@@ -2435,12 +2429,12 @@ sub compareOptions {
 			     (grep {defined($_)} @$opts{qw(query q lemma lem l)}),
 			    )[0]//'';
   }
-  foreach my $attr (qw(date slice fmin2 fmin12)) {
-    $opts->{"a$attr"} = ((map {defined($opts->{"a$_"}) ? $opts->{"a$_"} : qw()} @{$ATTR_RALIAS{$attr}//[$attr]}),
-			 (map {defined($opts->{$_})    ? $opts->{$_}    : qw()} @{$ATTR_RALIAS{$attr}//[$attr]}),
+  foreach my $attr (qw(date slice)) {
+    $opts->{"a$attr"} = ((map {defined($opts->{"a$_"}) ? $opts->{"a$_"} : qw()} @{$ATTR_RALIAS{$attr}}),
+			 (map {defined($opts->{$_})    ? $opts->{$_}    : qw()} @{$ATTR_RALIAS{$attr}}),
 			)[0]//'';
-    $opts->{"b$attr"} = ((map {defined($opts->{"b$_"}) ? $opts->{"b$_"} : qw()} @{$ATTR_RALIAS{$attr}//[$attr]}),
-			 (map {defined($opts->{$_})    ? $opts->{$_}    : qw()} @{$ATTR_RALIAS{$attr}//[$attr]}),
+    $opts->{"b$attr"} = ((map {defined($opts->{"b$_"}) ? $opts->{"b$_"} : qw()} @{$ATTR_RALIAS{$attr}}),
+			 (map {defined($opts->{$_})    ? $opts->{$_}    : qw()} @{$ATTR_RALIAS{$attr}}),
 			)[0]//'';
   }
   delete @$opts{keys %ATTR_ALIAS};

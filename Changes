@@ -2,17 +2,6 @@
 ##
 ## Change log for perl distribution DiaColloDB
 
-PENDING
-	***** TODO: re-instate 'use forks' in list.pm *****
-	* implemented 2-pass profiling and compatibility 'onepass' option for Unigrams profiles
-	  - if onepass=true (compat), then unigram profiles use old-style N=N_epoch, f1=f12=f(w,e);
-	  - new default 2-pass evaluation uses N=N_global, f1=N_epoch, f2=f(w), f12=f(w,e) for profiling epoch-associations;
-	    basically treating corpus epoch as item1, unigram search term(s) as item2, and use global corpus N
-	  - can potentially be used for TW feature request epoch-summary profiling ("what's new/special about these epochs?")
-	    + idea: use (a)diff profile wrt a reference set (e.g. date-aligned 1 epoch ahead or behind, or corpus-global)
-	      together with a broad target set (* doesn't parse, but $p=/./ will do the trick); requires loosening
-	      up the default maxExpand restrictions (can be disabled with maxExpand=-1)
-
 v0.12.001 Tue, 24 Jan 2017 15:01:24 +0100 moocow
 	* made profile parameter N dependent on epoch size (fixes mantis bug #17036)
 	* adapted Profile::Multi::sumover() to heuristically guess whether to sum sub-profile N for diacollo <= v0.11 compatibility

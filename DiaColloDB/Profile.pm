@@ -586,8 +586,6 @@ sub which {
 ## $prf = $prf->trim(%opts)
 ##  + %opts:
 ##    (
-##     fmin2 => $fmin2,    ##-- minimum independent item2 frequency f2 (no default)
-##     fmin12 => $fmin12,  ##-- minimum joint frequency f12 (no default)
 ##     kbest => $kbest,    ##-- retain only $kbest items (by score value)
 ##     kbesta => $kbesta,  ##-- retain only $kbest items (by score absolute value)
 ##     cutoff => $cutoff,  ##-- retain only items with $prf->{$prf->{score}}{$item} >= $cutoff
@@ -616,26 +614,6 @@ sub trim {
   if (defined($opts{drop})) {
     my $drop = (UNIVERSAL::isa($opts{drop},'ARRAY') ? $opts{drop} : [keys %{$opts{drop}}]);
     delete @{$prf->{$_}}{@$drop} foreach (grep {defined($prf->{$_})} qw(f2 f12),$prf->scoreKeys);
-  }
-
-  ##-- trim: by frequency: f2
-  if ((my $fmin2=$opts{fmin2}||'') ne '') {
-    my @trim = qw();
-    my ($key,$val);
-    while (($key,$val) = each %{$prf->{f2}//{}}) {
-      push(@trim,$key) if ($val < $fmin2);
-    }
-    delete @{$prf->{$_}}{@trim} foreach (grep {defined($prf->{$_})} qw(f2 f12),$prf->scoreKeys);
-  }
-
-  ##-- trim: by frequency: f12
-  if ((my $fmin12=$opts{fmin12}||'') ne '') {
-    my @trim = qw();
-    my ($key,$val);
-    while (($key,$val) = each %{$prf->{f12}//{}}) {
-      push(@trim,$key) if ($val < $fmin12);
-    }
-    delete @{$prf->{$_}}{@trim} foreach (grep {defined($prf->{$_})} qw(f2 f12),$prf->scoreKeys);
   }
 
   ##-- trim: by user-specified cutoff

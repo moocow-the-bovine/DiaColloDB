@@ -166,18 +166,6 @@ sub profile {
     $tivec  = defined($tivec) ? vintersect($tivec, $atiset, $nbits) : $atiset;
   }
 
-  ##-- check for universal wildcard
-  if (!grep {defined($_->{req})} @$adata) {
-    $nbits   = $coldb->{tenum}{len_i}*8;
-    $pack_tv = "$coldb->{tenum}{pack_i}*";
-
-    vec($test_tv='',0,$nbits) = 0x12345678;
-    $reldb->logconfess($coldb->{error}="profile(): multimap pack-template '$coldb->{tenum}{pack_i}' for $coldb->{tenum}{base}.* is not big-endian")
-      if (pack($coldb->{tenum}{pack_i},0x12345678) ne $test_tv);
-
-    $tivec = pack($pack_tv, 1..$coldb->{tenum}{size});
-  }
-
   ##-- check maxExpand
   $nbits //= packsize($coldb->{pack_id});
   my $ntis = $tivec ? length($tivec)/($nbits/8) : 0;
@@ -215,7 +203,7 @@ sub profile {
 					  );
 
   ##-- trim and stringify
-  $reldb->vlog($logProfile, "profile(): trim and stringify (kbest=$opts{kbest}, cutoff=$opts{cutoff}, fmin2=$opts{fmin2}, fmin12=$opts{fmin12})");
+  $reldb->vlog($logProfile, "profile(): trim and stringify");
   $mp->trim(%opts, empty=>!$opts{fill});
   if (!$opts{packed}) {
     if ($opts{strings}//1) {
@@ -318,8 +306,8 @@ sub compare {
   my $logProfile = $coldb->{logProfile};
   my $groupby    = $opts{groupby} || [@{$coldb->attrs}];
   $groupby       = $coldb->groupby($groupby) if ($opts{_gbparse}//1);
-  my %aopts      = map {exists($opts{"a$_"}) ? ($_=>$opts{"a$_"}) : qw()} (qw(query date slice fmin2 fmin12), @{$opts{_abkeys}//[]});
-  my %bopts      = map {exists($opts{"b$_"}) ? ($_=>$opts{"b$_"}) : qw()} (qw(query date slice fmin2 fmin12), @{$opts{_abkeys}//[]});
+  my %aopts      = map {exists($opts{"a$_"}) ? ($_=>$opts{"a$_"}) : qw()} (qw(query date slice), @{$opts{_abkeys}//[]});
+  my %bopts      = map {exists($opts{"b$_"}) ? ($_=>$opts{"b$_"}) : qw()} (qw(query date slice), @{$opts{_abkeys}//[]});
   my %popts      = (kbest=>-1,cutoff=>'',global=>0,strings=>0,packed=>1,fill=>1, groupby=>$groupby);
 
   ##-- get profiles to compare
