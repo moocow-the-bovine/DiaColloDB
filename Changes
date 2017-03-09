@@ -3,6 +3,7 @@
 ## Change log for perl distribution DiaColloDB
 
 PENDING
+	***** TODO: re-instate 'use forks' in list.pm *****
 	* implemented 2-pass profiling and compatibility 'onepass' option for Unigrams profiles
 	  - if onepass=true (compat), then unigram profiles use old-style N=N_epoch, f1=f12=f(w,e);
 	  - new default 2-pass evaluation uses N=N_global, f1=N_epoch, f2=f(w), f12=f(w,e) for profiling epoch-associations;
