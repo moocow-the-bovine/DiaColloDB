@@ -227,8 +227,8 @@ sub trim {
     my $psum  = $mp->sumover();
 
     ##-- DEBUG: dump sum
-    $psum->logwarn("global trimming basis:");
-    $psum->saveTextFh(\*STDERR);
+    #$psum->logwarn("global trimming basis:");
+    #$psum->saveTextFh(\*STDERR);
 
     my %pkeys = map {($_=>undef)} @{$psum->which(%opts)};
     $_->trim(keep=>\%pkeys) or return undef foreach (@{$mp->{profiles}});

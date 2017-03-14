@@ -2,8 +2,9 @@
 ##
 ## Change log for perl distribution DiaColloDB
 
-v0.12.004 Tue, 14 Mar 2017 16:31:16 +0100 moocow
+v0.12.004 PENDING
 	* bug-fix for extend() on list-URLs where all target attributes are missing from DB
+	* removed some painful global debug code in Profile::Multi::trim()
 
 v0.12.003 Wed, 01 Mar 2017 15:47:02 +0100 moocow
 	* fixed default match-id =2 in ddc groupby
