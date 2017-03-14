@@ -257,6 +257,14 @@ sub extend {
   ##-- get independent f2
   $reldb->subextend($s2prf, \%opts);
 
+  ##-- trim result profiles (remove unknown elements)
+  my ($prf,@badkeys);
+  foreach my $prf (values %$s2prf) {
+    @badkeys = grep {!$prf->{f2}{$_}} keys(%{$prf->{f12}});
+    delete @{$prf->{f12}}{@badkeys};
+    delete @{$prf->{d2}}{@badkeys};
+  }
+
   ##-- collect, stringify & return
   my $mp = DiaColloDB::Profile::Multi->new(profiles=>[@$s2prf{sort {$a<=>$b} keys %$s2prf}],
 					   titles  =>$groupby->{titles});
