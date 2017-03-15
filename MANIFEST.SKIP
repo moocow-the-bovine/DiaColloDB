@@ -49,7 +49,12 @@ dump.mak
 ^dcdb-update-header\.perl$
 ^kern[0-9]*\b
 ^zeit[0-9]*\b
+^nhess\b
 ^logo/
 ^tags\.map$
 \.gp$
 [_\.]save$
+\bnotes\b.*.txt
+\blist\.pm_
+^svntag\.rc$
+^test[0-9]\.

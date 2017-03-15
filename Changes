@@ -2,7 +2,7 @@
 ##
 ## Change log for perl distribution DiaColloDB
 
-v0.12.004 PENDING
+v0.12.004 Wed, 15 Mar 2017 16:04:39 +0100 moocow
 	* fix for extend() on list-URLs where all target attributes are missing from DB
 	* removed some painful global debug code in Profile::Multi::trim()
 	* made default eps=0 more consistent (dcdb-query.perl, DiaColloDB::profileOptions(), Profile::compile_xyz())
