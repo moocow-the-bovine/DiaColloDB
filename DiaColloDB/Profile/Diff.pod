@@ -154,7 +154,7 @@ Canonical diff-operation names keyed by alias.
  #f2  => \%f2,       ##-- OVERRIDE:unused: total marginal frequency of collocates: ($i2=>$f2, ...)
  #f12 => \%f12,      ##-- OVERRIDE:unused: collocation frequencies, %f12 = ($i2=>$f12, ...)
  ##
- eps => $eps,       ##-- smoothing constant (default=undef: no smoothing)
+ eps => $eps,       ##-- smoothing constant (default=0: no smoothing)
  score => $func,    ##-- selected scoring function ('f12', 'mi', or 'ld')
  mi => \%mi12,      ##-- DIFFERENCE: score: mutual information * logFreq a la Wortprofil; requires compile_mi()
  ld => \%ld12,      ##-- DIFFERENCE: score: log-dice a la Wortprofil; requires compile_ld()

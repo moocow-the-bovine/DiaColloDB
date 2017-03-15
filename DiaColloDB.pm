@@ -2295,7 +2295,7 @@ sub profileOptions {
   $opts->{slice}   //= 1;
   $opts->{groupby} ||= join(',', map {quotemeta($_)} @{$that->attrs}) if (ref($that));
   $opts->{score}   //= 'f';
-  $opts->{eps}     //= 0;
+  $opts->{eps}     //= 0; #0.5;
   $opts->{kbest}   //= -1;
   $opts->{cutoff}  //= '';
   $opts->{global}  //= 0;

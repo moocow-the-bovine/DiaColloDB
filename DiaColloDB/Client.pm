@@ -35,7 +35,7 @@ sub new {
 		    url=>$url,
 		    @_
 		   }, ref($that)||$that);
-  return $cli->open() if (defined($cli->{url}));
+  return $cli->open($cli->{url},@_) if (defined($cli->{url}));
   return $cli;
 }
 
@@ -113,7 +113,7 @@ sub open_rcfile {
 
   ##-- load data from file
   my $hdr = $cli->readHeaderFile($rcpath)
-    or $cli->logconfess("open_file() failed to open config file $rcpath: $!");
+    or $cli->logconfess("open_rcfile() failed to open config file '$rcpath' for URL '$rcurl': $!");
   $cli->promote($hdr->{class}) if ($hdr->{class});
   delete $hdr->{class};
   @$cli{keys %$hdr}   = values %$hdr;
@@ -121,7 +121,7 @@ sub open_rcfile {
 
   ##-- dispatch to lower-level open:// call
   delete $cli->{url} if (($cli->{url}//'') eq $rcurl);
-  return $cli->opened || !$cli->{url} ? $cli : $cli->open($cli->{url});
+  return $cli->opened || !$cli->{url} ? $cli : $cli->open($cli->{url},%opts);
 }
 
 ## $cli_or_undef = $cli->open_file($file_url,%opts)
@@ -177,6 +177,14 @@ sub close {
 ##  + default just checks for $cli->{url}
 sub opened {
   return ref($_[0]) && defined($_[0]{url});
+}
+
+## %opts = $cli->dbOptions()
+##  + options to be passed down to bottom-level DB
+##  + default is all log-related options
+sub dbOptions {
+  my $cli = shift;
+  return ref($cli) ? (map {($_=>$cli->{$_})} grep {/^log/} keys %$cli) : qw();
 }
 
 ##==============================================================================

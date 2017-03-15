@@ -192,7 +192,7 @@ sub sumover {
 
   ##-- guess whether to sum sub-profile N (for compatibility with diacollo <= v0.11)
   my $sumN = (!defined($opts{autoN}) || $opts{autoN}
-	      ? (grep {$_->{N} != $prfs->[0]{N}} @$prfs)
+	      ? (@$prfs ? (grep {$_->{N} != $prfs->[0]{N}} @$prfs) : 1)
 	      : (@$prfs <= 1));
   delete $opts{autoN};
 

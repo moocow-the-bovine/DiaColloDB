@@ -60,7 +60,7 @@ our @ISA = qw(DiaColloDB::Persistent);
 ##    f12 => \%f12,       ##-- collocation frequencies, %f12 = ($i2=>$f12, ...)
 ##    titles => \@titles, ##-- item group titles (default:undef: unknown)
 ##    #
-##    eps => $eps,       ##-- smoothing constant (default=0.5)
+##    eps => $eps,       ##-- smoothing constant (default=0) #0.5
 ##    score => $func,    ##-- selected scoring function qw(f fm lf lfm mi1 mi3 milf ld ll)
 ##    milf => \%milf_12, ##-- score: mutual information * logFreq a la Wortprofil; requires compile_milf()
 ##    mi1 => \%mi1_12,   ##-- score: mutual information; requires compile_mi1()
@@ -79,7 +79,7 @@ sub new {
 		    f1=>0,
 		    f2=>{},
 		    f12=>{},
-		    eps=>0.5,
+		    eps=>0, #0.5,
 		    #titles=>undef,
 		    #ld=>{},
 		    @_
@@ -324,6 +324,17 @@ sub uncompile {
   return $_[0];
 }
 
+## $prf = $prf->compile_clean(%opts)
+##  + bashes non-finite compiled score values to undef
+sub compile_clean {
+  my $prf = shift;
+  return $prf if (!$prf->{score} || !$prf->{$prf->{score}});
+  foreach (values %{$prf->{$prf->{score}}}) {
+    $_ = undef if (isInf($_));
+  }
+  return $prf;
+}
+
 ## $prf = $prf->compile_f()
 ##  + just sets $prf->{score} = 'f12'
 sub compile_f {
@@ -356,13 +367,13 @@ sub compile_lf {
   my ($prf,%opts) = @_;
   my $pf12 = $prf->{f12};
   my $lf   = $prf->{lf} = {};
-  my $eps  = $opts{eps} // $prf->{eps} // 0; #0.5;
+  my $eps  = $opts{eps} // $prf->{eps} // 0.5; #0
   my ($i2,$f12);
   while (($i2,$f12)=each(%$pf12)) {
     $lf->{$i2} = log2($f12+$eps);
   }
   $prf->{score} = 'lf';
-  return $prf;
+  return $prf->compile_clean();
 }
 
 ## $prf = $prf->compile_lfm(%opts)
@@ -381,7 +392,7 @@ sub compile_lfm {
     $lfm->{$i2} = log2($f12+$eps) - $logM;
   }
   $prf->{score} = 'lfm';
-  return $prf;
+  return $prf->compile_clean();
 }
 
 ## $prf = $prf->compile_milf(%opts)
@@ -396,7 +407,7 @@ sub compile_milf {
   my ($prf,%opts) = @_;
   my ($N,$f1,$pf2,$pf12) = @$prf{qw(N f1 f2 f12)};
   my $mi = $prf->{milf} = {};
-  my $eps = $opts{eps} // $prf->{eps} // 0; #0.5;
+  my $eps = $opts{eps} // $prf->{eps} // 0; #0.5
   my ($i2,$f2,$f12);
   while (($i2,$f2)=each(%$pf2)) {
     $f12 = $pf12->{$i2} // 0;
@@ -411,7 +422,7 @@ sub compile_milf {
 		 );
   }
   $prf->{score} = 'milf';
-  return $prf;
+  return $prf->compile_clean();
 }
 
 ## $prf = $prf->compile_mi1(%opts)
@@ -436,7 +447,7 @@ sub compile_mi1 {
 		 );
   }
   $prf->{score} = 'mi1';
-  return $prf;
+  return $prf->compile_clean();
 }
 
 
@@ -449,7 +460,7 @@ sub compile_mi3 {
   my ($prf,%opts) = @_;
   my ($N,$f1,$pf2,$pf12) = @$prf{qw(N f1 f2 f12)};
   my $mi3 = $prf->{mi3} = {};
-  my $eps = $opts{eps} // $prf->{eps} // 0; #0.5;
+  my $eps = $opts{eps} // $prf->{eps} // 0; #0.5
   my ($i2,$f2,$f12);
   while (($i2,$f2)=each(%$pf2)) {
     $f12 = $pf12->{$i2} // 0;
@@ -462,7 +473,7 @@ sub compile_mi3 {
 		  );
   }
   $prf->{score} = 'mi3';
-  return $prf;
+  return $prf->compile_clean();
 }
 
 ## $prf = $prf->compile_ld(%opts)
@@ -475,7 +486,7 @@ sub compile_ld {
   my ($N,$f1,$pf2,$pf12) = @$prf{qw(N f1 f2 f12)};
   my $ld = $prf->{ld} = {};
   my $eps = $opts{eps} // $prf->{eps} // 0; #0.5;
-  my ($i2,$f2,$f12);
+  my ($i2,$f2,$f12,$val);
   while (($i2,$f2)=each(%$pf2)) {
     $f12 = $pf12->{$i2} // 0;
     $ld->{$i2} = 14 + log2(
@@ -485,7 +496,7 @@ sub compile_ld {
 			  );
   }
   $prf->{score} = 'ld';
-  return $prf;
+  return $prf->compile_clean();
 }
 
 sub log0 {
@@ -523,8 +534,9 @@ sub compile_ll {
   }
 
   $prf->{score} = 'll';
-  return $prf;
+  return $prf->compile_clean();
 }
+
 
 
 ##==============================================================================

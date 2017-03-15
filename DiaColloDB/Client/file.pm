@@ -42,7 +42,7 @@ sub open_file {
   $cli->{url} = $url = ($url // $cli->{url});
   my $uri    = URI->new($url);
   my $path   = ($uri->authority//'') . ($uri->path//'');
-  my %dbopts = $uri->query_form();
+  my %dbopts = ($cli->dbOptions, $uri->query_form());
 
   ##-- check whether the path looks like an rc-file; if so, try to open it as one
   return $cli->open_rcfile($cli->{url})

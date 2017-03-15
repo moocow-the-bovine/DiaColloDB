@@ -35,7 +35,7 @@ our %EXPORT_TAGS =
      run   => [qw(crun opencmd)],
      env   => [qw(env_set env_push env_pop)],
      pack  => [qw(packsize packsingle packFilterFetch packFilterStore)],
-     math  => [qw($LOG2 log2 min2 max2 lmax lmin lsum)],
+     math  => [qw(isNan isInf isFinite $LOG2 log2 min2 max2 lmax lmin lsum)],
      list  => [qw(luniq sluniq xluniq lcounts)],
      regex => [qw(regex)],
      html  => [qw(htmlesc)],
@@ -390,6 +390,19 @@ sub packFilterFetch {
 
 ##==============================================================================
 ## Math stuff
+
+sub isNan {
+  no warnings 'numeric';
+  return !($_[0]<=0||$_[0]>=0);
+}
+sub isInf {
+  no warnings 'numeric';
+  return !($_[0]<=0||$_[0]>=0) || ($_[0]==+"INF") || ($_[0]==-"INF");
+}
+sub isFinite {
+  no warnings 'numeric';
+  return ($_[0]<=0||$_[0]>=0) && ($_[0]!=+"INF") && ($_[0]!=-"INF");
+}
 
 our ($LOG2);
 BEGIN {

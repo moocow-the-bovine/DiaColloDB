@@ -43,7 +43,7 @@ our %query = (
 	      ##
 	      groupby=>'l',     ##-- result aggregation (empty:all available attributes, no restrictions)
 	      ##
-	      eps => 0,		##-- smoothing constant
+	      eps => 0,		##-- smoothing constant (old default=0.5)
 	      score =>'ld',	##-- score func
 	      diff=>'adiff',    ##-- diff-op
 	      kbest =>10,	##-- k-best items per date
@@ -278,7 +278,7 @@ dcdb-query.perl - query a DiaColloDB diachronic collocation database
    -mi3                  # score by pointwise mutual information^3 (Rychlý 2008)
    -ld                   # score by scaled log-Dice coefficient (Rychlý 2008)
    -ll                   # score by 1-sided log-likelihood ratio (Evert 2008)
-   -eps EPS              # smoothing constant (default=0.5)
+   -eps EPS              # smoothing constant (default=0)
    -diff DIFFOP          # diff operation (adiff|diff|sum|min|max|avg|havg|gavg; default=adiff)
 
  I/O Options:

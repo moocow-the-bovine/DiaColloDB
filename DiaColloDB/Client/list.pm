@@ -11,11 +11,10 @@ use strict;
 ##-- try to use threads
 our ($HAVE_FORKS);
 BEGIN {
-  $HAVE_FORKS = eval <<EOF;
-#use threads; ##-- segfaults on join()ing 2nd thread (possibly bogus destruction)
-use forks; 1
-#0 ##-- disable forks for easier debugging
-EOF
+  $HAVE_FORKS = ($^P ? 0 ##-- disable forks if running under debugger
+		 #: eval "use threads; 1" ##-- segfaults on join()ing 2nd thread (possibly bogus destruction)
+		 : eval "use forks; 1"    ##-- forks module works basically as expected
+		);
   $@ = '';
 }
 
@@ -36,7 +35,7 @@ our @ISA = qw(DiaColloDB::Client);
 ##    ##
 ##    ##-- DiaColloDB::Client::list
 ##    urls  => \@urls,     ##-- db urls
-##    opts  => \%opts,     ##-- sub-client options
+##    opts  => \%opts,     ##-- sub-client options (includes all list-client "log*" options and "sub.OPT" options)
 ##    fudge => $coef,      ##-- get ($coef*$kbest) items from sub-clients (0:all, default=10)
 ##    fork  => $bool,      ##-- run each subclient query in its own fork? (default=if available)
 ##    lazy => $bool,       ##-- use temporary on-demand sub-clients (true,default) or persistent sub-clients (false)
@@ -117,6 +116,13 @@ sub open_list {
     $cli->{opts}{keys %opts} = values %opts;
   }
 
+  ##-- pass sub-client options "log*"=VAL 
+  foreach my $key (grep {/^sub\./} keys %$cli) {
+    my $subkey = $key;
+    $subkey =~ s/^sub\.//;
+    $cli->{opts}{$subkey} = $cli->{$key};
+  }
+
   ##-- open sub-clients (non-lazy mode)
   $cli->{clis} = [map {$cli->client($_)} (0..$#$curls)] if (!$cli->{lazy});
 
@@ -147,6 +153,14 @@ sub opened {
 	 );
 }
 
+## %opts = $cli->dbOptions()
+##  + options to be passed down to bottom-level DB
+##  + override includes $cli->{opts}
+sub dbOptions {
+  my $cli = shift;
+  return ($cli->SUPER::dbOptions, (ref($cli) && $cli->{opts} ? %{$cli->{opts}} : qw()));
+}
+
 ## $cli = $cli->client($i, %opts)
 ##  + open (temporary) sub-client #$i
 sub client {
@@ -154,7 +168,7 @@ sub client {
   return $cli->{clis}[$i] if (!$cli->{lazy} && $cli->{clis} && $cli->{clis}[$i]); ##-- non-lazy mode
   my $url = $cli->{urls}[$i]
     or $cli->logconfess("client(): no URL for client #$i");
-  my $sub = DiaColloDB::Client->new($url,%{$cli->{opts}//{}},%opts)
+  my $sub = DiaColloDB::Client->new($url,$cli->dbOptions,%opts)
     or $cli->logconfess("client(): failed to create client for URL '$url': $!");
   return $sub;
 }
@@ -329,7 +343,7 @@ sub profile {
     if (($cli->{logFudge}//'off') !~ /^(?:off|none)$/);
 
   ##-- re-compile and -trim
-  $mp->compile($opts{score}, eps=>$opts{eps})->trim(kbest=>$kbest, cutoff=>$opts{cutoff}, empty=>!$opts{fill});
+  $mp->compile($opts{score}, eps=>$opts{eps})->trim(global=>$opts{global}, kbest=>$kbest, cutoff=>$opts{cutoff}, empty=>!$opts{fill});
 
   $cli->vlog($cli->{logFudge}, "profile(): trimmed final profile to size ", $mp->size)
     if (($cli->{logFudge}//'off') !~ /^(?:off|none)$/);

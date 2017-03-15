@@ -153,7 +153,7 @@ L<DiaColloDB::Persistent|DiaColloDB::Persistent>.
  f12 => \%f12,       ##-- collocation frequencies, %f12 = ($i2=>$f12, ...)
  titles => \@titles, ##-- item group titles (default:undef: unknown)
  ##
- eps => $eps,        ##-- smoothing constant (default=0.5)
+ eps => $eps,        ##-- smoothing constant (default=0)
  score => $func,     ##-- selected scoring function qw(f fm lf lfm mi mi3 ld ll)
  milf => \%milf_12,  ##-- score: mutual information * logFreq a la Wortprofil; requires compile_milf()
  mi1 => \%mi1_12,    ##-- score: mutual information; requires compile_mi1()
@@ -402,7 +402,7 @@ sets $pf-E<gt>{score}='ll'.
 
 %opts:
 
- eps => $eps  #-- clobber $prf-E<gt>{eps}
+ eps => $eps  #-- clobber $prf->{eps}
 
 =back
 

@@ -232,7 +232,6 @@ sub extend {
   my $logProfile = $coldb->{logProfile};
 
   ##-- sanity check(s)
-   ##-- sanity check(s)
   if (!$opts{slice2keys}) {
      $reldb->logwarn($coldb->{error}="extend(): no 'slice2keys' parameter specified!");
      return undef;
@@ -257,19 +256,16 @@ sub extend {
   ##-- get independent f2
   $reldb->subextend($s2prf, \%opts);
 
-  ##-- trim result profiles (remove unknown elements)
-  my ($prf,@badkeys);
-  foreach my $prf (values %$s2prf) {
-    @badkeys = grep {!$prf->{f2}{$_}} keys(%{$prf->{f12}});
-    delete @{$prf->{f12}}{@badkeys};
-    delete @{$prf->{d2}}{@badkeys};
-  }
-
   ##-- collect, stringify & return
   my $mp = DiaColloDB::Profile::Multi->new(profiles=>[@$s2prf{sort {$a<=>$b} keys %$s2prf}],
 					   titles  =>$groupby->{titles});
   $reldb->vlog($logProfile, "extend(): stringify");
   $mp->stringify($groupby->{g2s});
+
+  ##-- trim stringified result profiles (remove unknown elements)
+  foreach my $prf (@{$mp->{profiles}}) {
+    $prf->trim(keep=>$opts{slice2keys}{$prf->{label}});
+  }
 
   return $mp;
 }
