@@ -392,15 +392,15 @@ sub packFilterFetch {
 ## Math stuff
 
 sub isNan {
-  no warnings 'numeric';
+  no warnings qw(uninitialized numeric);
   return !($_[0]<=0||$_[0]>=0);
 }
 sub isInf {
-  no warnings 'numeric';
+  no warnings qw(uninitialized numeric);
   return !($_[0]<=0||$_[0]>=0) || ($_[0]==+"INF") || ($_[0]==-"INF");
 }
 sub isFinite {
-  no warnings 'numeric';
+  no warnings qw(uninitialized numeric);
   return ($_[0]<=0||$_[0]>=0) && ($_[0]!=+"INF") && ($_[0]!=-"INF");
 }
 

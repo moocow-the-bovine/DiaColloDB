@@ -408,17 +408,16 @@ sub compile_milf {
   my ($N,$f1,$pf2,$pf12) = @$prf{qw(N f1 f2 f12)};
   my $mi = $prf->{milf} = {};
   my $eps = $opts{eps} // $prf->{eps} // 0; #0.5
-  my ($i2,$f2,$f12);
+  my ($i2,$f2,$f12,$denom);
   while (($i2,$f2)=each(%$pf2)) {
-    $f12 = $pf12->{$i2} // 0;
+    $f12   = ($pf12->{$i2} // 0) + $eps;
+    $denom = (($f1+$eps)*($f2+$eps));
     $mi->{$i2} = (
-		  log2($f12+$eps)
+		  ($f12 >= 0 ? log2($f12) : 0)
 		  *
-		  log2(
-		       (($f12+$eps)*($N+$eps))
-		       /
-		       (($f1+$eps)*($f2+$eps))
-		      )
+		  ($denom
+		   ? log2( (($f12+$eps)*($N+$eps)) / $denom )
+		   : 0)
 		 );
   }
   $prf->{score} = 'milf';
@@ -435,15 +434,13 @@ sub compile_mi1 {
   my ($N,$f1,$pf2,$pf12) = @$prf{qw(N f1 f2 f12)};
   my $mi = $prf->{mi1} = {};
   my $eps = $opts{eps} // $prf->{eps} // 0; #0.5;
-  my ($i2,$f2,$f12);
+  my ($i2,$f2,$f12,$denom);
   while (($i2,$f2)=each(%$pf2)) {
     $f12 = $pf12->{$i2} // 0;
-    $mi->{$i2} = (
-		  log2(
-		       (($f12+$eps)*($N+$eps))
-		       /
-		       (($f1+$eps)*($f2+$eps))
-		      )
+    $denom = (($f1+$eps)*($f2+$eps));
+    $mi->{$i2} = ($denom > 0
+		  ? log2( (($f12+$eps)*($N+$eps)) / $denom )
+		  : undef
 		 );
   }
   $prf->{score} = 'mi1';
@@ -461,15 +458,13 @@ sub compile_mi3 {
   my ($N,$f1,$pf2,$pf12) = @$prf{qw(N f1 f2 f12)};
   my $mi3 = $prf->{mi3} = {};
   my $eps = $opts{eps} // $prf->{eps} // 0; #0.5
-  my ($i2,$f2,$f12);
+  my ($i2,$f2,$f12,$denom);
   while (($i2,$f2)=each(%$pf2)) {
-    $f12 = $pf12->{$i2} // 0;
-    $mi3->{$i2} = (
-		   log2(
-			(($f12+$eps)**3 * ($N+$eps))
-			/
-			(($f1+$eps)*($f2+$eps))
-		       )
+    $f12   = $pf12->{$i2} // 0;
+    $denom = (($f1+$eps)*($f2+$eps));
+    $mi3->{$i2} = ($denom
+		   ? log2( (($f12+$eps)**3 * ($N+$eps)) / $denom )
+		   : undef
 		  );
   }
   $prf->{score} = 'mi3';
@@ -486,21 +481,28 @@ sub compile_ld {
   my ($N,$f1,$pf2,$pf12) = @$prf{qw(N f1 f2 f12)};
   my $ld = $prf->{ld} = {};
   my $eps = $opts{eps} // $prf->{eps} // 0; #0.5;
-  my ($i2,$f2,$f12,$val);
+  my ($i2,$f2,$f12,$denom);
   while (($i2,$f2)=each(%$pf2)) {
-    $f12 = $pf12->{$i2} // 0;
-    $ld->{$i2} = 14 + log2(
-			   (2 * ($f12+$eps))
-			   /
-			   (($f1+$eps) + ($f2+$eps))
-			  );
+    $f12   = $pf12->{$i2} // 0;
+    $denom = ($f1+$eps) + ($f2+$eps);
+    $ld->{$i2} = ($denom
+		  ? (14 + log2( (2 * ($f12+$eps)) / $denom ))
+		  : undef);
   }
   $prf->{score} = 'ld';
   return $prf->compile_clean();
 }
 
+## log0($x) : like log($x) but returns 0 for $x==0
 sub log0 {
+  no warnings 'uninitialized';
   return $_[0]>0 ? log($_[0]) : 0;
+}
+
+## log0d($num,$denom) : like log0($num/$denom), but returns 0 for $num==0 or $denom==0
+sub log0d {
+  no warnings 'uninitialized';
+  return $_[1]==0 ? 0 : log0($_[0]/$_[1]);
 }
 
 ## $prf = $prf->compile_ll(%opts)
@@ -520,12 +522,14 @@ sub compile_ll {
   while (($i2,$f2)=each(%$pf2)) {
     $f12  = ($pf12->{$i2} // 0) + $eps;
     $logl = (##-- raw log-lambda
-	     $f12*log0($f12/($f1*$f2/$N))
-	     +($f1-$f12)*log0(($f1-$f12)/(($f1*($N-$f2)/$N)))
-	     +($f2-$f12)*log0(($f2-$f12)/(($N-$f1)*$f2/$N))
-	     +($N-$f1-$f2+$f12)*log0(($N-$f1-$f2+$f12)/(($N-$f1)*($N-$f2)/$N))
+	     $N<=0 ? 0
+	     : ($f12*log0d($f12, ($f1*$f2/$N))
+		+($f1-$f12)*log0d(($f1-$f12), (($f1*($N-$f2)/$N)))
+		+($f2-$f12)*log0d(($f2-$f12), (($N-$f1)*$f2/$N))
+		+($N-$f1-$f2+$f12)*log0d(($N-$f1-$f2+$f12), (($N-$f1)*($N-$f2)/$N))
+	       )
 	    );
-    $ll->{$i2} = (($f12 < ($f1*$f2/$N) ? -1 : 1) ##-- one-sided log-likelihood a la Evert (2008): negative for dis-associations
+    $ll->{$i2} = (($N && $f12 < ($f1*$f2/$N) ? -1 : 1) ##-- one-sided log-likelihood a la Evert (2008): negative for dis-associations
 		  #* $logl			 ##-- raw log-lambda values over-emphasize strong collocates
 		  * log0(1+$logl) 		 ##-- extra log() is better for scaling
 		  #* sqrt($logl)                 ##-- extra sqrt() for scaling

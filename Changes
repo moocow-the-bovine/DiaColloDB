@@ -7,6 +7,7 @@ v0.12.004 PENDING
 	* removed some painful global debug code in Profile::Multi::trim()
 	* made default eps=0 more consistent (dcdb-query.perl, DiaColloDB::profileOptions(), Profile::compile_xyz())
 	* added Profile::compile_clean() method as workaround for infinite score values (JSON module inserts e.g. '-inf', but browser can't parse it)
+	* added divide-by-zero checks to Profile::compile_SCORE() methods (for list URLs)
 	* fixed list-client global trimming
 	* added DiaColloDB::Client::dbOptions() hack to pass down logXYZ options through rcfile:// and list:// client-URLs
 
