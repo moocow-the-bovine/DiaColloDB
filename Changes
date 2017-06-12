@@ -2,6 +2,9 @@
 ##
 ## Change log for perl distribution DiaColloDB
 
+v0.12.006 Mon, 12 Jun 2017 13:00:09 +0200 moocow
+	* Document/TCF.pm convenience hack to support embedded TEI header in DTA TCF exports
+
 v0.12.005 Wed, 31 May 2017 12:29:58 +0200 moocow
 	* Document/DDCTabs.pm fix for ddc_dump v2.1.x (updated DDC:BREAK format)
 
