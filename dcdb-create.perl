@@ -115,6 +115,7 @@ if ($version) {
   exit 0 if ($version);
 }
 pod2usage({-exitval=>0,-verbose=>0}) if ($help);
+die("$prog: ERROR: no output location specified: use the -output (-o) option!\n") if (!defined($dbdir));
 
 
 ##----------------------------------------------------------------------
@@ -242,7 +243,7 @@ dcdb-create.perl - create a DiaColloDB diachronic collocation database
    -[no]mmap            ##-- do/don't use mmap for file access (default=do)
    -[no]debug           ##-- do/don't enable painful debugging checks (default=don't)
    -[no]times           ##-- do/don't report operating timing (default=do)
-   -output OUT          ##-- output directory (required)
+   -output OUT          ##-- output directory or client configuration file (required)
 
 =cut
 
