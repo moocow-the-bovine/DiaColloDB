@@ -8,7 +8,7 @@ use Pod::Usage;
 use File::Basename qw(basename);
 use strict;
 
-#use DiaColloDB::Relation::TDF; ##-- DEBUG
+use DiaColloDB::Relation::TDF; ##-- DEBUG
 
 BEGIN {
   select STDERR; $|=1; select STDOUT;
@@ -193,7 +193,8 @@ if (1 && $query{query} eq 'debug') {
   ##
   #($rel,@query{qw(query date groupby slice)}) = ('ddc','near(flood,{frequency,uncertainty,risk}=2,8) #fmin 1', 2004, '[@const]', 1);
   ##
-  ($rel,@query{qw(slice query)}) = ('tdf',0,'function &= $p=/^N/');
+  #($rel,@query{qw(slice query)}) = ('tdf',0,'function &= $p=/^N/');
+  ($rel,@query{qw(slice query)}) = ('tdf',0,'/optics/');
 }
 ##--/DEBUG queries
 
