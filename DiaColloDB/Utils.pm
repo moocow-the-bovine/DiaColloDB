@@ -591,7 +591,7 @@ sub file_mtime {
 ## $timestamp = PACKAGE->file_timestamp($file_or_fh)
 sub file_timestamp {
   shift if (UNIVERSAL::isa($_[0],__PACKAGE__));
-  return file_timestamp(file_mtime(@_));
+  return timestamp(file_mtime(@_));
 }
 
 ## $nbytes = du_file(@filenames_or_dirnames_or_fhs)
