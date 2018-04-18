@@ -10,7 +10,7 @@ SFLAGS ?= -std=c++11
 
 CXXFLAGS += $(SFLAGS) $(WFLAGS) $(OFLAGS) 
 
-TARGETS ?= txt2tdm
+TARGETS ?= txt2tdm txt2tdm-bin
 CLEANFILES += $(TARGETS)
 
 ##======================================================================
@@ -24,6 +24,9 @@ all: $(TARGETS)
 ##======================================================================
 ## linker
 txt2tdm: txt2tdm.o
+	$(CXX) $(CXXFLAGS) $(LDFLAGS) -o $@ $^
+
+txt2tdm-bin: txt2tdm-bin.o
 	$(CXX) $(CXXFLAGS) $(LDFLAGS) -o $@ $^
 
 ##======================================================================
