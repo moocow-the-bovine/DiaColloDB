@@ -1,0 +1,92 @@
+2018-04-18 12:41:21 cronit.perl: cmd=./dump2txt-all.sh -j=16
+2018-04-18 12:41:21 cronit.perl: cwd=/home/moocow/work/bbaw/dta/DiaColloDB/lda/tdmutils
+2018-04-18 12:41:21 cronit.perl: user=moocow
+2018-04-18 12:41:21 cronit.perl: host=kira.bbaw.de
+2018-04-18 12:41:21 cronit.perl: logfile=cronit-dump2txt-j16.log
+2018-04-18 12:41:21 cronit.perl: log_gzip=no
+2018-04-18 12:41:21 cronit.perl: log_append=no
+2018-04-18 12:41:21 cronit.perl: prune_globs=
+2018-04-18 12:41:21 cronit.perl: prune_age=-1 [~ none]
+2018-04-18 12:41:21 cronit.perl: ignore_child_errors=1
+2018-04-18 12:41:21 ### ./dump2txt-all.sh: BEGIN convert corpus pnn ###
+2018-04-18 12:41:22 dump2txt.perl#0: loading list-file '-'
+2018-04-18 12:41:22 dump2txt.perl#0: processing 41822 input file(s), njobs=16
+2018-04-18 12:41:22 dump2txt.perl#1: (  0 %) FILE /home/moocow/dstar/corpora/pnn/build/ddc_dump/corpus-tabs.d/01.02.2005/1622181.pnn.tei.cln.tabs
+2018-04-18 12:41:27 dump2txt.perl#4: (  5 %) FILE /home/moocow/dstar/corpora/pnn/build/ddc_dump/corpus-tabs.d/02.07.2004/1222842.pnn.tei.cln.tabs
+2018-04-18 12:41:33 dump2txt.perl#8: ( 10 %) FILE /home/moocow/dstar/corpora/pnn/build/ddc_dump/corpus-tabs.d/03.12.2004/1515055.pnn.tei.cln.tabs
+2018-04-18 12:41:39 dump2txt.perl#3: ( 15 %) FILE /home/moocow/dstar/corpora/pnn/build/ddc_dump/corpus-tabs.d/05.05.2004/1106198.pnn.tei.cln.tabs
+2018-04-18 12:41:44 dump2txt.perl#6: ( 20 %) FILE /home/moocow/dstar/corpora/pnn/build/ddc_dump/corpus-tabs.d/06.12.2003/876276.pnn.tei.cln.tabs
+2018-04-18 12:41:50 dump2txt.perl#7: ( 25 %) FILE /home/moocow/dstar/corpora/pnn/build/ddc_dump/corpus-tabs.d/08.07.2004/1233068.pnn.tei.cln.tabs
+2018-04-18 12:41:56 dump2txt.perl#10: ( 30 %) FILE /home/moocow/dstar/corpora/pnn/build/ddc_dump/corpus-tabs.d/10.02.2005/1640873.pnn.tei.cln.tabs
+2018-04-18 12:42:01 dump2txt.perl#5: ( 35 %) FILE /home/moocow/dstar/corpora/pnn/build/ddc_dump/corpus-tabs.d/11.10.2004/1412488.pnn.tei.cln.tabs
+2018-04-18 12:42:07 dump2txt.perl#9: ( 40 %) FILE /home/moocow/dstar/corpora/pnn/build/ddc_dump/corpus-tabs.d/13.05.2004/1121713.pnn.tei.cln.tabs
+2018-04-18 12:42:13 dump2txt.perl#11: ( 45 %) FILE /home/moocow/dstar/corpora/pnn/build/ddc_dump/corpus-tabs.d/14.10.2004/1418728.pnn.tei.cln.tabs
+2018-04-18 12:42:18 dump2txt.perl#8: ( 50 %) FILE /home/moocow/dstar/corpora/pnn/build/ddc_dump/corpus-tabs.d/16.04.2005/1761453.pnn.tei.cln.tabs
+2018-04-18 12:42:24 dump2txt.perl#11: ( 55 %) FILE /home/moocow/dstar/corpora/pnn/build/ddc_dump/corpus-tabs.d/17.11.2003/842557.pnn.tei.cln.tabs
+2018-04-18 12:42:30 dump2txt.perl#8: ( 60 %) FILE /home/moocow/dstar/corpora/pnn/build/ddc_dump/corpus-tabs.d/19.03.2004/1031494.pnn.tei.cln.tabs
+2018-04-18 12:42:35 dump2txt.perl#16: ( 65 %) FILE /home/moocow/dstar/corpora/pnn/build/ddc_dump/corpus-tabs.d/20.10.2004/1429413.pnn.tei.cln.tabs
+2018-04-18 12:42:41 dump2txt.perl#3: ( 70 %) FILE /home/moocow/dstar/corpora/pnn/build/ddc_dump/corpus-tabs.d/22.04.2004/1084565.pnn.tei.cln.tabs
+2018-04-18 12:42:47 dump2txt.perl#14: ( 75 %) FILE /home/moocow/dstar/corpora/pnn/build/ddc_dump/corpus-tabs.d/23.09.2003/756552.pnn.tei.cln.tabs
+2018-04-18 12:42:52 dump2txt.perl#1: ( 80 %) FILE /home/moocow/dstar/corpora/pnn/build/ddc_dump/corpus-tabs.d/25.03.2004/1040769.pnn.tei.cln.tabs
+2018-04-18 12:42:58 dump2txt.perl#16: ( 85 %) FILE /home/moocow/dstar/corpora/pnn/build/ddc_dump/corpus-tabs.d/26.09.2003/760902.pnn.tei.cln.tabs
+2018-04-18 12:43:04 dump2txt.perl#13: ( 90 %) FILE /home/moocow/dstar/corpora/pnn/build/ddc_dump/corpus-tabs.d/28.05.2004/1152402.pnn.tei.cln.tabs
+2018-04-18 12:43:09 dump2txt.perl#4: ( 95 %) FILE /home/moocow/dstar/corpora/pnn/build/ddc_dump/corpus-tabs.d/29.11.2004/1508491.pnn.tei.cln.tabs
+2018-04-18 12:43:15 dump2txt.perl#1: (100 %) FILE /home/moocow/dstar/corpora/pnn/build/ddc_dump/corpus-tabs.d/31.12.2004/1569247.pnn.tei.cln.tabs
+2018-04-18 12:43:15 dump2txt.perl#0: total time elapsed = 1.1e+02 second(s)
+2018-04-18 12:43:15 ### ./dump2txt-all.sh: END convert corpus pnn ###
+2018-04-18 12:43:15 
+2018-04-18 12:43:15 ### ./dump2txt-all.sh: BEGIN convert corpus kern ###
+2018-04-18 12:43:15 dump2txt.perl#0: loading list-file '-'
+2018-04-18 12:43:16 dump2txt.perl#0: processing 79116 input file(s), njobs=16
+2018-04-18 12:43:16 dump2txt.perl#1: (  0 %) FILE /home/moocow/dstar/corpora/kern/build/ddc_dump/corpus-tabs.d/1900/bassewitz_mondfahrt_1900.tabs
+2018-04-18 12:43:27 dump2txt.perl#10: (  5 %) FILE /home/moocow/dstar/corpora/kern/build/ddc_dump/corpus-tabs.d/1907/VZ_A19070307_10_084.tabs
+2018-04-18 12:43:40 dump2txt.perl#12: ( 10 %) FILE /home/moocow/dstar/corpora/kern/build/ddc_dump/corpus-tabs.d/1915/BT_M19150302_005_0214.tabs
+2018-04-18 12:43:50 dump2txt.perl#13: ( 15 %) FILE /home/moocow/dstar/corpora/kern/build/ddc_dump/corpus-tabs.d/1919/VZ_M19190325_003_0203.tabs
+2018-04-18 12:44:01 dump2txt.perl#6: ( 20 %) FILE /home/moocow/dstar/corpora/kern/build/ddc_dump/corpus-tabs.d/1926/BT_A19260303_002_0006.tabs
+2018-04-18 12:44:12 dump2txt.perl#12: ( 25 %) FILE /home/moocow/dstar/corpora/kern/build/ddc_dump/corpus-tabs.d/1930/VZ_A19300303_006_0060.tabs
+2018-04-18 12:44:22 dump2txt.perl#4: ( 30 %) FILE /home/moocow/dstar/corpora/kern/build/ddc_dump/corpus-tabs.d/1933/adg19330510_8015.tabs
+2018-04-18 12:44:32 dump2txt.perl#3: ( 35 %) FILE /home/moocow/dstar/corpora/kern/build/ddc_dump/corpus-tabs.d/1935/adg19350611_17275.tabs
+2018-04-18 12:44:43 dump2txt.perl#7: ( 40 %) FILE /home/moocow/dstar/corpora/kern/build/ddc_dump/corpus-tabs.d/1938/adg19380501_26607.tabs
+2018-04-18 12:44:53 dump2txt.perl#3: ( 45 %) FILE /home/moocow/dstar/corpora/kern/build/ddc_dump/corpus-tabs.d/1941/adg19410324_33059.tabs
+2018-04-18 12:45:02 dump2txt.perl#3: ( 50 %) FILE /home/moocow/dstar/corpora/kern/build/ddc_dump/corpus-tabs.d/1945/adg19451110_42995.tabs
+2018-04-18 12:45:15 dump2txt.perl#16: ( 55 %) FILE /home/moocow/dstar/corpora/kern/build/ddc_dump/corpus-tabs.d/1948/adg19480103_48901.tabs
+2018-04-18 12:45:26 dump2txt.perl#10: ( 60 %) FILE /home/moocow/dstar/corpora/kern/build/ddc_dump/corpus-tabs.d/1951/adg19510313_60164.tabs
+2018-04-18 12:45:36 dump2txt.perl#14: ( 65 %) FILE /home/moocow/dstar/corpora/kern/build/ddc_dump/corpus-tabs.d/1956/adg19561111_70926.tabs
+2018-04-18 12:45:47 dump2txt.perl#15: ( 70 %) FILE /home/moocow/dstar/corpora/kern/build/ddc_dump/corpus-tabs.d/1961/rgg1961_s0310.tabs
+2018-04-18 12:45:57 dump2txt.perl#7: ( 75 %) FILE /home/moocow/dstar/corpora/kern/build/ddc_dump/corpus-tabs.d/1968/daenhardt_fein_1968.tabs
+2018-04-18 12:46:08 dump2txt.perl#16: ( 80 %) FILE /home/moocow/dstar/corpora/kern/build/ddc_dump/corpus-tabs.d/1974/adg19741125_97618.tabs
+2018-04-18 12:46:18 dump2txt.perl#8: ( 85 %) FILE /home/moocow/dstar/corpora/kern/build/ddc_dump/corpus-tabs.d/1979/adg19790312_104543.tabs
+2018-04-18 12:46:29 dump2txt.perl#7: ( 90 %) FILE /home/moocow/dstar/corpora/kern/build/ddc_dump/corpus-tabs.d/1985/sz_19851224_3722.tabs
+2018-04-18 12:46:41 dump2txt.perl#3: ( 95 %) FILE /home/moocow/dstar/corpora/kern/build/ddc_dump/corpus-tabs.d/1995/ct_95_03_033_383.tabs
+2018-04-18 12:46:52 dump2txt.perl#16: (100 %) FILE /home/moocow/dstar/corpora/kern/build/ddc_dump/corpus-tabs.d/1999/zeit1999_49_33_10781.tabs
+2018-04-18 12:46:53 dump2txt.perl#0: total time elapsed = 2.2e+02 second(s)
+2018-04-18 12:46:53 ### ./dump2txt-all.sh: END convert corpus kern ###
+2018-04-18 12:46:53 
+2018-04-18 12:46:53 ### ./dump2txt-all.sh: BEGIN convert corpus zeit ###
+2018-04-18 12:46:53 dump2txt.perl#0: loading list-file '-'
+2018-04-18 12:46:55 dump2txt.perl#0: processing 1212177 input file(s), njobs=16
+2018-04-18 12:46:55 dump2txt.perl#1: (  0 %) FILE /home/moocow/dstar/corpora/zeit/build/ddc_dump/corpus-tabs.d/part1/1946/02/21/arbeiter_werden_gesucht_.tabs
+2018-04-18 12:49:23 dump2txt.perl#8: (  5 %) FILE /home/moocow/dstar/corpora/zeit/build/ddc_dump/corpus-tabs.d/part1/1964/11/20/1917_begann_ein_neues_ze.tabs
+2018-04-18 12:51:50 dump2txt.perl#12: ( 10 %) FILE /home/moocow/dstar/corpora/zeit/build/ddc_dump/corpus-tabs.d/part1/1975/11/14/zeitmosaik_xml.tabs
+2018-04-18 12:54:18 dump2txt.perl#6: ( 15 %) FILE /home/moocow/dstar/corpora/zeit/build/ddc_dump/corpus-tabs.d/part1/1987/05/22/spaetfolgen_xml.tabs
+2018-04-18 12:56:47 dump2txt.perl#16: ( 20 %) FILE /home/moocow/dstar/corpora/zeit/build/ddc_dump/corpus-tabs.d/part1/1997/07/25/Lob_des_Kompromisses_xml.tabs
+2018-04-18 12:59:17 dump2txt.perl#9: ( 25 %) FILE /home/moocow/dstar/corpora/zeit/build/ddc_dump/corpus-tabs.d/part1/2004/10/07/M_Korstick_xml.tabs
+2018-04-18 13:01:46 dump2txt.perl#7: ( 30 %) FILE /home/moocow/dstar/corpora/zeit/build/ddc_dump/corpus-tabs.d/part1/2009/09/22/zwickau_amoklauf_schule_.tabs
+2018-04-18 13:04:20 dump2txt.perl#10: ( 35 %) FILE /home/moocow/dstar/corpora/zeit/build/ddc_dump/corpus-tabs.d/part1/2010/12/01/iptc_hfk_20101201_55_275.tabs
+2018-04-18 13:06:49 dump2txt.perl#13: ( 40 %) FILE /home/moocow/dstar/corpora/zeit/build/ddc_dump/corpus-tabs.d/part1/2011/07/09/iptc_hfk_20110709_42_313.tabs
+2018-04-18 13:09:16 dump2txt.perl#10: ( 45 %) FILE /home/moocow/dstar/corpora/zeit/build/ddc_dump/corpus-tabs.d/part1/2012/01/13/wintersport_neuner_schie.tabs
+2018-04-18 13:11:44 dump2txt.perl#2: ( 50 %) FILE /home/moocow/dstar/corpora/zeit/build/ddc_dump/corpus-tabs.d/part1/2012/06/27/handel_schlecker_schlies.tabs
+2018-04-18 13:14:11 dump2txt.perl#7: ( 55 %) FILE /home/moocow/dstar/corpora/zeit/build/ddc_dump/corpus-tabs.d/part1/2012/11/15/energie_boom_der_oekoene.tabs
+2018-04-18 13:16:44 dump2txt.perl#6: ( 60 %) FILE /home/moocow/dstar/corpora/zeit/build/ddc_dump/corpus-tabs.d/part1/2013/04/02/basketball_houston_siegt.tabs
+2018-04-18 13:19:14 dump2txt.perl#6: ( 65 %) FILE /home/moocow/dstar/corpora/zeit/build/ddc_dump/corpus-tabs.d/part1/2013/08/29/nachruf_seamus_heaney_xm.tabs
+2018-04-18 13:21:43 dump2txt.perl#9: ( 70 %) FILE /home/moocow/dstar/corpora/zeit/build/ddc_dump/corpus-tabs.d/part1/2014/01/18/news_2014_01_18_agrar_po.tabs
+2018-04-18 13:24:16 dump2txt.perl#2: ( 75 %) FILE /home/moocow/dstar/corpora/zeit/build/ddc_dump/corpus-tabs.d/part1/2014/11/05/nahost_palaestinenser_fo.tabs
+2018-04-18 13:26:45 dump2txt.perl#13: ( 80 %) FILE /home/moocow/dstar/corpora/zeit/build/ddc_dump/corpus-tabs.d/part1/2015/04/13/deutschland_zeitung_regi.tabs
+2018-04-18 13:29:15 dump2txt.perl#7: ( 85 %) FILE /home/moocow/dstar/corpora/zeit/build/ddc_dump/corpus-tabs.d/part1/2015/09/07/aok_fehlzeiten_report_ge.tabs
+2018-04-18 13:31:46 dump2txt.perl#2: ( 90 %) FILE /home/moocow/dstar/corpora/zeit/build/ddc_dump/corpus-tabs.d/part1/2016/01/19/usa_spike_lee_boykottier.tabs
+2018-04-18 13:34:15 dump2txt.perl#8: ( 95 %) FILE /home/moocow/dstar/corpora/zeit/build/ddc_dump/corpus-tabs.d/part2/2016/06/20/fussball_nach_mittelhand.tabs
+2018-04-18 13:36:44 dump2txt.perl#10: (100 %) FILE /home/moocow/dstar/corpora/zeit/build/ddc_dump/corpus-tabs.d/part3/2018/01/09/eiszeit_artenvielfalt_au.tabs
+2018-04-18 13:36:44 dump2txt.perl#0: total time elapsed = 3e+03 second(s)
+2018-04-18 13:36:44 ### ./dump2txt-all.sh: END convert corpus zeit ###
+2018-04-18 13:36:44 cronit.perl: command (./dump2txt-all.sh -j=16) exited normally
+2018-04-18 13:36:44 cronit.perl: total time elapsed = 00:55:23 (HH:MM:SS)

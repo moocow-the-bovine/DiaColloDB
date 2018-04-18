@@ -3,9 +3,9 @@
 CXX ?= g++
 
 WFLAGS ?= -Wall
-#OFLAGS ?= -O3 -march=native -mtune=native
+OFLAGS ?= -O3 -march=native -mtune=native
 #OFLAGS ?= -O2 -ggdb
-OFLAGS ?= -ggdb -O0
+#OFLAGS ?= -ggdb -O0
 SFLAGS ?= -std=c++11
 
 CXXFLAGS += $(SFLAGS) $(WFLAGS) $(OFLAGS) 

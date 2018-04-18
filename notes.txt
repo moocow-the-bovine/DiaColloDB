@@ -1,4 +1,34 @@
-# dump2txt, -j=0
+# nTxtBytes (-lk)
+nb_pnn=61134945		# 59MB
+nb_kern=414759544	# 396MB
+nb_zeit=2112899369	# 2016MB
 
+# nTxtTokens (-lk)
+ntok_pnn=6557355	#   6.56Mtok ~ 9.32 B/tok
+ntok_kern=45273718	#  45.27Mtok ~ 9.16 B/tok
+ntok_zeit=225379692	# 225.38Mtok ~ 9.37 B/tok
 
+# dump2txt-lk.sh -j=16
+#  ./dump2txt-lk.sh -l pnn.files -j=16 -o pnn.txt
+t_2txt_pnn=114		#  58 Ktok/s ~  536 KB/s
+t_2txt_kern=234		# 193 Ktok/s ~ 1770 KB/s
+t_2txt_zeit=2991	#  75 Ktok/s ~  706 KB/s
+
+# txt2tdm (-lk)
+#  ./txt2tdm pnn.txt 
+t_2tdm_pnn=4.001	# 1.64 Mtok/s ~ 15.28 MB/s
+t_2tdm_kern=25.126	# 1.80 Mtok/s ~ 16.51 MB/s
+t_2tdm_zeit=126.081	# 1.79 Mtok/s ~ 16.76 MB/s
+
+# tdm sort (-lk)
+#  ./tdm2mm.sh pnn.txt.out > pnn.txt.mm
+t_sort_pnn=2.808	# 2.34 Mtok/s ~ 21.77 MB/s
+t_sort_kern=31.484	# 1.44 Mtok/s ~ 13.17 MB/s
+t_sort_zeit=134.125	# 1.68 Mtok/s ~ 15.75 MB/s
+
+# tdm compile (-lk, MatrixMarket, sorted)
+#  ./pdl-mm2ccs.perl -t=float -S pnn.txt.mm -o pnn.txt.ccs
+t_mm2ccs_pnn=93.108	# 70.43 Ktok/s ~ 657 KB/s
+t_mm2ccs_kern=0	#
+t_mm2ccs_zeit=0	#
 
