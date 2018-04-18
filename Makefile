@@ -2,6 +2,7 @@
 
 CXX ?= g++
 
+CPPFLAGS += -D_FILE_OFFSET_BITS=64
 WFLAGS ?= -Wall
 OFLAGS ?= -O3 -march=native -mtune=native
 #OFLAGS ?= -O2 -ggdb
