@@ -35,6 +35,6 @@ t_sort_zeit=134.125	# 1.68 Mtok/s ~ 15.75 MB/s
 # tdm compile (-lk, MatrixMarket, sorted)
 #  ./pdl-mm2ccs.perl -t=float -S pnn.txt.mm -o pnn.txt.ccs
 t_mm2ccs_pnn=93.108	# 70.43 Ktok/s ~ 657 KB/s
-t_mm2ccs_kern=0	#
+t_mm2ccs_kern=2133.262	# 21.22 Ktok/s ~ 194 KB/s
 t_mm2ccs_zeit=0	#
 
