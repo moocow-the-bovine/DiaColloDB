@@ -15,7 +15,7 @@ t_2txt_kern=234		# 193 Ktok/s ~ 1770 KB/s
 t_2txt_zeit=2991	#  75 Ktok/s ~  706 KB/s
 
 # txt2tdm (-lk)
-#  ./txt2tdm pnn.txt 
+#  ./txt2tdm -t pnn.txt 
 t_2tdm_pnn=4.001	# 1.64 Mtok/s ~ 15.28 MB/s
 t_2tdm_kern=25.126	# 1.80 Mtok/s ~ 16.51 MB/s
 t_2tdm_zeit=126.081	# 1.79 Mtok/s ~ 16.76 MB/s
@@ -26,28 +26,42 @@ t_sort_pnn=2.808	# 2.34 Mtok/s ~ 21.77 MB/s
 t_sort_kern=31.484	# 1.44 Mtok/s ~ 13.17 MB/s
 t_sort_zeit=134.125	# 1.68 Mtok/s ~ 15.75 MB/s
 
-# txt2tdm-bin (-lk, -nosort)
+# OLD txt2tdm-bin (-lk, -nosort)
 #  ./txt2tdm-bin -nosort pnn.txt 
 t_2tdm_bin_pnn=3.177	# 2.06 Mtok/s ~ 19.24 MB/s
 t_2tdm_bin_kern=19.867	# 2.28 Mtok/s ~ 20.88 MB/s
 t_2tdm_bin_zeit=110.904	# 2.03 Mtok/s ~ 19.05 MB/s
 
-# txt2tdm-bin (-lk, -sort)
+# OLD txt2tdm-bin (-lk, -sort)
 #  ./txt2tdm-bin -sort pnn.txt 
 t_2tdm_sbin_pnn=4.529	# 1.45 Mtok/s ~ 13.50 MB/s
 t_2tdm_sbin_kern=30.384	# 1.49 Mtok/s ~ 13.65 MB/s
 t_2tdm_sbin_zeit=167.70	# 1.34 Mtok/s ~ 12.60 MB/s
 
-## (txt2-tdm + sort) vs. (txt2tdbm-bin -sort)
+## OLD (txt2-tdm + sort) vs. (txt2tdbm-bin -sort)
 ##  + larger values --> more improvement for (txt2tdm-bin -sort)
 tdiff_2tdm_pnn=2.280	# +33%
 tdiff_2tdm_kern=26.226	# +46%
 tdiff_2tdm_zeit=92.506	# +36%
+
+# txt2tdm -bin (-lk, parallel sort)
+#  ./txt2tdm -b pnn.txt 
+t_2tdm_sbin_pnn=3.417		# 1.92 Mtok/s ~ 17.89 MB/s
+t_2tdm_sbin_kern=20.425		# 2.22 Mtok/s ~ 20.31 MB/s
+t_2tdm_sbin_zeit=107.521	# 2.10 Mtok/s ~ 19.65 MB/s
+
+## NEW (txt2-tdm + sort) vs. (txt2tdbm -b + parallel-sort)
+##  + larger values --> more improvement for (txt2tdm -b + parallel-sort)
+##  + abs: tdiff_2tdm_pnn=$(echo "($t_2tdm_pnn+$t_sort_pnn)-$t_2tdm_sbin_pnn" | bc -l)
+##  + rel: echo "100*$tdiff_2tdm_pnn/($t_2tdm_pnn+$t_sort_pnn)" | bc -l
+tdiff_2tdm_pnn=3.392		# +50%
+tdiff_2tdm_kern=36.185		# +64%
+tdiff_2tdm_zeit=152.685		# +59%
 
 # tdm compile (-lk, MatrixMarket, sorted)
 #  ./pdl-mm2ccs.perl -t=float -S pnn.txt.mm -o pnn.txt.ccs
 #  TOO PAINFUL: write specialized code here (or build directly into txt2tdm)
 t_mm2ccs_pnn=93.108	# 70.43 Ktok/s ~ 657 KB/s
 t_mm2ccs_kern=2133.262	# 21.22 Ktok/s ~ 194 KB/s
-t_mm2ccs_zeit=0	# n/a --> too painfil
+t_mm2ccs_zeit=0	# n/a --> too painful
 
