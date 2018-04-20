@@ -11,7 +11,7 @@ SFLAGS ?= -std=c++11
 
 CXXFLAGS += $(SFLAGS) $(WFLAGS) $(OFLAGS) 
 
-TARGETS ?= txt2tdm
+TARGETS ?= txt2tdm tdm-bin2mm
 #txt2tdm-bin
 CLEANFILES += $(TARGETS)
 
@@ -21,10 +21,10 @@ all: $(TARGETS)
 
 ##======================================================================
 ## deps
-txt2tdm.o: txt2tdm.cc tdmModel.h
+common_deps = tdmModel.h tdmIO.h
 
 ##======================================================================
-%.o: %.cc
+%.o: %.cc $(common_deps)
 	$(CXX) $(CPPFLAGS) $(CXXFLAGS) -o $@ -c $<
 
 ##======================================================================
@@ -32,7 +32,7 @@ txt2tdm.o: txt2tdm.cc tdmModel.h
 txt2tdm: txt2tdm.o
 	$(CXX) $(CXXFLAGS) $(LDFLAGS) -o $@ $^
 
-txt2tdm-bin: txt2tdm-bin.o
+tdm-bin2mm: tdm-bin2mm.o
 	$(CXX) $(CXXFLAGS) $(LDFLAGS) -o $@ $^
 
 ##======================================================================
