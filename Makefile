@@ -27,7 +27,7 @@ common_deps = tdmModel.h tdmIO.h
 
 ##======================================================================
 
-tdmConvert.o: tdmConvert.h
+tdm-convert.o: tdmConvert.h
 
 %.o: %.cc $(common_deps)
 	$(CXX) $(CPPFLAGS) $(CXXFLAGS) -o $@ -c $<
