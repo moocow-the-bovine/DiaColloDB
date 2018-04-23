@@ -11,7 +11,7 @@ SFLAGS ?= -std=c++11
 
 CXXFLAGS += $(SFLAGS) $(WFLAGS) $(OFLAGS) 
 
-TARGETS ?= txt2tdm tdm-convert tdm-header
+TARGETS ?= tdm-compile tdm-header tdm-convert 
 #tdm-bin2mm tdm-bin2ccs
 #txt2tdm-bin
 CLEANFILES += $(TARGETS)
@@ -22,20 +22,21 @@ all: $(TARGETS)
 
 ##======================================================================
 ## deps
-common_deps = tdmModel.h tdmIO.h
+#common_deps = tdmModel.h tdmIO.h
+common_deps = tdmCommon.h tdmDict.h tdmModel.h tdmIO.h
 #tdmConvert.h
 
 ##======================================================================
 
+tdm-compile.o: tdmCompile.h
 tdm-convert.o: tdmConvert.h
-tdm-header.o: tdmConvert.h
 
 %.o: %.cc $(common_deps)
 	$(CXX) $(CPPFLAGS) $(CXXFLAGS) -o $@ -c $<
 
 ##======================================================================
 ## linker
-txt2tdm: txt2tdm.o
+tdm-compile: tdm-compile.o
 	$(CXX) $(CXXFLAGS) $(LDFLAGS) -o $@ $^
 
 tdm-convert: tdm-convert.o
