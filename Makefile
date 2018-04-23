@@ -12,7 +12,7 @@ SFLAGS ?= -std=c++11
 CXXFLAGS += $(SFLAGS) $(WFLAGS) $(OFLAGS) 
 
 TARGETS ?= tdm-compile tdm-header tdm-convert
-TARGETS += dict2bin dict2txt dict-find
+#TARGETS += dict2bin dict2txt dict-find
 #tdm-bin2mm tdm-bin2ccs
 #txt2tdm-bin
 CLEANFILES += $(TARGETS)
