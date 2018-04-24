@@ -11,7 +11,7 @@ SFLAGS ?= -std=c++11
 
 CXXFLAGS += $(SFLAGS) $(WFLAGS) $(OFLAGS) 
 
-TARGETS ?= tdm-compile tdm-header tdm-convert
+TARGETS ?= tdm-compile tdm-header tdm-convert tdm-filter
 #TARGETS += dict2bin dict2txt dict-find
 #tdm-bin2mm tdm-bin2ccs
 #txt2tdm-bin
@@ -31,6 +31,7 @@ common_deps = tdmCommon.h tdmDict.h tdmModel.h tdmIO.h
 
 tdm-compile.o: tdmCompile.h
 tdm-convert.o: tdmConvert.h
+tdm-filter.o:  tdmFilter.h tdmCompile.h
 
 %.o: %.cc $(common_deps)
 	$(CXX) $(CPPFLAGS) $(CXXFLAGS) -o $@ -c $<
@@ -46,13 +47,7 @@ tdm-convert: tdm-convert.o
 tdm-header: tdm-header.o
 	$(CXX) $(CXXFLAGS) $(LDFLAGS) -o $@ $^
 
-dict2bin: dict2bin.o
-	$(CXX) $(CXXFLAGS) $(LDFLAGS) -o $@ $^
-
-dict2txt: dict2txt.o
-	$(CXX) $(CXXFLAGS) $(LDFLAGS) -o $@ $^
-
-dict-find: dict-find.o
+tdm-filter: tdm-filter.o
 	$(CXX) $(CXXFLAGS) $(LDFLAGS) -o $@ $^
 
 ##======================================================================
