@@ -6,8 +6,8 @@ CXX ?= $(TDMCXX)
 
 CPPFLAGS += -D_FILE_OFFSET_BITS=64
 WFLAGS ?= -Wall
-OFLAGS ?= -O3 -march=native -mtune=native -fopenmp
-#OFLAGS ?= -ggdb -O0 -fopenmp
+#OFLAGS ?= -O3 -march=native -mtune=native -fopenmp
+OFLAGS ?= -ggdb -O0 -fopenmp
 SFLAGS ?= -std=c++11
 CXXFLAGS += $(SFLAGS) $(WFLAGS) $(OFLAGS) 
 
