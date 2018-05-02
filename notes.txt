@@ -20,18 +20,6 @@ t_2tdm_pnn=3.338	# 1.96 Mtok/s ~ 18.31 MB/s
 t_2tdm_kern=24.129	# 1.88 Mtok/s ~ 17.19 MB/s
 t_2tdm_zeit=215.364	# 1.05 Mtok/s ~  9.81 MB/s
 
-# tdm sort (-lk)
-#  ./tdm2mm.sh pnn.txt.out > pnn.txt.mm
-t_sort_pnn=2.808	# 2.34 Mtok/s ~ 21.77 MB/s
-t_sort_kern=31.484	# 1.44 Mtok/s ~ 13.17 MB/s
-t_sort_zeit=134.125	# 1.68 Mtok/s ~ 15.75 MB/s
-
-# tdm compile (-lk, MatrixMarket, sorted)
-#  ./pdl-mm2ccs.perl -t=float -S pnn.txt.mm -o pnn.txt.ccs
-#  TOO PAINFUL: write specialized code here (or build directly into txt2tdm)
-t_mm2ccs_pnn=93.108	# 70.43 Ktok/s ~ 657 KB/s
-t_mm2ccs_kern=2133.262	# 21.22 Ktok/s ~ 194 KB/s
-t_mm2ccs_zeit=0	# n/a --> too painful
 
 ##======================================================================
 ## utilities
