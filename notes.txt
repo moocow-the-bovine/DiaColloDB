@@ -15,19 +15,19 @@ t_2txt_kern=234		# 193 Ktok/s ~ 1770 KB/s
 t_2txt_zeit=2991	#  75 Ktok/s ~  706 KB/s
 
 # tdm-compile (-lk)
-#  kira$ ./tdm-compile -32 -f pnn.txt -o pnn.tdm
+#  kira$ ./tdm-compile -32 -f $c.txt -o $c.tdm
 t_2tdm_pnn=2.758	# 2.38 Mtok/s ~ 22.17 MB/s
 t_2tdm_kern=17.933	# 2.52 Mtok/s ~ 23.13 MB/s
 t_2tdm_zeit=99.316	# 2.27 Mtok/s ~ 21.27 MB/s
 
 # filter
-#  kira$ ./tdm-filter -tf 2 -tn 2 -df 2 -dn 2 pnn.tdm -o pnn.tdmf
+#  kira$ ./tdm-filter -tf 2 -tn 2 -df 2 -dn 2 $c.tdm -o $c.tdmf
 t_filter_pnn=1.053	# 6.23 Mtok/s ~ 58.06 MB/s
 t_filter_kern=6.250	# 7.24 Mtok/s ~ 66.36 MB/s
 t_filter_zeit=37.926	# 5.94 Mtok/s ~ 55.71 MB/s
 
 # tfidf
-#  kira$ ./tdm-tfidf pnn.tdmf -o pnn.tfidf
+#  kira$ ./tdm-tfidf $c.tdmf -o $c.tfidf
 t_tfidf_pnn=0.996
 t_tfidf_kern=5.135
 t_tfidf_zeit=28.283
@@ -38,8 +38,8 @@ t_2petsc_pnn=1.447	#  4.53 Mtok/s ~  42.25 MB/s
 t_2petsc_kern=2.113	# 21.43 Mtok/s ~ 196.29 MB/s
 t_2petsc_zeit=9.625	# 23.42 Mtok/s ~ 219.52 MB/s
 
-# SVD (np=24, nsv=256, tol=1e-5)
-#  kira$ mpirun -np 24 ./tdm-svd $c.tfidf.petsc -o $c.tdidf.svd -nsv 256 -tol 1e-5
+# SVD (np=24, nsv=256, tol=1e-5, no implicit transpose (faster))
+#  kira$ mpirun -np 24 ./tdm-svd $c.tfidf.petsc -o $c.tdidf.svd -nsv 256 -tol 1e-5 -- -svd_implicittranspose FALSE
 t_svd_pnn=58.574	# 111.95 Ktok/s ~   1.04 MB/s
 t_svd_kern=532.757	#  84.98 Ktok/s ~ 778.52 KB/s
 t_svd_zeit=0
