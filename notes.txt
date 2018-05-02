@@ -28,6 +28,23 @@ t_filter_zeit=37.926	# 5.94 Mtok/s ~ 55.71 MB/s
 
 # tfidf
 #  kira$ ./tdm-tfidf pnn.tdmf -o pnn.tfidf
+t_tfidf_pnn=0.996
+t_tfidf_kern=5.135
+t_tfidf_zeit=28.283
+
+# petsc export
+#  kira$ ./tdm-convert -petsc $c.tfidf -o $c.tfidf.petsc
+t_2petsc_pnn=1.447	#  4.53 Mtok/s ~  42.25 MB/s
+t_2petsc_kern=2.113	# 21.43 Mtok/s ~ 196.29 MB/s
+t_2petsc_zeit=9.625	# 23.42 Mtok/s ~ 219.52 MB/s
+
+# SVD (np=24, nsv=256, tol=1e-5)
+#  kira$ mpirun -np 24 ./tdm-svd $c.tfidf.petsc
+t_svd_pnn=0
+t_svd_kern=0
+t_svd_zeit=0
+
+
 
 ##======================================================================
 ## utilities
