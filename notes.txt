@@ -1,0 +1,66 @@
+# nTxtBytes (-lk)
+nb_pnn=61134945		# 59MB
+nb_kern=414759544	# 396MB
+nb_zeit=2112899369	# 2016MB
+
+# nTxtTokens (-lk)
+ntok_pnn=6557355	#   6.56Mtok ~ 9.32 B/tok
+ntok_kern=45273718	#  45.27Mtok ~ 9.16 B/tok
+ntok_zeit=225379692	# 225.38Mtok ~ 9.37 B/tok
+
+# dump2txt-lk.sh -j=16
+#  ./dump2txt-lk.sh -l pnn.files -j=16 -o pnn.txt
+t_2txt_pnn=114		#  58 Ktok/s ~  536 KB/s
+t_2txt_kern=234		# 193 Ktok/s ~ 1770 KB/s
+t_2txt_zeit=2991	#  75 Ktok/s ~  706 KB/s
+
+# tdm-compile (-lk)
+#  kira$ ./tdm-compile -32 -f pnn.txt -o pnn.tdm
+t_2tdm_pnn=2.758	# 2.38 Mtok/s ~ 22.17 MB/s
+t_2tdm_kern=17.933	# 2.52 Mtok/s ~ 23.13 MB/s
+t_2tdm_zeit=99.316	# 2.27 Mtok/s ~ 21.27 MB/s
+
+# filter
+#  kira$ ./tdm-filter -tf 2 -tn 2 -df 2 -dn 2 pnn.tdm -o pnn.tdmf
+t_filter_pnn=1.053	# 6.23 Mtok/s ~ 58.06 MB/s
+t_filter_kern=6.250	# 7.24 Mtok/s ~ 66.36 MB/s
+t_filter_zeit=37.926	# 5.94 Mtok/s ~ 55.71 MB/s
+
+# tfidf
+#  kira$ ./tdm-tfidf pnn.tdmf -o pnn.tfidf
+t_tfidf_pnn=0.996
+t_tfidf_kern=5.135
+t_tfidf_zeit=28.283
+
+# petsc export
+#  kira$ ./tdm-convert -petsc $c.tfidf -o $c.tfidf.petsc
+t_2petsc_pnn=1.447	#  4.53 Mtok/s ~  42.25 MB/s
+t_2petsc_kern=2.113	# 21.43 Mtok/s ~ 196.29 MB/s
+t_2petsc_zeit=9.625	# 23.42 Mtok/s ~ 219.52 MB/s
+
+# SVD (np=24, nsv=256, tol=1e-5)
+#  kira$ mpirun -np 24 ./tdm-svd $c.tfidf.petsc -o $c.tdidf.svd -nsv 256 -tol 1e-5
+t_svd_pnn=58.574	# 111.95 Ktok/s ~   1.04 MB/s
+t_svd_kern=532.757	#  84.98 Ktok/s ~ 778.52 KB/s
+t_svd_zeit=0
+
+# dict export
+#  plato$ ./tdm-convert -dict $c.tfidf -o $c.tfidf.dict
+
+
+
+##======================================================================
+## utilities
+
+## STR=rates PREFIX
+rates() {
+  local prefix="$1"
+  for corpus in pnn kern zeit ; do
+    tval=$(eval echo "\$${prefix}${corpus}")
+    nbval=$(eval echo "\$nb_$corpus")
+    nwval=$(eval echo "\$ntok_$corpus")
+    wrate=$(sistr.perl -f='%.2f ' $(echo "$nwval/$tval" | bc -l))
+    brate=$(sistr.perl -f='%.2f ' $(echo "$nbval/$tval" | bc -l))
+    echo -e "$prefix$corpus=$tval\t# ${wrate}tok/s ~ ${brate}B/s"
+  done
+}
