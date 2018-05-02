@@ -15,11 +15,19 @@ t_2txt_kern=234		# 193 Ktok/s ~ 1770 KB/s
 t_2txt_zeit=2991	#  75 Ktok/s ~  706 KB/s
 
 # tdm-compile (-lk)
-#  ./tdm-compile -32 -f pnn.txt -o pnn.tdm
-t_2tdm_pnn=3.338	# 1.96 Mtok/s ~ 18.31 MB/s
-t_2tdm_kern=24.129	# 1.88 Mtok/s ~ 17.19 MB/s
-t_2tdm_zeit=215.364	# 1.05 Mtok/s ~  9.81 MB/s
+#  kira$ ./tdm-compile -32 -f pnn.txt -o pnn.tdm
+t_2tdm_pnn=2.758	# 2.38 Mtok/s ~ 22.17 MB/s
+t_2tdm_kern=17.933	# 2.52 Mtok/s ~ 23.13 MB/s
+t_2tdm_zeit=99.316	# 2.27 Mtok/s ~ 21.27 MB/s
 
+# filter
+#  kira$ ./tdm-filter -tf 2 -tn 2 -df 2 -dn 2 pnn.tdm -o pnn.tdmf
+t_filter_pnn=1.053	# 6.23 Mtok/s ~ 58.06 MB/s
+t_filter_kern=6.250	# 7.24 Mtok/s ~ 66.36 MB/s
+t_filter_zeit=37.926	# 5.94 Mtok/s ~ 55.71 MB/s
+
+# tfidf
+#  kira$ ./tdm-tfidf pnn.tdmf -o pnn.tfidf
 
 ##======================================================================
 ## utilities
