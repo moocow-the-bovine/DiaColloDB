@@ -59,6 +59,7 @@ sub pack64 {
   $coldb{tdfopts}{itype} = $_[1] ? 'ccs_indx' : 'long';
   $coldb{tdfopts}{vtype} = $_[1] ? 'double' : 'float';
 }
+foreach (@ARGV) { utf8::decode($_) if (!utf8::is_utf8($_)); }
 GetOptions(##-- general
 	   'help|h' => \$help,
 	   'version|V' => \$version,
