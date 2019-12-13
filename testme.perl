@@ -22,6 +22,32 @@ BEGIN {
 }
 
 ##==============================================================================
+## test: storable I/O
+
+use Storable;
+use DiaColloDB::Document::Storable;
+use Test::More;
+sub test_storable {
+  my $infile  = shift || 'test.tabs';
+  my %docopts = qw();
+  my $doc_tabs = DiaColloDB::Document::DDCTabs->fromFile($infile, %docopts)
+    or die("$0: failed to load DDCTabs document from '$infile': $!");
+
+  Storable::nstore($doc_tabs, "$infile.sto")
+    or die("$0: nstore() failed for $infile.sto: $!");
+
+  my $doc_sto = DiaColloDB::Document::Storable->fromFile("$infile.sto", %docopts)
+    or die("$0: failed to load Storable document from '$infile.sto: $!");
+
+  delete($_->{eosre}) foreach ($doc_tabs,$doc_sto); ##-- regexp vs. string (Storable hack)
+  is_deeply($doc_tabs, $doc_sto, "doc_tabs == doc_sto");
+  done_testing();
+
+  exit 0;
+}
+test_storable(@ARGV);
+
+##==============================================================================
 ## test: enum
 
 sub test_enum_create {

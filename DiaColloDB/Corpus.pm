@@ -7,6 +7,7 @@ package DiaColloDB::Corpus;
 use DiaColloDB::Document;
 use DiaColloDB::Document::DDCTabs;
 use DiaColloDB::Document::JSON;
+use DiaColloDB::Document::Storable;
 #use DiaColloDB::Document::TCF; ##-- only loaded on request
 use DiaColloDB::Logger;
 use strict;
