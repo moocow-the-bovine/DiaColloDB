@@ -44,8 +44,9 @@ WriteMakefile
 		    prereqs => {
 				runtime => {
 					    recommends => {
-							   'DDC::XS' => 0.15,
-							   'forks'   => 0.36, ##-- pseudo-threads for list-clients
+							   'DDC::XS' => 0.23,
+							   #'forks'   => 0.36, ##-- pseudo-threads for list-clients
+                                                           #'threads'  => 2.07, ##-- core
 							   %pdl_deps
 							  },
 					    #suggests => {},

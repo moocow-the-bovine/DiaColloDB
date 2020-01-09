@@ -233,7 +233,7 @@ sub loadTextFh {
   my ($f12,$i1,$d1,$i2,$d2,$f);
   my $N  = 0;	  ##-- total marginal frequency as extracted from %f12
   my $N1 = 0;     ##-- total N as extracted from single-element records
-  my %f12 = qw(); ##-- ($i2=>$f12, ...) for $i1_cur
+  my %f12 = qw(); ##-- ($i2=>$f12, ...) for ($i1_cur,$d1_cur)
   my %fN  = qw(); ##-- ($d=>$Nd, ...)
 
   ##-- guts for inserting records from $i1_cur,$d1_cur,%f12,$pos1,$pos2 : call on changed ($i1_cur,$d1_cur)

@@ -32,7 +32,7 @@ our %EXPORT_TAGS =
      fcntl => [qw(fcflags fcread fcwrite fctrunc fccreat fcperl fcopen fcgetfl)],
      json  => [qw(jsonxs loadJsonString loadJsonFile saveJsonString saveJsonFile)],
      sort  => [qw(csort_to csortuc_to)],
-     run   => [qw(crun opencmd)],
+     run   => [qw(crun opencmd runcmd)],
      env   => [qw(env_set env_push env_pop)],
      pack  => [qw(packsize packsingle packFilterFetch packFilterStore)],
      math  => [qw(isNan isInf isFinite $LOG2 log2 min2 max2 lmax lmin lsum)],
@@ -272,6 +272,15 @@ sub env_pop {
 
 ##==============================================================================
 ## Functions: run
+
+## $rc = PACKAGE::runcmd($cmd)
+## $rc = PACKAGE::runcmd(@cmd)
+##  + does log trace at level $TRACE_RUNCMD
+sub runcmd {
+  my $that = UNIVERSAL::isa($_[0],__PACKAGE__) ? shift : __PACKAGE__;
+  $that->trace("CMD ", join(' ',@_));
+  return system(@_);
+}
 
 ## $fh_or_undef = PACKAGE::opencmd($cmd)
 ## $fh_or_undef = PACKAGE::opencmd($mode,@argv)
@@ -1038,7 +1047,7 @@ sub tmpfh {
     do { $opts{DIR} =~ s{/$}{}; $filename  = "$opts{DIR}/$filename"; } if ($filename !~ m{^/} && defined($opts{DIR}));
     $filename  = $that->tmpdir."/".$filename if ($filename !~ m{^/} && $opts{TMPDIR});
     $filename .= $opts{SUFFIX} if (defined($opts{SUFFIX}));
-    CORE::open($fh, "+>", $filename)
+    CORE::open($fh, ($opts{APPEND} ? '+<' : '+>'), $filename)
 	or $that->logconfess("tmpfh(): open failed for file '$filename': $!");
     push(@TMPFILES, $filename) if ($opts{UNLINK});
   }
@@ -1069,6 +1078,7 @@ sub tmparray {
   $template     //= 'dcdbXXXXXX';
   $opts{SUFFIX} //= '.tmpa';
   $opts{UNLINK}   = 1 if (!exists($opts{UNLINK}));
+  $opts{APPEND}   = 0 if (!exists($opts{APPEND}));
 
   ##-- tie it up
   my $tmpfile = $that->tmpfile($template, %opts);
@@ -1092,10 +1102,12 @@ sub tmparrayp {
   $template     //= 'dcdbXXXXXX';
   $opts{SUFFIX} //= '.pf';
   $opts{UNLINK}   = 1 if (!exists($opts{UNLINK}));
+  $opts{APPEND}   = 0 if (!exists($opts{APPEND}));
 
   ##-- tie it up
   my $tmpfile = $that->tmpfile($template, %opts);
-  tie(my @tmparray, 'DiaColloDB::PackedFile', $tmpfile, 'rw', packas=>$packas, temp=>$opts{UNLINK}, %opts)
+  my $mode    = 'rw'.($opts{APPEND} ? 'a' : '');
+  tie(my @tmparray, 'DiaColloDB::PackedFile', $tmpfile, $mode, packas=>$packas, temp=>$opts{UNLINK}, %opts)
     or $that->logconfess("tmparrayp(): failed to tie file '$tmpfile' via DiaColloDB::PackedFile: $@");
   return \@tmparray;
 }
@@ -1115,9 +1127,11 @@ sub tmphash {
   $template     //= 'dcdbXXXXXX';
   $opts{SUFFIX} //= '.tmph';
   $opts{UNLINK}   = 1 if (!exists($opts{UNLINK}));
+  $opts{APPEND}   = 0 if (!exists($opts{APPEND}));
+  $opts{flags} //= fcflags('rw'.($opts{APPEND} ? 'a' : ''));
 
   ##-- tie it up
-  my $tmpfile = $that->tmpfile($template, %opts);
+  my $tmpfile  = $that->tmpfile($template, %opts);
   tie(my %tmphash, 'DiaColloDB::Temp::Hash', $tmpfile, %opts)
     or $that->logconfess("tmphash(): failed to tie file '$tmpfile' via DiaColloDB::Temp::Hash: $@");
   return \%tmphash;

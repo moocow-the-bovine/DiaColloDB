@@ -385,18 +385,18 @@ sub create {
 				      or $vs->logconfess("$logas: failed to create pipe to sort for tempfile $tdm0file: $!"));
 
   ##-- create cat-wise piddle files c2date.pdl, c2d.pdl
-  my $c2datefile = "$vsdir/c2date.pdl";					##-- c2date ($NC): [$ci]   -> $date
+  my $c2datefile = "$vsdir/c2date.pdl";				##-- c2date ($NC): [$ci]   -> $date
   CORE::open(my $c2datefh, ">:raw", $c2datefile)
     or $vs->logconfess("$logas: failed to create piddle file $c2datefile: $!");
   writePdlHeader("$c2datefile.hdr", ushort, 1, $NC)
     or $vs->logconfess("$logas: failed to write piddle header $c2datefile.hdr: $!");
-  my $c2dfile = "$vsdir/c2d.pdl";						##-- c2d  (2,$NC): [0,$ci] => $di_off, [1,$ci] => $di_len
+  my $c2dfile = "$vsdir/c2d.pdl";				##-- c2d  (2,$NC): [0,$ci] => $di_off, [1,$ci] => $di_len
   CORE::open(my $c2dfh, ">:raw", $c2dfile)
       or $vs->logconfess("$logas: failed to create piddle file $c2dfile: $!");
   writePdlHeader("$c2dfile.hdr", $itype, 2, 2,$NC)
     or $vs->logconfess("$logas: failed to write piddle header $c2dfile.hdr: $!");
 
-  ##-- create: simulate DocClassify::Mapper::trainCorpus(): populate tdm0.*
+  ##-- create: tdf-sig: simulate DocClassify::Mapper::trainCorpus(): populate tdm0.*, c2date.*, c2d.*
   $vs->vlog($logCreate, "$logas: processing input documents [NA=$NA, NC=$nfiles]");
   my $json   = DiaColloDB::Utils->jsonxs();
   my $minDocSize = $vs->{minDocSize} = max2(($vs->{minDocSize}//0),1);
@@ -476,7 +476,7 @@ sub create {
   !$tdm0fh or $tdm0fh->close() or $vs->logconfess("$logas: close failed for tempfile $tdm0file: $!");
   tied(@{$_->{vals}})->flush() foreach (values %meta);
 
-  ##-- create: filter: by term-frequency (default: use coldb term-filtering only)
+  ##-- create: filter: filter by term-frequency (default: use coldb term-filtering only)
   $vs->{minFreq} //= 0;
   my ($wbad);
   if ($vs->{minFreq} > 0) {
@@ -516,11 +516,10 @@ sub create {
     $vs->vlog($logCreate, "$logas: filter: will prune $nwbad of $NT0 term tuple type(s) ($pwbad)");
   }
 
-  ##-- create: filter: by doc-frequency
+  ##-- create: tdf-filter: filter by doc-frequency
   $vs->{minDocFreq} //= 0;
   if ($vs->{minDocFreq} > 0) {
     $vs->vlog($logCreate, "$logas: filter: by doc-frequency (minDocFreq=$vs->{minDocFreq})");
-    #env_push(LC_ALL=>'C');
     my $cmdfh = opencmd("cut -d\" \" -f-$NA $tdm0file | uniq -c |")
       or $vs->logconfess("$logas: failed to open pipe from sort for doc-frequency filter");
     $wbad //= tmphash("$vsdir/wbad", %tmpargs);
@@ -538,7 +537,6 @@ sub create {
 	++$NT1;
       }
     }
-    #env_pop();
     CORE::close($cmdfh);
 
     my $nwbad = ($NT0-$NT1);
@@ -546,7 +544,7 @@ sub create {
     $vs->vlog($logCreate, "$logas: filter: will prune $nwbad of $NT0 term tuple type(s) ($pwbad)");
   }
 
-  ##-- create: term-enum $tvals
+  ##-- create: filter: term-enum $tvals (+temporary %$ts2i)
   $vs->vlog($logCreate, "$logas: extracting term tuples");
   my $NT   = 0;
   my $NT0  = 0;
@@ -555,16 +553,22 @@ sub create {
   my $tvalsfile = "$vsdir/tvals.pdl";
   CORE::open(my $tvalsfh, ">:raw", $tvalsfile)
     or $vs->logconfess("$logas: open failed for term-values piddle $tvalsfile: $!");
-  my $ts2i = tmphash("$vsdir/ts2i", %tmpargs);
 
-  ##-- create: always include "null" term
+  ##-- %$ts2i: text proto-enum: "$ai1 $ai2 ... $aiN" => $ti
+  #$vs->vlog("debug", "$logas: using temporary term translation table $vsdir/ts2i.*");
+  #my $ts2i = tmphash("$vsdir/ts2i", %tmpargs);
+  ##--
+  $vs->vlog("debug", "$logas: using in-memory term translation hash");
+  my $ts2i = {};
+
+  ##-- create: filter: term-enum: always include "null" term
   {
     my @tnull = map {0} (1..$NA);
     $ts2i->{join(' ', @tnull)} = 0;
     $tvalsfh->print(pack($pack_ix, @tnull));
   }
 
-  ##-- create: enumerate "normal" terms in $tvalsfile
+  ##-- create: filter: term-enum: enumerate "normal" terms in $tvalsfile
   while (defined($_=<$ttxtfh>)) {
     chomp;
     ++$NT0;
@@ -585,7 +589,7 @@ sub create {
   my $pprunet = $NT0 ? sprintf("%.2f%%", 100*($NT0-$NT)/$NT0) : 'nan%';
   $vs->vlog($logCreate, "$logas: extracted $NT of $NT0 unique term tuples ($pprunet pruned)");
 
-  ##-- create: tdm0: ccs
+  ##-- create: tdf-matrix: tdm0: ccs
   my $ND  = $sigi_out;
   $vs->vlog($logCreate, "$logas: creating raw term-document matrix $vsdir/tdm.* (NT=$NT, ND=$ND)");
   my $ixfile = "$vsdir/tdm.ix";
@@ -614,11 +618,12 @@ sub create {
   CORE::close($ixfh)
       or $vs->logconfess("$logas: close failed for tdm index file $ixfile: $!");
   CORE::close($tdm0fh);
+  undef $ts2i;
   my $density  = sprintf("%.2g%%", $nnz / ($ND*$NT));
   my $pprunenz = $nnz0 ? sprintf("%.2f%%", 100*($nnz0-$nnz)/$nnz0) : 'nan%';
   $vs->vlog($logCreate, "$logas: created raw term-document matrix (density=$density, $pprunenz pruned)");
 
-  ##-- tdm0: read in as piddle
+  ##-- create: tdm0: read in as piddle
   writePdlHeader("$vsdir/tdm.ix.hdr", $itype, 2, 2,$nnz)
     or $vs->logconfess("$logas: failed to save tdm index header $vsdir/tdm.ix.hdr: $!");
   writePdlHeader("$vsdir/tdm.nz.hdr", $vtype, 1, $nnz+1)
@@ -628,7 +633,7 @@ sub create {
   defined(my $tdm = readPdlFile("$vsdir/tdm", class=>'PDL::CCS::Nd'))
     or $vs->logconfess("$logas: failed to map CCS term-document matrix from $vsdir/tdm.*");
 
-  ##-- create: N
+  ##-- create: tdm0: N
   $vs->{N} = $tdm->_vals->sum;
   $vs->vlog($logCreate, "$logas: computed total corpus size = $vs->{N}");
 
@@ -639,12 +644,12 @@ sub create {
   $c2d->slice("(1),")->rld(sequence($itype,$NC), my $d2c=mmzeroes("$vsdir/d2c.pdl",$itype,$ND));
   undef $c2d;
 
-  ##-- create: cf: ($NC): [$ci] -> f($ci)
+  ##-- create: aux: cf: ($NC): [$ci] -> f($ci)
   $vs->vlog($logCreate, "$logas: creating cat-frequency piddle $vsdir/cf.pdl (NC=$NC)");
   $tdm->_nzvals->indadd( $d2c->index($tdm->_whichND->slice("(1),")), my $cf=mmzeroes("$vsdir/cf.pdl",$vtype,$NC));
   #undef $cf;
 
-  ##-- create: yf: ($NY): [$yi] -> f($yi)
+  ##-- create: aux: yf: ($NY): [$yi] -> f($yi)
   defined(my $c2date = readPdlFile("$c2datefile"))
     or $vs->logconfess("$logas: failed to mmap $c2datefile");
   my ($ymin,$ymax) = $c2date->minmax;
@@ -657,7 +662,7 @@ sub create {
   undef $yf;
   undef $cf;
 
-  ##-- create: tym: ($NT,$NY): [$ti,$yi] -> f($ti,$yi)
+  ##-- create: aux: tym: ($NT,$NY): [$ti,$yi] -> f($ti,$yi)
   $vs->vlog($logCreate, "$logas: creating term-year matrix $vsdir/tym.*");
 
   ##-- tym: create using local memory-optimized pdl-pp method
@@ -670,12 +675,12 @@ sub create {
   writeCcsHeader("$vsdir/tym.hdr", $itype,$vtype,[$NT,$ymax+1])
     or $vs->logconfess("$logas: failed to save CCS header $vsdir/tym.hdr: $!");
 
-  ##-- create: tym: cleanup
+  ##-- tym: cleanup
   undef $c2date;
   undef $c2d;
   undef $d2c;
 
-  ##-- create: tdm: pointers
+  ##-- create: aux: tdm: pointers
   $vs->vlog($logCreate, "$logas: creating tdm matrix Harwell-Boeing pointers");
   my ($ptr0) = $tdm->getptr(0);
   $ptr0      = $ptr0->convert($itype) if ($ptr0->type != $itype);

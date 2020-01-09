@@ -381,11 +381,13 @@ sub open {
       or $coldb->logconfess("open(): failed to open tuple-enum $dbdir/tenum.*: $!");
 
   ##-- open: xf
-  $coldb->{xf} = DiaColloDB::Relation::Unigrams->new(base=>"$dbdir/xf", flags=>$flags, mmap=>$coldb->{mmap},
-						     pack_i=>$coldb->{pack_id}, pack_f=>$coldb->{pack_f}, pack_d=>$coldb->{pack_date}
-						    )
-    or $coldb->logconfess("open(): failed to open tuple-unigrams $dbdir/xf.*: $!");
-  $coldb->{xf}{N} = $coldb->{xN} if ($coldb->{xN} && !$coldb->{xf}{N}); ##-- compat
+  if ($coldb->{index_xf}//1) {
+    $coldb->{xf} = DiaColloDB::Relation::Unigrams->new(base=>"$dbdir/xf", flags=>$flags, mmap=>$coldb->{mmap},
+                                                       pack_i=>$coldb->{pack_id}, pack_f=>$coldb->{pack_f}, pack_d=>$coldb->{pack_date}
+                                                      )
+      or $coldb->logconfess("open(): failed to open tuple-unigrams $dbdir/xf.*: $!");
+    $coldb->{xf}{N} = $coldb->{xN} if ($coldb->{xN} && !$coldb->{xf}{N}); ##-- compat
+  }
 
   ##-- open: cof
   if ($coldb->{index_cof}//1) {
@@ -697,7 +699,7 @@ sub create {
     $docmeta = $coldb->{docmeta} = tmparray("$dbdir/docmeta", UNLINK=>!$coldb->{keeptmp}, pack_o=>'J', pack_l=>'J')
       or $coldb->logconfess("create(): could not tie temporary doc-data array to $dbdir/docmeta.*: $!");
     $docoff = $coldb->{docoff} = tmparrayp("$dbdir/docoff", 'J', UNLINK=>!$coldb->{keeptmp})
-      or $coldb->logconfess("create(): couldl not tie temporary doc-offset array to $dbdir/docoff.*: $!");
+      or $coldb->logconfess("create(): could not tie temporary doc-offset array to $dbdir/docoff.*: $!");
   }
   my $dbreak = ($coldb->{dbreak} // '#file');
   $dbreak    = "#$dbreak" if ($dbreak !~ /^#/);

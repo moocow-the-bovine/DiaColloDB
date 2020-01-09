@@ -12,11 +12,13 @@ use strict;
 our ($HAVE_FORKS);
 BEGIN {
   $HAVE_FORKS = ($^P ? 0 ##-- disable forks if running under debugger
-		 #: eval "use threads; 1" ##-- segfaults on join()ing 2nd thread (possibly bogus destruction)
-		 : eval "use forks; 1"    ##-- forks module works basically as expected
-		);
+		 : eval "use threads; 1" ##-- segfaults on join()ing 2nd thread (bogus destruction) for DDC::XS < v0.23
+		 #: eval "use forks; 1"    ##-- forks module works basically as expected
+		)
+    if (!defined($HAVE_FORKS));
   $@ = '';
 }
+
 
 ##==============================================================================
 ## Globals & Constants
@@ -197,7 +199,8 @@ sub subcall {
   my ($i,@results);
   if ($HAVE_FORKS && $cli->{fork}) {
     ##-- threaded call
-    #PDL::no_clone_skip_warning() if (UNIVERSAL::can('PDL','no_clone_skip_warning')); ##-- ithreads warning
+    PDL::no_clone_skip_warning() if (UNIVERSAL::can('PDL','no_clone_skip_warning')); ##-- ithreads warning
+
     my (@thrs);
     for ($i=0; $i <= $#{$cli->{urls}}; ++$i) {
       $cli->vlog($cli->{logThread}, "subcall(): spawning thread for subclient[$i]");
