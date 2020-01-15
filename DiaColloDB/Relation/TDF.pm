@@ -205,9 +205,9 @@ sub open {
   my ($hdr); ##-- save header, for version-checking
   if (fcread($flags) && !fctrunc($flags)) {
     $hdr = $vs->readHeader()
-      or $vs->logconess("failed to read header data from '$vs->{base}.hdr': $!");
+      or $vs->logconfess("failed to read header data from '$vs->{base}.hdr': $!");
     $vs->loadHeaderData($hdr)
-      or $vs->logconess("failed to load header data from '$vs->{base}.hdr': $!");
+      or $vs->logconfess("failed to load header data from '$vs->{base}.hdr': $!");
   }
 
   ##-- check compatibility
