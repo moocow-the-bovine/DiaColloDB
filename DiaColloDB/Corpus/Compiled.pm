@@ -35,8 +35,8 @@ our @ISA = qw(DiaColloDB::Persistent DiaColloDB::Corpus);
 ##    logThreads => $level   ##-- log-level for thread stuff (default='debug')
 ##    ##
 ##    ##-- INHERITED from DiaColloDB::Corpus
-##    files => \@files,      ##-- source files
-##    #dclass => $dclass,     ##-- DiaColloDB::Document subclass for loading (override default='DiaColloDB::Document::JSON')
+##    #files => \@files,      ##-- source files (OVERRIDE: unused)
+##    #dclass => $dclass,     ##-- DiaColloDB::Document subclass for loading (OVERRIDE force 'DiaColloDB::Document::JSON')
 ##    dopts  => \%opts,      ##-- options for $dclass->fromFile() (override default={})
 ##    cur    => $i,          ##-- index of current file
 ##    logOpen => $level,     ##-- log-level for open(); default='info'
@@ -73,7 +73,7 @@ sub DESTROY {
 ## @keys = $obj->headerKeys()
 ##  + keys to save as header; default implementation returns all keys of all non-references
 sub headerKeys {
-  return (grep {$_ !~ m{^(?:log|cur$|base$|njobs$|opened$)}} keys %{$_[0]});
+  return (grep {$_ !~ m{^log|^(?:cur|base|njobs|opened|flags|files|list|glob)$}} keys %{$_[0]});
 }
 
 ## $bool = $obj->unlink()
@@ -83,7 +83,7 @@ sub unlink {
   my $obj = shift;
   my $base = $obj->{base};
   $obj->close();
-  CORE::unlink("$base.hdr") && File::Path::remove_path("$base.d");
+  CORE::unlink("$base.hdr") && File::Path::remove_tree("$base.d");
 }
 
 ##==============================================================================
@@ -116,8 +116,9 @@ sub open {
   my $flags = $corpus->{flags} = fcflags($corpus->{flags});
   return undef if (fcread($flags) && !$corpus->loadHeaderFile);
 
-  ##-- force document-class
+  ##-- force document-class; force-delete files
   $corpus->{dclass} = 'DiaColloDB::Document::JSON';
+  delete $corpus->{files};
 
   return $corpus;
 }
@@ -158,7 +159,38 @@ sub reopen {
 
 ##==============================================================================
 ## Corpus API: iteration
-##  + inherited from DiaColloDB::Corpus
+##  + mostly inherited from DiaColloDB::Corpus
+
+## $nfiles = $corpus->size()
+sub size {
+  return $_[0]{size} // 0;
+}
+
+## $bool = $corpus->iok()
+##  + true if iterator is valid
+sub iok {
+  return $_[0]{cur} < ($_[0]{size}//0);
+}
+
+## $label = $corpus->ifile()
+## $label = $corpus->ifile($pos)
+##  + current iterator label
+sub ifile {
+  my $pos = $_[1] // $_[0]{cur};
+  return undef if ($pos >= $_[0]{size});
+  return "$_[0]{base}.d/$pos.json";
+}
+
+## $doc_or_undef = $corpus->idocument()
+## $doc_or_undef = $corpus->idocument($pos)
+##  + gets current document
+sub idocument {
+  my ($corpus,$pos) = @_;
+  $pos //= $corpus->{cur};
+  return undef if ($pos >= $corpus->size);
+  return $corpus->{dclass}->fromFile($corpus->ifile($pos), %{$corpus->{dopts}//{}});
+}
+
 
 ##==============================================================================
 ## Corpus::Compiled API: corpus compilation
@@ -203,11 +235,10 @@ sub create {
   ##-- common data
   my $nfiles   = $icorpus->size();
   my $logFileN = $ocorpus->{logFileN} || int($nfiles / 20) || 1;
-  my $filei_shared = 0;
   my @outkeys  = keys %{DiaColloDB::Document->new};
-  my (@outfiles);
+
+  my $filei_shared = 0;
   share( $filei_shared );
-  share( @outfiles );
 
   ##--------------------------------------------
   my $cb_worker = sub {
@@ -247,18 +278,12 @@ sub create {
       last if ($filei >= $nfiles);
 
       my $idoc    = $icorpus->idocument($filei);
-      my $infile  = $icorpus->{files}[$filei];
+      my $infile  = $icorpus->ifile($filei);
       my $outfile = "$outdir/$filei.json";
 
       #$ocorpus->vlog('info', sprintf("processing files [%3.0f%%]: %s -> %s", 100*($filei-1)/$nfiles, $infile, $outfile))
       $ocorpus->vlog('info', sprintf("%s: processing files [%3.0f%%]: %s", $logas, 100*($filei-1)/$nfiles, $infile))
         if ($logFileN && ($filei % $logFileN)==0);
-
-      ##-- buffer list output, sanity check(s)
-      {
-        lock(@outfiles);
-        $outfiles[$filei] = $outfile;
-      }
 
       ##-- apply filters
       if ($dofilter) {
@@ -313,7 +338,7 @@ sub create {
   }
 
   ##-- adopt list of compiled files
-  $ocorpus->{files} = \@outfiles;
+  $ocorpus->{size} = $nfiles;
 
   ##-- save header
   $ocorpus->saveHeader()

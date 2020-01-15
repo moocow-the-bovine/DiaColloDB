@@ -60,6 +60,8 @@ sub open {
   ##-- check for pre-compiled corpora (single-arguments)
   if (UNIVERSAL::isa($sources,'ARRAY')
       && @$sources==1
+      && !$opts{list}
+      && !$opts{glob}
       && -e "$sources->[0].hdr"
       && -e "$sources->[0].d") {
     require DiaColloDB::Corpus::Compiled;
@@ -180,7 +182,7 @@ sub icur {
 sub compile {
   my ($corpus,$obase,%opts) = @_;
   require DiaColloDB::Corpus::Compiled;
-  return DiaColloDB::Corpus::Compiled->create($corpus, base=>$obase, %opts);
+  return DiaColloDB::Corpus::Compiled->create($corpus, %opts, base=>$obase);
 }
 
 
