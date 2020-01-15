@@ -122,6 +122,10 @@ DiaColloDB/Upgrade/v0_10_x2t.pm
 DiaColloDB/Upgrade/v0_10_x2t.pod
 DiaColloDB/Upgrade/v0_12_sliceN.pm
 DiaColloDB/Upgrade/v0_12_sliceN.pod
+DiaColloDB/methods/compile.pm
+DiaColloDB/methods/compile.pod
+DiaColloDB/methods/export.pm
+DiaColloDB/methods/export.pod
 
 PDL-Utils/Makefile.PL
 PDL-Utils/pdlutils.pd
