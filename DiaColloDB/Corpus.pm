@@ -121,9 +121,10 @@ sub iok {
 }
 
 ## $label = $corpus->ifile()
+## $label = $corpus->ifile($pos)
 ##  + current iterator label
 sub ifile {
-  return $_[0]{files}[$_[0]{cur}];
+  return $_[0]{files}[$_[1]//$_[0]{cur}];
 }
 
 ## $doc_or_undef = $corpus->idocument()
