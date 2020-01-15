@@ -156,8 +156,9 @@ true if iterator is valid
 =item ifile
 
  $label = $corpus->ifile();
+ $label = $corpus->ifile($pos);
 
-current iterator label
+gets current iterator label (1st form) or label for document at $pos (2nd form).
 
 =item idocument
 
