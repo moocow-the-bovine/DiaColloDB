@@ -229,7 +229,7 @@ sub new {
 		      wbad  => $WBAD_DEFAULT,
 		      lgood => $LGOOD_DEFAULT,
 		      lbad  => $LBAD_DEFAULT,
-		      (map {("${_}file"=>undef)} qw(pgood bad wgood wbad lgood lbad)),
+		      (map {("${_}file"=>undef)} qw(pgood pbad wgood wbad lgood lbad)),
 		      #vsmgood => $TDF_MGOOD_DEFAULT,
 		      #vsmbad  => $TDF_MBAD_DEFAULT,
 
