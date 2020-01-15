@@ -1,7 +1,7 @@
 ## -*- Mode: CPerl -*-
 ## File: DiaColloDB::Corpus.pm
 ## Author: Bryan Jurish <moocow@cpan.org>
-## Description: collocation db, source corpous
+## Description: collocation db, source corpus (raw + common API)
 
 package DiaColloDB::Corpus;
 use DiaColloDB::Document;
@@ -16,7 +16,6 @@ use strict;
 ## Globals & Constants
 
 our @ISA = qw(DiaColloDB::Logger);
-
 our $DCLASS_DEFAULT = 'DDCTabs';
 
 ##==============================================================================
@@ -57,6 +56,17 @@ sub open {
   my ($corpus,$sources,%opts) = @_;
   $corpus = $corpus->new() if (!ref($corpus));
   @$corpus{keys %opts} = values %opts;
+
+  ##-- check for pre-compiled corpora (single-arguments)
+  if (UNIVERSAL::isa($sources,'ARRAY')
+      && @$sources==1
+      && -e "$sources->[0].hdr"
+      && -e "$sources->[0].d") {
+    require DiaColloDB::Corpus::Compiled;
+    bless($corpus,'DiaColloDB::Corpus::Compiled');
+    return $corpus->open($sources,%opts);
+  }
+
   @{$corpus->{files}} = $corpus->{glob} ? (map {glob($_)} @$sources) : @$sources;
   if ($corpus->{list}) {
     ##-- read file-lists
@@ -72,6 +82,21 @@ sub open {
   $corpus->{cur} = 0;
 
   ##-- setup document-class
+  $corpus->{dclass} = $corpus->dclass();
+  $corpus->logwarn("open(): can't resolve DiaColloDB::Document subclass for {dclass} argument '$corpus->{dclass}'")
+    if (!UNIVERSAL::isa($corpus->{dclass},'DiaColloDB::Document'));
+  $corpus->vlog($corpus->{logOpen}, "using document parser class $corpus->{dclass}");
+
+  return $corpus;
+}
+
+## $class = $corpus->dclass()
+##  + gets fully qualified input document class
+sub dclass {
+  return $_[0]{dclass} if (ref($_[0]) && UNIVERSAL::isa($_[0]{dclass},'DiaColloDB::Document'));
+
+  ##-- setup document-class
+  my $corpus = shift;
   my $dclass = $corpus->{dclass} || 'DDCTabs';
   foreach my $prefix ('','DiaColloDB::','DiaColloDB::Document::') {
     my $tryclass = $prefix.$dclass;
@@ -86,16 +111,14 @@ sub open {
   }
   $corpus->logwarn("open(): can't resolve DiaColloDB::Document subclass for {dclass} argument '$dclass'")
     if (!UNIVERSAL::isa($dclass,'DiaColloDB::Document'));
-  $corpus->{dclass} = $dclass;
-  $corpus->vlog($corpus->{logOpen}, "using document parser class $corpus->{dclass}");
 
-  return $corpus;
+  return $dclass;
 }
 
 ## $bool = $corpus->close()
 sub close {
   my $corpus = shift;
-  @{$corpus->{files}} = qw();
+  $corpus->{files} = [];
   $corpus->{cur} = 0;
   return $corpus;
 }
@@ -147,6 +170,17 @@ sub inext {
 ##  + returns current position
 sub icur {
   return $_[0]{cur};
+}
+
+##==============================================================================
+## API: compilation
+
+## $compiled_corpus = $src_corpus->compile($compiled_base, %opts)
+##  + wrapper for DiaColloDB::Corpus::Compiled->create($src_corpus, base=>$compiled_base, %opts)
+sub compile {
+  my ($corpus,$obase,%opts) = @_;
+  require DiaColloDB::Corpus::Compiled;
+  return DiaColloDB::Corpus::Compiled->create($corpus, base=>$obase, %opts);
 }
 
 

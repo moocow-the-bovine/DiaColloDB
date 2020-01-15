@@ -55,6 +55,12 @@ sub label {
   return $_[0]{label} // "$_[0]";
 }
 
+## $ext = $doc->extension()
+##  + default extension (including dot), for Corpus::Compiled
+sub extension {
+  return '';
+}
+
 ##==============================================================================
 ## Storable hooks
 

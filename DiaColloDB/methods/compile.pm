@@ -280,6 +280,20 @@ sub create {
   my $lgoodh = $coldb->loadFilterFile($coldb->{lgoodfile});
   my $lbadh  = $coldb->loadFilterFile($coldb->{lbadfile});
 
+  ##-- initialize: do any filtering at all?
+  my %filters = (map {($_=>$coldb->{$_})}
+                 (map {($_,$_."file")} qw(pgood pbad wgood wbad lgood lbad))
+                );
+  my $dofilter = grep {defined($_)} values %filters;
+  if ($dofilter) {
+    $coldb->vlog($coldb->{logCreate}, "corpus content filters enabled");
+    foreach (grep {defined($filters{$_})} sort keys %filters) {
+      $coldb->vlog($coldb->{logCreate}, "+ filter $_ => $filters{$_}");
+    }
+  } else {
+    $coldb->vlog($coldb->{logCreate}, "corpus content filters disabled");
+  }
+
   ##-- initialize: logging
   my $nfiles   = $corpus->size();
   my $logFileN = $coldb->{logCorpusFileN} // max2(1,int($nfiles/20));
