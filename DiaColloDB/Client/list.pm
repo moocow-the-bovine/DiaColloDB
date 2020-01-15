@@ -9,13 +9,13 @@ use DiaColloDB::Utils qw(:list :math :si);
 use strict;
 
 ##-- try to use threads
-our ($HAVE_FORKS);
+our ($HAVE_THREADS);
 BEGIN {
-  $HAVE_FORKS = ($^P ? 0 ##-- disable forks if running under debugger
+  $HAVE_THREADS = ($^P ? 0 ##-- disable forks if running under debugger
 		 : eval "use threads; 1" ##-- segfaults on join()ing 2nd thread (bogus destruction) for DDC::XS < v0.23
 		 #: eval "use forks; 1"    ##-- forks module works basically as expected
 		)
-    if (!defined($HAVE_FORKS));
+    if (!defined($HAVE_THREADS));
   $@ = '';
 }
 
@@ -59,7 +59,7 @@ sub defaults {
 	  fudge=>10,
 	  logFudge => 'debug',
 	  logThread => 'none',
-	  fork => $HAVE_FORKS,
+	  fork => $HAVE_THREADS,
 	  lazy => 1,
 	  extend => 1,
 	 );
@@ -107,7 +107,7 @@ sub open_list {
   @$cli{qw(url urls)} = ($url,$curls);
 
   ##-- sanity check(s)
-  if ($cli->{fork} && !$HAVE_FORKS) {
+  if ($cli->{fork} && !$HAVE_THREADS) {
     $cli->warn("fork-mode requested, but 'forks' module unavailable");
     $cli->{fork} = 0;
   }
@@ -197,7 +197,7 @@ sub headerKeys {
 sub subcall {
   my ($cli,$code,@args) = @_;
   my ($i,@results);
-  if ($HAVE_FORKS && $cli->{fork}) {
+  if ($HAVE_THREADS && $cli->{fork}) {
     ##-- threaded call
     PDL::no_clone_skip_warning() if (UNIVERSAL::can('PDL','no_clone_skip_warning')); ##-- ithreads warning
 
