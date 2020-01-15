@@ -5,6 +5,17 @@
 
 package DiaColloDB;
 use 5.010; ##-- v5.10.0: for // operator
+
+##-- try to use 'threads' module if available
+our ($HAVE_THREADS);
+BEGIN {
+  $HAVE_THREADS = ($^P ? 0 ##-- disable threads if running under debugger
+                   : eval "use threads; use threads::shared; 1"
+                  )
+    if (!defined($HAVE_THREADS));
+  $@ = '';
+}
+
 use DiaColloDB::Compat;
 use DiaColloDB::Client;
 use DiaColloDB::Logger;
@@ -121,6 +132,7 @@ our %TDF_OPTS = (
 ##    ##-- options
 ##    dbdir => $dbdir,    ##-- database directory; REQUIRED
 ##    flags => $fcflags,  ##-- fcntl flags or open()-style mode string; default='r'
+##    njobs => $njobs,    ##-- number of worker threads for create() [default=0: serial mode]
 ##    attrs => \@attrs,   ##-- index attributes (input as space-separated or array; compiled to array); default=undef (==>['l'])
 ##                        ##    + each attribute can be token-attribute qw(w p l) or a document metadata attribute "doc.ATTR"
 ##                        ##    + document "date" attribute is always indexed
@@ -160,6 +172,7 @@ our %TDF_OPTS = (
 ##    ##-- logging
 ##    logOpen => $level,        ##-- log-level for open/close (default='info')
 ##    logCreate => $level,      ##-- log-level for create messages (default='info')
+##    logThread => $level,      ##-- log-level for multithreading operations (default='debug')
 ##    logCorpusFile => $level,  ##-- log-level for corpus file-parsing (default='info')
 ##    logCorpusFileN => $N,     ##-- log corpus file-parsing only for every N files (0 for none; default:undef ~ $corpus->size()/100)
 ##    logExport => $level,      ##-- log-level for export messages (default='info')
@@ -202,6 +215,7 @@ sub new {
 		      ##-- options
 		      dbdir => undef,
 		      flags => 'r',
+                      njobs => 0,
 		      attrs => undef,
 		      #bos => undef,
 		      #eos => undef,
@@ -236,6 +250,7 @@ sub new {
 		      ##-- logging
 		      logOpen => 'info',
 		      logCreate => 'info',
+                      logThread => 'debug',
 		      logCorpusFile => 'info',
 		      logCorpusFileN => undef,
 		      logExport => 'info',
@@ -466,7 +481,7 @@ sub diskFiles {
 ## @keys = $coldb->headerKeys()
 ##  + keys to save as header
 sub headerKeys {
-  return (qw(attrs upgraded), grep {!ref($_[0]{$_}) && $_ !~ m{^(?:dbdir$|flags$|perms$|info$|tdfopts$|log|debug)}} keys %{$_[0]});
+  return (qw(attrs upgraded), grep {!ref($_[0]{$_}) && $_ !~ m{^(?:dbdir$|flags$|njobs$|perms$|info$|tdfopts$|log|debug)}} keys %{$_[0]});
 }
 
 ## $bool = $coldb->loadHeaderData()

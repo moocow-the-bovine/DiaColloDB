@@ -11,10 +11,10 @@ use strict;
 ##-- try to use threads
 our ($HAVE_THREADS);
 BEGIN {
-  $HAVE_THREADS = ($^P ? 0 ##-- disable forks if running under debugger
-		 : eval "use threads; 1" ##-- segfaults on join()ing 2nd thread (bogus destruction) for DDC::XS < v0.23
-		 #: eval "use forks; 1"    ##-- forks module works basically as expected
-		)
+  $HAVE_THREADS = ($^P ? 0 ##-- disable threads if running under debugger
+                   : eval "use threads; 1" ##-- this causes segfaults when join()ing 2nd thread (bogus destruction) for DDC::XS < v0.23
+                   #: eval "use forks; 1"    ##-- forks module works basically as expected
+                  )
     if (!defined($HAVE_THREADS));
   $@ = '';
 }
@@ -108,7 +108,7 @@ sub open_list {
 
   ##-- sanity check(s)
   if ($cli->{fork} && !$HAVE_THREADS) {
-    $cli->warn("fork-mode requested, but 'forks' module unavailable");
+    $cli->warn("fork-mode requested, but 'threads' module unavailable");
     $cli->{fork} = 0;
   }
 
