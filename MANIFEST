@@ -44,6 +44,7 @@ DiaColloDB/Compat/v0_11/Relation/Unigrams.pm
 DiaColloDB/Compat/v0_11/Relation/Unigrams.pod
 DiaColloDB/Corpus.pm
 DiaColloDB/Corpus.pod
+DiaColloDB/Corpus/Compiled.pm
 DiaColloDB/Document.pm
 DiaColloDB/Document.pod
 DiaColloDB/Document/DDCTabs.pm
@@ -130,6 +131,7 @@ DiaColloDB/methods/export.pod
 PDL-Utils/Makefile.PL
 PDL-Utils/pdlutils.pd
 
+dcdb-corpus-compile.perl
 dcdb-create.perl
 dcdb-export.perl
 dcdb-info.perl
