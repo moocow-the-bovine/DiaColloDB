@@ -27,8 +27,9 @@ our $listargs   = 0; ##-- args are file-lists?
 our $union      = 0; ##-- args are db-dirs?
 our $lazy_union = 0; ##-- union mode: create a list-client config?
 our $dotime     = 1; ##-- report timing?
-our %corpus   = (dclass=>'DDCTabs', dopts=>{});
+our %corpus     = (dclass=>'DDCTabs', dopts=>{});
 our %coldb    = (
+                 njobs=>0,
 		 pack_id=>'N',
 		 pack_date=>'n',
 		 pack_f=>'N',
@@ -69,6 +70,7 @@ GetOptions(##-- general
 	   'glob|g!' => \$globargs,
 	   'list|l!' => \$listargs,
 	   'union|u|merge!' => \$union,
+           'jobs|njobs|j=i' => \$coldb{njobs},
 	   'lazy-union|list-union|lazy|lu!' => \$lazy_union,
 	   'document-class|dclass|dc=s' => \$corpus{dclass},
 	   'document-option|docoption|dopt|do|dO=s%' => \$corpus{dopts},
@@ -79,8 +81,9 @@ GetOptions(##-- general
 	   ##-- coldb options
 	   'index-attributes|attributes|attrs|a=s' => \$coldb{attrs},
 	   'nofilters|no-filters|F|all|A|no-prune|noprune|use-all-the-data' => sub {
-	     $coldb{$_} = 0  foreach (grep {$_ =~ /fmin/} keys %coldb);
-	     $coldb{$_} = '' foreach (qw(pgood pbad wgood wbad lgood lbad));
+	     $coldb{$_} = 0     foreach (grep {$_ =~ /fmin/} keys %coldb);
+             $coldb{$_} = ''    foreach (@DiaColloDB::Corpus::Filters::NAMES);
+             $coldb{$_} = undef foreach (@DiaColloDB::Corpus::Filters::FILES);
 	     $coldb{tdfopts}{$_} = 0 foreach (grep {$_ =~ /min.*Freq/} keys %{$coldb{tdfopts}});
 	     $coldb{tdfopts}{$_} = 1 foreach (grep {$_ =~ /min.*Size/} keys %{$coldb{tdfopts}});
 	     $coldb{tdfopts}{$_} = 'inf' foreach (grep {$_ =~ /max.*(Freq|Size)/} keys %{$coldb{tdfopts}});
@@ -137,6 +140,7 @@ $corpus->open(\@ARGV, 'glob'=>$globargs, 'list'=>$listargs, ($union ? (logOpen=>
 my $timer = DiaColloDB::Timer->start();
 my ($coldb);
 if ($lazy_union) {
+  ##-- lazy union: just create "thin" client URL
   $coldb = DiaColloDB::Client::list->new(%uopts)
     or die("$prog: failed to create lazy union list-client: $!");
   $coldb->open($corpus->{files})
@@ -145,14 +149,15 @@ if ($lazy_union) {
     or die("$prog: failed to save lazy union list-client configuration to 'rcfile://$dbdir': $!");
 }
 else {
+  ##-- physical DB
   $coldb = DiaColloDB->new(%coldb)
     or die("$prog: failed to create new DiaColloDB object: $!");
   if ($union) {
-    ##-- union: create from dbdirs
+    ##-- physical DB: union: create from dbdirs
     $coldb->union($corpus->{files}, dbdir=>$dbdir, flags=>'rw')
       or die("$prog: DiaColloDB::union() failed: $!");
   } else {
-    ##-- !union: create from corpus
+    ##-- physical DB: create from corpus
     $coldb->create($corpus, dbdir=>$dbdir, flags=>'rw', attrs=>($coldb{attrs}||'l,p'))
       or die("$prog: DiaColloDB::create() failed: $!");
   }
@@ -201,6 +206,7 @@ dcdb-create.perl - create a DiaColloDB diachronic collocation database
    -byparagraph         ##-- track collocations by paragraph
    -bypage              ##-- track collocations by page
    -bydoc               ##-- track collocations by document
+   -jobs NJOBS          ##-- number of threads for corpus compilation (default=0: serial mode)
 
  Indexing Options:
    -attrs ATTRS         ##-- select index attributes (default=l,p)
@@ -235,7 +241,6 @@ dcdb-create.perl - create a DiaColloDB diachronic collocation database
                         ##   (p|w|l)badfile=FILE    # negative list-file for (postags|words|lemmata)
                         ##   ddcServer=HOST:PORT    # server for ddc relations
                         ##   ddcTimeout=SECONDS     # timeout for ddc relations
-   -noprune             ##-- disable all pruning filters
 
  I/O and Logging Options:
    -log-level LEVEL     ##-- set log-level (default=TRACE)
@@ -440,12 +445,12 @@ inspired by Mark Lauersdorf; equivalent to:
  -tdf-dfmin=0 \
  -tdf-nmin=0 \
  -tdf-nmax=inf \
- -O=pgood='' \
- -O=wgood='' \
- -O=lgood='' \
- -O=pbad='' \
- -O=wbad='' \
- -O=lbad='' \
+ -O=pgood='' -O=poodfile='' \
+ -O=wgood='' -O=wgoodfile='' \
+ -O=lgood='' -O=lgoodfile='' \
+ -O=pbad='' -O=pbadfile='' \
+ -O=wbad='' -O=wbadfile='' \
+ -O=lbad='' -O=lbadfile='' \
  -tO=mgood='' \
  -tO=mbad=''
 

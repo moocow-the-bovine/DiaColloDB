@@ -50,7 +50,8 @@ sub new {
                                   flags  => 'r',
                                   #filters => DiaColloDB::Corpus::Filters->new(),
                                   #temp    => 0,
-                                  opened => 0,
+                                  #opened => 0,
+                                  njobs => 0,
                                   logThreads => 'debug',
 
                                   @_, ##-- user arguments
@@ -75,7 +76,7 @@ sub DESTROY {
 ## @keys = $obj->headerKeys()
 ##  + keys to save as header; default implementation returns all keys of all non-references
 sub headerKeys {
-  return (grep {$_ !~ m{^log|^(?:cur|dbdir|njobs|opened|flags|files|list|glob|compiled|append)$}} keys %{$_[0]});
+  return (grep {$_ !~ m{^log|^(?:cur|dbdir|njobs|opened|flags|files|list|glob|compiled|append|temp)$}} keys %{$_[0]});
 }
 
 ## @files = $obj->diskFiles()
@@ -95,6 +96,7 @@ sub diskFiles {
 sub unlink {
   my ($obj,%opts) = @_;
   my $dbdir = $obj->datadir;
+  #$obj->vlog($obj->{logOpen}, "unlink(", $obj->dbdir, ")") if ($obj->opened);
   $obj->close() if (!exists($opts{close}) || $opts{close});
   return (-e $dbdir ? File::Path::remove_tree($dbdir) : 1);
 }
@@ -192,6 +194,7 @@ sub open {
 ## $bool = $corpus->close()
 sub close {
   my $corpus = shift;
+  $corpus->vlog($corpus->{logOpen}, "close(", $corpus->dbdir, ")") if ($corpus->opened);
   my $rc = ($corpus->opened && fcwrite($corpus->{flags}) ? $corpus->flush : 1);
   $rc &&= $corpus->SUPER::close();
   if ($rc) {
@@ -289,7 +292,7 @@ sub create {
 
   ##-- check whether we're doing any filtering at all
   my $filters  = $ocorpus->filters();
-  my $dofilter = !$filters->empty();
+  my $dofilter = !$filters->isnull();
   if ($dofilter) {
     $ocorpus->vlog('info', "$logas: corpus content filters enabled");
     foreach (grep {defined($filters->{$_})} sort keys %$filters) {
@@ -316,6 +319,9 @@ sub create {
     $logas .= "#$thrid";
     (*STDERR)->autoflush(1);
     $ocorpus->vlog($ocorpus->{logThreads}, "$logas: starting worker thread #$thrid");
+
+    ##-- initialize: disable auto-deletion
+    $ocorpus->{temp} = 0;
 
     ##-- initialize filters (formerly in DiaColloDB.pm)
     my $cfilters = $dofilter ? $filters->compile() : {}
@@ -347,7 +353,7 @@ sub create {
       if ($dofilter) {
         my $ftokens = [];
         foreach $tok (@{$idoc->{tokens}}) {
-          if (ref($tok) && $dofilter) {
+          if (ref($tok)) {
             ##-- normal token: apply filters
             ($w,$p,$l) = @$tok{qw(w p l)};
             next if ((defined($pgood)    && $p !~ $pgood) || ($pgoodh && !exists($pgoodh->{$p}))

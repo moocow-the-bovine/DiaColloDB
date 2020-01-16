@@ -30,7 +30,11 @@ our @ISA = qw(DiaColloDB::Relation);
 BEGIN {
   no warnings 'once';
   $PDL::BIGPDL = 1; ##-- avoid 'Probably false alloc of over 1Gb PDL' errors
+
+  PDL::no_clone_skip_warning() ##-- silence 'check out PDL::Parallel::threads' warning
+      if (UNIVERSAL::can('PDL','no_clone_skip_warning'));
 }
+
 
 ##==============================================================================
 ## Constructors etc.

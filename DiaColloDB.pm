@@ -6,16 +6,6 @@
 package DiaColloDB;
 use 5.010; ##-- v5.10.0: for // operator
 
-##-- try to use 'threads' module if available
-our ($HAVE_THREADS);
-BEGIN {
-  $HAVE_THREADS = ($^P ? 0 ##-- disable threads if running under debugger
-                   : eval "use threads; use threads::shared; 1"
-                  )
-    if (!defined($HAVE_THREADS));
-  $@ = '';
-}
-
 use DiaColloDB::Compat;
 use DiaColloDB::Client;
 use DiaColloDB::Logger;
@@ -213,7 +203,7 @@ sub new {
 		      dbreak => undef,
 		      tdfopts => {},
 
-		      ##-- filters (pgood, pbad, etc. now in DiaColloDB::Corpus::Filters)
+		      ##-- filters (pgood, pbad, etc. now in DiaColloDB::Corpus::Filters; default value see below)
                       %{DiaColloDB::Corpus::Filters->new},
 		      #vsmgood => $TDF_MGOOD_DEFAULT,
 		      #vsmbad  => $TDF_MBAD_DEFAULT,

@@ -4,15 +4,17 @@
 ## Description: collocation db, source corpus content filters
 
 package DiaColloDB::Corpus::Filters;
+use DiaColloDB::Persistent;
 use Exporter;
 use strict;
 
 ##==============================================================================
 ## Administrivia
 
-our @ISA = qw(Exporter);
+our @ISA = qw(Exporter DiaColloDB::Persistent);
 
 our @NAMES = qw(pgood pbad wgood wbad lgood lbad);
+our @FILES = map {$_."file"} @NAMES;
 our %EXPORT_TAGS =
   (
    'names'    => [qw(@NAMES)],
@@ -64,7 +66,7 @@ sub new {
                        wbad  => $WBAD_DEFAULT,
                        lgood => $LGOOD_DEFAULT,
                        lbad  => $LBAD_DEFAULT,
-                       (map {("${_}file"=>undef)} @NAMES),
+                       (map {($_=>undef)} @FILES),
                        @_,
                       }, ref($that)||$that);
   return $filters;
@@ -85,8 +87,17 @@ sub clear {
 
 ## $bool = $filters->empty()
 ##  + returns true iff all filters are undefined
-sub empty {
-  return !grep {$_} @{$_[0]}{@NAMES};
+sub isnull {
+  return !grep {$_} @{$_[0]}{@NAMES,@FILES};
+}
+
+## $bool = $filters1->equal($filters2)
+## $bool = PACKAGE->equal($filters1,$filters2)
+##  + returns true iff filters are equal
+sub equal {
+  my $that = shift;
+  my ($f1,$f2) = map {($_//{})} (@_ > 1 ? @_ : ($that,shift));
+  return !grep {($f1->{$_}//'') ne ($f2->{$_}//'')} @NAMES,@FILES;
 }
 
 ## \%name2obj = $filters->compile()
@@ -102,7 +113,7 @@ sub compile {
           (map {($_=>qr{$filters->{$_}})} grep {$filters->{$_}} @NAMES),
 
           ##-- compile: filter list-files
-          (map {($_=>$that->loadListFile($filters->{$_}))} grep {$filters->{$_}} map {$_.'file'} @NAMES),
+          (map {($_=>$that->loadListFile($filters->{$_}))} grep {$filters->{$_}} @FILES),
          };
 }
 

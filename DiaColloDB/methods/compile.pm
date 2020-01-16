@@ -28,7 +28,8 @@ BEGIN { *loadFilterFile = \&DiaColloDB::Corpus::Filters::loadListFile; }
 sub corpusFilters {
   my $coldb = shift;
   return DiaColloDB::Corpus::Filters->new(map {($_=>$coldb->{$_})}
-                                          @DiaColloDB::Corpus::Filters::NAMES);
+                                          @DiaColloDB::Corpus::Filters::NAMES,
+                                          @DiaColloDB::Corpus::Filters::FILES);
 }
 
 ## $multimap = $coldb->create_multimap($base, \%ts2i, $packfmt, $label="multimap")
@@ -260,39 +261,28 @@ sub create {
   $dbreak    = "#$dbreak" if ($dbreak !~ /^#/);
   $coldb->{dbreak} = $dbreak;
 
-  ##-- initialize: filters
-  my $filters = $coldb->corpusFilters();
-  ##
-  ##-- initialize: filters: do any filtering at all?
-  my $dofilter = grep {defined($_)} values %$filters;
-  if ($dofilter) {
-    $coldb->vlog($coldb->{logCreate}, "corpus content filters enabled");
-    foreach (grep {defined($filters->{$_})} sort keys %$filters) {
-      $coldb->vlog($coldb->{logCreate}, "+ filter $_ => $filters->{$_}");
-    }
+  ##-- initialize: pre-compile corpus
+  if (!UNIVERSAL::isa($corpus,'DiaColloDB::Corpus::Compiled')) {
+    $coldb->vlog('info', "create(): pre-compiling & filtering corpus to $dbdir/corpus.d/");
+    $corpus = $corpus->compile("$dbdir/corpus.d",
+                               njobs=>$coldb->{njobs},
+                               filters=>$coldb->corpusFilters,
+                               logFileN=>max2(1,$corpus->size/10),
+                               temp=>!$coldb->{keeptmp}
+                              )
+      or $coldb->logconfess("failed to pre-compile corpus to $dbdir/corpus.d/");
   } else {
-    $coldb->vlog($coldb->{logCreate}, "corpus content filters disabled");
+    $coldb->vlog('info', "create(): using pre-compiled corpus ".$corpus->dbdir.'/');
+
+    ##-- always use pre-compiled corpus filters -- but warn about overrides
+    my ($cfilters,$dbfilters) = ($corpus->filters,$coldb->corpusFilters);
+    foreach my $key (@DiaColloDB::Corpus::Filters::NAMES,@DiaColloDB::Corpus::Filters::FILES) {
+      if (($dbfilters->{$key}//'') ne ($cfilters->{$key}//'')) {
+        $coldb->warn("create(): WARNING: pre-compiled corpus filter $key=".($cfilters->{$key}//'(null)')." overrides user request=".($dbfilters->{$key}//'(null)'));
+        $coldb->{$key} = $cfilters->{$key};
+      }
+    }
   }
-
-  ##-- initialize: filters: compile
-  
-
-    ##~~old
-  my $pgood = $coldb->{pgood} ? qr{$coldb->{pgood}} : undef;
-  my $pbad  = $coldb->{pbad}  ? qr{$coldb->{pbad}}  : undef;
-  my $wgood = $coldb->{wgood} ? qr{$coldb->{wgood}} : undef;
-  my $wbad  = $coldb->{wbad}  ? qr{$coldb->{wbad}}  : undef;
-  my $lgood = $coldb->{lgood} ? qr{$coldb->{lgood}} : undef;
-  my $lbad  = $coldb->{lbad}  ? qr{$coldb->{lbad}}  : undef;
-
-  ##-- initialize: filter lists
-  my $pgoodh = $coldb->loadFilterFile($coldb->{pgoodfile});
-  my $pbadh  = $coldb->loadFilterFile($coldb->{pbadfile});
-  my $wgoodh = $coldb->loadFilterFile($coldb->{wgoodfile});
-  my $wbadh  = $coldb->loadFilterFile($coldb->{wbadfile});
-  my $lgoodh = $coldb->loadFilterFile($coldb->{lgoodfile});
-  my $lbadh  = $coldb->loadFilterFile($coldb->{lbadfile});
-
 
   ##-- initialize: logging
   my $nfiles   = $corpus->size();
@@ -301,20 +291,21 @@ sub create {
   ##-- initialize: enums, date-range
   $coldb->vlog($coldb->{logCreate},"create(): processing $nfiles corpus file(s)");
   my ($xdmin,$xdmax) = ('inf','-inf');
-  my ($doc, $date,$tok,$w,$p,$l,@ais,$aistr,$t,$ti, $nsigs, $filei, $last_was_eos);
+  my ($doc, $date,$tok,@ais,$aistr,$t,$ti, $nsigs, $filei, $last_was_eos);
   my $docoff_cur = -1;
   my $toki       = 0;
   for ($corpus->ibegin(); $corpus->iok; $corpus->inext) {
-    $coldb->vlog($coldb->{logCorpusFile}, sprintf("create(): processing files [%3.0f%%]: %s", 100*($filei-1)/$nfiles, $corpus->ifile))
-      if ($logFileN && ($filei++ % $logFileN)==0);
     $doc  = $corpus->idocument();
-    $date = $doc->{date};
+    $coldb->vlog($coldb->{logCorpusFile},
+                 sprintf("create(): processing files [%3.0f%%]: %s", 100*($filei-1)/$nfiles, ($doc->{label} || $corpus->ifile)))
+      if ($logFileN && ($filei++ % $logFileN)==0);
 
     ##-- initalize tdf data (#/sigs)
     $nsigs = 0;
     $docoff_cur=$toki;
 
     ##-- get date-range
+    $date  = $doc->{date};
     $xdmin = $date if ($date < $xdmin);
     $xdmax = $date if ($date > $xdmax);
 
@@ -326,19 +317,7 @@ sub create {
     $last_was_eos = 1;
     foreach $tok (@{$doc->{tokens}}) {
       if (ref($tok)) {
-	##-- normal token
-	($w,$p,$l) = @$tok{qw(w p l)};
-
-	##-- apply regex filters
-	next if ((defined($pgood)    && $p !~ $pgood) || ($pgoodh && !exists($pgoodh->{$p}))
-		 || (defined($pbad)  && $p =~ $pbad)  || ($pbadh  &&  exists($pbadh->{$p}))
-		 || (defined($wgood) && $w !~ $wgood) || ($wgoodh && !exists($wgoodh->{$w}))
-		 || (defined($wbad)  && $w =~ $wbad)  || ($wbadh  &&  exists($wbadh->{$w}))
-		 || (defined($lgood) && $l !~ $lgood) || ($lgoodh && !exists($lgoodh->{$l}))
-		 || (defined($lbad)  && $l =~ $lbad)  || ($lbadh  &&  exists($lbadh->{$l}))
-		);
-
-	##-- get attribute value-ids and build tuple
+	##-- normal token: get attribute value-ids and build tuple
 	$ais[$_->{i}] = ($_->{s2i}{$tok->{$_->{a}//''}} //= ++$_->{ns}) foreach (@aconfw);
 	$aistr        = join(' ',@ais);
 
@@ -384,7 +363,10 @@ sub create {
 
   ##-- close temporary attribute-token file(s)
   CORE::close($atokfh)
-      or $corpus->logconfess("create(): failed to close temporary token storage file '$atokfile': $!");
+      or $coldb->logconfess("create(): failed to close temporary token storage file '$atokfile': $!");
+
+  ##-- close/free temporary corpus
+  undef $corpus if ($corpus->{temp});
 
   ##-- filter: by attribute frequency
   my $ibad  = unpack($pack_id,pack($pack_id,-1));
