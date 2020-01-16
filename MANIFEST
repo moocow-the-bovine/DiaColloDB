@@ -45,6 +45,7 @@ DiaColloDB/Compat/v0_11/Relation/Unigrams.pod
 DiaColloDB/Corpus.pm
 DiaColloDB/Corpus.pod
 DiaColloDB/Corpus/Compiled.pm
+DiaColloDB/Corpus/Filters.pm
 DiaColloDB/Document.pm
 DiaColloDB/Document.pod
 DiaColloDB/Document/DDCTabs.pm
