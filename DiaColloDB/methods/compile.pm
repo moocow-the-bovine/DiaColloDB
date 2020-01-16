@@ -10,7 +10,7 @@ use strict;
 1;
 
 package DiaColloDB;
-use vars qw($MMCLASS $ECLASS $XECLASS %TDF_OPTS $HAVE_THREADS);
+use vars qw($MMCLASS $ECLASS $XECLASS %TDF_OPTS);
 use strict;
 
 ##==============================================================================
@@ -20,19 +20,15 @@ use strict;
 ## create: utils
 
 ## \%line2undef = $coldb->loadFilterFile($filename_or_undef)
-sub loadFilterFile {
-  my ($coldb,$file) = @_;
-  return undef if (($file//'') eq '');
-  CORE::open(my $fh,"<$file")
-      or $coldb->logconfess("loadFilterFile(): open failed for '$file': $!");
-  my $h = {};
-  while (defined($_=<$fh>)) {
-    chomp;
-    next if (/^\s*(?:\#.*)$/); ##-- skip comments and blank lines
-    $h->{$_} = undef;
-  }
-  CORE::close($file);
-  return $h;
+##  + now in DiaColloDB::Corpus::Filters (since v0.12.012_01); alias retained for compatibility
+BEGIN { *loadFilterFile = \&DiaColloDB::Corpus::Filters::loadListFile; }
+
+## $filters = $coldb->corpusFilters()
+##  + DiaColloDB::Corpus::Filters object from $coldb options
+sub corpusFilters {
+  my $coldb = shift;
+  return DiaColloDB::Corpus::Filters->new(map {($_=>$coldb->{$_})}
+                                          @DiaColloDB::Corpus::Filters::NAMES);
 }
 
 ## $multimap = $coldb->create_multimap($base, \%ts2i, $packfmt, $label="multimap")
@@ -264,7 +260,24 @@ sub create {
   $dbreak    = "#$dbreak" if ($dbreak !~ /^#/);
   $coldb->{dbreak} = $dbreak;
 
-  ##-- initialize: filter regexes
+  ##-- initialize: filters
+  my $filters = $coldb->corpusFilters();
+  ##
+  ##-- initialize: filters: do any filtering at all?
+  my $dofilter = grep {defined($_)} values %$filters;
+  if ($dofilter) {
+    $coldb->vlog($coldb->{logCreate}, "corpus content filters enabled");
+    foreach (grep {defined($filters->{$_})} sort keys %$filters) {
+      $coldb->vlog($coldb->{logCreate}, "+ filter $_ => $filters->{$_}");
+    }
+  } else {
+    $coldb->vlog($coldb->{logCreate}, "corpus content filters disabled");
+  }
+
+  ##-- initialize: filters: compile
+  
+
+    ##~~old
   my $pgood = $coldb->{pgood} ? qr{$coldb->{pgood}} : undef;
   my $pbad  = $coldb->{pbad}  ? qr{$coldb->{pbad}}  : undef;
   my $wgood = $coldb->{wgood} ? qr{$coldb->{wgood}} : undef;
@@ -280,19 +293,6 @@ sub create {
   my $lgoodh = $coldb->loadFilterFile($coldb->{lgoodfile});
   my $lbadh  = $coldb->loadFilterFile($coldb->{lbadfile});
 
-  ##-- initialize: do any filtering at all?
-  my %filters = (map {($_=>$coldb->{$_})}
-                 (map {($_,$_."file")} qw(pgood pbad wgood wbad lgood lbad))
-                );
-  my $dofilter = grep {defined($_)} values %filters;
-  if ($dofilter) {
-    $coldb->vlog($coldb->{logCreate}, "corpus content filters enabled");
-    foreach (grep {defined($filters{$_})} sort keys %filters) {
-      $coldb->vlog($coldb->{logCreate}, "+ filter $_ => $filters{$_}");
-    }
-  } else {
-    $coldb->vlog($coldb->{logCreate}, "corpus content filters disabled");
-  }
 
   ##-- initialize: logging
   my $nfiles   = $corpus->size();

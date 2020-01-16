@@ -9,6 +9,7 @@ use threads;
 use threads::shared;
 
 use DiaColloDB::Corpus;
+use DiaColloDB::Corpus::Filters;
 use DiaColloDB::Logger;
 use DiaColloDB::Utils qw(:fcntl);
 use File::Basename qw(basename dirname);
@@ -29,7 +30,7 @@ our @ISA = qw(DiaColloDB::Persistent DiaColloDB::Corpus);
 ##    ##-- NEW in DiaColloDB::Corpus::Compiled
 ##    dbdir   => $dbdir,     ##-- data directory for compiled corpus
 ##    flags   => $flags,     ##-- open mode flags (fcntl flags or perl-style; default='r')
-##    filters => \%filters,  ##-- corpus filters ( keys match /^(p|w|l)(good|bad)(_file)?$/ )
+##    filters => \%filters,  ##-- corpus filters ( DiaColloDB::Corpus::Filters object or HASH-ref )
 ##    njobs   => $njobs,     ##-- number of parallel worker jobs for create()
 ##    temp    => $bool,      ##-- implicitly unlink() on exit?
 ##    logThreads => $level   ##-- log-level for thread stuff (default='debug')
@@ -47,7 +48,7 @@ sub new {
                                   ##-- new
                                   dbdir  => undef,
                                   flags  => 'r',
-                                  filters => {},
+                                  #filters => DiaColloDB::Corpus::Filters->new(),
                                   #temp    => 0,
                                   opened => 0,
                                   logThreads => 'debug',
@@ -57,6 +58,7 @@ sub new {
                                   ##-- strong overrides
                                   dclass => 'DiaColloDB::Document::JSON',
                                  );
+  $corpus->{filters} = DiaColloDB::Corpus::Filters->new() if (!exists($corpus->{filters}));
   return $corpus->open() if (defined($corpus->{dbdir}));
   return $corpus;
 }
@@ -115,6 +117,14 @@ sub truncate {
   return undef if (!$corpus->unlink(close=>0));
   $corpus->{size} = 0;
   return $corpus;
+}
+
+## $filters = $ccorpus->filters()
+##  + return corpus filters as a DiaColloDB::Corpus::Filters object
+sub filters {
+  return $_[0]{filters} if (UNIVERSAL::isa($_[0]{filters},'DiaColloDB::Corpus::Filters'));
+  return DiaColloDB::Corpus::Filters->null() if (!defined($_[0]{filters}));
+  return DiaColloDB::Corpus::Filters->new( %{$_[0]{filters}} );
 }
 
 ##==============================================================================
@@ -278,8 +288,8 @@ sub create {
   @$ocorpus{keys %opts} = values %opts;
 
   ##-- check whether we're doing any filtering at all
-  my $filters  = $ocorpus->{filters};
-  my $dofilter = grep {defined($_)} values %$filters;
+  my $filters  = $ocorpus->filters();
+  my $dofilter = !$filters->empty();
   if ($dofilter) {
     $ocorpus->vlog('info', "$logas: corpus content filters enabled");
     foreach (grep {defined($filters->{$_})} sort keys %$filters) {
@@ -308,24 +318,12 @@ sub create {
     $ocorpus->vlog($ocorpus->{logThreads}, "$logas: starting worker thread #$thrid");
 
     ##-- initialize filters (formerly in DiaColloDB.pm)
+    my $cfilters = $dofilter ? $filters->compile() : {}
+      or $ocorpus->logconfess("$logas: failed to compile corpus content filters: $!");
     ##
-    ##-- initialize: filter regexes
-    my $pgood = $filters->{pgood} ? qr{$filters->{pgood}} : undef;
-    my $pbad  = $filters->{pbad}  ? qr{$filters->{pbad}}  : undef;
-    my $wgood = $filters->{wgood} ? qr{$filters->{wgood}} : undef;
-    my $wbad  = $filters->{wbad}  ? qr{$filters->{wbad}}  : undef;
-    my $lgood = $filters->{lgood} ? qr{$filters->{lgood}} : undef;
-    my $lbad  = $filters->{lbad}  ? qr{$filters->{lbad}}  : undef;
-    ##
-    ##-- initialize: filter lists
-    my $pgoodh = DiaColloDB->loadFilterFile($filters->{pgoodfile});
-    my $pbadh  = DiaColloDB->loadFilterFile($filters->{pbadfile});
-    my $wgoodh = DiaColloDB->loadFilterFile($filters->{wgoodfile});
-    my $wbadh  = DiaColloDB->loadFilterFile($filters->{wbadfile});
-    my $lgoodh = DiaColloDB->loadFilterFile($filters->{lgoodfile});
-    my $lbadh  = DiaColloDB->loadFilterFile($filters->{lbadfile});
-    ##
-    ##-- initialize: filter loop variables
+    ##-- initialize: filters: variables
+    my ($pgood, $pbad, $wgood, $wbad, $lgood, $lbad ) = @$cfilters{map {("${_}good","${_}bad")} qw(p w l)};
+    my ($pgoodh,$pbadh,$wgoodh,$wbadh,$lgoodh,$lbadh) = @$cfilters{map {("${_}goodfile","${_}badfile")} qw(p w l)};
     my ($tok,$w,$p,$l);
 
     my ($filei);
@@ -349,11 +347,9 @@ sub create {
       if ($dofilter) {
         my $ftokens = [];
         foreach $tok (@{$idoc->{tokens}}) {
-          if (ref($tok)) {
-            ##-- normal token
+          if (ref($tok) && $dofilter) {
+            ##-- normal token: apply filters
             ($w,$p,$l) = @$tok{qw(w p l)};
-
-            ##-- apply regex filters
             next if ((defined($pgood)    && $p !~ $pgood) || ($pgoodh && !exists($pgoodh->{$p}))
                      || (defined($pbad)  && $p =~ $pbad)  || ($pbadh  &&  exists($pbadh->{$p}))
                      || (defined($wgood) && $w !~ $wgood) || ($wgoodh && !exists($wgoodh->{$w}))

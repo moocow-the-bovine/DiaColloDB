@@ -38,6 +38,8 @@ use DiaColloDB::Profile;
 use DiaColloDB::Profile::Multi;
 use DiaColloDB::Profile::MultiDiff;
 use DiaColloDB::Corpus;
+use DiaColloDB::Corpus::Compiled;
+use DiaColloDB::Corpus::Filters qw(:defaults);
 use DiaColloDB::Persistent;
 use DiaColloDB::Utils qw(:math :fcntl :json :sort :pack :regex :file :si :run :env :temp);
 #use DiaColloDB::Temp::Vec;
@@ -54,31 +56,6 @@ use strict;
 
 our $VERSION = "0.12.012_01";
 our @ISA = qw(DiaColloDB::Client);
-
-## $PGOOD_DEFAULT
-##  + default positive pos regex for document parsing
-##  + don't use qr// here, since Storable doesn't like pre-compiled Regexps
-our $PGOOD_DEFAULT   = q/^(?:N|TRUNC|VV|ADJ)/; #ITJ|FM|XY
-
-## $PBAD_DEFAULT
-##  + default negative pos regex for document parsing
-our $PBAD_DEFAULT   = undef;
-
-## $WGOOD_DEFAULT
-##  + default positive word regex for document parsing
-our $WGOOD_DEFAULT   = q/[[:alpha:]]/;
-
-## $WBAD_DEFAULT
-##  + default negative word regex for document parsing
-our $WBAD_DEFAULT   = q/[\.]/;
-
-## $LGOOD_DEFAULT
-##  + default positive lemma regex for document parsing
-our $LGOOD_DEFAULT   = undef;
-
-## $LBAD_DEFAULT
-##  + default negative lemma regex for document parsing
-our $LBAD_DEFAULT   = undef;
 
 ## $TDF_MGOOD_DEFAULT
 ##  + default positive meta-field regex for document parsing (tdf only)
@@ -236,14 +213,8 @@ sub new {
 		      dbreak => undef,
 		      tdfopts => {},
 
-		      ##-- filters
-		      pgood => $PGOOD_DEFAULT,
-		      pbad  => $PBAD_DEFAULT,
-		      wgood => $WGOOD_DEFAULT,
-		      wbad  => $WBAD_DEFAULT,
-		      lgood => $LGOOD_DEFAULT,
-		      lbad  => $LBAD_DEFAULT,
-		      (map {("${_}file"=>undef)} qw(pgood pbad wgood wbad lgood lbad)),
+		      ##-- filters (pgood, pbad, etc. now in DiaColloDB::Corpus::Filters)
+                      %{DiaColloDB::Corpus::Filters->new},
 		      #vsmgood => $TDF_MGOOD_DEFAULT,
 		      #vsmbad  => $TDF_MBAD_DEFAULT,
 

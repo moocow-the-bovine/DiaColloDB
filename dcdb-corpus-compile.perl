@@ -28,20 +28,11 @@ our $dotime     = 1; ##-- report timing?
 our $outdir     = undef; ##-- required
 
 our %icorpus    = (dclass=>'DDCTabs', dopts=>{});
-our %filters    =
-  (
-   pgood => $DiaColloDB::PGOOD_DEFAULT,
-   pbad  => $DiaColloDB::PBAD_DEFAULT,
-   wgood => $DiaColloDB::WGOOD_DEFAULT,
-   wbad  => $DiaColloDB::WBAD_DEFAULT,
-   lgood => $DiaColloDB::LGOOD_DEFAULT,
-   lbad  => $DiaColloDB::LBAD_DEFAULT,
-   (map {("${_}file"=>undef)} qw(pgood pbad wgood wbad lgood lbad)),
-  );
+our $filters    = DiaColloDB::Corpus::Filters->new();
 our %ocorpus    = (
                    base    => undef,
                    njobs   => 0,
-                   filters => \%filters,
+                   filters => $filters,
                   );
 
 ##----------------------------------------------------------------------
@@ -66,8 +57,8 @@ GetOptions(##-- general
 	   'by-doc|bydoc|by-file|byfile' => sub { $icorpus{dopts}{eosre}='' },
 
 	   ##-- filter options
-           'f|filter=s%' => \%filters,
-           'F|nofilters|no-filters|all|A|no-prune|noprune|use-all-the-data' => sub { %filters = qw() },
+           'f|filter=s%' => sub { $filters->{$_[1]}=$_[2]; },
+           'F|nofilters|no-filters|all|A|no-prune|noprune|use-all-the-data' => sub { $filters->clear },
 
 	   ##-- I/O and logging
            'a|append!' => \$append,
