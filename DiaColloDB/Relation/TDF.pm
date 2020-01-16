@@ -385,8 +385,12 @@ sub create {
   my $len_date  = packsize($pack_date,0);
   my %tmpargs   = (UNLINK=>!$coldb->{keeptmp});
   my $tdm0file  = $wdmfile || "$vsdir/tdm0.dat";   # txt ~ "$ai0 $ai1 ... $aiN $doci $f"
-  my $tdm0fh    = $wdmfile ? undef : (opencmd("|-:raw", 'sort', (map {"-nk$_"} (1..($NA+1))), "-o", $tdm0file)
-				      or $vs->logconfess("$logas: failed to create pipe to sort for tempfile $tdm0file: $!"));
+  my ($tdm0fh);
+  if (!$wdmfile) {
+    ##-- v0.12.012_03 : use temporary $tdm0file.tmp so that later (sort TMPFILE) can do its parallel thing
+    CORE::open($tdm0fh, ">:raw", "$tdm0file.tmp")
+        or $vs->logconfess("$logas: failed to open temporary file $tdm0file.tmp: $!");
+  }
 
   ##-- create cat-wise piddle files c2date.pdl, c2d.pdl
   my $c2datefile = "$vsdir/c2date.pdl";				##-- c2date ($NC): [$ci]   -> $date
@@ -440,7 +444,7 @@ sub create {
       $mdata->{vals}[$docid] = $mvali;
     }
 
-    ##-- parse document signatures into $tdm0file
+    ##-- parse document signatures into $tdm0file.tmp (unsorted for now)
     #$vs->debug("sigs: id=$docid/$NC ; doc=$doclabel");
     if (defined $vtokfh) {
       $sigj_in = $sigi_in + $doc->{nsigs};
@@ -477,8 +481,16 @@ sub create {
   ##-- cleanup
   $c2dfh->close() or $vs->logconfess("$logas: close failed for tempfile $c2dfile: $!");
   $c2datefh->close() or $vs->logconfess("$logas: close failed for tempfile $c2datefile: $!");
-  !$tdm0fh or $tdm0fh->close() or $vs->logconfess("$logas: close failed for tempfile $tdm0file: $!");
+  !$tdm0fh or $tdm0fh->close() or $vs->logconfess("$logas: close failed for tempfile $tdm0file.tmp: $!");
   tied(@{$_->{vals}})->flush() foreach (values %meta);
+
+  ##-- v0.12.012_03: sort tdm0file.tmp -> tdm0file
+  if (!$wdmfile) {
+    runcmd('sort', (map {"-nk$_"} (1..($NA+1))), "$tdm0file.tmp", "-o", $tdm0file)==0
+      or $vs->logconfess("$logas: failed to sort for $tdm0file.tmp: $!");
+    CORE::unlink("$tdm0file.tmp")
+      or $vs->logconfess("$logas: failed to unlink $tdm0file.tmp: $!");
+  }
 
   ##-- create: filter: filter by term-frequency (default: use coldb term-filtering only)
   $vs->{minFreq} //= 0;
