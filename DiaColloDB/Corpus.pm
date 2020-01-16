@@ -50,6 +50,7 @@ sub new {
 
 ## $bool = $corpus->open(\@ARGV, %opts)
 ##  + %opts:
+##     compiled => $bool, ##-- attempt to load Corpus::Compiled object (default=1)
 ##     glob => $bool,     ##-- whether to glob arguments
 ##     list => $bool,     ##-- whether arguments are file-lists
 sub open {
@@ -58,12 +59,13 @@ sub open {
   @$corpus{keys %opts} = values %opts;
 
   ##-- check for pre-compiled corpora (single-arguments)
-  if (UNIVERSAL::isa($sources,'ARRAY')
-      && @$sources==1
-      && !$opts{list}
-      && !$opts{glob}
-      && -e "$sources->[0].hdr"
-      && -e "$sources->[0].d") {
+  if ($opts{compiled} || (!exists($opts{compiled})
+                          && UNIVERSAL::isa($sources,'ARRAY')
+                          && @$sources==1
+                          && !$opts{list}
+                          #&& !$opts{glob}
+                          && -e "$sources->[0]/header.json"
+                         )) {
     require DiaColloDB::Corpus::Compiled;
     bless($corpus,'DiaColloDB::Corpus::Compiled');
     return $corpus->open($sources,%opts);
@@ -177,12 +179,12 @@ sub icur {
 ##==============================================================================
 ## API: compilation
 
-## $compiled_corpus = $src_corpus->compile($compiled_base, %opts)
-##  + wrapper for DiaColloDB::Corpus::Compiled->create($src_corpus, base=>$compiled_base, %opts)
+## $compiled_corpus = $src_corpus->compile($compiled_dbdir, %opts)
+##  + wrapper for DiaColloDB::Corpus::Compiled->create($src_corpus, %opts, dbdir=>$compiled_dbdir)
 sub compile {
-  my ($corpus,$obase,%opts) = @_;
+  my ($corpus,$odir,%opts) = @_;
   require DiaColloDB::Corpus::Compiled;
-  return DiaColloDB::Corpus::Compiled->create($corpus, %opts, base=>$obase);
+  return DiaColloDB::Corpus::Compiled->create($corpus, %opts, dbdir=>$odir);
 }
 
 

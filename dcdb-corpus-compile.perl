@@ -19,11 +19,13 @@ our ($help,$version);
 
 our %log        = (level=>'TRACE', rootLevel=>'FATAL');
 
-our $globargs   = 0; ##-- glob input corpus @ARGV?
-our $listargs   = 0; ##-- input corpus args are file-lists?
+our $globargs   = 1; ##-- glob input corpus @ARGV?
+our $listargs   = 0; ##-- input args are raw corpus file-lists?
+our $union      = 0; ##-- input args are pre-compiled corpora?
+our $append     = 0; ##-- append to output corpus?
 our $dotime     = 1; ##-- report timing?
 
-our $outbase    = undef; ##-- required
+our $outdir     = undef; ##-- required
 
 our %icorpus    = (dclass=>'DDCTabs', dopts=>{});
 our %filters    =
@@ -55,8 +57,10 @@ GetOptions(##-- general
 	   ##-- input corpus options
 	   'g|glob!' => \$globargs,
 	   'l|list!' => \$listargs,
-	   'c|document-class|dclass|dc=s' => \$icorpus{dclass},
-	   'd|document-option|docoption|dopt|do|dO=s%' => \$icorpus{dopts},
+           'u|union!' => \$union,
+           ##
+	   'C|document-class|dclass|dc=s' => \$icorpus{dclass},
+	   'D|document-option|docoption|dopt|do|dO=s%' => \$icorpus{dopts},
 	   'by-sentence|bysentence' => sub { $icorpus{dopts}{eosre}='^$' },
 	   'by-paragraph|byparagraph' => sub { $icorpus{dopts}{eosre}='^%%\$DDC:BREAK\.p=' },
 	   'by-doc|bydoc|by-file|byfile' => sub { $icorpus{dopts}{eosre}='' },
@@ -66,7 +70,8 @@ GetOptions(##-- general
            'F|nofilters|no-filters|all|A|no-prune|noprune|use-all-the-data' => sub { %filters = qw() },
 
 	   ##-- I/O and logging
-           'o|out|output|output-corpus=s' => \$outbase,
+           'a|append!' => \$append,
+           'o|output-directory|outdir|output|out|od=s' => \$outdir,
 	   't|timing|times|time!' => \$dotime,
            'lf|log-file|logfile=s' => \$log{file},
 	   'll|log-level|level=s' => sub { $log{level} = uc($_[1]); },
@@ -78,7 +83,7 @@ if ($version) {
   exit 0 if ($version);
 }
 pod2usage({-exitval=>0,-verbose=>0}) if ($help);
-die("$prog: ERROR: no output corpus basename specified: use the -output (-o) option!\n") if (!defined($outbase));
+die("$prog: ERROR: no output corpus directory specified: use the -output (-o) option!\n") if (!defined($outdir));
 
 
 ##----------------------------------------------------------------------
@@ -90,23 +95,35 @@ DiaColloDB::Logger->ensureLog(%log);
 my $logger = 'DiaColloDB::Logger';
 my $timer  = DiaColloDB::Timer->start();
 
-##-- open input corpus
-push(@ARGV,'-') if (!@ARGV);
-my $icorpus = DiaColloDB::Corpus->new(%icorpus);
-$icorpus->open(\@ARGV, 'glob'=>$globargs, 'list'=>$listargs)
-  or die("$prog: failed to open input corpus: $!");
+##-- common variables
+$ocorpus{flags} = $append ? '>>' : '>';
+my ($ocorpus);
 
-##-- compile input corpus
-my $ocorpus = $icorpus->compile($outbase, %ocorpus)
-  or die("$prog: failed to compile output corpus '$outbase'.* from input corpus");
+if ($union) {
+  ##-- union: merge pre-compiled corpora
+  $ocorpus = DiaColloDB::Corpus::Compiled->union(\@ARGV, %ocorpus, dbdir=>$outdir)
+    or die("$prog: failed to create union corpus");
+}
+else {
+  ##-- !union: compile raw input corpus data
+
+  ##-- open input corpus
+  push(@ARGV,'-') if (!@ARGV);
+  my $icorpus = DiaColloDB::Corpus->new(%icorpus);
+  $icorpus->open(\@ARGV, 'glob'=>$globargs, 'list'=>$listargs)
+    or die("$prog: failed to open input corpus: $!");
+
+  ##-- compile input corpus
+  $ocorpus = $icorpus->compile($outdir, %ocorpus)
+    or die("$prog: failed to compile output corpus '$outdir'.* from raw input corpus");
+}
 
 ##-- cleanup
-$icorpus->close() if ($icorpus);
 $ocorpus->close() if ($ocorpus);
 
 ##-- timing
 if ($dotime) {
-  (my $du = `du -h "$outbase.hdr" "$outbase.d"`) =~ s/\s.*\z//s;
+  (my $du = `du -h "$outdir" `) =~ s/\s.*\z//s;
   $logger->info("operation completed in ", $timer->timestr, "; compiled corpus size = ${du}B");
 }
 
@@ -134,8 +151,9 @@ dcdb-corpus-compile.perl - pre-compile a DiaColloDB corpus
  Input Corpus Options:
    -l, -[no]list        # INPUT(s) are/aren't file-lists (default=no)
    -g, -[no]glob        # do/don't glob INPUT(s) argument(s) (default=don't)
-   -c, -dclass CLASS    # set corpus document class (default=DDCTabs)
-   -d, -dopt OPT=VAL    # set corpus document option, e.g.
+   -u, -[no]union       # do/don't treat INPUT(S) as pre-compiled corpus to be merged (default=don't)
+   -C, -dclass CLASS    # set corpus document class (default=DDCTabs)
+   -D, -dopt OPT=VAL    # set corpus document option, e.g.
                         #   eosre=EOSRE  # eos regex (default='^$')
                         #   foreign=BOOL # disable D*-specific heuristics
        -bysent          # default split by sentences (default)
@@ -155,7 +173,8 @@ dcdb-corpus-compile.perl - pre-compile a DiaColloDB corpus
    -ll, -log-level LVL  # set log-level (default=TRACE)
    -lo, -log-option K=V # set log option (e.g. logdate, logtime, file, syslog, stderr, ...)
    -t,  -[no]times      # do/don't report operating timing (default=do)
-   -o,  -output OUTBASE # set output corpus basename (required)
+   -a,  -[no]append     # do/don't append to existing output corpus (default=don't)
+   -o,  -output OUTDIR  # set output corpus directory (required)
 
 =cut
 
@@ -197,8 +216,8 @@ to compile a L<DiaColloDB|DiaColloDB> collocation database.
 
 =item INPUT(s)
 
-File(s), glob(s), or file-list(s) to be compiled.
-Interpretation depends on the L<-glob|/-glob> and L<-list|/-list>
+File(s), glob(s), file-list(s), or basename(s) to be compiled.
+Interpretation depends on the L<-glob|/-glob>, L<-list|/-list>, and L<-union|/-union>
 options.
 
 =back
@@ -254,6 +273,15 @@ Default=don't.
 Do/don't expand wildcards in INPUT(s).
 Default=do.
 
+=item -union
+
+=item -nounion
+
+Do/don't treat INPUT(s) as pre-compiled corpora to be merged.
+Note that in C<-union> mode, no corpus content filters are applied
+(they are assumed to have been applied to the INPUT(s) prior to the union call).
+Default=don't
+
 =item -dclass CLASS
 
 Set corpus document class (default=DDCTabs).
@@ -263,7 +291,7 @@ If you are using the default L<DDCTabs|DiaColloDB::Document::DDCTabs> document c
 on your own (non-D*) corpus, you may also want to specify
 L<C<-dopt foreign=1>|/"-dopt OPT=VAL">.
 
-Aliases: -c, -document-class, -dclass, -dc
+Aliases: -C, -document-class, -dclass, -dc
 
 =item -dopt OPT=VAL
 
@@ -272,7 +300,7 @@ L<C<-dopt eosre=EOSRE>|DDCTabs/new> sets the end-of-sentence regex
 for the default L<DDCTabs|DiaColloDB::Document::DDCTabs> document class,
 and L<C<-dopt foreign=1>|DDCTabs/new> disables D*-specific hacks.
 
-Aliases: -d, -document-option, -docoption, -dopt, -do, -dO
+Aliases: -D, -document-option, -docoption, -dopt, -do, -dO
 
 =item -bysent
 
@@ -347,9 +375,11 @@ Do/don't report operating timing (default=do)
 
 Aliases: -t, -timing, -times, -time
 
-=item -output OUTBASE
+=item -output OUTDIR
 
-Output basename for compiled corpus (required).
+Output directory for compiled corpus (required).
+
+Aliases: -o, -output-directory, -outdir, -output, -out, -od
 
 =back
 

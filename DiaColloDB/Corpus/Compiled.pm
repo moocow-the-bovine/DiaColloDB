@@ -27,7 +27,7 @@ our @ISA = qw(DiaColloDB::Persistent DiaColloDB::Corpus);
 ## + %args, object structure:
 ##   (
 ##    ##-- NEW in DiaColloDB::Corpus::Compiled
-##    base    => $basename,  ##-- basename of compiled corpus
+##    dbdir   => $dbdir,     ##-- data directory for compiled corpus
 ##    flags   => $flags,     ##-- open mode flags (fcntl flags or perl-style; default='r')
 ##    filters => \%filters,  ##-- corpus filters ( keys match /^(p|w|l)(good|bad)(_file)?$/ )
 ##    njobs   => $njobs,     ##-- number of parallel worker jobs for create()
@@ -45,7 +45,7 @@ sub new {
   my $that = shift;
   my $corpus  = $that->SUPER::new(
                                   ##-- new
-                                  base   => undef,
+                                  dbdir  => undef,
                                   flags  => 'r',
                                   filters => {},
                                   #temp    => 0,
@@ -57,7 +57,7 @@ sub new {
                                   ##-- strong overrides
                                   dclass => 'DiaColloDB::Document::JSON',
                                  );
-  return $corpus->open() if (defined($corpus->{base}));
+  return $corpus->open() if (defined($corpus->{dbdir}));
   return $corpus;
 }
 
@@ -73,50 +73,106 @@ sub DESTROY {
 ## @keys = $obj->headerKeys()
 ##  + keys to save as header; default implementation returns all keys of all non-references
 sub headerKeys {
-  return (grep {$_ !~ m{^log|^(?:cur|base|njobs|opened|flags|files|list|glob)$}} keys %{$_[0]});
+  return (grep {$_ !~ m{^log|^(?:cur|dbdir|njobs|opened|flags|files|list|glob|compiled|append)$}} keys %{$_[0]});
 }
 
-## $bool = $obj->unlink()
+## @files = $obj->diskFiles()
+##  + returns disk storage files, used by du() and timestamp()
+##  + default implementation returns $obj->{file} or glob("$obj->{base}*")
+sub diskFiles {
+  my $obj = shift;
+  return ($obj->{dbdir}) if ($obj->{dbdir});
+  return qw();
+}
+
+## $bool = $obj->unlink(%opts)
+##  + override %opts:
+##      close => $bool,  ##-- implicitly call $obj->close() ? (default=1)
 ##  + unlinks disk files
 ##  + implcitly calls $obj->close() if available
 sub unlink {
-  my $obj = shift;
-  my $base = $obj->{base};
-  $obj->close();
-  CORE::unlink("$base.hdr") && File::Path::remove_tree("$base.d");
+  my ($obj,%opts) = @_;
+  my $dbdir = $obj->datadir;
+  $obj->close() if (!exists($opts{close}) || $opts{close});
+  return (-e $dbdir ? File::Path::remove_tree($dbdir) : 1);
+}
+
+##----------------------------------------------------------------------
+## Compiled API: disk files etc.
+
+## $dirname = $corpus->datadir()
+## $dirname = $corpus->datadir($dir)
+BEGIN { *dbdir = \&datadir; }
+sub datadir {
+  my $dir = $_[1] // $_[0]{dbdir};
+  $dir =~ s{/$}{} if ($dir);
+  return $dir;
+}
+
+## $bool = $corpus->truncate()
+sub truncate {
+  my $corpus = shift;
+  return undef if (!$corpus->unlink(close=>0));
+  $corpus->{size} = 0;
+  return $corpus;
 }
 
 ##==============================================================================
 ## Corpus API: open/close
 
-## $bool = $corpus->open([$base], %opts);  ##-- compat
-## $bool = $corpus->open($base,   %opts);  ##-- new
+## $bool = $corpus->open([$dbdir], %opts);  ##-- compat
+## $bool = $corpus->open($dbdir,   %opts);  ##-- new
 ##  + opens corpus "$base.*"
-##  + \@ARGV should be a single-element $base, or (base=>$base) must exist or be specified in %opts
+##  + \@ARGV should be a single-element $dbdir, or (dbdir=>$dbdir) must exist or be specified in %opts
 ##  + DiaColloDB::Corpus %opts:
+##     compiled => $bool, ##-- implicit
 ##     glob => $bool,     ##-- (ignored) whether to glob arguments
 ##     list => $bool,     ##-- (ignored) whether arguments are file-lists
 sub open {
   my ($corpus,$argv,%opts) = @_;
+  delete @opts{qw(compiled glob list)};
   $corpus  = $corpus->new() if (!ref($corpus));
   $corpus->close() if ($corpus->opened);
   @$corpus{keys %opts} = values(%opts);
 
-  ##-- sanity check(s): base
-  if (UNIVERSAL::isa($argv,'ARRAY') && @$argv==1) {
-    $corpus->{base} = $argv->[0]; ##-- single-element list
-  } elsif (defined($argv) && !ref($argv)) {
-    $corpus->{base} = $argv;      ##-- simple scalar
+  ##-- sanity check(s): dbdir
+  my $dbdir = $corpus->dbdir;
+  if (UNIVERSAL::isa($argv,'ARRAY')) {
+    if (@$argv==1) {
+      $dbdir = $argv->[0]; ##-- single-element list
+    } else {
+      $corpus->logconfess("open(): can't handle multi-element array");
+    }
+  } elsif (defined($argv)) {
+    $dbdir = $argv;      ##-- simple scalar
   }
-  $corpus->logconfess("open() method requires a single source basename")
-    if (!$corpus->{base});
-  my $base = $corpus->{base};
-  $corpus->vlog($corpus->{logOpen}, "open($base.*)");
+  $corpus->{dbdir} = $corpus->dbdir($dbdir)
+    or $corpus->logconfess("open(): no {dbdir} specified!");
 
-  my $flags = $corpus->{flags} = fcflags($corpus->{flags});
-  return undef if (fcread($flags) && !$corpus->loadHeaderFile);
+  my $flags = $corpus->{flags} = (fcflags($corpus->{flags}) | ($corpus->{append} ? fcflags('>>') : 0));
+  $corpus->vlog($corpus->{logOpen}, "open(", fcperl($flags), "$dbdir)");
 
-  ##-- force document-class; force-delete files
+  ##-- flag-dependent dispatch
+  if (fcwrite($flags) && fctrunc($flags)) {
+    ##-- truncate: remove any stale corpus
+    $corpus->truncate()
+      or $corpus->logconfess("open(): failed to truncate stale corpus $corpus->{dbdir}/: $!");
+  }
+  if (fcwrite($flags) && fccreat($flags)) {
+    ##-- create: data-directory
+    my $datadir = $corpus->datadir;
+    -d $datadir
+      or make_path($datadir)
+      or $corpus->logconfess("open(): could not create data directory '$datadir': $!");
+  }
+  if (fcread($flags) && !fctrunc($flags)) {
+    ##-- read-only, no create
+    $corpus->loadHeaderFile
+      or $corpus->logconfess("open(): failed to load header-file ", $corpus->headerFile);
+  }
+
+  ##-- force options: dclass, files, opened
+  $corpus->{opened} = 1;
   $corpus->{dclass} = 'DiaColloDB::Document::JSON';
   delete $corpus->{files};
 
@@ -128,8 +184,11 @@ sub close {
   my $corpus = shift;
   my $rc = ($corpus->opened && fcwrite($corpus->{flags}) ? $corpus->flush : 1);
   $rc &&= $corpus->SUPER::close();
-  $corpus->{opened} = 0 if ($rc);
-  return $corpus;
+  if ($rc) {
+    $corpus->{opened} = 0;
+    $corpus->{size}   = 0;
+  }
+  return $rc;
 }
 
 ##----------------------------------------------------------------------
@@ -138,7 +197,7 @@ sub close {
 ## $bool = $corpus->opened()
 sub opened {
   my $corpus = shift;
-  return $corpus->{base} && $corpus->{opened};
+  return $corpus->{dbdir} && $corpus->{opened};
 }
 
 ## $bool = $corpus->flush()
@@ -152,9 +211,9 @@ sub flush {
 ## $corpus = $corpus->reopen(%opts)
 sub reopen {
   my $corpus = shift;
-  my $base   = $corpus->{base};
+  my $dbdir  = $corpus->{dbdir};
   return $corpus if (!$corpus->opened);
-  return $corpus->close() && $corpus->open([$base], @_);
+  return $corpus->close() && $corpus->open([$dbdir], @_);
 }
 
 ##==============================================================================
@@ -178,7 +237,7 @@ sub iok {
 sub ifile {
   my $pos = $_[1] // $_[0]{cur};
   return undef if ($pos >= $_[0]{size});
-  return "$_[0]{base}.d/$pos.json";
+  return "$_[0]{dbdir}/$pos.json";
 }
 
 ## $doc_or_undef = $corpus->idocument()
@@ -196,31 +255,29 @@ sub idocument {
 ## Corpus::Compiled API: corpus compilation
 
 ## $ccorpus = CLASS_OR_OBJECT->create($src_corpus, %opts)
-##  + compile $src_corpus to $opts{base}, returns new object
+##  + compile or append $src_corpus to $opts{dbdir}, returns $ccorpus
+##  + honors $opts{flags} for append and truncate
 sub create {
   my ($that,$icorpus,%opts) = @_;
   my $ocorpus = ref($that) ? $that : $that->new();
   my $logas = 'create()';
+  $ocorpus->vlog('info',$logas);
 
-  ##-- open output corpus
-  my $obase = $opts{base}
-    or $ocorpus->logconfess("$logas: no output corpus {base} specified");
-  $ocorpus->close()
-    or $ocorpus->logconfess("$logas: failed to close stale corpus");
+  ##-- save options
+  my $odir = $ocorpus->dbdir($opts{dbdir})
+    or $ocorpus->logconfess("$logas: no output corpus {dbdir} specified");
+
+  my $flags = (fcflags($ocorpus->{flags}) | fcflags($opts{flags})) || fcflags('w');
+  delete $opts{dbdir};
+
+  ##-- (re-)open output corpus
+  if (!$ocorpus->opened || ($ocorpus->{dbdir} ne $odir)) {
+    $ocorpus->open([$odir], %opts, flags=>$flags)
+      or $ocorpus->logconfess("$logas: failed to (re-)open output corpus '$odir' in mode '", fcperl($flags));
+  }
   @$ocorpus{keys %opts} = values %opts;
 
-  ##-- remove output directory
-  my $outdir = "$obase.d";
-  !-d $outdir
-    or remove_tree($outdir)
-    or $ocorpus->logconfess("$logas: could not remove old data directory '$outdir': $!");
-
-  ##-- create output directory
-  -d $outdir
-    or make_path($outdir)
-    or $ocorpus->logconfess("$logas: could not create data directory '$outdir': $!");
-
-  ##-- do any filtering at all?
+  ##-- check whether we're doing any filtering at all
   my $filters  = $ocorpus->{filters};
   my $dofilter = grep {defined($_)} values %$filters;
   if ($dofilter) {
@@ -236,6 +293,9 @@ sub create {
   my $nfiles   = $icorpus->size();
   my $logFileN = $ocorpus->{logFileN} || int($nfiles / 20) || 1;
   my @outkeys  = keys %{DiaColloDB::Document->new};
+
+  my $osize    = $ocorpus->size();
+  my $outdir   = $ocorpus->datadir();
 
   my $filei_shared = 0;
   share( $filei_shared );
@@ -279,7 +339,7 @@ sub create {
 
       my $idoc    = $icorpus->idocument($filei);
       my $infile  = $icorpus->ifile($filei);
-      my $outfile = "$outdir/$filei.json";
+      my $outfile = "$outdir/".($filei+$osize).".json";
 
       #$ocorpus->vlog('info', sprintf("processing files [%3.0f%%]: %s -> %s", 100*($filei-1)/$nfiles, $infile, $outfile))
       $ocorpus->vlog('info', sprintf("%s: processing files [%3.0f%%]: %s", $logas, 100*($filei-1)/$nfiles, $infile))
@@ -338,15 +398,71 @@ sub create {
   }
 
   ##-- adopt list of compiled files
-  $ocorpus->{size} = $nfiles;
+  $ocorpus->{size} += $nfiles;
 
-  ##-- save header
-  $ocorpus->saveHeader()
-    or $ocorpus->logconfess("$logas: failed to save header file ", $ocorpus->headerFile, ": $!");
+  ##-- save header (happens implicitly on DESTROY() via close())
+  #$ocorpus->saveHeader()
+  #  or $ocorpus->logconfess("$logas: failed to save header file ", $ocorpus->headerFile, ": $!");
 
   return $ocorpus;
 }
 
+
+##==============================================================================
+## Corpus::Compiled API: union
+
+## $ccorpus = $ccorpus->union(\@sources, %opts)
+##  + merge source corpora \@sources to $opts{dbdir}, destrictive
+##  + each $src in \@sources is either a Corpus::Compiled object or a simple scalar (dbdir of a Corpus::Compiled object)
+##  + honors $opts{flags} for append and truncate
+##  + no filters are applied
+sub union {
+  my ($that,$sources,%opts) = @_;
+  my $ocorpus = ref($that) ? $that : $that->new();
+  my $logas = 'union()';
+  $ocorpus->vlog('info',$logas);
+
+  ##-- save options before open()
+  my $odir = $ocorpus->dbdir($opts{dbdir})
+    or $ocorpus->logconfess("$logas: no output corpus {dbdir} specified");
+  my $flags = (fcflags($ocorpus->{flags}) | fcflags($opts{flags})) || fcflags('w');
+  delete $opts{dbdir};
+
+  ##-- (re-)open output corpus
+  if (!$ocorpus->opened || ($ocorpus->{dbdir} ne $odir)) {
+    $ocorpus->open([$odir], %opts, flags=>$flags)
+      or $ocorpus->logconfess("$logas: failed to (re-)open output corpus '$odir' in mode '", fcperl($flags));
+  }
+  @$ocorpus{keys %opts} = values %opts;
+
+  ##-- union: guts
+  foreach my $src (UNIVERSAL::isa($sources,'ARRAY') ? @$sources : $sources) {
+    my $idir    = ref($src) ? $src->{dbdir} : $src;
+    $ocorpus->vlog('info',"$logas: processing $idir");
+
+    my $icorpus = ref($src) ? $src : DiaColloDB::Corpus::Compiled->new(dbdir=>$src,logOpen=>undef)
+      or $ocorpus->logconfess("union(): failed to open input corpus '$src': $!");
+
+    my $nifiles = $icorpus->{size};
+    my $osize   = $ocorpus->size;
+
+    my ($filei,$infile,$outfile);
+    for ($filei=0; $filei < $nifiles; ++$filei) {
+      $infile  = $icorpus->ifile($filei);
+      $outfile = "$odir/".($filei+$osize).".json";
+
+      ##-- link
+      link($infile,$outfile)
+        or symlink($infile,$outfile)
+        or $ocorpus->logconfess("union(): failed to create output link $outfile -> $infile: $!");
+    }
+    $ocorpus->{size} += $nifiles;
+  }
+
+  ##-- all done
+  #$ocorpus->vlog('info', "merged ", scalar(@$sources), " input corpora to $odir");
+  return $ocorpus;
+}
 
 
 ##==============================================================================
