@@ -15,12 +15,25 @@ use version;
 use strict;
 
 ##==============================================================================
+## implementation package
+BEGIN {
+  my $HAVE_CXX = eval "use DiaColloDB::Relation::Cofreqs::CXX; 1" if (!defined($HAVE_CXX));
+  warn(__PACKAGE__, "::BEGIN() - error loading implementation package: $@") if ($@);
+  $@ = '';
+
+  eval "use DiaColloDB::Relation::Cofreqs::PP" if (!$HAVE_CXX);
+  die(__PACKAGE__, "::BEGIN() - error loading implementation package: $@") if ($@);
+}
+
+##==============================================================================
 ## Globals & Constants
 
 our @ISA = qw(DiaColloDB::Relation);
 
 ## $PFCLASS : object class for nested PackedFile objects
 our $PFCLASS = 'DiaColloDB::PackedFile::MMap';
+
+
 
 ##==============================================================================
 ## Constructors etc.
@@ -401,44 +414,9 @@ sub create {
     or $cof->open(undef,'rw')
       or $cof->logconfess("create(): failed to open co-frequency database '", ($cof->{base}//'-undef-'), "': $!");
 
-  ##-- token reader fh
-  CORE::open(my $tokfh, "<$tokfile")
-    or $cof->logconfess("create(): open failed for token-file '$tokfile': $!");
-  binmode($tokfh,':raw');
-
-  ##-- sort filter
-  env_push(LC_ALL=>'C');
-  my $tmpfile = "$cof->{base}.dat";
-  my $sortfh = opencmd("| sort -nk1 -nk2 -nk3 | uniq -c - $tmpfile")
-    or $cof->logconfess("create(): open failed for pipe to sort|uniq: $!");
-  binmode($sortfh,':raw');
-
   ##-- stage1: generate pairs
-  my $n = $cof->{dmax} // 1;
-  $cof->vlog('trace', "create(): stage1: generate pairs (dmax=$n)");
-  my (@sent,$i,$j,$wi,$wj);
-  while (!eof($tokfh)) {
-    @sent = qw();
-    while (defined($_=<$tokfh>)) {
-      chomp;
-      last if (/^$/ );
-      push(@sent,$_);
-    }
-    next if (!@sent);
-
-    ##-- get pairs
-    foreach $i (0..$#sent) {
-      $wi = $sent[$i];
-      print $sortfh
-	(map {"$wi\t$sent[$_]\n"}
-	 grep {$_>=0 && $_<=$#sent && $_ != $i}
-	 (($i-$n)..($i+$n))
-	);
-    }
-  }
-  $sortfh->close()
-    or $cof->logconfess("create(): failed to close pipe to sort|uniq: $!");
-  env_pop();
+  $cof->generatePairs($tokfile, $datfile)
+    or $cof->logconfess("create(): failed to generate co-occurrence pairs");
 
   ##-- stage2: load pair-frequencies
   $cof->vlog('trace', "create(): stage2: load pair frequencies (fmin=$cof->{fmin})");
