@@ -14,7 +14,8 @@ require XSLoader;
 XSLoader::load('DiaColloDB::XS', $VERSION);
 
 # Preloaded methods go here.
-#require Algorithm::BinarySearch::Vec::XS::Whatever;
+#require DiaColloDB::XS::Whatever;
+require DiaColloDB::XS::Cofreqs;
 
 # Autoload methods go after =cut, and are processed by the autosplit program.
 
@@ -32,6 +33,7 @@ BEGIN {
   @EXPORT_OK            = @{$EXPORT_TAGS{all}};
   @EXPORT               = @{$EXPORT_TAGS{default}};
 }
+
 
 ##======================================================================
 ## END

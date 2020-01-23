@@ -29,4 +29,4 @@ BOOT:
 
 ##=====================================================================
 ## DiaColloDB::XS::Cofreqs
-INCLUDE: Cofreqs.xs
+INCLUDE: XS/Cofreqs.xs
