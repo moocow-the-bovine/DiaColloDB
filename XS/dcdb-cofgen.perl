@@ -7,6 +7,6 @@ use strict;
 my $ifile = shift || '-';
 my $ofile = shift || '-';
 my $dmax  = shift || 5;
-my $rc = DiaColloDB::XS::Cofreqs::generatePairs($ifile,$ofile,$dmax);
+my $rc = DiaColloDB::XS::CofUtils::generatePairs($ifile,$ofile,$dmax);
 exit $rc;
 

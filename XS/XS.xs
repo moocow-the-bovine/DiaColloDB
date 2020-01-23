@@ -24,9 +24,9 @@ MODULE = DiaColloDB::XS    PACKAGE = DiaColloDB::XS
 ## bootstrap
 ##=====================================================================
 BOOT:
- {
- } 
+//-- nothing to see here, move along
 
 ##=====================================================================
-## DiaColloDB::XS::Cofreqs
-INCLUDE: XS/Cofreqs.xs
+## submodules
+
+INCLUDE: CofUtils.xs

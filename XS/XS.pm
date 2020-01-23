@@ -15,7 +15,7 @@ XSLoader::load('DiaColloDB::XS', $VERSION);
 
 # Preloaded methods go here.
 #require DiaColloDB::XS::Whatever;
-require DiaColloDB::XS::Cofreqs;
+require DiaColloDB::XS::CofUtils;
 
 # Autoload methods go after =cut, and are processed by the autosplit program.
 

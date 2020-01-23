@@ -19,8 +19,12 @@ WriteMakefile
    #INC          => $MY_IFLAGS,      ##-- additional includes
    CCFLAGS      => '-Wall -D_FILE_OFFSET_BITS=64 -fopenmp',
    OPTIMIZE     => '-O2',  ##-- optimization flags
-   LDFLAGS       => "$Config{ldflags} -fopenmp \$(OPTIMIZE)",
-   LDDLFLAGS     => "$Config{lddlflags} -fopenmp",
+   #LDFLAGS       => "$Config{ldflags} -fopenmp \$(OPTIMIZE)",
+   #LDDLFLAGS     => "$Config{lddlflags} -x c++ -fopenmp",
+   #OTHERLDFLAGS  => '-fopenmp $(OPTIMIZE)',
+   dynamic_lib => {
+                   OTHERLDFLAGS=>'-fopenmp $(OPTIMIZE)',
+                  },
 
    ##-- output binaries
    OBJECT => [qw(XS.o)],
@@ -75,19 +79,25 @@ sub MY::depend {
   my $inherited = shift->SUPER::depend(@_);
   $inherited .= <<EOF;
 
+XS.c: XS.xs CofUtils.xs
+
+XS.o: XS.c utils.h cofgen.h
+
 EOF
   return $inherited;
 }
 
 ##---------------------------------------------------------------
-sub MY::c_o {
+sub MY::dynamic_lib {
   package MY;
-  my $inherited = shift->SUPER::c_o(@_);
-  $inherited .= <<EOF;
-
+  my $inherited = shift->SUPER::dynamic_lib(@_);
+  my $new = <<EOF;
+#LD := \$(CC)
+#
 EOF
-  return $inherited;
+  return $new.$inherited;
 }
+
 
 ##---------------------------------------------------------------
 sub MY::special_targets {

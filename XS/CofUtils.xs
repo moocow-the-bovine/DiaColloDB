@@ -1,6 +1,6 @@
 #/*-*- Mode: C++ -*-*/
 
-MODULE = DiaColloDB::XS		PACKAGE = DiaColloDB::XS::Cofreqs
+MODULE = DiaColloDB::XS		PACKAGE = DiaColloDB::XS::CofUtils
 
 ##-- enable perl prototypes
 PROTOTYPES: ENABLE
@@ -8,9 +8,9 @@ PROTOTYPES: ENABLE
 ##--------------------------------------------------------------
 ## cofgen.h
 int
-generatePairs(char *ifile, char *ofile, size_t dmax)
+generatePairsXS(char *ifile, char *ofile, size_t dmax)
  PREINIT:
-  const char *prog = "DiaColloDB::XS::Cofreqs::generatePairs()";
+  const char *prog = "DiaCollODB::XS::CofUtils::generatePairsXS()";
  CODE:
   RETVAL = CofGenerator<>(prog).main(ifile,ofile,dmax);
  OUTPUT:
