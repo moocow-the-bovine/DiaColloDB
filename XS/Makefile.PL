@@ -91,11 +91,7 @@ EOF
 sub MY::dynamic_lib {
   package MY;
   my $inherited = shift->SUPER::dynamic_lib(@_);
-  my $new = <<EOF;
-#LD := \$(CC)
-#
-EOF
-  return $new.$inherited;
+  return $$inherited;
 }
 
 

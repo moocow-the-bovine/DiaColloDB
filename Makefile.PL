@@ -1,5 +1,6 @@
 ##-*- Mode: CPerl -*-
 use ExtUtils::MakeMaker;
+use Config;
 use 5.010; ##-- in case old EU::MM doesn't grok MIN_PERL_VERSION
 
 ##----------------------------------------------------------------------
@@ -11,9 +12,23 @@ my %pdl_deps = (
 	       );
 
 ##-- disable PDL-Utils build if PDL isn't installed
-eval "use PDL;";
-my $HAVE_PDL = defined($PDL::VERSION);
-warn("$0 WARNING: PDL module is missing or broken, TDF relation will be disabled!") if (!$HAVE_PDL);
+my $WANT_PDL = prompt("Use PDL for (term x document) matrix modelling if available?", "y");
+if ($WANT_PDL =~ /^\s*y/i) {
+  eval "use PDL;";
+  $WANT_PDL = defined($PDL::VERSION);
+  warn("$0 WARNING: PDL module is missing or broken, TDF relation will be disabled!") if (!$WANT_PDL);
+} else {
+  $WANT_PDL = 0;
+}
+
+##-- only enable c++ optimizations under linux/gcc
+my $WANT_XS_DEFAULT = ($^O =~ /linux/i && $Config{cc} =~ /gcc/ && $] >= 5.024);
+my $WANT_XS = prompt("Build DiaColloDB::XS utilities (Linux+GCC only)?", ($WANT_XS_DEFAULT ? "y" : "n"));
+if ($WANT_XS =~ /^\s*y/i) {
+  warn("$0 WARNING: this doesn't appear to be linux+gcc - c++ optimizations disabled!") if (!$WANT_XS_DEFAULT);
+} else {
+  $WANT_XS = 0;
+}
 
 ##-- workaround for irritating "/some/symlinked/file is encountered a second time at File/Find.pm line 79." errors
 ##   under ExtUtils::MakeMaker 7.1002 (see also RT bug #99018)
@@ -92,7 +107,10 @@ WriteMakefile
    ##
    #NORECURS  => 1, ##-- don't recurse into local 'MUDL' mirror dir
    ##
-   DIR => [ ($HAVE_PDL ? 'PDL-Utils' : qw()) ],
+   DIR => [
+           ($WANT_PDL ? 'PDL-Utils' : qw()),
+           ($WANT_XS  ? 'XS'        : qw()),
+          ],
   );
 
 ##-----------------------------------------------------------------------
@@ -113,25 +131,33 @@ sub MY::constants {
 }
 
 ##---------------------------------------------------------------
+sub MY::pasthru {
+  package MY;
+  my $css = 'perlpod.css';
+  my $inherited = shift->SUPER::pasthru(@_);
+
+  ##-- suppress passing down gcc/g++ flags, b/c we need both gcc (PDL-Utils) and g++ (XS)
+  $inherited =~ s/\b((?:OPTIMIZE|LD)=\S+\\)/orig$1/g;
+  return $inherited;
+}
+
+##---------------------------------------------------------------
 sub MY::depend {
   package MY;
   my $inherited = shift->SUPER::depend(@_);
   $inherited .= (
-		 ###-- depends -> README.txt, CAB/Version.pm
+		 ###-- depends -> README.txt
 		 "\n\n"
 		 ."readme: README.txt\n"
 		 ."\n"
 		 ."dist: README.txt\n"
 		 ."\n"
 		 ."create_distdir: README.txt\n"
-		 #."distdir_am: README.txt CAB/Version.pm\n"
 		 ."\n"
 		 ."distcheck: README.txt\n"
 		 ."\n"
 		 ."manicheck: README.txt\n"
 		 ."\n"
-		 #."blibdirs: CAB/Version.pm\n"
-		 #."\n"
 		);
   return $inherited;
 }

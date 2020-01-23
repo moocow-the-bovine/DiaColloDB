@@ -16,13 +16,11 @@ our @ISA = qw();
 
 ## $cof_or_undef = $cof->generatePairs( $tokfile )
 ## $cof_or_undef = $cof->generatePairs( $tokfile, $outfile )
-##  + generates co-occurrence pairs for stage1 of Cofreqs compilation
-##  + pure-perl version formerly in Cofreqs::create()
-##  + input: $tokfile : as passed to Cofreqs::create() (= "$dbdir/tokens.dat")
-##  + output: $outfile : co-occurrence frequencies (= "$cof->{base}.dat"), as passed to stage2
+##  + implements DiaColloDB::Relation::Cofreqs::generatePairs()
 sub generatePairs {
   my ($cof,$tokfile,$outfile) = @_;
-  $cof->vlog('trace', "create(): stage1/pp: generate pairs (dmax=$n)");
+  my $dmax = $cof->{dmax} // 1;
+  $cof->vlog('trace', "create(): stage1/pp: generate pairs (dmax=$dmax)");
 
   $outfile = "$cof->{base}.dat" if (!$outfile);
 
@@ -39,7 +37,6 @@ sub generatePairs {
   binmode($tmpfh,':raw');
 
   ##-- stage1: generate pairs
-  my $n = $cof->{dmax} // 1;
   my (@sent,$i,$j,$wi,$wj);
   while (!eof($tokfh)) {
     @sent = qw();
@@ -56,7 +53,7 @@ sub generatePairs {
       print $tmpfh
 	(map {"$wi\t$sent[$_]\n"}
 	 grep {$_>=0 && $_<=$#sent && $_ != $i}
-	 (($i-$n)..($i+$n))
+	 (($i-$dmax)..($i+$dmax))
 	);
     }
   }

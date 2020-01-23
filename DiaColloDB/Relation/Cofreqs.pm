@@ -16,13 +16,15 @@ use strict;
 
 ##==============================================================================
 ## implementation package
+our ($HAVE_XS);
 BEGIN {
-  my $HAVE_CXX = eval "use DiaColloDB::Relation::Cofreqs::CXX; 1" if (!defined($HAVE_CXX));
-  warn(__PACKAGE__, "::BEGIN() - error loading implementation package: $@") if ($@);
+  $HAVE_XS = eval "use DiaColloDB::XS; 1" if (!defined($HAVE_XS));
+  warn(__PACKAGE__, "::BEGIN() - error loading XS implementation package: $@") if ($@); ##-- DEBUG
   $@ = '';
 
-  eval "use DiaColloDB::Relation::Cofreqs::PP" if (!$HAVE_CXX);
-  die(__PACKAGE__, "::BEGIN() - error loading implementation package: $@") if ($@);
+  $HAVE_XS //= '';
+  eval "use DiaColloDB::Relation::Cofreqs::PP; 1" if (!$HAVE_XS);
+  die(__PACKAGE__, "::BEGIN() - error loading PP implementation package: $@") if ($@);
 }
 
 ##==============================================================================
@@ -415,24 +417,40 @@ sub create {
       or $cof->logconfess("create(): failed to open co-frequency database '", ($cof->{base}//'-undef-'), "': $!");
 
   ##-- stage1: generate pairs
+  my $datfile = "$cof->{base}.dat";
   $cof->generatePairs($tokfile, $datfile)
     or $cof->logconfess("create(): failed to generate co-occurrence pairs");
 
   ##-- stage2: load pair-frequencies
   $cof->vlog('trace', "create(): stage2: load pair frequencies (fmin=$cof->{fmin})");
-  $cof->loadTextFile($tmpfile)
-    or $cof->logconfess("create(): failed to load pair frequencies from $tmpfile: $!");
+  $cof->loadTextFile($datfile)
+    or $cof->logconfess("create(): failed to load pair frequencies from $datfile: $!");
 
   ##-- stage3: header
   $cof->saveHeader()
     or $cof->logconfess("create(): failed to save header: $!");
 
   ##-- unlink temp file
-  unlink($tmpfile) if (!$cof->{keeptmp});
+  unlink($datfile) if (!$cof->{keeptmp});
 
   ##-- done
   return $cof;
 }
+
+##--------------------------------------------------------------
+## Relation API: create: guts
+
+## $cof_or_undef = $cof->generatePairs( $tokfile )
+## $cof_or_undef = $cof->generatePairs( $tokfile, $outfile )
+##  + generates co-occurrence pairs for stage1 of Cofreqs compilation
+##  + input: $tokfile : as passed to Cofreqs::create() (= "$dbdir/tokens.dat")
+##  + output: $outfile : co-occurrence frequencies (= "$cof->{base}.dat"), as passed to stage2
+##  + real implementation is loaded from DiaColloDB::XS::CofUtils or DiaColloDB::Relation::Cofreqs::PP
+*generatePairs = sub {
+  my $cof = shift || __PACKAGE__;
+  $cof->logconfess("generatePairs(): no implementation package loaded!");
+} if (!UNIVERSAL::can(__PACKAGE__,'generatePairs'));
+
 
 ##==============================================================================
 ## Relation API: union
