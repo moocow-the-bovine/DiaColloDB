@@ -31,7 +31,7 @@ our %icorpus    = (dclass=>'DDCTabs', dopts=>{});
 our $filters    = DiaColloDB::Corpus::Filters->new();
 our %ocorpus    = (
                    base    => undef,
-                   njobs   => 0,
+                   njobs   => -1,
                    filters => $filters,
                   );
 
@@ -137,7 +137,7 @@ dcdb-corpus-compile.perl - pre-compile a DiaColloDB corpus
  General Options:
    -h, -help            # this help message
    -V, -version         # report version information and exit
-   -j, -jobs NJOBS      # set number of worker threads (default=0: pure serial)
+   -j, -jobs NJOBS      # set number of worker threads
 
  Input Corpus Options:
    -l, -[no]list        # INPUT(s) are/aren't file-lists (default=no)
@@ -235,7 +235,8 @@ Display version information and exit.
 =item -jobs NJOBS
 
 Run C<NJOBS> parallel compilation threads.
-Default (0) runs only a single thread.
+If specified as 0, will run only a single thread.
+The default value (-1) will run as many jobs as there are cores on the (unix/linux) system.
 
 =back
 

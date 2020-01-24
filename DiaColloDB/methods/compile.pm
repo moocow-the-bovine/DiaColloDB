@@ -10,7 +10,7 @@ use strict;
 1;
 
 package DiaColloDB;
-use vars qw($MMCLASS $ECLASS $XECLASS %TDF_OPTS);
+use vars qw($MMCLASS $ECLASS $XECLASS %TDF_OPTS $NJOBS);
 use strict;
 
 ##==============================================================================
@@ -265,7 +265,7 @@ sub create {
   if (!UNIVERSAL::isa($corpus,'DiaColloDB::Corpus::Compiled')) {
     $coldb->vlog('info', "create(): pre-compiling & filtering corpus to $dbdir/corpus.d/");
     $corpus = $corpus->compile("$dbdir/corpus.d",
-                               njobs=>$coldb->{njobs},
+                               njobs=>$NJOBS,
                                filters=>$coldb->corpusFilters,
                                logFileN=>max2(1,$corpus->size/10),
                                temp=>!$coldb->{keeptmp}
@@ -382,7 +382,7 @@ sub create {
     ##-- filter: by attribute frequency: populate $ac->{i2j} and update $ac->{s2i}
     env_push(LC_ALL=>'C');
     my $ai1   = $ac->{i}+1;
-    my $cmdfh = opencmd("sort -nk$ai1 $atokfile | cut -d\" \" -f $ai1 | uniq -c |")
+    my $cmdfh = opencmd("sort -nk$ai1 $atokfile ".sortJobs()." | cut -d\" \" -f $ai1 | uniq -c |")
       or $coldb->logconfess("create(): failed to open pipe from sort for attribute frequency filter (fmin_$ac->{a}=$afmin)");
     my ($f,$i);
     my $nj   = 0;
@@ -427,7 +427,7 @@ sub create {
     my ($f);
     env_push(LC_ALL=>'C');
     my $cmdfh =
-      opencmd("sort ".join(' ', map {"-nk$_"} (1..$na))." $atokfile | cut -d\" \" -f -$na | uniq -c |")
+      opencmd("sort ".join(' ', map {"-nk$_"} (1..$na))." ".sortJobs()." $atokfile | cut -d\" \" -f -$na | uniq -c |")
       or $coldb->logconfess("create(): failed to open pipe from sort for global term filter");
   FILTER_WTUPLES:
     while (defined($_=<$cmdfh>)) {

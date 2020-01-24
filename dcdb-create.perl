@@ -2,7 +2,7 @@
 
 use lib qw(. ./blib/lib ./blib/arch lib lib/blib/lib lib/blib/arch);
 use DiaColloDB;
-use DiaColloDB::Utils qw(:si);
+use DiaColloDB::Utils qw(:math :si :jobs);
 use Getopt::Long qw(:config no_ignore_case);
 use Pod::Usage;
 use File::Basename qw(basename);
@@ -30,7 +30,6 @@ our $lazy_union = 0; ##-- union mode: create a list-client config?
 our $dotime     = 1; ##-- report timing?
 our %corpus     = (dclass=>'DDCTabs', dopts=>{});
 our %coldb    = (
-                 njobs=>0,
 		 pack_id=>'N',
 		 pack_date=>'n',
 		 pack_f=>'N',
@@ -65,6 +64,10 @@ sub wantxs {
   #print STDERR "WANT_XS=$_[1]\n";
   $DiaColloDB::Relation::Cofreqs::WANT_XS = $_[1];
 }
+sub njobs {
+  $DiaColloDB::NJOBS    = nJobs($_[1]);
+  $ENV{OMP_NUM_THREADS} = max2($DiaColloDB::NJOBS,1);
+}
 foreach (@ARGV) { utf8::decode($_) if (!utf8::is_utf8($_)); }
 GetOptions(##-- general
 	   'help|h' => \$help,
@@ -77,7 +80,7 @@ GetOptions(##-- general
 	   'glob|g!' => \$globargs,
 	   'list|l!' => \$listargs,
 	   'union|u|merge!' => \$union,
-           'jobs|njobs|j=i' => \$coldb{njobs},
+           'jobs|njobs|j=i' => \&njobs,
 	   'lazy-union|list-union|lazy|lu!' => \$lazy_union,
 	   'document-class|dclass|dc=s' => \$corpus{dclass},
 	   'document-option|docoption|dopt|do|dO=s%' => \$corpus{dopts},
@@ -213,7 +216,7 @@ dcdb-create.perl - create a DiaColloDB diachronic collocation database
    -byparagraph         ##-- track collocations by paragraph
    -bypage              ##-- track collocations by page
    -bydoc               ##-- track collocations by document
-   -jobs NJOBS          ##-- number of threads for corpus compilation (default=0: serial mode)
+   -jobs NJOBS          ##-- number of threads for corpus compilation (default=-1: all cores)
 
  Indexing Options:
    -attrs ATTRS         ##-- select index attributes (default=l,p)

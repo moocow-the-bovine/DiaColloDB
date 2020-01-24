@@ -48,6 +48,7 @@ our %EXPORT_TAGS =
 	       qw(maxval mintype),
 	      ],
      temp  => [qw($TMPDIR tmpdir tmpfh tmpfile tmparray tmparrayp tmphash)],
+     jobs  => [qw(nCores nJobs sortJobs)],
     );
 our @EXPORT_OK = map {@$_} values(%EXPORT_TAGS);
 $EXPORT_TAGS{all} = [@EXPORT_OK];
@@ -1146,6 +1147,54 @@ sub tmphash {
   tie(my %tmphash, 'DiaColloDB::Temp::Hash', $tmpfile, %opts)
     or $that->logconfess("tmphash(): failed to tie file '$tmpfile' via DiaColloDB::Temp::Hash: $@");
   return \%tmphash;
+}
+
+##==============================================================================
+## Functions: sys: system information
+
+## $ncores = PACKAGE::nCores()
+## $ncores = PACKAGE::nCores($proc_cpuinfo_filename)
+##  + returns the number of CPU cores on the system according to /proc/cpuinfo, or zero if unavailable
+##  + caches result in %NCORES
+our %NCORES = qw();
+sub nCores {
+  my $that  = UNIVERSAL::isa($_[0],__PACKAGE__) ? shift : __PACKAGE__;
+  my $filename = shift || '/proc/cpuinfo';
+  return $NCORES{$filename} if (exists($NCORES{$filename}));
+
+  if (CORE::open(my $fh, "<$filename")) {
+    my $ncores = 0;
+    while (defined($_=<$fh>)) {
+      ++$ncores if (/^processor\s*:/);
+    }
+    close($fh);
+    $NCORES{$filename} = $ncores;
+  }
+  return ($NCORES{$filename} //= 0);
+}
+
+## $njobs = PACKAGE::nJobs($njobs=$DiaColloDB::NJOBS)
+##  + gets non-negative number of jobs for user request $njobs (default=-1)
+##  + returns nCores() if $njobs is negative
+##  + returns int($njobs*nCores()) if  (0 < $njobs < 1)
+##  + otherwise returns $njobs+0
+sub nJobs {
+  my $that  = UNIVERSAL::isa($_[0],__PACKAGE__) ? shift : __PACKAGE__;
+  my $njobs = @_ ? shift : $DiaColloDB::NJOBS;
+  $njobs   //= -1;
+  return $that->nCores() if ($njobs < 0);
+  return $njobs*$that->nCores if (0 < $njobs && $njobs < 1);
+  return $njobs+0;
+}
+
+## $sort_parallel_option = sortJobs($njobs=$DiaColloDB::NJOBS)
+##  + returns --parallel option for 'sort' calls to use $njobs jobs
+sub sortJobs {
+  my $that  = UNIVERSAL::isa($_[0],__PACKAGE__) ? shift : __PACKAGE__;
+  my $njobs = @_ ? shift : $DiaColloDB::NJOBS;
+  my $args = (!$njobs || $njobs < 1 ? '' : ("--parallel=".nJobs($njobs)));
+  return $args ? ($args) : qw() if (wantarray);
+  return $args;
 }
 
 ##==============================================================================

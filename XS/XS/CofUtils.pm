@@ -5,7 +5,7 @@
 
 package DiaColloDB::XS::CofUtils;
 use DiaColloDB::XS;
-use DiaColloDB::Utils qw(:run :env :math :temp :pack :fcntl);
+use DiaColloDB::Utils qw(:run :env :math :temp :pack :fcntl :jobs);
 use Exporter;
 use strict;
 
@@ -45,7 +45,7 @@ sub generatePairsXS {
 
   generatePairsTmpXS($tokfile, $tmpfile, ($cof->{dmax}//1))==0
     or $cof->logconfess("failed to generate co-occurrence frequencies for '$tokfile' to '$tmpfile': $!");
-  runcmd("sort -nk1 -nk2 -nk3 $tmpfile | uniq -c - $outfile")==0
+  runcmd("sort -nk1 -nk2 -nk3 ".sortJobs()." $tmpfile | uniq -c - $outfile")==0
     or $cof->logconfess("failed to collate co-occurrence frequencies from '$tmpfile' to '$outfile': $!");
 
   env_pop();

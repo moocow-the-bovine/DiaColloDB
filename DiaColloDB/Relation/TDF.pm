@@ -7,7 +7,7 @@
 package DiaColloDB::Relation::TDF;
 use DiaColloDB::Relation;
 use DiaColloDB::Relation::TDF::Query;
-use DiaColloDB::Utils qw(:pack :fcntl :file :math :json :list :pdl :temp :env :run);
+use DiaColloDB::Utils qw(:pack :fcntl :file :math :json :list :pdl :temp :env :run :jobs);
 use DiaColloDB::PackedFile;
 #use DiaColloDB::Temp::Hash;
 #use DiaColloDB::Temp::Array;
@@ -486,7 +486,7 @@ sub create {
 
   ##-- v0.12.012_03: sort tdm0file.tmp -> tdm0file
   if (!$wdmfile) {
-    runcmd('sort', (map {"-nk$_"} (1..($NA+1))), "$tdm0file.tmp", "-o", $tdm0file)==0
+    runcmd('sort', (map {"-nk$_"} (1..($NA+1))), sortJobs(), "$tdm0file.tmp", "-o", $tdm0file)==0
       or $vs->logconfess("$logas: failed to sort for $tdm0file.tmp: $!");
     CORE::unlink("$tdm0file.tmp")
       or $vs->logconfess("$logas: failed to unlink $tdm0file.tmp: $!");
@@ -831,7 +831,7 @@ sub union {
   my $NA       = scalar @{$vs->{attrs}};
   my $tdm0file = "$vsdir/utdm0.dat";
   $vs->vlog($logCreate, "union(): extracting attribute-document data to $tdm0file");
-  my $tdm0fh   = opencmd("|-:raw", 'sort', (map {"-nk$_"} (1..($NA+1))), "-o", $tdm0file)
+  my $tdm0fh   = opencmd("|-:raw", 'sort', (map {"-nk$_"} (1..($NA+1))), sortJobs(), "-o", $tdm0file)
     or $vs->logconfess("union(): failed to create pipe to sort for tempfile $tdm0file: $!");
   my $Doff = 0;
   foreach my $dbai (grep {$dbargs->[$_]{tdf}} (0..$#$dbargs)) {

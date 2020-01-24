@@ -31,7 +31,7 @@ use DiaColloDB::Corpus;
 use DiaColloDB::Corpus::Compiled;
 use DiaColloDB::Corpus::Filters qw(:defaults);
 use DiaColloDB::Persistent;
-use DiaColloDB::Utils qw(:math :fcntl :json :sort :pack :regex :file :si :run :env :temp);
+use DiaColloDB::Utils qw(:math :fcntl :json :sort :pack :regex :file :si :run :env :temp :jobs);
 #use DiaColloDB::Temp::Vec;
 use DiaColloDB::Timer;
 use DDC::Any; ##-- for query parsing
@@ -88,7 +88,14 @@ our %TDF_OPTS = (
 		 ##
 		 vtype=>'float',    ##-- store compiled values as 32-bit floats
 		 itype=>'long',     ##-- store compiled indices as 32-bit integers
-	      );
+                );
+
+## $NJOBS
+##  + number of parallel jobs for various operations
+##  + setting this to 0 (zero) will run in pure serial
+##  + on unix/linux, setting this to "-1" will use the total number of cores on your system,
+##    otherwise behaves like 0
+our $NJOBS = -1;
 
 ##==============================================================================
 ## Constructors etc.
@@ -99,7 +106,6 @@ our %TDF_OPTS = (
 ##    ##-- options
 ##    dbdir => $dbdir,    ##-- database directory; REQUIRED
 ##    flags => $fcflags,  ##-- fcntl flags or open()-style mode string; default='r'
-##    njobs => $njobs,    ##-- number of worker threads for create() [default=0: serial mode]
 ##    attrs => \@attrs,   ##-- index attributes (input as space-separated or array; compiled to array); default=undef (==>['l'])
 ##                        ##    + each attribute can be token-attribute qw(w p l) or a document metadata attribute "doc.ATTR"
 ##                        ##    + document "date" attribute is always indexed
@@ -182,7 +188,6 @@ sub new {
 		      ##-- options
 		      dbdir => undef,
 		      flags => 'r',
-                      njobs => 0,
 		      attrs => undef,
 		      #bos => undef,
 		      #eos => undef,

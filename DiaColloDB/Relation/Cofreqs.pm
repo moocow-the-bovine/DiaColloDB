@@ -8,7 +8,7 @@ use DiaColloDB::Compat;
 use DiaColloDB::Relation;
 use DiaColloDB::PackedFile;
 use DiaColloDB::PackedFile::MMap;
-use DiaColloDB::Utils qw(:fcntl :env :run :json :pack :temp);
+use DiaColloDB::Utils qw(:fcntl :env :run :json :pack :temp :sort :jobs);
 use Fcntl qw(:DEFAULT :seek);
 use File::Basename qw(dirname);
 use version;
@@ -522,7 +522,7 @@ sub generatePairsPP {
 
   ##-- sort & count
   env_push(LC_ALL=>'C');
-  runcmd("sort -nk1 -nk2 -nk3 $tmpfile | uniq -c - $outfile")==0
+  runcmd("sort -nk1 -nk2 -nk3 $tmpfile ".sortJobs()." | uniq -c - $outfile")==0
     or $cof->logconfess("create(): open failed for pipe to sort|uniq: $!");
   env_pop();
 
@@ -573,7 +573,7 @@ sub union {
   ##-- union stage2: sort & load tempfile
   env_push(LC_ALL=>'C');
   $cof->vlog('trace', "union(): stage2: load pair frequencies (fmin=$cof->{fmin})");
-  my $sortfh = opencmd("sort -n -k2 -k3 -k4 $tmpfile |")
+  my $sortfh = opencmd("sort -n -k2 -k3 -k4 ".sortJobs()." $tmpfile |")
     or $cof->logconfess("union(): open failed for pipe from sort: $!");
   binmode($sortfh,':raw');
   $cof->loadTextFh($sortfh)

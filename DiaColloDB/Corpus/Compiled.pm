@@ -11,7 +11,7 @@ use threads::shared;
 use DiaColloDB::Corpus;
 use DiaColloDB::Corpus::Filters;
 use DiaColloDB::Logger;
-use DiaColloDB::Utils qw(:fcntl);
+use DiaColloDB::Utils qw(:fcntl :jobs);
 use File::Basename qw(basename dirname);
 use File::Path qw(make_path remove_tree);
 use strict;
@@ -31,9 +31,9 @@ our @ISA = qw(DiaColloDB::Persistent DiaColloDB::Corpus);
 ##    dbdir   => $dbdir,     ##-- data directory for compiled corpus
 ##    flags   => $flags,     ##-- open mode flags (fcntl flags or perl-style; default='r')
 ##    filters => \%filters,  ##-- corpus filters ( DiaColloDB::Corpus::Filters object or HASH-ref )
-##    njobs   => $njobs,     ##-- number of parallel worker jobs for create()
+##    njobs   => $njobs,     ##-- number of parallel worker jobs for create(); default=-1 (= nCores)
 ##    temp    => $bool,      ##-- implicitly unlink() on exit?
-##    logThreads => $level   ##-- log-level for thread stuff (default='debug')
+##    logThreads => $level   ##-- log-level for thread stuff (default='off')
 ##    ##
 ##    ##-- INHERITED from DiaColloDB::Corpus
 ##    #files => \@files,      ##-- source files (OVERRIDE: unused)
@@ -51,8 +51,8 @@ sub new {
                                   #filters => DiaColloDB::Corpus::Filters->new(),
                                   #temp    => 0,
                                   #opened => 0,
-                                  njobs => 0,
-                                  logThreads => 'debug',
+                                  njobs => -1,
+                                  logThreads => 'off',
 
                                   @_, ##-- user arguments
 
@@ -379,11 +379,12 @@ sub create {
     }
 
     $ocorpus->vlog($ocorpus->{logThreads}, "$logas: worker thread #$thrid exiting normally");
+    $ocorpus->{logOpen} = 'off'; ##-- suppress 'close()' messages from worker threads
   };
   ##--/cb_worker
 
   ##-- spawn workers
-  my $njobs = $ocorpus->{njobs} // 0;
+  my $njobs = nJobs($ocorpus->{njobs});
   if ($njobs==0) {
     $ocorpus->info("$logas: running in serial mode");
     $cb_worker->(0);
