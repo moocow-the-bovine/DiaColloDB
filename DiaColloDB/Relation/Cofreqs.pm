@@ -15,19 +15,6 @@ use version;
 use strict;
 
 ##==============================================================================
-## implementation package
-our ($HAVE_XS);
-BEGIN {
-  $HAVE_XS = eval "use DiaColloDB::XS; 1" if (!defined($HAVE_XS));
-  warn(__PACKAGE__, "::BEGIN() - error loading XS implementation package: $@") if ($@); ##-- DEBUG
-  $@ = '';
-
-  $HAVE_XS //= '';
-  eval "use DiaColloDB::Relation::Cofreqs::PP; 1" if (!$HAVE_XS);
-  die(__PACKAGE__, "::BEGIN() - error loading PP implementation package: $@") if ($@);
-}
-
-##==============================================================================
 ## Globals & Constants
 
 our @ISA = qw(DiaColloDB::Relation);
@@ -396,6 +383,23 @@ sub saveTextFh {
 }
 
 ##==============================================================================
+## Relation API: XS
+
+## $bool = $CLASS_OR_OBJECT->haveXS()
+##  + attempts to load and import DiaColloDB::XS::CofUtils
+##  + returns true iff DiaColloDB::XS::CofUtils is loaded and imported
+our ($HAVE_XS);
+sub haveXS {
+  my $that = shift;
+  if (!defined($HAVE_XS)) {
+    $HAVE_XS = eval "use DiaColloDB::XS::CofUtils qw(:cof); 1" if (!defined($HAVE_XS));
+    $@ = '';
+  }
+  return $HAVE_XS;
+}
+
+
+##==============================================================================
 ## Relation API: create
 
 ## $rel = $CLASS_OR_OBJECT->create($coldb,$tokdat_file,%opts)
@@ -446,11 +450,74 @@ sub create {
 ##  + input: $tokfile : as passed to Cofreqs::create() (= "$dbdir/tokens.dat")
 ##  + output: $outfile : co-occurrence frequencies (= "$cof->{base}.dat"), as passed to stage2
 ##  + real implementation is loaded from DiaColloDB::XS::CofUtils or DiaColloDB::Relation::Cofreqs::PP
-*generatePairs = sub {
-  my $cof = shift || __PACKAGE__;
-  $cof->logconfess("generatePairs(): no implementation package loaded!");
-} if (!UNIVERSAL::can(__PACKAGE__,'generatePairs'));
+sub generatePairs {
+  my ($cof,$tokfile,$outfile) = @_;
+  $cof->{dmax} //= 1;
+  $outfile = "$cof->{base}.dat" if (!$outfile);
 
+  ##-- dispatch
+  if ($cof->haveXS()) {
+    return $cof->generatePairsXS($tokfile,$outfile);
+  } else {
+    return $cof->generatePairsPP($tokfile,$outfile);
+  }
+}
+
+## $cof_or_undef = $cof->generatePairsPP( $tokfile, $outfile )
+##  + pure-perl implementation of generatePairs() method
+sub generatePairsPP {
+  my ($cof,$tokfile,$outfile) = @_;
+  my $dmax = $cof->{dmax} // 1;
+  $cof->vlog('trace', "create(): stage1: generate pairs (PP, dmax=$dmax)");
+  $outfile = "$cof->{base}.dat" if (!$outfile);
+
+  ##-- token reader fh
+  CORE::open(my $tokfh, "<$tokfile")
+    or $cof->logconfess("create(): open failed for token-file '$tokfile': $!");
+  binmode($tokfh,':raw');
+
+  ##-- temporary output file
+  my $tmpfile = tmpfile("$outfile.tmp", UNLINK=>(!$cof->{keeptmp}))
+    or $cof->logconfess("failed to create temp-file '$outfile.tmp': $!");
+  open(my $tmpfh, ">$tmpfile")
+    or $cof->logconfess("failed to open temp-file '$outfile.tmp': $!");
+  binmode($tmpfh,':raw');
+
+  ##-- stage1: generate pairs
+  my (@sent,$i,$j,$wi,$wj);
+  while (!eof($tokfh)) {
+    @sent = qw();
+    while (defined($_=<$tokfh>)) {
+      chomp;
+      last if (/^$/ );
+      push(@sent,$_);
+    }
+    next if (!@sent);
+
+    ##-- get pairs
+    foreach $i (0..$#sent) {
+      $wi = $sent[$i];
+      print $tmpfh
+	(map {"$wi\t$sent[$_]\n"}
+	 grep {$_>=0 && $_<=$#sent && $_ != $i}
+	 (($i-$dmax)..($i+$dmax))
+	);
+    }
+  }
+  close($tmpfh)
+    or $cof->logconfess("close failed for temp-file '$tmpfile': $!");
+
+  ##-- sort & count
+  env_push(LC_ALL=>'C');
+  runcmd("sort -nk1 -nk2 -nk3 $tmpfile | uniq -c - $outfile")==0
+    or $cof->logconfess("create(): open failed for pipe to sort|uniq: $!");
+  env_pop();
+
+  ##-- cleanup
+  CORE::unlink($tmpfile) if (!$cof->{keeptmp});
+
+  return $cof;
+}
 
 ##==============================================================================
 ## Relation API: union
