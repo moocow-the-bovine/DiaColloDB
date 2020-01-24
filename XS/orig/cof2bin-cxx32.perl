@@ -44,7 +44,7 @@ $_->close() foreach (@$cof{qw(r1 r2 r3 rN)});
 runcmd("./cof2bin-cxx32", "-fmin", ($cof->{fmin}+0), $infile, $cof->{base})==0
   or $cof->logconfess("failed to compile native co-frequency index data: $!");
 
-##-- bootstrap: get constantswritten by compiler
+##-- bootstrap: get constants written by XS-compiler
 open(my $constfh, "<$outbase.const")
   or $cof->logconfess("failed to open constants file $outbase.const: $!");
 @$cof{qw(ymin N)} = map {($_//0)+0} split(' ', scalar(<$constfh>), 2);

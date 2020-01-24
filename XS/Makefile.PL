@@ -28,9 +28,9 @@ WriteMakefile
 
    ##-- output binaries
    OBJECT => [qw(XS.o)],
-   #EXE_FILES => [qw(dcdb-cofgen)],
+   #EXE_FILES => [qw(dcdb-cof-gen dcdb-cof-compile32 dcdb-cof-compile64)],
    clean => {
-             FILES => '*.o dcdb-cofgen',
+             FILES => '*.o dcdb-cof-gen dcdb-cof-compile dcdb-cof-compile32 dcdb-cof-compile64',
             },
 
    ##-- DEBUG
@@ -81,7 +81,8 @@ sub MY::depend {
 
 XS.c: XS.xs CofUtils.xs
 
-XS.o: XS.c utils.h cofgen.h
+#XS.o: XS.c utils.h cof-gen.h cof-compile.h
+XS.o: XS.c utils.h cof-gen.h
 
 EOF
   return $inherited;
@@ -91,7 +92,7 @@ EOF
 sub MY::dynamic_lib {
   package MY;
   my $inherited = shift->SUPER::dynamic_lib(@_);
-  return $$inherited;
+  return $inherited;
 }
 
 
@@ -99,14 +100,15 @@ sub MY::dynamic_lib {
 sub MY::special_targets {
   package MY;
   my $inherited = shift->SUPER::special_targets(@_);
-  $inherited .= <<EOF;
-
-###-- special targets: local binaries
-.PHONY: dcdb-cofgen
-dcdb-cofgen:
-\t\$(MAKE) -rf cxx.mak dcdb-cofgen
+  $inherited .= "\n\n##-- special targets: local binaries via cxx.mak (for debugging)\n";
+  foreach my $prog (qw(dcdb-cof-gen dcdb-cof-compile32 dcdb-cof-compile64)) {
+    $inherited .= <<EOF;
+.PHONY: $prog
+$prog:
+\t\$(MAKE) -rf cxx.mak $prog
 
 EOF
+  }
   return $inherited;
 }
 

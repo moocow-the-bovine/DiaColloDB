@@ -8,12 +8,17 @@
 #include <stdlib.h>
 #include <stdint.h>
 #include <errno.h>
+#include <inttypes.h> //-- PRIu32 etc.
+
+#include <unistd.h>
+#include <sys/types.h>
 #include <sys/stat.h> //-- struct stat, fstat()
 
 #include <string>
 #include <map>
 #include <vector>
 #include <algorithm>
+#include <typeinfo> //-- for typeid()
 
 using namespace std;
 
@@ -121,7 +126,30 @@ inline uint64_t binval(uint64_t val) { return _bin2native(64)(val); };
 inline float    binval(float    val) { return _bin2native(f)(val); };
 inline double   binval(double   val) { return _bin2native(g)(val); };
 
+/*======================================================================
+ * generic utilities: type names (for error messages)
+ */
+template<typename T> const char* typestr() { return typeid(T).name(); };
+template<> const char* typestr<uint8_t>() { return "uint8_t"; };
+template<> const char* typestr<uint16_t>() { return "uint16_t"; };
+template<> const char* typestr<uint32_t>() { return "uint32_t"; };
+template<> const char* typestr<uint64_t>() { return "uint64_t"; };
+template<> const char* typestr<float>() { return "float"; };
+template<> const char* typestr<double>() { return "double"; };
+
+/*======================================================================
+ * generic utilities: type formats (for scanf)
+ */
+template<typename T>
+const char* scanItemFormat()
+{ throw runtime_error(Format("scanItemFormat(): unknown type `%s'", typestr<T>())); };
+
+//template<> const char* scanItemFormat<uint8_t>() { return SCNu8; };
+template<> const char* scanItemFormat<uint16_t>() { return SCNu16; };
+template<> const char* scanItemFormat<uint32_t>() { return SCNu32; };
+template<> const char* scanItemFormat<uint64_t>() { return SCNu64; };
+template<> const char* scanItemFormat<float>() { return "f"; };
+template<> const char* scanItemFormat<double>() { return "g"; };
+
 
 #endif /* DIACOLLO_XS_UTILS_H */
-
-

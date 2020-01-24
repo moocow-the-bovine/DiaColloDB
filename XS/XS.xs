@@ -12,7 +12,8 @@ extern "C" {
 }
 
 #include "utils.h"
-#include "cofgen.h"
+#include "cof-gen.h"
+#include "cof-compile.h"
 
 /*==============================================================================
  * XS Guts

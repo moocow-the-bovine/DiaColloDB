@@ -1,6 +1,6 @@
 //-*- Mode: C++ -*-
-#ifndef DIACOLLO_COFGEN_H
-#define DIACOLLO_COFGEN_H
+#ifndef DIACOLLO_COF_GEN_H
+#define DIACOLLO_COF_GEN_H
 
 #include "utils.h"
 #include <omp.h>      //-- OpenMP
@@ -310,5 +310,5 @@ struct CofGenerator {
 
 };
 
-#endif /* DIACOLLO_COFGEN_H */
+#endif /* DIACOLLO_COF_GEN_H */
 

@@ -1,9 +1,9 @@
 //-*- Mode: C++ -*-
-#include "cofgen.h"
+#include "cof-gen.h"
 
 //======================================================================
 // globals
-const char *prog = "dcdb-cofgen64";
+const char *prog = "dcdb-cof-gen";
 const char *ifile = "-";
 const char *ofile = "-";
 size_t dmax = DMAX_DEFAULT;
@@ -13,7 +13,7 @@ int main(int argc, const char **argv)
 {
     //-- t2c_init
     prog = *argv;
-    if (argc < 2) {
+    if (argc < 2 || strcmp(argv[1],"-h")==0 || strcmp(argv[1],"--help")==0) {
         fprintf(stderr, "Usage: %s DMAX INFILE [OUTFILE=-]\n", prog);
         exit(1);
     }
