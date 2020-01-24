@@ -9,30 +9,24 @@ PROTOTYPES: ENABLE
 ## cof-gen.h
 int
 generatePairsTmpXS(char *ifile, char *ofile, size_t dmax)
- PREINIT:
-  const char *prog = "DiaCollODB::XS::CofUtils::generatePairsTmpXS()";
  CODE:
-  RETVAL = CofGenerator<>(prog).main(ifile,ofile,dmax);
+  RETVAL = CofGenerator<>("DiaCollODB::XS::CofUtils::generatePairsTmpXS()").main(ifile,ofile,dmax);
  OUTPUT:
   RETVAL
 
 ##--------------------------------------------------------------
 ## cof-compile.h
 int
-loadTextFileXS32(char *ifile, char *ofile, size_t fmin)
- PREINIT:
-  const char *prog = "DiaCollODB::XS::CofUtils::loadTextFileXS32()";
+loadTextFhXS32(FILE *infh, char *infilename, char *outbasename, size_t fmin)
  CODE:
-  RETVAL = CofCompiler32::main(prog, ifile, ofile, fmin);
+  RETVAL = CofCompiler32::main("DiaCollODB::XS::CofUtils::loadTextFileXS32()", infh, infilename, outbasename, fmin);
  OUTPUT:
   RETVAL
 
 int
-loadTextFileXS64(char *ifile, char *ofile, size_t fmin)
- PREINIT:
-  const char *prog = "DiaCollODB::XS::CofUtils::loadTextFileXS64()";
+loadTextFhXS64(FILE *infh, char *infilename, char *outbasename, size_t fmin)
  CODE:
-  RETVAL = CofCompiler64::main(prog, ifile, ofile, fmin);
+  RETVAL = CofCompiler32::main("DiaCollODB::XS::CofUtils::loadTextFileXS64()", infh, infilename, outbasename, fmin);
  OUTPUT:
   RETVAL
 

@@ -163,6 +163,17 @@ struct CofGenerator {
             if (linebuf) { free(linebuf); linebuf=NULL; }
         };
 
+        void SkipSentence()
+        {
+            int c,prev=EOF;
+            while (!feof(fin)) {
+                c = fgetc(fin);
+                if (c==EOF) return;
+                if (prev=='\n' && c=='\n') break;
+                prev = c;
+            }
+        };
+
         inline bool GetToken()
         {
             nread = getline(&linebuf,&linelen,fin);
@@ -197,16 +208,16 @@ struct CofGenerator {
             pbuf.clear();
         };
     
-        void addSentence(size_t dmax=DMAX_DEFAULT)
+        void addSentence()
         {
             if (sent.size() < 2) return;
             typename SentenceT::const_iterator si,sj;
         
             for (si=sent.begin(); si != sent.end(); ++si) {
-                for (sj=max(si-dmax, sent.cbegin()); sj < si; ++sj) {
+                for (sj=max(si-gen->dmax, sent.cbegin()); sj < si; ++sj) {
                     pbuf.push_back( std::make_pair(*si,*sj) );
                 }
-                for (sj=si+1; sj != min(si+dmax+1, sent.cend()); ++sj) {
+                for (sj=si+1; sj != min(si+gen->dmax+1, sent.cend()); ++sj) {
                     pbuf.push_back( std::make_pair(*si,*sj) );
                 }
             }
@@ -237,13 +248,13 @@ struct CofGenerator {
         //-- worker guts: initialize; scan for next EOS
         fseek(worker.fin, off_lo, SEEK_SET);
         if (off_lo != 0) {
-            for ( ; !worker.w.eos(); worker.GetToken() ) ;
+            worker.SkipSentence();
         }
 
         //-- worker guts: main loop
         while ( worker.GetToken() ) {
             if (worker.w.tid==EOS) {
-                worker.addSentence(dmax);
+                worker.addSentence();
                 worker.sent.clear();
                 //MRDEBUG(fprintf(stderr, "%s[%d/%d] : EOS at offset=%ld\n", prog, thrid,nthr, ftell(worker.fin)));
                 if (ftell(worker.fin) >= off_hi) break;
@@ -251,7 +262,7 @@ struct CofGenerator {
                 worker.sent.push_back(worker.w);
             }
         }
-        worker.addSentence(dmax);
+        worker.addSentence();
         worker.sent.clear();
         worker.flushBuffer();
         MRDEBUG(fprintf(stderr, "%s[%d/%d] : worker done at off=%ld\n", prog, thrid,nthr, ftell(worker.fin)));

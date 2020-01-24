@@ -60,7 +60,8 @@ struct CofCompiler {
     // atomic data [OLD]
     string infile;
     string outbase;
-    
+
+    FILE *fin_local; //-- fin==fin_local iff we opened fin ourselves, otherwise fin_local=NULL
     FILE *fin;
     FILE *fr1; // $r1 : [$end2]            @ $i1				: constant (logical index)
     FILE *fr2; // $r2 : [$end3,$d1,$f1]*   @ end2($i1-1)..(end2($i1+1)-1)       : sorted by $d1 for each $i1
@@ -108,20 +109,28 @@ struct CofCompiler {
     
     //----------------------------------------------------------
     CofCompiler(FreqT fmin_=0)
-        : fin(NULL), fr1(NULL), fr2(NULL), fr3(NULL), frN(NULL)
+        : fin_local(NULL), fin(NULL), fr1(NULL), fr2(NULL), fr3(NULL), frN(NULL)
     {
         clear();
         fmin = fmin_;
     };
 
     CofCompiler(const string& infilename, const string& outbasename, FreqT fmin_=0)
-        : fin(NULL), fr1(NULL), fr2(NULL), fr3(NULL), frN(NULL)
+        : fin_local(NULL), fin(NULL), fr1(NULL), fr2(NULL), fr3(NULL), frN(NULL)
     {
         clear();
         fmin = fmin_;
         open(infilename,outbasename);
     };
 
+    CofCompiler(FILE *fin_, const string& infilename, const string& outbasename, FreqT fmin_=0)
+        : fin_local(NULL), fin(NULL), fr1(NULL), fr2(NULL), fr3(NULL), frN(NULL)
+    {
+        clear();
+        fmin = fmin_;
+        open(fin_,infilename,outbasename);
+    };
+    
     ~CofCompiler()
     { close(); };
 
@@ -158,17 +167,15 @@ struct CofCompiler {
     };
 
     //----------------------------------------------------------
-    void open(const string& infilename, const string& outbasename)
+    void open(FILE *fin_, const string& infilename, const string& outbasename)
     {
         infile  = infilename;
         outbase = outbasename;
-
         close();
-        if (infile.empty() || infile=="-") {
-            infile = "-";
-            fin    = stdin;
-        } else if ( !(fin = fopen(infile.c_str(),"r")) ) {
-            throw std::runtime_error(Format("open failed for input file '%s': %s", infile.c_str(), strerror(errno)));
+
+        fin = fin_;
+        if (!fin) {
+            throw std::runtime_error(Format("no input FILE* specified"));
         }
 
         if (outbase.empty())
@@ -180,9 +187,24 @@ struct CofCompiler {
     };
 
     //----------------------------------------------------------
+    void open(const string& infilename, const string& outbasename)
+    {
+        FILE *finp=NULL;
+        if (infile.empty() || infile=="-") {
+            infile  = "-";
+            finp    = stdin;
+        } else if ( !(finp = fopen(infile.c_str(),"r")) ) {
+            throw std::runtime_error(Format("open failed for input file '%s': %s", infile.c_str(), strerror(errno)));
+        }
+        open(finp, infilename, outbasename);
+        if (finp != stdin) fin_local = finp;
+    };
+    
+    //----------------------------------------------------------
     void close()
     {
-        if (fin && fin != stdin) { fclose(fin); fin=NULL; }
+        if (fin_local && fin_local != stdin) { fclose(fin_local); fin_local=NULL; }
+        fin = NULL;
         if (fr1) { fclose(fr1); fr1=NULL; }
         if (fr2) { fclose(fr2); fr2=NULL; }
         if (fr3) { fclose(fr3); fr3=NULL; }
@@ -304,8 +326,23 @@ struct CofCompiler {
         fclose(fconst);
     };
 
-    //----------------------------------------------------------
-    // top-level convenience utility
+    //----------------------------------------------------------s
+    // top-level convenience utility: FILE*
+    static int main(const char *prog, FILE* fin_, const string& infilename, const string& outbasename, FreqT fmin_=0)
+    {
+        try {
+            CofCompiler compiler(fin_, infilename, outbasename, fmin_);
+            compiler.compile();
+            compiler.close();
+        } catch (exception &e) {
+            fprintf(stderr, "%s: EXCEPTION: %s\n", prog, e.what());
+            return -1;
+        }
+        return 0;
+    };
+
+    //----------------------------------------------------------s
+    // top-level convenience utility: filename
     static int main(const char *prog, const string& infilename, const string& outbasename, FreqT fmin_=0)
     {
         try {
@@ -318,6 +355,7 @@ struct CofCompiler {
         }
         return 0;
     };
+
 };
 
 //======================================================================

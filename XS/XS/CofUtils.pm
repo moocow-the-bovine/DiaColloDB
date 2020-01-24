@@ -5,7 +5,7 @@
 
 package DiaColloDB::XS::CofUtils;
 use DiaColloDB::XS;
-use DiaColloDB::Utils qw(:run :env :math :temp);
+use DiaColloDB::Utils qw(:run :env :math :temp :pack :fcntl);
 use Exporter;
 use strict;
 
@@ -20,7 +20,7 @@ our @ISA = qw(Exporter);
 our @EXPORT = qw();
 our %EXPORT_TAGS =
   (
-   'cof' => [qw(generatePairsXS loadTextFileXS)],
+   'cof' => [qw(generatePairsXS loadTextFhXS)],
   );
 our @EXPORT_OK = map {@$_} values(%EXPORT_TAGS);
 $EXPORT_TAGS{all} = [@EXPORT_OK];
@@ -30,16 +30,11 @@ $EXPORT_TAGS{all} = [@EXPORT_OK];
 ## Cofreqs wrappers
 
 ##--------------------------------------------------------------
-## $cof_or_undef = $cof->generatePairs( $tokfile )
-## $cof_or_undef = $cof->generatePairs( $tokfile, $outfile )
-##  + implements DiaColloDB::Relation::Cofreqs::generatePairs()
-##  + input: $tokfile : as passed to Cofreqs::create() (= "$dbdir/tokens.dat")
-##  + output: $outfile : co-occurrence frequencies (= "$cof->{base}.dat"), as passed to stage2
+## $cof_or_undef = $cof->generatePairsXS( $tokfile, $outfile )
+##  + XS implementation of DiaColloDB::Relation::Cofreqs::generatePairs()
 sub generatePairsXS {
   my ($cof,$tokfile,$outfile) = @_;
   my $dmax = $cof->{dmax} // 1;
-  $cof->vlog('trace', "create(): stage1: generate pairs (XS, dmax=$dmax)");
-
   $outfile = "$cof->{base}.dat" if (!$outfile);
   my $tmpfile = tmpfile("$outfile.tmp", UNLINK=>(!$cof->{keeptmp}))
     or $cof->logconfess("failed to create temp-file '$outfile.tmp': $!");
@@ -58,9 +53,71 @@ sub generatePairsXS {
   return $cof;
 }
 
-#*DiaColloDB::Relation::Cofreqs::generatePairs = \&generatePairs;
+##--------------------------------------------------------------
+## utilities for loadTextFh
+
+## $bool = canCompileXS32($cof)
+sub canCompileXS32 {
+  my $cof = shift;
+  return (packeq($cof->{pack_i},'N')
+          && packeq($cof->{pack_f},'N')
+          && packeq($cof->{pack_d},'n'));
+}
+
+## $bool = canCompileXS64($cof)
+sub canCompileXS64 {
+  my $cof = shift;
+  return (packeq($cof->{pack_i},'Q>')
+          && packeq($cof->{pack_f},'Q>')
+          && packeq($cof->{pack_d},'n'));
+}
 
 ##--------------------------------------------------------------
+## $cof = $cof->loadTextFhXS($fh,%opts)
+##  + XS implementation of DiaColloDB::Relation::Cofreqs::loadTextFh()
+sub loadTextFhXS {
+  my ($cof,$infh,%opts) = @_;
+  $cof->logconfess("loadTextFhXS(): cannot load unopened database!") if (!$cof->opened);
+
+  ##-- underlying XS method
+  my ($xsub);
+  if (canCompileXS32($cof)) {
+    $xsub = \&loadTextFhXS32;
+  } elsif (canCompileXS64($cof)) {
+    $xsub = \&loadTextFhXS64;
+  } else {
+    $cof->logwarn("loadTextFhXS(): no XS support for pack signature (int:$cof->{pack_i}, freq:$cof->{pack_f}, date:$cof->{pack_date}) - using pure-perl fallback");
+    return $cof->loadTextFhPP($infh,%opts);
+  }
+
+  ##-- close packed-files
+  $_->close() foreach (@$cof{qw(r1 r2 r3 rN)});
+
+  ##-- guts: populate packed-file data via XS
+  my $fmin = ($cof->{fmin} // 0);
+  $xsub->($infh, "$infh", $cof->{base}, $fmin)==0
+    or $cof->logconfess("loadTextFhXS(): failed to compile input data");
+
+  ##-- bootstrap: get constants written by XS-compiler
+  open(my $constfh, "<$cof->{base}.const")
+    or $cof->logconfess("failed to open constants file $cof->{base}.const: $!");
+  @$cof{qw(ymin N)} = map {($_//0)+0} split(' ', scalar(<$constfh>), 2);
+  close($constfh);
+
+  ##-- bootstrap/compat: re-open relations in append-mode & get sizes
+  foreach (qw(1 2 3 N)) {
+    my $r = $cof->{"r$_"};
+    $r->open(undef, fcflags('rwa'));
+    delete($r->{size});
+    $r->flush();
+    $cof->{"size$_"} = $r->size();
+  }
+
+  ##-- cleanup
+  push(@DiaColloDB::Utils::TMPFILES, "$cof->{base}.const") if (!$cof->{keeptmp});
+
+  return $cof;
+}
 
 1; ##-- be happy
 

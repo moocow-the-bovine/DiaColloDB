@@ -34,7 +34,7 @@ our %EXPORT_TAGS =
      sort  => [qw(csort_to csortuc_to)],
      run   => [qw(crun opencmd runcmd)],
      env   => [qw(env_set env_push env_pop)],
-     pack  => [qw(packsize packsingle packFilterFetch packFilterStore)],
+     pack  => [qw(packsize packsingle packeq packFilterFetch packFilterStore)],
      math  => [qw(isNan isInf isFinite $LOG2 log2 min2 max2 lmax lmin lsum)],
      list  => [qw(luniq sluniq xluniq lcounts)],
      regex => [qw(regex)],
@@ -242,8 +242,10 @@ sub env_set {
   my ($key,$val);
   while (($key,$val)=each(%setenv)) {
     if (!defined($val)) {
+      #$that->trace("ENV_UNSET $key");
       delete($ENV{$key});
     } else {
+      #$that->trace("ENV_SET $key=$val");
       $ENV{$key} = $val;
     }
   }
@@ -353,6 +355,15 @@ sub packsingle {
   shift if (UNIVERSAL::isa($_[0],__PACKAGE__));
   return (packsize($_[0],0)==packsize($_[0],0,0)
 	  && $_[0] !~ m{\*|(?:\[(?:[2-9]|[0-9]{2,})\])|(?:[[:alpha:]].*[[:alpha:]])});
+}
+
+## $bool = PACKAGE::packeq($packfmt1,$packfmt2,$val=0x123456789abcdef)
+##  + returns true iff $packfmt1 and $packfmt2 are equivalent for $val
+sub packeq {
+  shift if (UNIVERSAL::isa($_[0],__PACKAGE__));
+  my ($fmt1,$fmt2,$val) = @_;
+  $val //= 0x12345678;
+  return pack($fmt1,$val) eq pack($fmt2,$val);
 }
 
 ## \&filter_sub = PACKAGE::packFilterStore($pack_template)

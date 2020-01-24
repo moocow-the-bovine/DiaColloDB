@@ -22,7 +22,8 @@ our @ISA = qw(DiaColloDB::Relation);
 ## $PFCLASS : object class for nested PackedFile objects
 our $PFCLASS = 'DiaColloDB::PackedFile::MMap';
 
-
+## $WANT_XS : try to use DiaColloDB::XS::CofUtils methods (default:undef -> if available)?
+our $WANT_XS = undef;
 
 ##==============================================================================
 ## Constructors etc.
@@ -42,6 +43,7 @@ our $PFCLASS = 'DiaColloDB::PackedFile::MMap';
 ##    pack_d   => $pack_d,     ##-- pack-tempalte for dates (default='n')
 ##    keeptmp  => $bool,       ##-- keep temporary files? (default=false)
 ##    logCompat => $level,     ##-- log-level for compatibility warnings (default='warn')
+##    njobs     => $njobs,     ##-- number of parallel jobs for create()
 ##    ##
 ##    ##-- size info (after open() or load())
 ##    size1    => $size1,      ##-- == $r1->size()
@@ -72,6 +74,7 @@ sub new {
 		    N  => 0,
 		    version => $DiaColloDB::VERSION,
 		    logCompat => 'warn',
+                    njobs => 0,
 		    @_
 		   }, (ref($that)||$that));
   $cof->{$_} //= $cof->mmclass($PFCLASS)->new() foreach (qw(r1 r2 r3 rN));
@@ -168,7 +171,7 @@ sub opened {
 ## @keys = $cof->headerKeys()
 ##  + keys to save as header
 sub headerKeys {
-  return grep {!ref($_[0]{$_}) && $_ !~ m{^(?:base|flags|perms|log.*)$}} keys %{$_[0]};
+  return grep {!ref($_[0]{$_}) && $_ !~ m{^(?:base|flags|perms|njobs|log.*)$}} keys %{$_[0]};
 }
 
 ## $bool = $cof->loadHeaderData($hdr)
@@ -215,6 +218,18 @@ sub loadTextFh {
     @$cof{keys %opts} = values %opts;
   }
   $cof->logconfess("loadTextFh(): cannot load unopened database!") if (!$cof->opened);
+
+  return ($cof->wantXS
+          ? $cof->loadTextFhXS($infh,%opts)
+          : $cof->loadTextFhPP($infh,%opts));
+}
+
+
+## $cof = $cof->loadTextFhPP($fh,%opts)
+##   + pure-perl guts for loadTextFh()
+sub loadTextFhPP {
+  my ($cof,$infh,%opts) = @_;
+  $cof->logconfess("loadTextFhPP(): cannot load unopened database!") if (!$cof->opened);
 
   ##-- common variables
   ##   $r1 : [$end2]            @ $i1
@@ -287,7 +302,7 @@ sub loadTextFh {
       next;
     }
     elsif (!defined($d1)) {
-      $cof->logconfess("loadTextFh(): failed to parse input line ", $infh->input_line_number);
+      $cof->logconfess("loadTextFhPP(): failed to parse input line ", $infh->input_line_number);
     }
     $insert->()			      ##-- insert record(s) for ($i1_cur,$d1_cur)
       if ($i1 != $i1_cur || $d1 != $d1_cur);
@@ -298,7 +313,7 @@ sub loadTextFh {
 
   ##-- create $rN by date
   my @dates  = sort {$a<=>$b} keys %fN;
-  my $ymin   = $cof->{ymin} = $dates[0];
+  my $ymin   = $cof->{ymin} = ($dates[0]+0);
   $rN->{fh}->print(pack("($rN->{packas})*", map {$fN{$_}//0} ($ymin..$dates[$#dates])));
 
   ##-- adopt final $N and sizes
@@ -385,17 +400,16 @@ sub saveTextFh {
 ##==============================================================================
 ## Relation API: XS
 
-## $bool = $CLASS_OR_OBJECT->haveXS()
+## $bool = $CLASS_OR_OBJECT->wantXS()
 ##  + attempts to load and import DiaColloDB::XS::CofUtils
 ##  + returns true iff DiaColloDB::XS::CofUtils is loaded and imported
-our ($HAVE_XS);
-sub haveXS {
+sub wantXS {
   my $that = shift;
-  if (!defined($HAVE_XS)) {
-    $HAVE_XS = eval "use DiaColloDB::XS::CofUtils qw(:cof); 1" if (!defined($HAVE_XS));
+  if (!defined($WANT_XS) || ($WANT_XS && !$INC{'DiaColloDB/XS/CofUtils.pm'})) {
+    $WANT_XS = eval "use DiaColloDB::XS::CofUtils qw(:cof); 1";
     $@ = '';
   }
-  return $HAVE_XS;
+  return $WANT_XS;
 }
 
 
@@ -413,6 +427,7 @@ sub create {
 
   ##-- create/clobber
   $cof = $cof->new() if (!ref($cof));
+  $cof->{njobs}     = $coldb->{njobs} if (defined($coldb->{njobs}));
   @$cof{keys %opts} = values %opts;
 
   ##-- ensure openend
@@ -422,11 +437,14 @@ sub create {
 
   ##-- stage1: generate pairs
   my $datfile = "$cof->{base}.dat";
+  my $xspp    = $cof->wantXS() ? 'XS' : 'PP';
+  $cof->{dmax} //= 1;
+  $cof->vlog('trace', "create(): stage1: generate pairs ($xspp, dmax=$cof->{dmax})");
   $cof->generatePairs($tokfile, $datfile)
     or $cof->logconfess("create(): failed to generate co-occurrence pairs");
 
   ##-- stage2: load pair-frequencies
-  $cof->vlog('trace', "create(): stage2: load pair frequencies (fmin=$cof->{fmin})");
+  $cof->vlog('trace', "create(): stage2: load pair frequencies ($xspp, fmin=$cof->{fmin})");
   $cof->loadTextFile($datfile)
     or $cof->logconfess("create(): failed to load pair frequencies from $datfile: $!");
 
@@ -449,18 +467,14 @@ sub create {
 ##  + generates co-occurrence pairs for stage1 of Cofreqs compilation
 ##  + input: $tokfile : as passed to Cofreqs::create() (= "$dbdir/tokens.dat")
 ##  + output: $outfile : co-occurrence frequencies (= "$cof->{base}.dat"), as passed to stage2
-##  + real implementation is loaded from DiaColloDB::XS::CofUtils or DiaColloDB::Relation::Cofreqs::PP
+##  + really just wraps generatePairsXS() or generatePairsPP()
 sub generatePairs {
   my ($cof,$tokfile,$outfile) = @_;
   $cof->{dmax} //= 1;
   $outfile = "$cof->{base}.dat" if (!$outfile);
-
-  ##-- dispatch
-  if ($cof->haveXS()) {
-    return $cof->generatePairsXS($tokfile,$outfile);
-  } else {
-    return $cof->generatePairsPP($tokfile,$outfile);
-  }
+  return ($cof->wantXS
+          ? $cof->generatePairsXS($tokfile,$outfile)
+          : $cof->generatePairsPP($tokfile,$outfile));
 }
 
 ## $cof_or_undef = $cof->generatePairsPP( $tokfile, $outfile )
@@ -468,7 +482,6 @@ sub generatePairs {
 sub generatePairsPP {
   my ($cof,$tokfile,$outfile) = @_;
   my $dmax = $cof->{dmax} // 1;
-  $cof->vlog('trace', "create(): stage1: generate pairs (PP, dmax=$dmax)");
   $outfile = "$cof->{base}.dat" if (!$outfile);
 
   ##-- token reader fh
@@ -543,7 +556,7 @@ sub union {
     or $cof->logconfess("union(): open failed for tempfile $tmpfile: $!");
   binmode($tmpfh,':raw');
 
-  ##-- stage1: extract pairs and N
+  ##-- union stage1: extract pairs and N
   $cof->vlog('trace', "union(): stage1: collect pairs");
   my ($pair,$pcof,$pi2u);
   my $pairi=0;
@@ -557,7 +570,7 @@ sub union {
   $tmpfh->close()
     or $cof->logconfess("union(): failed to close tempfile $tmpfile: $!");
 
-  ##-- stage2: sort & load tempfile
+  ##-- union stage2: sort & load tempfile
   env_push(LC_ALL=>'C');
   $cof->vlog('trace', "union(): stage2: load pair frequencies (fmin=$cof->{fmin})");
   my $sortfh = opencmd("sort -n -k2 -k3 -k4 $tmpfile |")

@@ -61,10 +61,16 @@ sub pack64 {
   $coldb{tdfopts}{itype} = $_[1] ? 'ccs_indx' : 'long';
   $coldb{tdfopts}{vtype} = $_[1] ? 'double' : 'float';
 }
+sub wantxs {
+  #print STDERR "WANT_XS=$_[1]\n";
+  $DiaColloDB::Relation::Cofreqs::WANT_XS = $_[1];
+}
 foreach (@ARGV) { utf8::decode($_) if (!utf8::is_utf8($_)); }
 GetOptions(##-- general
 	   'help|h' => \$help,
 	   'version|V' => \$version,
+           'xs!' => \&wantxs,
+           'pp!' => sub { wantxs($_[0],!$_[1]) },
 	   #'verbose|v=i' => \$verbose,
 
 	   ##-- corpus options
