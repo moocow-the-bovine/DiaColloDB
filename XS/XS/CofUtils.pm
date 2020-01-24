@@ -39,10 +39,9 @@ sub generatePairsXS {
   my $tmpfile = tmpfile("$outfile.tmp", UNLINK=>(!$cof->{keeptmp}))
     or $cof->logconfess("failed to create temp-file '$outfile.tmp': $!");
 
-  my %env = ('LC_ALL'=>'C');
-  $env{OMP_NUM_THREADS} = $cof->{njobs} if (($cof->{njobs}//0) > 0);
-  env_push(%env);
-
+  env_push('LC_ALL'=>'C'
+           #OMP_NUM_THREADS=>nJobs(), ##-- no effect after DiaColloDB/XS.so has been loaded
+          );
   generatePairsTmpXS($tokfile, $tmpfile, ($cof->{dmax}//1))==0
     or $cof->logconfess("failed to generate co-occurrence frequencies for '$tokfile' to '$tmpfile': $!");
   runcmd("sort -nk1 -nk2 -nk3 ".sortJobs()." $tmpfile | uniq -c - $outfile")==0
