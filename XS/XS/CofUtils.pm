@@ -12,7 +12,7 @@ use strict;
 ##======================================================================
 ## Globals & Exports
 BEGIN {
-  #print STDERR "loading ", __PACKAGE__, "\n"; ##-- DEBUG
+  #print STDERR "*** loading ", __PACKAGE__, " ***\n"; ##-- DEBUG
 }
 
 our @ISA = qw(Exporter);
@@ -38,7 +38,7 @@ $EXPORT_TAGS{all} = [@EXPORT_OK];
 sub generatePairsXS {
   my ($cof,$tokfile,$outfile) = @_;
   my $dmax = $cof->{dmax} // 1;
-  $cof->vlog('trace', "create(): stage1/xs: generate pairs (dmax=$dmax)");
+  $cof->vlog('trace', "create(): stage1: generate pairs (XS, dmax=$dmax)");
 
   $outfile = "$cof->{base}.dat" if (!$outfile);
   my $tmpfile = tmpfile("$outfile.tmp", UNLINK=>(!$cof->{keeptmp}))

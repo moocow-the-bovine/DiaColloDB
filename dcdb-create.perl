@@ -8,6 +8,7 @@ use Pod::Usage;
 use File::Basename qw(basename);
 use strict;
 
+#use DiaColloDB::XS; ##-- DEBUG
 #use DiaColloDB::Relation::TDF; ##-- DEBUG
 #use DiaColloDB::Document::TCF; ##-- DEBUG
 

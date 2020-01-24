@@ -26,7 +26,7 @@ use strict;
 ## Globals
 
 our @ISA = qw(Exporter DiaColloDB::Logger);
-our @EXPORT= qw();
+our @EXPORT = qw();
 our %EXPORT_TAGS =
     (
      fcntl => [qw(fcflags fcread fcwrite fctrunc fccreat fcperl fcopen fcgetfl)],

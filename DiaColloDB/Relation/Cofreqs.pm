@@ -8,7 +8,7 @@ use DiaColloDB::Compat;
 use DiaColloDB::Relation;
 use DiaColloDB::PackedFile;
 use DiaColloDB::PackedFile::MMap;
-use DiaColloDB::Utils qw(:fcntl :env :run :json :pack);
+use DiaColloDB::Utils qw(:fcntl :env :run :json :pack :temp);
 use Fcntl qw(:DEFAULT :seek);
 use File::Basename qw(dirname);
 use version;
@@ -479,7 +479,7 @@ sub generatePairsPP {
   ##-- temporary output file
   my $tmpfile = tmpfile("$outfile.tmp", UNLINK=>(!$cof->{keeptmp}))
     or $cof->logconfess("failed to create temp-file '$outfile.tmp': $!");
-  open(my $tmpfh, ">$tmpfile")
+  CORE::open(my $tmpfh, ">$tmpfile")
     or $cof->logconfess("failed to open temp-file '$outfile.tmp': $!");
   binmode($tmpfh,':raw');
 
@@ -504,7 +504,7 @@ sub generatePairsPP {
 	);
     }
   }
-  close($tmpfh)
+  CORE::close($tmpfh)
     or $cof->logconfess("close failed for temp-file '$tmpfile': $!");
 
   ##-- sort & count
