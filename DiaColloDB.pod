@@ -138,36 +138,10 @@ Package version.
 L<DiaColloDB|DiaColloDB> inherits from L<DiaColloDB::Client|DiaColloDB::Client>,
 and provides the low-level basis for the L<DiaColloDB::Client|DiaColloDB::Client> API.
 
-=item Variable: $PGOOD_DEFAULT
+=item Variables: Filters
 
-Default positive pos regex for document parsing --
-don't use C<qr//> here, since L<Storable|Storable> doesn't like pre-compiled Regexps.
-Default = C<q/^(?:N|TRUNC|VV|ADJ)/>.
-
-=item Variable: $PBAD_DEFAULT
-
-Default negative pos regex for document parsing.
-Default = undef (none).
-
-=item Variable: $WGOOD_DEFAULT
-
-Default positive word regex for document parsing.
-Default = C<q/[[:alpha:]]/>
-
-=item Variable: $WBAD_DEFAULT
-
-Default negative word regex for document parsing.
-Default = C<q/[\.]/>.
-
-=item Variable: $LGOOD_DEFAULT
-
-Default positive lemma regex for document parsing.
-Default = undef (none).
-
-=item Variable: $LBAD_DEFAULT
-
-Default negative lemma regex for document parsing.
-Default = undef (none).
+Default corpus-content filter values are
+imported from L<DiaColloDB::Corpus::Filters|DiaColloDB::Corpus::Filters>.
 
 =item Variable: $TDF_MGOOD_DEFAULT
 
@@ -838,7 +812,7 @@ Bryan Jurish E<lt>moocow@cpan.orgE<gt>
 
 =head1 COPYRIGHT AND LICENSE
 
-Copyright (C) 2015-2016 by Bryan Jurish
+Copyright (C) 2015-2020 by Bryan Jurish
 
 This package is free software; you can redistribute it and/or modify
 it under the same terms as Perl itself, either Perl version 5.14.2 or,
@@ -846,6 +820,8 @@ at your option, any later version of Perl 5 you may have available.
 
 =head1 SEE ALSO
 
+L<DiaColloDB::methods::compile(3pm)|DiaColloDB::methods::compile>,
+L<DiaColloDB::methods::export(3pm)|DiaColloDB::methods::export>,
 L<DiaColloDB::Client(3pm)|DiaColloDB::Client>,
 L<DiaColloDB::Corpus(3pm)|DiaColloDB::Corpus>,
 L<DiaColloDB::Document(3pm)|DiaColloDB::Document>,

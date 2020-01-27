@@ -34,6 +34,8 @@ $EXPORT_TAGS{all} = [@EXPORT_OK];
 ##  + XS implementation of DiaColloDB::Relation::Cofreqs::generatePairs()
 sub generatePairsXS {
   my ($cof,$tokfile,$outfile) = @_;
+  $cof->vlog($cof->{logXS}, "generatePairs(): using XS implementation");
+
   my $dmax = $cof->{dmax} // 1;
   $outfile = "$cof->{base}.dat" if (!$outfile);
   my $tmpfile = tmpfile("$outfile.tmp", UNLINK=>(!$cof->{keeptmp}))
@@ -85,9 +87,10 @@ sub loadTextFhXS {
   } elsif (canCompileXS64($cof)) {
     $xsub = \&loadTextFhXS64;
   } else {
-    $cof->logwarn("loadTextFhXS(): no XS support for pack signature (int:$cof->{pack_i}, freq:$cof->{pack_f}, date:$cof->{pack_date}) - using pure-perl fallback");
+    $cof->vlog('logCompat', "loadTextFhXS(): no XS support for pack signature (int:$cof->{pack_i}, freq:$cof->{pack_f}, date:$cof->{pack_date}) - using pure-perl fallback");
     return $cof->loadTextFhPP($infh,%opts);
   }
+  $cof->vlog($cof->{logXS}, "loadTextFH(): using XS implementation");
 
   ##-- close packed-files
   $_->close() foreach (@$cof{qw(r1 r2 r3 rN)});

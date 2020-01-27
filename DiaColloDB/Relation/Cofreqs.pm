@@ -43,7 +43,7 @@ our $WANT_XS = undef;
 ##    pack_d   => $pack_d,     ##-- pack-tempalte for dates (default='n')
 ##    keeptmp  => $bool,       ##-- keep temporary files? (default=false)
 ##    logCompat => $level,     ##-- log-level for compatibility warnings (default='warn')
-##    njobs     => $njobs,     ##-- number of parallel jobs for create()
+##    logXS     => $level,     ##-- log-level for XS usage (default='trace')
 ##    ##
 ##    ##-- size info (after open() or load())
 ##    size1    => $size1,      ##-- == $r1->size()
@@ -74,7 +74,8 @@ sub new {
 		    N  => 0,
 		    version => $DiaColloDB::VERSION,
 		    logCompat => 'warn',
-                    njobs => 0,
+                    logXS => 'trace',
+                    #njobs => 0, ##-- use $DiaColloDB::NJOBS
 		    @_
 		   }, (ref($that)||$that));
   $cof->{$_} //= $cof->mmclass($PFCLASS)->new() foreach (qw(r1 r2 r3 rN));
@@ -230,6 +231,7 @@ sub loadTextFh {
 sub loadTextFhPP {
   my ($cof,$infh,%opts) = @_;
   $cof->logconfess("loadTextFhPP(): cannot load unopened database!") if (!$cof->opened);
+  $cof->vlog($cof->{logXS}, "loadTextFH(): using pure-perl implementation");
 
   ##-- common variables
   ##   $r1 : [$end2]            @ $i1
@@ -427,7 +429,6 @@ sub create {
 
   ##-- create/clobber
   $cof = $cof->new() if (!ref($cof));
-  $cof->{njobs}     = $coldb->{njobs} if (defined($coldb->{njobs}));
   @$cof{keys %opts} = values %opts;
 
   ##-- ensure openend
@@ -483,6 +484,7 @@ sub generatePairsPP {
   my ($cof,$tokfile,$outfile) = @_;
   my $dmax = $cof->{dmax} // 1;
   $outfile = "$cof->{base}.dat" if (!$outfile);
+  $cof->vlog($cof->{logXS}, "generatePairs(): using pure-perl implementation");
 
   ##-- token reader fh
   CORE::open(my $tokfh, "<$tokfile")

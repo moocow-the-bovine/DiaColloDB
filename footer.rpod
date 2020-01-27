@@ -9,7 +9,7 @@ Bryan Jurish E<lt>moocow@cpan.orgE<gt>
 
 =head1 COPYRIGHT AND LICENSE
 
-Copyright (C) 2015-2017 by Bryan Jurish
+Copyright (C) 2015-2020 by Bryan Jurish
 
 This package is free software; you can redistribute it and/or modify
 it under the same terms as Perl itself, either Perl version 5.14.2 or,
@@ -17,6 +17,7 @@ at your option, any later version of Perl 5 you may have available.
 
 =head1 SEE ALSO
 
+L<dcdb-corpus-compile.per(1)|dcdb-corpus-compile.perl>,
 L<dcdb-create.per(1)|dcdb-create.perl>,
 L<dcdb-query.perl(1)|dcdb-query.perl>,
 L<dcdb-info.perl(1)|dcdb-info.perl>,
