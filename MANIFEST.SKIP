@@ -52,6 +52,7 @@ dump.mak
 ^dcdb-update-header\.perl$
 ^kern[0-9]*\b
 ^zeit[0-9]*\b
+^z1k
 ^nhess\b
 ^logo/
 ^tags\.map$
