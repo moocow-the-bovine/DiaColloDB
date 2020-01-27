@@ -121,6 +121,8 @@ GetOptions(##-- general
 	   'timing|times|time|t!' => \$dotime,
 	   'log-level|level|ll=s' => sub { $log{level} = uc($_[1]); },
 	   'log-option|logopt|lo=s' => \%log,
+           'log-file|lf=s' => \$log{file},
+           'nolog-file|nolf' => sub { $log{file}=undef; },
 	   'output|outdir|od|o=s' => \$dbdir,
 	  );
 
