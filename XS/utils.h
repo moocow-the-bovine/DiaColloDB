@@ -19,6 +19,7 @@
 #include <vector>
 #include <algorithm>
 #include <typeinfo> //-- for typeid()
+#include <stdexcept> //-- std::runtime_error etc.
 
 using namespace std;
 
