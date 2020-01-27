@@ -211,13 +211,13 @@ struct CofGenerator {
         void addSentence()
         {
             if (sent.size() < 2) return;
-            typename SentenceT::const_iterator si,sj;
+            typename SentenceT::const_iterator si,sj, s_begin=sent.begin(), s_end=sent.end();
         
-            for (si=sent.begin(); si != sent.end(); ++si) {
-                for (sj=max(si-gen->dmax, static_cast<typename SentenceT::const_iterator>(sent.begin())); sj < si; ++sj) {
+            for (si=s_begin; si != s_end; ++si) {
+                for (sj=max(si-gen->dmax, s_begin); sj < si; ++sj) {
                     pbuf.push_back( std::make_pair(*si,*sj) );
                 }
-                for (sj=si+1; sj != min(si+gen->dmax+1, static_cast<typename SentenceT::const_iterator>(sent.end())); ++sj) {
+                for (sj=si+1; sj != min(si+gen->dmax+1, s_end); ++sj) {
                     pbuf.push_back( std::make_pair(*si,*sj) );
                 }
             }
