@@ -325,22 +325,17 @@ $(INST_PODDIR)$(DFSEP).exists :: Makefile.PL
 }
 
 ##---------------------------------------------------------------
+sub MY::dist_basics {
+  package MY;
+  my $inherited = shift->SUPER::dist_basics(@_);
+  $inherited =~ s{(-MExtUtils::Manifest.*? -e)\s*(\S+)}{$1 'do "./find.hack"; $2'}mg;
+  return $inherited;
+}
+
+##---------------------------------------------------------------
 sub MY::distdir {
   package MY;
   my $inherited = shift->SUPER::distdir(@_);
-  my $local_dont = '
-  ##-- distdir_am: hacked create_distdir for superordinate automake
-DISTDIR_AM ?= $(DISTNAME).am
-distdir_am:
-	$(RM_RF) $(DISTDIR_AM)
-	$(PERLRUN) "-MExtUtils::Manifest=manicopy,maniread" \\
-	  -e "manicopy(maniread(),\'$(DISTDIR_AM)\', \'$(DIST_CP)\');"
-
-PMLIST_AM ?= ../doc/pm_list
-pm_list: $(PMLIST_AM)
-$(PMLIST_AM): $(TO_INST_PM)
-	echo "$(TO_INST_PM)" | xargs -n 1 echo | grep -v "\.in$$" > $@
-';
   return $inherited; #.$local;
 }
 
