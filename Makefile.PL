@@ -22,7 +22,7 @@ if ($WANT_PDL =~ /^\s*y/i) {
 }
 
 ##-- only enable c++ optimizations under linux/gcc
-my $WANT_XS_DEFAULT = ($^O =~ /linux/i && $Config{cc} =~ /gcc/ && $] >= 5.024);
+my $WANT_XS_DEFAULT = ($^O =~ /linux/i && $Config{cc} =~ /gcc/ && $] >= 5.020);
 my $WANT_XS = prompt("Build DiaColloDB::XS utilities (Linux+GCC only)?", ($WANT_XS_DEFAULT ? "y" : "n"));
 if ($WANT_XS =~ /^\s*y/i) {
   warn("$0 WARNING: this doesn't appear to be linux+gcc - c++ optimizations disabled!") if (!$WANT_XS_DEFAULT);
