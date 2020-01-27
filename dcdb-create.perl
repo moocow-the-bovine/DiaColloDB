@@ -202,6 +202,7 @@ dcdb-create.perl - create a DiaColloDB diachronic collocation database
  General Options:
    -help                ##-- this help message
    -version             ##-- report version information and exit
+   -jobs NJOBS          ##-- number of threads for corpus compilation (default=-1: all cores)
 
  Corpus Options:
    -list , -nolist      ##-- INPUT(s) are/aren't file-lists (default=no)
@@ -216,7 +217,6 @@ dcdb-create.perl - create a DiaColloDB diachronic collocation database
    -byparagraph         ##-- track collocations by paragraph
    -bypage              ##-- track collocations by page
    -bydoc               ##-- track collocations by document
-   -jobs NJOBS          ##-- number of threads for corpus compilation (default=-1: all cores)
 
  Indexing Options:
    -attrs ATTRS         ##-- select index attributes (default=l,p)

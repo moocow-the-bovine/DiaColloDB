@@ -1172,10 +1172,10 @@ sub nCores {
     close($fh);
     $NCORES{$filename} = $ncores;
   }
-  elsif (CORE::open(my $fh, "nproc|")) {
-    my $ncores = <$fh>;
+  elsif (CORE::open(my $pipefh, "nproc|")) {
+    my $ncores = <$pipefh>;
     chomp $ncores;
-    close($fh);
+    close($pipefh);
     $NCORES{$filename} = $NCORES{'nproc|'} = $ncores if ($ncores);
   }
   return ($NCORES{$filename} //= 0);
