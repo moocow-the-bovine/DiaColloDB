@@ -43,7 +43,7 @@ GetOptions(##-- general
 	   'h|help' => \$help,
 	   'V|version' => \$version,
 	   #'verbose|v=i' => \$verbose,
-           'j|jobs|njobs|nj=i' => \$ocorpus{njobs},
+           'j|jobs|njobs|nj=f' => \$ocorpus{njobs},
 
 	   ##-- input corpus options
 	   'g|glob!' => \$globargs,
@@ -178,10 +178,16 @@ dcdb-corpus-compile.perl - pre-compile a DiaColloDB corpus
 
 dcdb-corpus-compile.perl pre-compiles a L<DiaColloDB::Corpus::Compiled|DiaColloDB::Corpus::Compiled>
 from a tokenized and annotated input corpus represented as a L<DiaColloDB::Corpus|DiaColloDB::Corpus>
-object, optionally applying content filters such as stopword lists etc.
+object, optionally applying L<content filters|DiaColloDB::Corpus::Filters> such as stopword lists.
 The resulting compiled corpus can be used with L<dcdb-create.perl(1)|dcdb-create.perl>
 to compile a L<DiaColloDB|DiaColloDB> collocation database.
 
+Note that it is B<not> necessary to pre-compile a corpus with this script in order
+to create a fully functional L<DiaColloDB|DiaColloDB> database from a source corpus,
+since the L<DiaColloDB::create()|DiaColloDB::compile/create> method as invoked by
+the L<dcdb-create.perl(1)|dcdb-create.perl> script should
+implicitly create a (temporary) C<DiaColloDB::Corpus::Compiled> object
+as and when required.
 
 =cut
 
@@ -236,7 +242,8 @@ Display version information and exit.
 
 Run C<NJOBS> parallel compilation threads.
 If specified as 0, will run only a single thread.
-The default value (-1) will run as many jobs as there are cores on the (unix/linux) system.
+The default value (-1) will run as many jobs as there are cores on the (unix/linux) system;
+see L<DiaColloDB::Utils/nJobs> for details.
 
 =back
 
@@ -408,6 +415,7 @@ Bryan Jurish E<lt>moocow@cpan.orgE<gt>
 L<DiaColloDB(3pm)|DiaColloDB>,
 L<DiaColloDB::Corpus(3pm)|DiaColloDB::Corpus>,
 L<DiaColloDB::Corpus::Compiled(3pm)|DiaColloDB::Corpus::Compiled>,
+L<DiaColloDB::Corpus::Filters(3pm)|DiaColloDB::Corpus::Filters>,
 L<dcdb-create.perl(1)|dcdb-create.perl>,
 L<perl(1)|perl>.
 

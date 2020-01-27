@@ -52,6 +52,7 @@ DiaColloDB/Document/DDCTabs.pm
 DiaColloDB/Document/DDCTabs.pod
 DiaColloDB/Document/JSON.pm
 DiaColloDB/Document/JSON.pod
+DiaColloDB/Document/Storable.pm
 DiaColloDB/Document/TCF.pm
 DiaColloDB/Document/TCF.pod
 DiaColloDB/Document/TEI.pm
@@ -131,6 +132,22 @@ DiaColloDB/methods/export.pod
 
 PDL-Utils/Makefile.PL
 PDL-Utils/pdlutils.pd
+
+XS/Makefile.PL
+XS/XS.pm
+XS/XS.pod
+XS/XS.bs
+XS/XS.xs
+XS/XS/CofUtils.pm
+XS/XS/CofUtils.pod
+XS/utils.h
+XS/cof-compile.h
+XS/cof-gen.h
+XS/cxx.mak
+XS/dcdb-cof-compile.cc
+XS/dcdb-cof-gen.cc
+XS/CofUtils.xs
+XS/t/00_basic.t
 
 dcdb-corpus-compile.perl
 dcdb-create.perl

@@ -80,7 +80,7 @@ GetOptions(##-- general
 	   'glob|g!' => \$globargs,
 	   'list|l!' => \$listargs,
 	   'union|u|merge!' => \$union,
-           'jobs|njobs|j=i' => \&njobs,
+           'jobs|njobs|j=s' => \&njobs,
 	   'lazy-union|list-union|lazy|lu!' => \$lazy_union,
 	   'document-class|dclass|dc=s' => \$corpus{dclass},
 	   'document-option|docoption|dopt|do|dO=s%' => \$corpus{dopts},
@@ -331,6 +331,15 @@ Display a brief help message and exit.
 
 Display version information and exit.
 
+=item -jobs NJOBS
+
+Run C<NJOBS> parallel compilation threads.
+If specified as 0, will run only a single thread.
+The default value (-1) will run as many jobs as there are cores on the (unix/linux) system;
+see L<DiaColloDB::Utils/nJobs> for details.
+Also sets the environment variable C<OMP_NUM_THREADS> after interpreting
+the C<NJOBS> request.
+
 =back
 
 =cut
@@ -342,13 +351,30 @@ Display version information and exit.
 
 =head2 Corpus Options
 
+Input corpora can be either "raw" corpora using the
+default L<DiaColloDB::Corpus|DiaColloDB::Corpus> class
+or a single "pre-compiled" corpus directory using the
+L<DiaColloDB::Corpus::Compiled|DiaColloDB::Corpus::Compiled> conventions
+as created by the L<dcdb-corpus-compile.perl(1)|dcdb-corpus-compile.perl>
+script.
+
+If a pre-compiled input corpus directory is specified,
+only the L<corpus content filters|DiaColloDB::Corpus::Filters> pre-compiled
+into the corpus itself are used, and the corpus content filter
+options to this script (C<-Opgood=REGEX> etc.) will have no effect.
+For "raw" input corpora, a temporary
+L<DiaColloDB::Corpus::Compiled|DiaColloDB::Corpus::Compiled> object
+will be created and the L<DiaColloDB::Corpus::Filters|DiaColloDB::Corpus::Filters>
+options to this script should be honored.
+
 =over 4
 
 =item -list
 
 =item -nolist
 
-Do/don't treat INPUT(s) as file-lists rather than corpus data files.
+Do/don't treat INPUT(s) as file-lists rather than corpus data files or
+L<pre-compiled corpus directories|DiaColloDB::Corpus::Compiled>.
 Default=don't.
 
 =item -glob
@@ -356,6 +382,7 @@ Default=don't.
 =item -noglob
 
 Do/don't expand wildcards in INPUT(s).
+Has no effect for L<pre-compiled corpus directories|DiaColloDB::Corpus::Compiled>.
 Default=do.
 
 =item -union
@@ -385,7 +412,7 @@ file.  The lazy configuration should behave like a physical DB created with L<-u
 can be created in near constant time,
 requires only a few bytes of disk space,
 and may even process queries faster than a physical DB if you have the
-L<forks|forks> module installed.
+L<threads|threads> module installed.
 
 Default=off.
 
@@ -393,37 +420,45 @@ Aliases: -lazy-union, -list-union, -lu
 
 =item -dclass CLASS
 
-Set corpus document class (default=DDCTabs).
+Set corpus document class (default=DDCTabs) for raw (i.e. not L<pre-compiled|DiaColloDB::Corpus::Compiled>) corpora.
 See L<DiaColloDB::Document/SUBCLASSES> for a list
 of supported input formats.
 If you are using the default L<DDCTabs|DiaColloDB::Document::DDCTabs> document class
 on your own (non-D*) corpus, you may also want to specify
 L<C<-dopt foreign=1>|/"-dopt OPT=VAL">.
 
+Has no effect for L<pre-compiled corpus directory INPUT(s)|DiaColloDB::Corpus::Compiled>.
+
 =item -dopt OPT=VAL
 
-Set corpus document option, e.g.
+Set corpus document option for raw (i.e. not L<pre-compiled|DiaColloDB::Corpus::Compiled>) corpora, e.g.
 L<C<-dopt eosre=EOSRE>|DDCTabs/new> sets the end-of-sentence regex
 for the default L<DDCTabs|DiaColloDB::Document::DDCTabs> document class,
 and L<C<-dopt foreign=1>|DDCTabs/new> disables D*-specific hacks.
+
+Potentially dangerous for L<pre-compiled corpus directory INPUT(s)|DiaColloDB::Corpus::Compiled>.
 
 Aliases: -document-option, -docoption, -dO
 
 =item -bysent
 
 Track collocations by sentence (default).
+Has no effect for L<pre-compiled corpus directory INPUT(s)|DiaColloDB::Corpus::Compiled>.
 
 =item -byparagraph
 
 Track collocations by paragraph.
+Has no effect for L<pre-compiled corpus directory INPUT(s)|DiaColloDB::Corpus::Compiled>.
 
 =item -bypage
 
 Track collocations by page.
+Has no effect for L<pre-compiled corpus directory INPUT(s)|DiaColloDB::Corpus::Compiled>.
 
 =item -bydoc
 
 Track collocations by document.
+Has no effect for L<pre-compiled corpus directory INPUT(s)|DiaColloDB::Corpus::Compiled>.
 
 =back
 
@@ -463,6 +498,11 @@ inspired by Mark Lauersdorf; equivalent to:
  -O=lbad='' -O=lbadfile='' \
  -tO=mgood='' \
  -tO=mbad=''
+
+Corpus L<content filters|DiaColloDB::Corpus::Filters>
+(C<pgood>, C<pgoodfile>, ..., C<lbad>, C<lbadfile>)
+have no effect for
+L<pre-compiled corpus directory INPUT(s)|DiaColloDB::Corpus::Compiled>
 
 Aliases: -all, -noprune, -nofilters, -F
 
@@ -536,10 +576,10 @@ Set arbitrary L<DiaColloDB|DiaColloDB> index option, e.g.
  pack_id=PACKFMT        # pack-format for IDs
  pack_f=PACKFMT         # pack-format for frequencies
  pack_date=PACKFMT      # pack-format for dates
- (p|w|l)good=REGEX      # positive regex for (postags|words|lemmata)
- (p|w|l)bad=REGEX       # negative regex for (postags|words|lemmata)
- (p|w|l)goodfile=REGEX  # positive list-file for (postags|words|lemmata)
- (p|w|l)badfile=REGEX   # negative list-file for (postags|words|lemmata)
+ (p|w|l)good=REGEX      # (raw input only) positive regex for (postags|words|lemmata)
+ (p|w|l)bad=REGEX       # (raw input only) negative regex for (postags|words|lemmata)
+ (p|w|l)goodfile=REGEX  # (raw input only) positive list-file for (postags|words|lemmata)
+ (p|w|l)badfile=REGEX   # (raw input only) negative list-file for (postags|words|lemmata)
  ddcServer=HOST:PORT    # server for ddc relations
  ddcTimeout=SECONDS     # timeout for ddc relations
 
@@ -618,6 +658,7 @@ Bryan Jurish E<lt>moocow@cpan.orgE<gt>
 =head1 SEE ALSO
 
 L<DiaColloDB(3pm)|DiaColloDB>,
+L<dcdb-corpus-compile.perl(1)|dcdb-corpus-compile.perl>,
 L<dcdb-info.perl(1)|dcdb-info.perl>,
 L<dcdb-query.perl(1)|dcdb-query.perl>,
 L<dcdb-export.perl(1)|dcdb-export.perl>,

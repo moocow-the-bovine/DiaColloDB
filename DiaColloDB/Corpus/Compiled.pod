@@ -76,7 +76,7 @@ DiaColloDB::Corpus::Compiled - collocation db, source corpus (pre-compiled)
 DiaColloDB::Corpus::Compiled is an intermediate abstraction layer
 for storing pre-filtered corpus data in a format suitable for fast I/O.
 It should not be necessaray for end users to use this class directly,
-since the L<DiaColloDB::create()|DiaColloDB::compile> method should
+since the L<DiaColloDB::create()|DiaColloDB::compile/create> method should
 implicitly create a (temporary) C<DiaColloDB::Corpus::Compiled> object
 whenever required.
 

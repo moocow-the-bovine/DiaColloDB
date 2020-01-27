@@ -12,7 +12,7 @@ my %pdl_deps = (
 	       );
 
 ##-- disable PDL-Utils build if PDL isn't installed
-my $WANT_PDL = prompt("Use PDL for (term x document) matrix modelling if available?", "n");
+my $WANT_PDL = prompt("Use PDL for (term x document) matrix modelling if available?", "y");
 if ($WANT_PDL =~ /^\s*y/i) {
   eval "use PDL;";
   $WANT_PDL = defined($PDL::VERSION);
@@ -32,8 +32,9 @@ if ($WANT_XS =~ /^\s*y/i) {
 
 ##-- workaround for irritating "/some/symlinked/file is encountered a second time at File/Find.pm line 79." errors
 ##   under ExtUtils::MakeMaker 7.1002 (see also RT bug #99018)
-*ExtUtils::MakeMaker::_check_files = sub {};
-*ExtUtils::MakeMaker::check_manifest = sub {};
+#*ExtUtils::MakeMaker::_check_files = sub {};
+#*ExtUtils::MakeMaker::check_manifest = sub {};
+do "./find.hack" if (-e "./find.hack");
 
 ##----------------------------------------------------------------------
 ## MAIN
