@@ -328,7 +328,7 @@ $(INST_PODDIR)$(DFSEP).exists :: Makefile.PL
 sub MY::dist_basics {
   package MY;
   my $inherited = shift->SUPER::dist_basics(@_);
-  $inherited =~ s{(-MExtUtils::Manifest.*? -e)\s*(\S+)}{$1 'do "./find.hack"; $2'}mg;
+  $inherited =~ s{(-MExtUtils::Manifest=.*? -e)\s*(\S+)}{$1 "do './find.hack'; $2"}mg;
   return $inherited;
 }
 
