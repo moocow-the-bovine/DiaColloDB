@@ -214,10 +214,10 @@ struct CofGenerator {
             typename SentenceT::const_iterator si,sj;
         
             for (si=sent.begin(); si != sent.end(); ++si) {
-                for (sj=max(si-gen->dmax, sent.cbegin()); sj < si; ++sj) {
+                for (sj=max(si-gen->dmax, static_cast<typename SentenceT::const_iterator>(sent.begin())); sj < si; ++sj) {
                     pbuf.push_back( std::make_pair(*si,*sj) );
                 }
-                for (sj=si+1; sj != min(si+gen->dmax+1, sent.cend()); ++sj) {
+                for (sj=si+1; sj != min(si+gen->dmax+1, static_cast<typename SentenceT::const_iterator>(sent.end())); ++sj) {
                     pbuf.push_back( std::make_pair(*si,*sj) );
                 }
             }
