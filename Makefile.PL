@@ -12,7 +12,7 @@ my %pdl_deps = (
 	       );
 
 ##-- disable PDL-Utils build if PDL isn't installed
-my $WANT_PDL = prompt("Use PDL for (term x document) matrix modelling if available?", "y");
+my $WANT_PDL = prompt("Use PDL for (term x document) matrix modelling if available?", "n");
 if ($WANT_PDL =~ /^\s*y/i) {
   eval "use PDL;";
   $WANT_PDL = defined($PDL::VERSION);
@@ -137,7 +137,7 @@ sub MY::pasthru {
   my $inherited = shift->SUPER::pasthru(@_);
 
   ##-- suppress passing down gcc/g++ flags, b/c we need both gcc (PDL-Utils) and g++ (XS)
-  $inherited =~ s/\b((?:OPTIMIZE|LD)=\S+\\)/orig$1/g;
+  $inherited =~ s/\b((?:OPTIMIZE|LD)=\S+\\)/orig_$1/g;
   return $inherited;
 }
 
