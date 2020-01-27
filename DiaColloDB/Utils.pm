@@ -1150,13 +1150,15 @@ sub tmphash {
 }
 
 ##==============================================================================
-## Functions: sys: system information
+## Functions: jobs: parallelization
+
+## %NCORES : cache for nCores() utility ($cpuinfo_file=>$n, ...)
+our %NCORES = qw();
 
 ## $ncores = PACKAGE::nCores()
 ## $ncores = PACKAGE::nCores($proc_cpuinfo_filename)
 ##  + returns the number of CPU cores on the system according to /proc/cpuinfo, or zero if unavailable
 ##  + caches result in %NCORES
-our %NCORES = qw();
 sub nCores {
   my $that  = UNIVERSAL::isa($_[0],__PACKAGE__) ? shift : __PACKAGE__;
   my $filename = shift || '/proc/cpuinfo';
@@ -1169,6 +1171,12 @@ sub nCores {
     }
     close($fh);
     $NCORES{$filename} = $ncores;
+  }
+  elsif (CORE::open(my $fh, "nproc|")) {
+    my $ncores = <$fh>;
+    chomp $ncores;
+    close($fh);
+    $NCORES{$filename} = $NCORES{'nproc|'} = $ncores if ($ncores);
   }
   return ($NCORES{$filename} //= 0);
 }
@@ -1184,7 +1192,7 @@ sub nJobs {
   $njobs   //= -1;
   return $that->nCores() if ($njobs < 0);
   return $njobs*$that->nCores if (0 < $njobs && $njobs < 1);
-  return $njobs+0;
+  return int($njobs+0);
 }
 
 ## $sort_parallel_option = sortJobs($njobs=$DiaColloDB::NJOBS)

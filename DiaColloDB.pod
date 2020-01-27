@@ -37,27 +37,16 @@ DiaColloDB - diachronic collocation database, top-level
  @files = $obj->diskFiles();
  
  ##========================================================================
- ## create
+ ## I/O: header
  
- $multimap = $coldb->create_multimapmap($base, \%ts2i, $packfmt, $label="multimap");
- \@attrs = $coldb->attrs();
- $atitle = $CLASS_OR_OBJECT->attrTitle($attr_or_alias);
- $acbexpr = $CLASS_OR_OBJECT->attrCountBy($attr_or_alias,$matchid=0);
- $aquery_or_filter_or_undef = $CLASS_OR_OBJECT->attrQuery($attr_or_alias,$cquery);
- \@attrdata = $coldb->attrData();
- $bool = $coldb->hasAttr($attr);
+ @keys = $coldb->headerKeys();
+ $bool = $coldb->loadHeaderData();
  
  ##========================================================================
  ## create/compile (see DiaColloDB::methods::compile)
  
  $bool  = $coldb->create($corpus,%opts);
  $coldb = $CLASS_OR_OBJECT->union(\@coldbs_or_dbdirs,%opts);
- 
- ##========================================================================
- ## I/O: header
- 
- @keys = $coldb->headerKeys();
- $bool = $coldb->loadHeaderData();
  
  ##========================================================================
  ## Export/Import (see DiaColloDB::methods::export)
@@ -115,7 +104,7 @@ DiaColloDB - diachronic collocation database, top-level
 =head1 DESCRIPTION
 
 The DiaColloDB package is the top-level module
-for the DiaColloDB diachronic collocation database package.
+for the DiaColloDB diachronic collocation database distribution.
 As a Perl class, a DiaColloDB object can be used to create
 or query a local native database instance.
 
@@ -138,7 +127,7 @@ Package version.
 L<DiaColloDB|DiaColloDB> inherits from L<DiaColloDB::Client|DiaColloDB::Client>,
 and provides the low-level basis for the L<DiaColloDB::Client|DiaColloDB::Client> API.
 
-=item Variables: Filters
+=item Variables: Corpus Filters
 
 Default corpus-content filter values are
 imported from L<DiaColloDB::Corpus::Filters|DiaColloDB::Corpus::Filters>.
@@ -183,6 +172,16 @@ Default:
  ##
  vtype=>'float',    ##-- store compiled values as 32-bit floats
  itype=>'long',     ##-- store compiled indices as 32-bit integers
+
+=item Variable: $NJOBS
+
+Number of parallel jobs (threads) for various compile-time operations.
+Setting this variable to C<0> (zero) should cause all DiaColloDB operations
+to run in pure serial.
+On UNIX/Linux systems with a parseable F</proc/cpuinfo> pseudo-file,
+setting this to C<-1> will run as many threads as there are CPU cores
+on the system; on other systems, negative values behave like C<0>.
+Default: -1.
 
 =back
 
@@ -230,7 +229,7 @@ Default:
     ddcServer => $server, ##-- server for ddc relation ("$host:$port")
     ddcTimeout => $secs,  ##-- timeout for ddc relation
     ##
-    ##-- source filtering (for create())
+    ##-- source filtering (for create() - see DiaColloDB::Corpus::Filters)
     pgood  => $regex,     ##-- positive filter regex for part-of-speech tags
     pbad   => $regex,     ##-- negative filter regex for part-of-speech tags
     wgood  => $regex,     ##-- positive filter regex for word text
@@ -332,16 +331,6 @@ Returns list of dist files for $coldb.
 =cut
 
 ##----------------------------------------------------------------
-## DESCRIPTION: DiaColloDB: create
-=pod
-
-=head2 create/compile
-
-See L<DiaColloDB::methods::compile>.
-
-=cut
-
-##----------------------------------------------------------------
 ## DESCRIPTION: DiaColloDB: I/O: header
 =pod
 
@@ -365,6 +354,16 @@ keys to save as header
 loads header data.
 
 =back
+
+=cut
+
+##----------------------------------------------------------------
+## DESCRIPTION: DiaColloDB: create
+=pod
+
+=head2 create/compile
+
+See L<DiaColloDB::methods::compile>.
 
 =cut
 

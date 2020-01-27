@@ -26,7 +26,7 @@ DiaColloDB::methods::compile - compile-time methods for DiaColloDB
  ##========================================================================
  ## create: utils
  
- $multimap = $coldb->create_multimapmap($base, \%ts2i, $packfmt, $label="multimap");
+ $multimap = $coldb->create_multimap($base, \%ts2i, $packfmt, $label="multimap");
  \@attrs = $coldb->attrs();
  $atitle = $CLASS_OR_OBJECT->attrTitle($attr_or_alias);
  $acbexpr = $CLASS_OR_OBJECT->attrCountBy($attr_or_alias,$matchid=0);
@@ -145,11 +145,34 @@ Returns true iff $coldb natively supports the attribute (or alias) $attr.
 
 =item create
 
- $bool = $coldb->create($corpus,%opts);
+ $coldb = $CLASS->create($corpus,%opts);
+ $coldb = $coldb->create($corpus,%opts);
 
-%opts:
+Create and return a new L<DiaColloDB|DiaColloDB> database object $coldb from a
+L<DiaColloDB::Corpus|DiaColloDB::Corpus> object C<$corpus>.
+%opts overrides %$coldb properties.
 
- $key => $val,  ##-- clobbers $coldb->{$key}
+If C<$corpus> is a pre-compiled and pre-filtered
+L<DiaColloDB::Corpus::Compiled|DiaColloDB::Corpus::Compiled> object,
+only the L<corpus content filters|DiaColloDB::Corpus::Filters> pre-compiled
+into C<$corpus> itself are used.  Otherwise, a temporary
+L<DiaColloDB::Corpus::Compiled|DiaColloDB::Corpus::Compiled> object
+will be created for C<$corpus>, and the L<DiaColloDB::Corpus::Filters|DiaColloDB::Corpus::Filters>
+keys of C<$coldb> itself will be used as content filters.
+
+Honors the $coldb properties C<index_tdf>, C<index_xf>, and C<index_cof>
+to determine which underlying C<DiaColloDB::Relation|DiaColloDB::Relation>s are
+included in the output database.
+
+Applies frequency-cutoffs C<tfmin>, C<cfmin>, etc. after parsing (filtered)
+corpus data.
+
+Honors C<$DiaColloDB::NJOBS|DiaColloDB::Utils::nJobs> for partial parallelization
+of selected sub-tasks.
+
+Currently does B<not> support appending new data to an existing
+DiaColloDB index.
+
 
 =back
 
@@ -165,10 +188,16 @@ Returns true iff $coldb natively supports the attribute (or alias) $attr.
 
 =item union
 
- $coldb = $CLASS_OR_OBJECT->union(\@coldbs_or_dbdirs,%opts);
+ $coldb = $CLASS->union(\@coldbs_or_dbdirs,%opts);
+ $coldb = $coldb->union(\@coldbs_or_dbdirs,%opts);
 
-Populates $coldb as union over @coldbs_or_dbdirs.
-Clobbers argument dbs {_union_${a}i2u}, {_union_xi2u}, {_union_argi}
+Populates $coldb as a union over @coldbs_or_dbdirs.
+Clobbers argument DB keys {_union_${a}i2u}, {_union_xi2u}, {_union_argi}
+for administrative purposes.
+
+Often faster than using the L<create()|/create> method on the original
+source corpora, since corpus document file(s) do not need to be re-parsed
+for C<union()> operations.
 
 =back
 
