@@ -114,6 +114,7 @@ sub datadir {
 }
 
 ## $bool = $corpus->truncate()
+##  + removes all disk data (including header) and resets $corpus->{size}=0
 sub truncate {
   my $corpus = shift;
   return undef if (!$corpus->unlink(close=>0));
@@ -208,12 +209,14 @@ sub close {
 ## Compiled API: open/close
 
 ## $bool = $corpus->opened()
+## + Returns true iff $corpus is currently opened.
 sub opened {
   my $corpus = shift;
   return $corpus->{dbdir} && $corpus->{opened};
 }
 
 ## $bool = $corpus->flush()
+## + flush pending data (header) to disk
 sub flush {
   my $corpus = shift;
   return undef if (!$corpus->opened || !fcwrite($corpus->{flags}));
@@ -222,6 +225,7 @@ sub flush {
 }
 
 ## $corpus = $corpus->reopen(%opts)
+## + close and re-open corpus (e.g. with different flags)
 sub reopen {
   my $corpus = shift;
   my $dbdir  = $corpus->{dbdir};
@@ -268,7 +272,7 @@ sub idocument {
 ## Corpus::Compiled API: corpus compilation
 
 ## $ccorpus = CLASS_OR_OBJECT->create($src_corpus, %opts)
-##  + compile or append $src_corpus to $opts{dbdir}, returns $ccorpus
+##  + compile or append a single $src_corpus to $opts{dbdir}, returns $ccorpus
 ##  + honors $opts{flags} for append and truncate
 sub create {
   my ($that,$icorpus,%opts) = @_;
@@ -415,7 +419,7 @@ sub create {
 ## Corpus::Compiled API: union
 
 ## $ccorpus = $ccorpus->union(\@sources, %opts)
-##  + merge source corpora \@sources to $opts{dbdir}, destrictive
+##  + merge source corpora \@sources to $opts{dbdir}, destructive
 ##  + each $src in \@sources is either a Corpus::Compiled object or a simple scalar (dbdir of a Corpus::Compiled object)
 ##  + honors $opts{flags} for append and truncate
 ##  + no filters are applied
