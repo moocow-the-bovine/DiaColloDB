@@ -2,6 +2,10 @@
 ##
 ## Change log for perl distribution DiaColloDB
 
+v0.12.013 Tue, 28 Jan 2020 08:49:33 +0100 moocow
+	* try to avoid "Attempt to reload XYZ.pm aborted." errors from cpantesters
+	  (http://www.cpantesters.org/cpan/report/b8caf29a-4121-11ea-9d04-93d2cf6284ad)
+
 v0.12.012 Mon, 27 Jan 2020 14:15:14 +0100 moocow
 	* added DTA::CAB-style "find.hack" to avoid symlink-related ExtUtils::MakeMaker pancakes
 	* added new class DiaColloDB::Corpus::Compiled - pre-compiled, pre-filtered corpora (JSON)

@@ -12,9 +12,10 @@ use strict;
 our ($HAVE_THREADS);
 BEGIN {
   $HAVE_THREADS = ($^P ? 0 ##-- disable threads if running under debugger
-                   : eval "use threads; 1" ##-- this causes segfaults when join()ing 2nd thread (bogus destruction) for DDC::XS < v0.23
-                   #: eval "use forks; 1"    ##-- forks module works basically as expected
-                  )
+                   : ($INC{'threads.pm'} ? 1    ##-- try to avoid "Attempt to reload threads.pm aborted." on perl 5.31.7 (cpantesters)
+                      : eval "use threads; 1"   ##-- this causes segfaults when join()ing 2nd thread (bogus destruction) for DDC::XS < v0.23
+                      #: eval "use forks; 1"    ##-- forks module works basically as expected
+                     ))
     if (!defined($HAVE_THREADS));
   $@ = '';
 }
