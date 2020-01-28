@@ -1,0 +1,36 @@
+# File: dstar-deploy-playbook.yml
+# Author: Bryan Jurish <jurish@bbaw.de>
+# Description: deploy DiaColloDB on dstar-web and dstar-build hosts
+# Usage:
+#   ansible-playbook -i ansible.hosts -K dstar-deploy-playbook.yml
+---
+
+- name: deploy DiaColloDB on dstar-web and dstar-build hosts
+  connection: ssh
+  #gather_facts: false
+  hosts: dstar-build,dstar-web
+  vars:
+    wcdir: /home/moocow/work/bbaw/dta/DiaColloDB
+  
+  tasks:
+    - name: svn update
+      subversion:
+        repo: svn+ssh://odo.dwds.de/home/svn/dev/DiaColloDB/trunk
+        dest: "{{ wcdir }}"
+
+    - name: configure
+      shell: perl Makefile.PL </dev/null
+      args:
+        chdir: "{{ wcdir }}"
+
+    - name: build
+      shell: make -C "{{ wcdir }}"
+
+    - name: test
+      shell: make -C "{{ wcdir }}" test
+
+    - name: install
+      become: true
+      become_user: root
+      become_method: sudo
+      shell: make -C "{{ wcdir }}" install

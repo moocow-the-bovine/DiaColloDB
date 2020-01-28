@@ -1,0 +1,27 @@
+# This is an ansible 'hosts' file for D*/DiaColloDB
+
+##-- moo: bbaw hosts
+[dstar-run]
+data.dwds.de
+www.dwds.de
+
+[dstar-web]
+kaskade.dwds.de
+www.dwds.de
+
+[dstar-build]
+kira.bbaw.de
+
+[dstar-extra]
+khan.dwds.de
+
+[dstar-all:children]
+dstar-run
+dstar-web
+dstar-build
+
+[odo]
+odo.dwds.de
+
+[svn:children]
+odo
