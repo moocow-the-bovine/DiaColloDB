@@ -25,7 +25,8 @@ use strict;
 
 our ($WANT_THREADS);
 BEGIN {
-  $WANT_THREADS = 0 if ($^P); ##-- disable threads if running under debugger
+  $WANT_THREADS = 0 if ($^P);		##-- disable threads if running under debugger
+  $WANT_THREADS //= 1;			##-- otherwise, enable threads by default
 
 #  $WANT_THREADS = ($^P ? 0 ##-- disable threads if running under debugger
 #                   : ($INC{'threads.pm'} ? 1    ##-- try to avoid "Attempt to reload threads.pm aborted." on perl 5.31.7 (cpantesters)
