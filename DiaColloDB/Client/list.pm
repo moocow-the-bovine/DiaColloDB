@@ -60,7 +60,7 @@ our @ISA = qw(DiaColloDB::Client);
 ##    lazy => $bool,       ##-- use temporary on-demand sub-clients (true,default) or persistent sub-clients (false)
 ##    extend => $bool,     ##-- use extend() queries to acquire correct f2 counts? (default=true)
 ##    logFudge => $level,  ##-- log-level for fudge-factor debugging (default='debug')
-##    logFork => $level,   ##-- log-level for thread (fork) options (default='none')
+##    logThread => $level,   ##-- log-level for thread (fork) options (default='none')
 ##    ##
 ##    ##-- guts
 ##    #clis => \@clis,     ##-- per-url clients for mode, v0.11.000

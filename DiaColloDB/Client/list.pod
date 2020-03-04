@@ -38,7 +38,7 @@ new() options and object structure:
  lazy => $bool,       ##-- use temporary on-demand sub-clients (true,default) or persistent sub-clients (false)
  extend => $boo,      ##-- use extend() queries to acquire correct f2 counts? (default=true)
  logFudge => $level,  ##-- log-level for fudge-coefficient debugging (default='debug')
- logFork => $level,   ##-- log-level for fork operations (default='none')
+ logThread => $level, ##-- log-level for thread operations (default='none')
  ##
  ##-- guts
  #clis => \@clis,     ##-- per-url sub-clients for "busy" (non-"lazy") mode
