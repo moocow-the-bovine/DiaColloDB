@@ -270,7 +270,7 @@ sub dbinfo {
   }
   $info->{timestamp} = (sort map {$_->{timestamp}||''} @dtrs)[$#dtrs];
   $info->{xdmax}     = lmax(map {$_->{xdmax}} @dtrs);
-  $info->{xdmin}     = lmin(map {$_->{xdmax}} @dtrs);
+  $info->{xdmin}     = lmin(map {$_->{xdmin}} @dtrs);
   $info->{du_b}      = lsum(map {$_->{du_b}} @dtrs);
   $info->{du_h}      = si_str($info->{du_b});
   $info->{version}   = $DiaColloDB::VERSION;
