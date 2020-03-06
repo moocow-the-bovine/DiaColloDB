@@ -412,7 +412,7 @@ sub union {
   ##-- stage2: sort & load tempfile
   env_push(LC_ALL=>'C');
   $ug->vlog('trace', "union(): stage2: load unigram frequencies");
-  my $sortfh = opencmd("sort -n -k2 -k3 $tmpfile |")
+  my $sortfh = opencmd("sort -n -k2 -k3 ".sortJobs()." $tmpfile |")
     or $ug->logconfess("union(): open failed for pipe from sort: $!");
   binmode($sortfh,':raw');
   $ug->loadTextFh($sortfh)

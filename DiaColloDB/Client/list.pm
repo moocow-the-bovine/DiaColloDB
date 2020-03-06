@@ -4,11 +4,14 @@
 ## Description: collocation db, client: list
 
 package DiaColloDB::Client::list;
+
+use DiaColloDB::threads;
+
 use DiaColloDB::Client;
 use DiaColloDB::Utils qw(:list :math :si);
 use strict;
 
-##-- try to use threads
+##-- OLD: try to use threads
 ## + weird cpantesters errors for DiaColloDB v0.12.01[23], e.g.
 ##   - http://www.cpantesters.org/cpan/report/b8caf29a-4121-11ea-9d04-93d2cf6284ad
 ##   - http://www.cpantesters.org/cpan/report/acb1841c-41b5-11ea-81ed-d3b978f58c5e
@@ -25,16 +28,9 @@ use strict;
 
 our ($WANT_THREADS);
 BEGIN {
-  $WANT_THREADS = 0 if ($^P);		##-- disable threads if running under debugger
-  $WANT_THREADS //= 1;			##-- otherwise, enable threads by default
-
-#  $WANT_THREADS = ($^P ? 0 ##-- disable threads if running under debugger
-#                   : ($INC{'threads.pm'} ? 1    ##-- try to avoid "Attempt to reload threads.pm aborted." on perl 5.31.7 (cpantesters)
-#                      : eval "use threads; 1"   ##-- this causes segfaults when join()ing 2nd thread (bogus destruction) for DDC::XS < v0.23
-#                      #: eval "use forks; 1"    ##-- forks module works basically as expected
-#                     ))
-#    if (!defined($WANT_THREADS));
-#  $@ = '';
+  $WANT_THREADS = ($^P
+                   ? 0 ##-- disable threads if running under debugger
+                   : $DiaColloDB::threads::MODULE);
 }
 
 
