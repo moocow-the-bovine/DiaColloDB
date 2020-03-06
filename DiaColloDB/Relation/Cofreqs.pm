@@ -799,9 +799,11 @@ sub subprofile2 {
 ##  + populate f2 frequencies for profiles in \%slice2prf
 ##  + %opts: as for subprofile1()
 ##  + override calls subprofile2()
-sub subextend {
-  my $cof = shift;
-  return $cof->subprofile2(@_);
+sub subextend_old {
+  #my $cof = shift;
+  #return $cof->subprofile2(@_);
+
+
 }
 
 ##--------------------------------------------------------------

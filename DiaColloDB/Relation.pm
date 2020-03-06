@@ -94,6 +94,7 @@ sub dbinfo {
 ##     kbest   => $k,             ##-- return only $k best collocates per date (slice) : default=-1:all
 ##     cutoff  => $cutoff,        ##-- minimum score
 ##     global  => $bool,          ##-- trim profiles globally (vs. locally for each date-slice?) (default=0)
+##     extend  => \%label2gkeys,  ##-- maps slice-labels to selected (packed) group-keys, for extend() method
 ##     ##
 ##     ##-- profiling and debugging parameters
 ##     strings => $bool,          ##-- do/don't stringify item keys (default=do)
@@ -187,6 +188,16 @@ sub profile {
     @{$s2prf->{$_}}{qw(label titles)} = ($_,$groupby->{titles});
   }
 
+  ##-- profile/extend: insert extension keys
+  my $extend = $opts{extend};
+  if ($extend) {
+    my ($slice,$prf,$sxkeys);
+    while (($slice,$prf) = each %$s2prf) {
+      $sxkeys = $extend->{$slice}//{};
+      $prf->{f12}{$_} //= 0 foreach (keys %$sxkeys);
+    }
+  }
+
   ##-- profile: complete slice-wise profiles (pass 2: f2)
   if (!$onepass || !$opts{onepass}) {
     $reldb->vlog($logProfile, "profile(): get frequency profile(s): pass-2");
@@ -221,10 +232,48 @@ sub profile {
 ## Relation API: extend (pass-2 for multi-clients)
 
 ## $mprf = $rel->extend($coldb, %opts)
-##  + get independent f2 frequencies for \%slice2keys = $opts{slice2keys}
-##  + calls $rel->subextend(\%slice2keys, \%opts)
-##  + returns a DiaColloDB::Profile::Multi containing the appropriate f2 entries
+##  + extend f12 and f2 frequencies for \%slice2keys = $opts{slice2keys}
+##  + calls $rel->profile($coldb, %opts,extend=>\%slice2keys_encoded)
+##  + returns a DiaColloDB::Profile::Multi containing the appropriate f12 and f2 entries
 sub extend {
+  my ($reldb,$coldb,%opts) = @_;
+
+  ##-- common variables
+  $opts{coldb}   = $coldb; ##-- pass-down to subprofile() methods
+  my $logProfile = $coldb->{logProfile};
+
+  ##-- sanity check(s)
+  my $slice2keys = $opts{slice2keys};
+  if (!$slice2keys) {
+    $reldb->logwarn($coldb->{error}="extend(): no 'slice2keys' parameter specified!");
+    return undef;
+  }
+  elsif (!UNIVERSAL::isa($slice2keys,'HASH')) {
+    $reldb->logwarn($coldb->{error}="extend(): failed to parse 'slice2keys' parameter");
+    return undef;
+  }
+  delete $opts{slice2keys};
+
+  ##-- get packed group-keys (via dummy profiles for inverse stringification)
+  my $groupby = $opts{groupby} = $coldb->groupby($opts{groupby});
+  my $s2prf   = {};
+  my ($slice,$keys);
+  while (($slice,$keys) = each %$slice2keys) {
+    $s2prf->{$slice} = (DiaColloDB::Profile
+                        ->new(label=>$slice, N=>0,f1=>0,f12=>{ map {($_=>0)} @$keys })
+                        ->stringify($groupby->{s2g})
+                        ->trim(drop=>['']));
+  }
+  my %extend = map {($_=>$s2prf->{$_}{f12})} keys %$s2prf;
+
+  ##-- guts: dispatch to profile()
+  my $mp = $reldb->profile($coldb, %opts, kbest=>0,kbesta=>0,cutoff=>undef,global=>0,fill=>1, extend=>\%extend);
+
+  return $mp;
+}
+
+
+sub extend_old {
   my ($reldb,$coldb,%opts) = @_;
 
   ##-- common variables
@@ -253,7 +302,7 @@ sub extend {
     $s2prf->{$slice} = DiaColloDB::Profile->new(label=>$slice, N=>0,f1=>0,f12=>{ map {($_=>0)} @$keys })->stringify($groupby->{s2g});
   }
 
-  ##-- get independent f2
+  ##-- get missing profile elements (formerly just independent f2)
   $reldb->subextend($s2prf, \%opts);
 
   ##-- collect, stringify & return

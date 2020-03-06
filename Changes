@@ -2,6 +2,9 @@
 ##
 ## Change log for perl distribution DiaColloDB
 
+v0.12.016_01 UNRELEASED
+	* added DiaColloDB::threads, DiaColloDB::threads::shared - attempt to wrap threads/forks support
+
 v0.12.015 Wed, 04 Mar 2020 13:11:43 +0100 moocow
 	* fix XS/cof-compile.h (un)signedness bug resulting in bogus indices from union
 	  - un-collocated f1 components from temporary cof.udat were getting counted as i2=4294967295 == (uint32_t)-1

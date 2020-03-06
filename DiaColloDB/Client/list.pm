@@ -229,6 +229,7 @@ sub subcall {
   }
   else {
     ##-- non-threaded call
+    $cli->vlog($cli->{logThread}, "subcall(): running in serial mode");
     for ($i=0; $i <= $#{$cli->{urls}}; ++$i) {
       push(@results, scalar($code->($cli,$i,@args)));
     }
@@ -329,7 +330,7 @@ sub profile {
   ##-- query clients
   my @mps = $cli->subcall(sub {
 			    my $sub = $_[0]->client($_[1]);
-			    $sub->profile($rel,%opts,strings=>1,kbest=>$kfudge,cutoff=>0)
+			    $sub->profile($rel,%opts,strings=>1,kbest=>$kfudge,cutoff=>0,fill=>1)
 			      or $_[0]->logconfess("profile() failed for client URL $sub->{url}: $sub->{error}");
 			  });
 
@@ -340,16 +341,17 @@ sub profile {
     DiaColloDB::Profile::Multi->xfill(\@mps);
     my $xkeys = DiaColloDB::Profile::Multi->xkeys(\@mps);
     #$cli->trace("extend(): xkeys=", DiaColloDB::Utils::saveJsonString($xkeys, utf8=>0));
+    #$cli->trace("extend(): N.pre=", join('+',map {$_->{profiles}[0]{N}} @mps));
 
     ##-- extend multi-profiles with "missing" keys
     my @mpx = $cli->subcall(sub {
 			      #return undef if (!$xkeys->[$_[1]] || !grep {@$_} values(%{$xkeys->[$_[1]]})); ##-- don't need extend here
 			      my $sub = $_[0]->client($_[1]);
-			      $sub->extend($rel,%opts,strings=>1,score=>'f',cutoff=>0,slice2keys=>JSON::to_json($xkeys->[$_[1]], {allow_nonref=>1}))
+			      $sub->extend($rel,%opts,strings=>1,score=>'f',cutoff=>0,fill=>1,slice2keys=>JSON::to_json($xkeys->[$_[1]], {allow_nonref=>1}))
 				or $_[0]->logconfess("extend() failed for client url $sub->{url}: $sub->{error}");
 			    });
     foreach (0..$#mpx) {
-      $mps[$_]->_add($mpx[$_]) if (defined($mpx[$_]));
+      $mps[$_]->_add($mpx[$_], N=>0,f1=>0) if (defined($mpx[$_]));
     }
   }
 
@@ -360,7 +362,7 @@ sub profile {
     if (($cli->{logFudge}//'off') !~ /^(?:off|none)$/);
 
   ##-- re-compile and -trim
-  $mp->compile($opts{score}, eps=>$opts{eps})->trim(global=>$opts{global}, kbest=>$kbest, cutoff=>$opts{cutoff}, empty=>!$opts{fill});
+  $mp->compile($opts{score}, eps=>$opts{eps})->trim(global=>$opts{global}, drop=>[''], kbest=>$kbest, cutoff=>$opts{cutoff}, empty=>!$opts{fill});
 
   $cli->vlog($cli->{logFudge}, "profile(): trimmed final profile to size ", $mp->size)
     if (($cli->{logFudge}//'off') !~ /^(?:off|none)$/);
