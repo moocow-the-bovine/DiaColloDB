@@ -331,7 +331,7 @@ sub profile {
   ##-- fudge coefficient
   my $kbest  = $opts{kbest} // 0;
   my $kfudge = ($cli->{fudge} // 1)*$kbest;
-  $kfudge    = -1 if ($rel eq 'ddc'); ##-- ddc relation uses strings anyways
+  $kfudge    = -1 if ($rel eq 'ddc'); ##-- ddc relation uses strings anyways: disable extend() for DDC
   $cli->vlog($cli->{logFudge}, "profile(): querying ", scalar(@{$cli->{urls}}), " client URL(s) with (fudge=", ($cli->{fudge}//1), ") * (kbest=$kbest) = $kfudge");
 
   ##-- query clients
