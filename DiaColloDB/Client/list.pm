@@ -31,6 +31,9 @@ BEGIN {
   $WANT_THREADS = ($^P
                    ? 0 ##-- disable threads if running under debugger
                    : $DiaColloDB::threads::MODULE);
+
+  ##-- avoid heinous death with JSON::XS backend using threads
+  $DDC::Client::JSON_BACKEND = 'JSON::PP';
 }
 
 
@@ -328,6 +331,7 @@ sub profile {
   ##-- fudge coefficient
   my $kbest  = $opts{kbest} // 0;
   my $kfudge = ($cli->{fudge} // 1)*$kbest;
+  $kfudge    = -1 if ($rel eq 'ddc'); ##-- ddc relation uses strings anyways
   $cli->vlog($cli->{logFudge}, "profile(): querying ", scalar(@{$cli->{urls}}), " client URL(s) with (fudge=", ($cli->{fudge}//1), ") * (kbest=$kbest) = $kfudge");
 
   ##-- query clients
@@ -337,7 +341,7 @@ sub profile {
 			      or $_[0]->logconfess("profile() failed for client URL $sub->{url}: $sub->{error}");
 			  });
 
-  if ($cli->{extend} && @mps > 1) {
+  if ($cli->{extend} && @mps > 1 && $rel ne 'ddc') {
     $cli->vlog($cli->{logFudge}, "profile(): extending sub-profiles");
 
     ##-- fill-out multi-profiles (ensure compatible slice-partitioning & find "missing" keys)
