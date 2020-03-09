@@ -319,6 +319,9 @@ sub dbinfo {
 sub profile {
   my ($cli,$rel,%opts) = @_;
 
+  ##-- kludge: ddc metaserver dispatch
+  return $cli->ddcMeta('profile',$rel,%opts) if ($rel eq 'ddc' && $cli->{ddcServer});
+
   ##-- defaults
   DiaColloDB->profileOptions(\%opts);
 
@@ -380,6 +383,9 @@ sub profile {
 sub extend {
   my ($cli,$rel,%opts) = @_;
 
+  ##-- kludge: ddc metaserver dispatch
+  return $cli->ddcMeta('extend',$rel,%opts) if ($rel eq 'ddc' && $cli->{ddcServer});
+
   ##-- defaults
   DiaColloDB->profileOptions(\%opts);
 
@@ -408,6 +414,9 @@ sub extend {
 sub compare {
   my ($cli,$rel,%opts) = @_;
 
+  ##-- kludge: ddc metaserver dispatch
+  return $cli->ddcMeta('compare',$rel,%opts) if ($rel eq 'ddc' && $cli->{ddcServer});
+
   ##-- defaults
   DiaColloDB->compareOptions(\%opts);
 
@@ -429,6 +438,30 @@ sub compare {
   ##-- return
   return $diff;
 }
+
+##--------------------------------------------------------------
+## Profiling: DDC (via metaserver in $list->{ddcServer})
+
+## $rc = $cli->ddcMeta($method_name, @args)
+##  + calls $COLDB->can($method_name)->($COLDB,@args) on temporary ddc metaserver object
+sub ddcMeta {
+  my $cli = shift;
+  return undef if (!$cli->{ddcServer});
+  $cli->vlog('trace', "ddcMeta(): dispatching to $cli->{ddcServer}");
+
+  ##-- create temporary dummy DiaColloDB object
+  my $dbinfo = $cli->dbinfo();
+  my $coldb  = DiaColloDB->new( attrs=>$dbinfo->{attrs}, ddcServer=>$cli->{ddcServer} )
+    or $cli->logconfess("ddcMeta(): failed to create DiaColloDB wrapper object");
+  $coldb->{ddc} = DiaColloDB::Relation::DDC->create($coldb);
+
+  ##-- dispatch
+  my $method = shift;
+  my $coderef = $coldb->can($method)
+    or $cli->logconfess("ddcMeta(): failed to resolve method name '$method'");
+  return $coderef->($coldb,@_);
+}
+
 
 ##==============================================================================
 ## Footer
