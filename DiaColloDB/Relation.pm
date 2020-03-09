@@ -233,7 +233,7 @@ sub profile {
 
 ## $mprf = $rel->extend($coldb, %opts)
 ##  + extend f12 and f2 frequencies for \%slice2keys = $opts{slice2keys}
-##  + calls $rel->profile($coldb, %opts,extend=>\%slice2keys_encoded)
+##  + calls $rel->profile($coldb, %opts,extend=>\%slice2keys_packed)
 ##  + returns a DiaColloDB::Profile::Multi containing the appropriate f12 and f2 entries
 sub extend {
   my ($reldb,$coldb,%opts) = @_;
@@ -243,24 +243,25 @@ sub extend {
   my $logProfile = $coldb->{logProfile};
 
   ##-- sanity check(s)
-  my $slice2keys = $opts{slice2keys};
+  my $slice2keys = $opts{slice2keys} || $opts{extend};
   if (!$slice2keys) {
-    $reldb->logwarn($coldb->{error}="extend(): no 'slice2keys' parameter specified!");
+    $reldb->logwarn($coldb->{error}="extend(): no 'slice2keys' or 'extend' parameter specified!");
     return undef;
   }
   elsif (!UNIVERSAL::isa($slice2keys,'HASH')) {
-    $reldb->logwarn($coldb->{error}="extend(): failed to parse 'slice2keys' parameter");
+    $reldb->logwarn($coldb->{error}="extend(): failed to parse 'slice2keys' or 'extend' parameter");
     return undef;
   }
   delete $opts{slice2keys};
 
-  ##-- get packed group-keys (via dummy profiles for inverse stringification)
+  ##-- get packed group-keys (via temporary dummy-profiles for inverse-stringification)
   my $groupby = $opts{groupby} = $coldb->groupby($opts{groupby});
   my $s2prf   = {};
-  my ($slice,$keys);
+  my ($slice,$keys,$f12);
   while (($slice,$keys) = each %$slice2keys) {
+    $f12 = UNIVERSAL::isa($keys,'HASH') ? $keys : { map {($_=>0)} @$keys };
     $s2prf->{$slice} = (DiaColloDB::Profile
-                        ->new(label=>$slice, N=>0,f1=>0,f12=>{ map {($_=>0)} @$keys })
+                        ->new(label=>$slice, N=>0,f1=>0,f12=>$f12)
                         ->stringify($groupby->{s2g})
                         ->trim(drop=>['']));
   }
@@ -268,53 +269,6 @@ sub extend {
 
   ##-- guts: dispatch to profile()
   my $mp = $reldb->profile($coldb, %opts, kbest=>0,kbesta=>0,cutoff=>undef,global=>0,fill=>1, extend=>\%extend);
-
-  return $mp;
-}
-
-
-sub extend_old {
-  my ($reldb,$coldb,%opts) = @_;
-
-  ##-- common variables
-  $opts{coldb}   = $coldb; ##-- pass-down to subprofile() methods
-  my $logProfile = $coldb->{logProfile};
-
-  ##-- sanity check(s)
-  if (!$opts{slice2keys}) {
-     $reldb->logwarn($coldb->{error}="extend(): no 'slice2keys' parameter specified!");
-     return undef;
-   }
-  elsif (!UNIVERSAL::isa($opts{slice2keys},'HASH')) {
-     $reldb->logwarn($coldb->{error}="extend(): failed to parse 'slice2keys' parameter");
-     return undef;
-   }
-
-  ##-- subprofile2() requirements
-  my $groupby= $opts{groupby} = $coldb->groupby($opts{groupby});
-  my $a2data = $opts{a2data}  = {map {($_->{a}=>$_)} @{$coldb->attrData($coldb->attrs)}};
-  my $dreq   = $opts{dreq}    = $coldb->parseDateRequest(@opts{qw(date slice fill)});
-
-  ##-- create dummy profiles for completion
-  my $s2prf   = {};
-  my ($slice,$keys);
-  while (($slice,$keys) = each %{$opts{slice2keys}}) {
-    $s2prf->{$slice} = DiaColloDB::Profile->new(label=>$slice, N=>0,f1=>0,f12=>{ map {($_=>0)} @$keys })->stringify($groupby->{s2g});
-  }
-
-  ##-- get missing profile elements (formerly just independent f2)
-  $reldb->subextend($s2prf, \%opts);
-
-  ##-- collect, stringify & return
-  my $mp = DiaColloDB::Profile::Multi->new(profiles=>[@$s2prf{sort {$a<=>$b} keys %$s2prf}],
-					   titles  =>$groupby->{titles});
-  $reldb->vlog($logProfile, "extend(): stringify");
-  $mp->stringify($groupby->{g2s});
-
-  ##-- trim stringified result profiles (remove unknown elements)
-  foreach my $prf (@{$mp->{profiles}}) {
-    $prf->trim(keep=>$opts{slice2keys}{$prf->{label}});
-  }
 
   return $mp;
 }
@@ -443,18 +397,6 @@ sub subprofile1 {
 sub subprofile2 {
   #my ($rel,$slice2prf,$opts) = @_;
   return $_[1];
-}
-
-##--------------------------------------------------------------
-## Relation API: default: subextend
-
-## \%slice2prf = $rel->subextend(\%slice2prf,\%opts)
-##  + populate f2 frequencies for profiles in \%slice2prf
-##  + %opts: as for subprofile1()
-##  + default implementation just pukes
-sub subextend {
-  my ($rel,$slice2prf,$opts) = @_;
-  $rel->logconfess($opts->{coldb}{error}="subextend() method not supported");
 }
 
 ##--------------------------------------------------------------
