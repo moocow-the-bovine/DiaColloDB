@@ -50,7 +50,7 @@ our @ISA = qw(DiaColloDB::Client);
 ## $TDF_MGOOD_DEFAULT
 ##  + default positive meta-field regex for document parsing (tdf only)
 ##  + don't use qr// here, since Storable doesn't like pre-compiled Regexps
-our $TDF_MGOOD_DEFAULT = q/^(?:author|pnd|title|basename|collection|flags|textClass|genre)$/;
+our $TDF_MGOOD_DEFAULT = q/^(?:author|pnd|title|basename|collection|flags|textClass|genre|country|region|party|role)$/;
 
 ## $TDF_MBAD_DEFAULT
 ##  + default negative meta-field regex for document parsing (tdf only)
