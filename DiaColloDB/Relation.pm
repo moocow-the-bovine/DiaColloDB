@@ -254,18 +254,17 @@ sub extend {
   }
   delete $opts{slice2keys};
 
-  ##-- get packed group-keys (via temporary dummy-profiles for inverse-stringification)
+  ##-- get packed group-keys (avoid temporary dummy-profiles: they can't handle unknown group-components)
   my $groupby = $opts{groupby} = $coldb->groupby($opts{groupby});
-  my $s2prf   = {};
-  my ($slice,$keys,$f12);
-  while (($slice,$keys) = each %$slice2keys) {
-    $f12 = UNIVERSAL::isa($keys,'HASH') ? $keys : { map {($_=>0)} @$keys };
-    $s2prf->{$slice} = (DiaColloDB::Profile
-                        ->new(label=>$slice, N=>0,f1=>0,f12=>$f12)
-                        ->stringify($groupby->{s2g})
-                        ->trim(drop=>['']));
+  my $s2gx    = $groupby->{s2gx};
+  my ($xslice,$xkeys, $xgkeys,$xkey,$xg, %extend);
+  while (($xslice,$xkeys) = each %$slice2keys) {
+    $xgkeys = $extend{$xslice} = {};
+    foreach $xkey (UNIVERSAL::isa($xkeys,'HASH') ? keys(%$xkeys) : @$xkeys) {
+      next if (!defined($xg = $s2gx->($xkey)));
+      $xgkeys->{$xg} = undef;
+    }
   }
-  my %extend = map {($_=>$s2prf->{$_}{f12})} keys %$s2prf;
 
   ##-- guts: dispatch to profile()
   my $mp = $reldb->profile($coldb, %opts, kbest=>0,kbesta=>0,cutoff=>undef,global=>0,fill=>1, extend=>\%extend);

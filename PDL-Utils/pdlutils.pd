@@ -215,7 +215,7 @@ sub tym_create_def {
 
       //-- maybe re-alloc term-local buffer
       if (tbn==tballoc) {
-         DCDEBUG(fprintf(stderr, "tym_create_%s [ti=%d,nzi=%d,tbn=%d]: realloc %zd -> %zd\n", DIACOLLO_INAME, ti, nzi, tbn, tballoc, 2*tballoc); fflush(stderr);)
+         DCDEBUG(fprintf(stderr, "tym_create_%s [ti=%d,nzi1=%d,tbn=%d]: realloc %zd -> %zd\n", DIACOLLO_INAME, ti, nzi1, tbn, tballoc, 2*tballoc); fflush(stderr);)
          tballoc *= 2;
          tbuf     = (DIACOLLO_ITYPE*)realloc(tbuf, 2*tballoc*sizeof(DIACOLLO_ITYPE));
       }
@@ -361,7 +361,7 @@ sub cof_x_def {
     keybuf[$SIZE(NG)] = sliceby;
 
     /*-- guts: compute co-frequencies cofreq(w,v|d) = min{f(w,d),f(v,d)} in f12hv --*/
-    //DCDEBUG(fprintf(stderr,"cof_x(): loop\n"); fflush(stderr);)
+    DCDEBUG(fprintf(stderr,"cof_x(): loop\n"); fflush(stderr);)
     loop (NnzQ) %{
       qval = $qvals();
       qd   = $qdocs();
@@ -396,6 +396,11 @@ sub cof_x_def {
         ga = $groupby();
 	keybuf[NG] = $xattrs(NA=>ga,NX=>qc);
       %}
+
+      //-- check EXTEND restrictions (if specified)
+      if (exthv && !hv_exists(exthv, (char*)keybuf, keylen)) {
+        continue;
+      }
 
       //-- setup item2 count (groupby-cats mode)
       svpp = hv_fetch(f12hv, (char*)keybuf, keylen, TRUE);
@@ -550,6 +555,7 @@ sub cof_tc_def {
   DIACOLLO_ITYPE *keybuf = (DIACOLLO_ITYPE*)malloc(keylen);
   HV *f1hv  = INT2PTR(HV*, $COMP(f1Hash));
   HV *f12hv = INT2PTR(HV*, $COMP(f12Hash));
+  HV *exthv = INT2PTR(HV*, $COMP(extendHash));
   SV **svpp;
   UV fval0,fval;
 
@@ -610,6 +616,11 @@ sub cof_tc_def {
 	  keybuf[NG] = $groupas()==0 ? $tattrs(NA=>ga,NT=>at) : $mattrs(NM=>ga,NC=>qc);
 	%}
 
+        //-- check EXTEND restrictions (if specified)
+        if (exthv && !hv_exists(exthv, (char*)keybuf, keylen)) {
+          continue;
+        }
+
         //-- set or update f12 hash value
         fval = (UV)(qval < $avals(NnzA1=>anzi) ? qval : $avals(NnzA1=>anzi));
 	svpp = hv_fetch(f12hv, (char*)keybuf, keylen, TRUE);
@@ -659,6 +670,7 @@ sub cof_tc_def {
 	   OtherPars => join("\n    ",
 			     'IV f1Hash;',		##-- output hash, ( pack($pack_ix, $slice) => $f1, ... )
 			     'IV f12Hash;',		##-- output hash, ( pack($pack_ix, $tvals($groupby(),($ti2)), $slice) => $f12, ... )
+                             'IV extendHash;'		##-- extend selections: ( $slice => { $groupkey => undef, ... } )
 			    ),
 	   GenericTypes => \@VAL_TYPE_CHRS,
 	   Code => $code,

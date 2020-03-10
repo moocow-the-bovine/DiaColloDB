@@ -1031,6 +1031,7 @@ sub parseRequest {
 ##     ts2g => \&ts2g,       ##-- group-tuple extraction code ($ts => $gtuple) : $g_packed = $ts2g->($ts)
 ##     g2s   => \&g2s,       ##-- stringification object suitable for DiaColloDB::Profile::stringify() [CODE,enum, or undef] : $g_str = $g2s->($g_packed)
 ##     s2g   => \&s2g,       ##-- inverse-stringification object (for 2nd-pass processing)
+##     s2gx  => \&s2gx,      ##-- inverse-stringification object (for use with extend(), returns undef for unknown string components)
 ##     g2txt => \&g2txt,     ##-- compatible join()-string stringifcation sub (decimal numeric strings)
 ##     txt2g => \&txt2g,     ##-- compatible inverse-string stringifcation sub (decimal numeric strings)
 ##     tpack => \@tpack,     ##-- group-attribute-wise pack-templates, given @ttuple
@@ -1079,7 +1080,7 @@ sub groupby {
 		   : undef)
 		} @$gbareqs);
 
-  my (@gi,$ti2g_code,$ts2g_code);
+  my (@gi,$gi,$ti2g_code,$ts2g_code);
   if (grep {$_} @gbids) {
     ##-- group-by code: with having-filters
     $ts2g_code = (''
@@ -1104,12 +1105,13 @@ sub groupby {
   $gb->{ti2g} = $ti2g_sub;
 
   ##-- get stringification sub(s)
-  my ($genum,@genums,$g2scode,$s2gcode);
+  my ($genum,@genums,$g2scode,$s2gcode,$s2gxcode);
   if (@$gbattrs == 1) {
     ##-- stringify a single attribute
     $genum   = $coldb->{$gbattrs->[0]."enum"};
     $g2scode = qq{ \$genum->i2s(unpack('$pack_id',\$_[0])) };
     $s2gcode = qq{ pack('$pack_id', \$genum->s2i(\$_[0]) // 0) };
+    $s2gxcode = qq{ return undef if (!defined(\$gi=\$genum->s2i(\$_[0]))); return pack('$pack_id',\$gi); };
   }
   else {
     @genums = map {$coldb->{$_."enum"}} @$gbattrs;
@@ -1120,6 +1122,11 @@ sub groupby {
     $s2gcode = (''
 		.qq{ \@gi=split(/\\t/, \$_[0]); }
 		.qq{ pack('$pack_ids',}.join(', ', map {"\$genums[$_]->s2i(\$gi[$_]) // 0"} (0..$#genums)).q{)}
+	       );
+    $s2gxcode = (''
+                 .qq{ \@gi=split(/\\t/, \$_[0]); }
+                 .qq{ return undef if (}.join(' || ', map {"!defined(\$gi[$_]=\$genums[$_]->s2i(\$gi[$_]))"} (0..$#genums)).q{);}
+                 .qq{ return pack('$pack_ids',\@gi); }
 	       );
   }
   my $g2s = eval qq{sub {$g2scode}};
@@ -1132,6 +1139,10 @@ sub groupby {
   $@='';
   $gb->{s2g} = $s2g;
 
+  my $s2gx = eval qq{sub {$s2gxcode}};
+  $coldb->logconfess($coldb->{error}="groupby(): could not compile inverse-stringification code sub for extend {$s2gxcode}: $@") if (!$s2gx);
+  $@='';
+  $gb->{s2gx} = $s2gx;
 
   ##-- get pseudo-stringification sub ("\t"-joined decimal integer ids)
   my ($g2txt_code,$txt2g_code);
