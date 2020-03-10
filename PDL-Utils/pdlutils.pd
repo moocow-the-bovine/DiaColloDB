@@ -341,6 +341,7 @@ sub cof_x_def {
   DIACOLLO_ITYPE *keybuf = (DIACOLLO_ITYPE*)malloc(keylen);
   HV *f1hv  = INT2PTR(HV*, $COMP(f1Hash));
   HV *f12hv = INT2PTR(HV*, $COMP(f12Hash));
+  HV *exthv = INT2PTR(HV*, $COMP(extendHash));
   SV **svpp;
   UV fval0,fval;
 #ifdef DIACOLLO_COF_T
@@ -425,6 +426,11 @@ sub cof_x_def {
 	  keybuf[NG] = $xattrs(NA=>ga,NX=>at);
 	%}
 
+        //-- check EXTEND restrictions (if specified)
+        if (exthv && !hv_exists(exthv, (char*)keybuf, keylen)) {
+          continue;
+        }
+
         //-- update doc-local f12 value in temporary dochv (avoid over-counting joint frequencies for nontrivial groupby aggregation)
         fval = (UV)($avals(NnzA1=>anzi));
         svpp = hv_fetch(dochv, (char*)keybuf, keylen, TRUE);
@@ -499,8 +505,9 @@ sub cof_x_def {
 			''
 		       ),
 	   OtherPars => join("\n    ",
-			   'IV f1Hash;',		##-- output hash, ( pack($pack_ix, $slice) => $f1, ... )
-			   'IV f12Hash;',		##-- output hash, ( pack($pack_ix, $tvals($groupby(),($ti2)), $slice) => $f12, ... )
+                             'IV f1Hash;',		##-- output hash, ( pack($pack_ix, $slice) => $f1, ... )
+                             'IV f12Hash;',		##-- output hash, ( pack($pack_ix, $tvals($groupby(),($ti2)), $slice) => $f12, ... )
+                             'IV extendHash;'		##-- extend selections: ( $slice => { $groupkey => undef, ... } )
 			    ),
 	   GenericTypes => \@VAL_TYPE_CHRS,
 	   Code => $code,
