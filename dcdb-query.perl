@@ -200,8 +200,7 @@ if (1 && $query{query} eq 'debug') {
   ##
   #($rel,@query{qw(slice query)}) = ('tdf',0,'Maschine');
   #($rel,@query{qw(slice query groupby)}) = ('tdf',0,'Zahnstange && Nuth','basename');
-  ($rel,@query{qw(slice query groupby)}) = ('tdf',0,'Zahnstange','l,basename');
-
+  ($rel,@query{qw(slice query groupby)}) = ('tdf',0,'Zahnstange #has[basename,fischer_w*]','basename');
 }
 ##--/DEBUG queries
 
