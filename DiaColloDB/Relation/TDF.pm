@@ -455,7 +455,7 @@ sub create {
 	$toki = $docoff->[$sigi_in];
 	$tokj = $docoff->[$sigi_in+1];
 
-	$vs->logconfess("$logas: bad offset in $vtokfile") if ($vtokfh->tell != $toki*$len_t); ##-- DEBUG
+	#$vs->logconfess("$logas: bad offset in $vtokfile") if ($vtokfh->tell != $toki*$len_t); ##-- DEBUG
 
 	##-- parse signature
 	%sig  = qw();
@@ -1177,16 +1177,6 @@ sub vprofile {
     ##-- evaluate query: groupby doc-attrs
     $vs->vlog($logLocal, "vprofile(): evaluating query ('$groupby->{how}': groupby metadata-attributes only)");
     my $cofsub = PDL->can('diacollo_cof_c_'.$vs->itype) || \&PDL::diacollo_cof_c_long;
-
-    ##-- DEBUG
-    $vs->vlog($logDebug, join("\n",
-                              "vprofile-debug:",
-                              "qwhich=$qwhich",
-                              "qvals=$qvals",
-                              "gapos=$groupby->{gapos}",
-                              "ghavingc=".($groupby->{ghavingc}//null),
-                              )) if (0);
-
     $cofsub->($tdm->_whichND, @$vs{qw(ptr1 pix1)}, $tdm->_vals,
 	      @$vs{qw(mvals d2c c2date)},
 	      $sliceby, $dlo,$dhi,
