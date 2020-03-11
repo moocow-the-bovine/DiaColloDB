@@ -136,12 +136,12 @@ pre-v0.11 behavior.
 =head2 Incorrect Joint Frequencies
 
 Similar to the case for L<independent collocate frequencies|/Incorrect Independent Collocate Frequencies>,
-the joint frequencies I<f12> reported by this module prior to v0.13.000 were incorrect
-whenever the pre-v0.13.000 list client accessed multiple sub-clients (e.g. C<$a> and C<$b>), and some candidate
+the joint frequencies I<f12> reported by this module prior to v0.12.016 were incorrect
+whenever the pre-v0.12.016 list client accessed multiple sub-clients (e.g. C<$a> and C<$b>), and some candidate
 collocate C<$v> occured together with the target term C<$w> in both sub-clients' indices, but
 was among the C<$fudge*$kbest> items per epoch for only one of the sub-clients.
 
-The L<extend()|DiaColloDB/extend> method was re-implemented in v0.13.000 to perform a full
+The L<extend()|DiaColloDB/extend> method was re-implemented in v0.12.016 to perform a full
 L<profile()|DiaColloDB/profile> on the "missing" candidate collocates, ensuring correct
 acquisition of both joint and independent collocate frequencies.
 

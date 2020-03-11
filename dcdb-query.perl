@@ -8,7 +8,7 @@ use Pod::Usage;
 use File::Basename qw(basename);
 use strict;
 
-use DiaColloDB::Relation::TDF; ##-- DEBUG
+#use DiaColloDB::Relation::TDF; ##-- DEBUG
 
 BEGIN {
   select STDERR; $|=1; select STDOUT;
@@ -167,7 +167,7 @@ $query{bquery} = @ARGV ? shift : $query{query};
 $rel  = "d$rel" if ($isDiff);
 
 ##-- DEBUG queries
-if (1 && $query{query} eq 'debug') {
+if (0 && $query{query} eq 'debug') {
   #$query{query} = '$p=NN !#has[textClass,/politik/i]';
   #$query{query} = 'Mann #has[textClass,/zeitung/i]';
   #$query{query} = '* #has[textClass,/Zeitung/i]';
