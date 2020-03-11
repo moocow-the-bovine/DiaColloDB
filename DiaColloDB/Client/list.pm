@@ -55,7 +55,7 @@ our @ISA = qw(DiaColloDB::Client);
 ##    ##-- DiaColloDB::Client::list
 ##    urls  => \@urls,     ##-- db urls
 ##    opts  => \%opts,     ##-- sub-client options (includes all list-client "log*" options and "sub.OPT" options)
-##    fudge => $coef,      ##-- get ($coef*$kbest) items from sub-clients (0:all, default=10)
+##    fudge => $coef,      ##-- get ($coef*$kbest) items from sub-clients (-1:all, 0|1:none, default=10)
 ##    fork  => $bool,      ##-- run each subclient query in its own fork? (default=if available)
 ##    lazy => $bool,       ##-- use temporary on-demand sub-clients (true,default) or persistent sub-clients (false)
 ##    extend => $bool,     ##-- use extend() queries to acquire correct f2 counts? (default=true)
@@ -329,10 +329,12 @@ sub profile {
   DiaColloDB->profileOptions(\%opts);
 
   ##-- fudge coefficient
+  my $fudge  = ($rel eq 'ddc' ? -1 : $cli->{fudge}) // 0; ##-- ddc relation always stringifies: fetch full sub-results in 1st pass (disable extend())
   my $kbest  = $opts{kbest} // 0;
-  my $kfudge = ($cli->{fudge} // 1)*$kbest;
-  $kfudge    = -1 if ($rel eq 'ddc'); ##-- ddc relation uses strings anyways: disable extend() for DDC
-  $cli->vlog($cli->{logFudge}, "profile(): querying ", scalar(@{$cli->{urls}}), " client URL(s) with (fudge=", ($cli->{fudge}//1), ") * (kbest=$kbest) = $kfudge");
+  my $kfudge = ($fudge < 0 ? -1
+                : ($fudge == 0 ? $kbest
+                   : ($fudge * $kbest)));
+  $cli->vlog($cli->{logFudge}, "profile(): querying ", scalar(@{$cli->{urls}}), " client URL(s) with (fudge=$fudge) * (kbest=$kbest) = $kfudge");
 
   ##-- query clients
   my @mps = $cli->subcall(sub {
