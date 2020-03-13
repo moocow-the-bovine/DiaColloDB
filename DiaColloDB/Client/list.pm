@@ -328,6 +328,7 @@ sub profile {
   ##   - "proper" workaround would be iterative f2-acquisition in Relation::DDC (beware of ddc query size limit = 4kB)
   ##      * maybe via dynamic "groupby" clause generation?
   ##      * maybe by passing literal groupby-tuples to DDC (e.g. COUNT( $(l,p)={[Haus,NN],[laufen,VVFIN],...} ) ?
+  ##      * maybe by post-filtering DDC counts?
   ##   - "hacky" workaround might use lexdb (if present ... another infrastructure variable to worry about)
   ## + BUG 2020-03-13b: disabling this to force default %xkeys strategy doesn't help
   ##   - b/c "ddcServer" option isn't set for list-client daughters --> no DDC relation for daughters
