@@ -323,10 +323,17 @@ sub profile {
   my ($cli,$rel,%opts) = @_;
 
   ##-- kludge: ddc metaserver dispatch
-  ## + BUG 2020-03-13: incorrect f2 values (too low) from %xkeys-like situations for metacorpora
+  ## + BUG 2020-03-13a: incorrect f2 values (too low) from %xkeys-like situations for metacorpora
   ##   - f2 values are queried with COUNT(KEYS(...)), so f2 gets overlooked for physical subcorpora whenever f12=0 but f2>0
-  ##   - "proper" workaround would be iterative f2-acquisition (beware of ddc query limit)
+  ##   - "proper" workaround would be iterative f2-acquisition in Relation::DDC (beware of ddc query size limit = 4kB)
+  ##      * maybe via dynamic "groupby" clause generation?
+  ##      * maybe by passing literal groupby-tuples to DDC (e.g. COUNT( $(l,p)={[Haus,NN],[laufen,VVFIN],...} ) ?
   ##   - "hacky" workaround might use lexdb (if present ... another infrastructure variable to worry about)
+  ## + BUG 2020-03-13b: disabling this to force default %xkeys strategy doesn't help
+  ##   - b/c "ddcServer" option isn't set for list-client daughters --> no DDC relation for daughters
+  ##   - even if we tweaked *that* in, we'd still have (f12=0,f2>0) cases in physical subcorpora, which would get mis-counted
+  ##   - best overall workaround is probably to ditch KEYS() and do full iterative f2-acquisition in Relation::DDC,
+  ##     then re-implement DDC::extend() as iterative profile()
   return $cli->ddcMeta('profile',$rel,%opts) if ($rel eq 'ddc' && $cli->{ddcServer});
 
   ##-- defaults
