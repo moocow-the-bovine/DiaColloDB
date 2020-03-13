@@ -343,13 +343,15 @@ sub profile {
 			      or $_[0]->logconfess("profile() failed for client URL $sub->{url}: $sub->{error}");
 			  });
 
-  if ($cli->{extend} && @mps > 1 && $rel ne 'ddc') {
+  if ($cli->{extend} && @mps > 1
+      #&& $rel ne 'ddc'
+     ) {
     $cli->vlog($cli->{logFudge}, "profile(): extending sub-profiles");
 
     ##-- fill-out multi-profiles (ensure compatible slice-partitioning & find "missing" keys)
     DiaColloDB::Profile::Multi->xfill(\@mps);
     my $xkeys = DiaColloDB::Profile::Multi->xkeys(\@mps);
-    $cli->trace("extend(): xkeys=", DiaColloDB::Utils::saveJsonString($xkeys, utf8=>0));
+    #$cli->trace("extend(): xkeys=", DiaColloDB::Utils::saveJsonString($xkeys, utf8=>0));
     #$cli->trace("extend(): N.pre=", join('+',map {$_->{profiles}[0]{N}} @mps));
 
     ##-- extend multi-profiles with "missing" keys
