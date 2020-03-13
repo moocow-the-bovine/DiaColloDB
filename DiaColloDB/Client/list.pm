@@ -323,6 +323,10 @@ sub profile {
   my ($cli,$rel,%opts) = @_;
 
   ##-- kludge: ddc metaserver dispatch
+  ## + BUG 2020-03-13: incorrect f2 values (too low) from %xkeys-like situations for metacorpora
+  ##   - f2 values are queried with COUNT(KEYS(...)), so f2 gets overlooked for physical subcorpora whenever f12=0 but f2>0
+  ##   - "proper" workaround would be iterative f2-acquisition (beware of ddc query limit)
+  ##   - "hacky" workaround might use lexdb (if present ... another infrastructure variable to worry about)
   return $cli->ddcMeta('profile',$rel,%opts) if ($rel eq 'ddc' && $cli->{ddcServer});
 
   ##-- defaults
@@ -343,9 +347,8 @@ sub profile {
 			      or $_[0]->logconfess("profile() failed for client URL $sub->{url}: $sub->{error}");
 			  });
 
-  if ($cli->{extend} && @mps > 1
-      #&& $rel ne 'ddc'
-     ) {
+  if ($cli->{extend} && @mps > 1 && $rel ne 'ddc') {
+    ## + BUG 2020-03-13 : we should realy re-enable extend() for DDC queries too
     $cli->vlog($cli->{logFudge}, "profile(): extending sub-profiles");
 
     ##-- fill-out multi-profiles (ensure compatible slice-partitioning & find "missing" keys)
