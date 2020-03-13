@@ -2,6 +2,10 @@
 ##
 ## Change log for perl distribution DiaColloDB
 
+v0.12.017 UNRELEASED
+	* disabled null-query sanity checks in TDF ("no index documents(s) matched user query") if "fill" option is active
+	  (used by diff profiles and list clients)
+
 v0.12.016 Wed, 11 Mar 2020 14:05:15 +0100 moocow
 	* added DiaColloDB::threads, DiaColloDB::threads::shared - attempt to wrap threads/forks support
 	* updated $TDF_MGOOD_DEFAULT regex (added fields country|region|party|role)
