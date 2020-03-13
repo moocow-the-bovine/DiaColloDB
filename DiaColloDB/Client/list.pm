@@ -349,7 +349,7 @@ sub profile {
     ##-- fill-out multi-profiles (ensure compatible slice-partitioning & find "missing" keys)
     DiaColloDB::Profile::Multi->xfill(\@mps);
     my $xkeys = DiaColloDB::Profile::Multi->xkeys(\@mps);
-    #$cli->trace("extend(): xkeys=", DiaColloDB::Utils::saveJsonString($xkeys, utf8=>0));
+    $cli->trace("extend(): xkeys=", DiaColloDB::Utils::saveJsonString($xkeys, utf8=>0));
     #$cli->trace("extend(): N.pre=", join('+',map {$_->{profiles}[0]{N}} @mps));
 
     ##-- extend multi-profiles with "missing" keys
@@ -457,7 +457,9 @@ sub ddcMeta {
 
   ##-- create temporary dummy DiaColloDB object
   my $dbinfo = $cli->dbinfo();
-  my $coldb  = DiaColloDB->new( attrs=>$dbinfo->{attrs}, ddcServer=>$cli->{ddcServer} )
+  my $coldb  = DiaColloDB->new(ddcServer=>$cli->{ddcServer},
+                               attrs=>[map {$_->{name}} @{$dbinfo->{attrs}}],
+                              )
     or $cli->logconfess("ddcMeta(): failed to create DiaColloDB wrapper object");
   $coldb->{ddc} = DiaColloDB::Relation::DDC->create($coldb);
 
