@@ -782,7 +782,7 @@ BEGIN {
 }
 
 ##--------------------------------------------------------------
-## \@qcounts2 = $rel->collocateCountQueries($qcount,\%opts)
+## \@qcounts2 = $rel->collocateCountQueries($qcount,\%slice2prf,\%opts)
 ## + gets a list of DDC::Any::CQCount object(s) for f2-acquisition given profile() options %opts
 ## + %opts: as for countQuery(), DiaColloDB::Relation::DDC::profile(), etc.
 ## + sets following keys in %opts:
