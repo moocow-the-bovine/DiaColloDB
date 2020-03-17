@@ -200,7 +200,10 @@ if (0 && $query{query} eq 'debug') {
   ##
   #($rel,@query{qw(slice query)}) = ('tdf',0,'Maschine');
   #($rel,@query{qw(slice query groupby)}) = ('tdf',0,'Zahnstange && Nuth','basename');
-  ($rel,@query{qw(slice query groupby)}) = ('tdf',0,'Zahnstange #has[basename,fischer_w*]','basename');
+  #($rel,@query{qw(slice query groupby)}) = ('tdf',0,'Zahnstange #has[basename,fischer_w*]','basename');
+  ##
+  ($rel,@query{qw(slice query groupby)}) = ('ddc',0,'"(ge* &= $p=ADJA)=2 $l=@Maschine" #fmin 1'); ##-- xykeys-like f2 bug
+  #($rel,@query{qw(slice query groupby)}) = ('ddc',0,'Haus=2 || Garten=1 #fmin 1'); ##-- xykeys-like f2 bug
 }
 ##--/DEBUG queries
 
