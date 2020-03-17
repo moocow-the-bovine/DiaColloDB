@@ -136,15 +136,8 @@ sub profile {
   $opts{coldb} = $coldb;
 
   ##-- get count-query, count-by expressions, titles
-  my $qcount = $rel->countQuery($coldb,\%opts);
-
-  ##-- get count-by expressions, titles
-  my $cbexprs = $qcount->getKeys->getExprs;
-  my @titles  = map {
-    $coldb->attrTitle($_->can('getIndexName')
-		      ? $_->getIndexName
-		      : do { (my $label=$_->toString) =~ s{\'((?:\\.|[^\'])*)\'}{$1}; $label =~ s{ ~ s/}{~s/}g; $label })
-  } @$cbexprs[1..$#$cbexprs];
+  my $qcount  = $rel->countQuery($coldb,\%opts);
+  my $gbtitles = $opts{gbtitles};
 
   ##-- get raw f12 results and parse into slice-wise profiles
   my $result12 = $rel->ddcQuery($coldb, $qcount, limit=>$opts{limit}, logas=>'f12');
@@ -248,7 +241,7 @@ sub profile {
   ##-- finalize sub-profiles: label, titles, N, compile
   my ($f1);
   foreach $prf (values %y2prf) {
-    $prf->{titles} = \@titles;
+    $prf->{titles} = $gbtitles;
 
     if (!($f1=$prf->{f1})) {
       $f1  = 0;
@@ -265,7 +258,7 @@ sub profile {
   if ($opts{fill}) {
     for ($y=$opts{dslo}; $y <= $opts{dshi}; $y += ($opts{slice}||1)) {
       next if (exists($y2prf{$y}));
-      $prf = $y2prf{$y} = DiaColloDB::Profile->new(N=>($fN{$y}||$N||0),f1=>0,label=>$y,titles=>\@titles)->compile($opts{score},eps=>$opts{eps});
+      $prf = $y2prf{$y} = DiaColloDB::Profile->new(N=>($fN{$y}||$N||0),f1=>0,label=>$y,titles=>$gbtitles)->compile($opts{score},eps=>$opts{eps});
     }
   }
 
@@ -285,7 +278,7 @@ sub profile {
   $rel->vlog($coldb->{logProfile}, "profile(): collect and trim");
   my $mp = DiaColloDB::Profile::Multi->new(
 					   profiles => [@y2prf{sort {$a<=>$b} keys %y2prf}],
-					   titles   => \@titles,
+					   titles   => $gbtitles,
 					   qinfo    => $qinfo,
 					  );
   $mp->trim(%opts, empty=>!$opts{fill});
@@ -298,10 +291,65 @@ sub profile {
 ## Relation API: extend
 
 ## $mprf = $rel->extend($coldb, %opts)
-## + get f12,f2 frequencies for selected items as a DiaColloDB::Profile::Multi object
+## + get f2 frequencies (and ONLY f2 frequencies) for selected items as a DiaColloDB::Profile::Multi object
 ## + requires 'query' option for correct estimation of 'fcoef'
 ## + %opts: as for profile()
-BEGIN { *extend = \&extend_batch; }
+#BEGIN { *extend = \&extend_batch; }
+#BEGIN { *extend = \&extend_approx; }
+BEGIN { *extend = \&extend_mspa; }
+
+sub extend_mspa {
+  my ($that,$coldb,%opts) = @_;
+  my $rel = $that->fromDB($coldb,%opts)
+    or $that->logconfess($coldb->{error}="extend(): initialization failed (did you forget to set the 'ddcServer' option?)");
+
+  ##-- common variables
+  $opts{coldb}   = $coldb;
+  my $opts       = \%opts;
+  my $logProfile = $coldb->{logProfile};
+
+  ##-- sanity check(s)
+  my ($slice2keys);
+  if (!($slice2keys=$opts{slice2keys})) {
+    $rel->warn($coldb->{error}="extend(): no 'slice2keys' parameter specified!");
+    return undef;
+  }
+  elsif (!UNIVERSAL::isa($slice2keys,'HASH')) {
+    $rel->warn($coldb->{error}="extend(): failed to parse 'slice2keys' parameter");
+    return undef;
+  }
+
+  ##-- get "real" count-query, count-by expressions, titles, fcoef, ...
+  my $qcount = $rel->countQuery($coldb,\%opts);
+
+  ##-- create %y2pf
+  my %y2prf;
+  my ($y,$ykeys, $prf);
+  while (($y,$ykeys) = each %$slice2keys) {
+    $prf = ($y2prf{$y} //= DiaColloDB::Profile->new(label=>$y, titles=>$opts{gbtitles}));
+    $prf->{f12}{$_} = 0 foreach (UNIVERSAL::isa($ykeys,'HASH') ? keys(%$ykeys) : @$ykeys);
+  }
+
+  ##-- get raw f2 counts & propagate to profiles in %$y2prf (copy+pasted from profile())
+  ##  + iterate over all queries in @qcounts2 (for multi-pass mode)
+  my $qcounts2 = $rel->collocateCountQueries($qcount,\%y2prf, \%opts);
+  my $fcoef    = $opts{fcoef};
+  my ($key);
+  foreach my $qc2i (0..$#$qcounts2) {
+    my $qcount2 = $qcounts2->[$qc2i];
+    my $result2 = $rel->ddcQuery($coldb, $qcount2, limit=>-1, logTrunc=>128, logas=>("f2[".($qc2i+1).'/'.scalar(@$qcounts2)."]"));
+    foreach (@{$result2->{counts_}}) {
+      next if (!defined($prf=$y2prf{$y=$_->[1]}));
+      $key = join("\t", @$_[2..$#$_]);
+      $prf->{f2}{$key} += $_->[0]*$fcoef if (exists $prf->{f12}{$key});
+    }
+  }
+
+  ##-- finalize: collect multi-profile (don't trim)
+  my $mp = DiaColloDB::Profile::Multi->new(profiles => [@y2prf{sort {$a<=>$b} keys %y2prf}], N=>0,f1=>0);
+  $mp->trim(empty=>0, extend=>$slice2keys);
+  return $mp;
+}
 
 sub extend_approx {
   my $that = shift;
@@ -531,6 +579,7 @@ sub fcoef {
 ##    gbexprs => $gbexprs,      ##-- groupby expressions (DDC::Any::CQCountKeyExprList)
 ##    gbrestr => $gbrestr,      ##-- groupby item2 restrictions (DDC::Any::CQWith conjunction of token expressions)
 ##    gbfilters => \@gbfilters, ##-- groupby filter restrictions (ARRAY-ref of DDC::Any::CQFilter)
+##    gbtitles => \@titles,     ##-- groupby column titles (ARRAY-ref of strings)
 ##    limit  => $limit,		##-- hit return limit for ddc query
 ##    dslo   => $dslo,          ##-- minimum date-slice, from @opts{qw(date slice fill)}
 ##    dshi   => $dshi,          ##-- maximum date-slice, from @opts{qw(date slice fill)}
@@ -689,6 +738,14 @@ sub countQuery {
   ##-- contruct f1 count-query
   my $qcount1 = $opts->{qcount1} = $rel->collocantCountQuery($qcount, 1);
   $opts->{fcoef1} = $fcoef_user // ($fcoef / $rel->fcoef($qcount1->getDtr));
+
+  ##-- set count-by expressions, titles
+  my $gbexprs_array = $qcount->getKeys->getExprs;
+  my $gbtitles = $opts->{gbtitles} = [map {
+    $coldb->attrTitle($_->can('getIndexName')
+		      ? $_->getIndexName
+		      : do { (my $label=$_->toString) =~ s{\'((?:\\.|[^\'])*)\'}{$1}; $label =~ s{ ~ s/}{~s/}g; $label })
+  } @$gbexprs_array[1..$#$gbexprs_array]];
 
   ##-- set options
   @$opts{qw(limit sample dslo dshi dlo dhi fcoef cfmin qtemplate)} = ($limit,$sample,$dslo,$dshi,$dlo,$dhi,$fcoef,$cfmin,$qtemplate->toStringFull);

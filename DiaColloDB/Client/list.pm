@@ -341,7 +341,8 @@ sub profile {
   DiaColloDB->profileOptions(\%opts);
 
   ##-- fudge coefficient
-  my $fudge  = ($rel eq 'ddc' ? -1 : $cli->{fudge}) // 0; ##-- ddc relation always stringifies: fetch full sub-results in 1st pass (disable extend())
+  ## + disabled for ddc relation always stringifies: fetch full f12 sub-results in 1st pass (b/c DDC::extend() only updates f2)
+  my $fudge  = ($rel eq 'ddc' ? -1 : $cli->{fudge}) // 0;
   my $kbest  = $opts{kbest} // 0;
   my $kfudge = ($fudge < 0 ? -1
                 : ($fudge == 0 ? $kbest
@@ -355,8 +356,7 @@ sub profile {
 			      or $_[0]->logconfess("profile() failed for client URL $sub->{url}: $sub->{error}");
 			  });
 
-  if ($cli->{extend} && @mps > 1 && $rel ne 'ddc') {
-    ## + BUG 2020-03-13 : we should realy re-enable extend() for DDC queries too
+  if ($cli->{extend} && @mps > 1) {
     $cli->vlog($cli->{logFudge}, "profile(): extending sub-profiles");
 
     ##-- fill-out multi-profiles (ensure compatible slice-partitioning & find "missing" keys)
@@ -372,6 +372,7 @@ sub profile {
 			      $sub->extend($rel,%opts,strings=>1,score=>'f',cutoff=>0,fill=>1,slice2keys=>JSON::to_json($xkeys->[$_[1]], {allow_nonref=>1}))
 				or $_[0]->logconfess("extend() failed for client url $sub->{url}: $sub->{error}");
 			    });
+
     foreach (0..$#mpx) {
       $mps[$_]->_add($mpx[$_], N=>0,f1=>0) if (defined($mpx[$_]));
     }
@@ -469,9 +470,10 @@ sub ddcMeta {
   $cli->vlog('trace', "ddcMeta(): dispatching to $cli->{ddcServer}");
 
   ##-- create temporary dummy DiaColloDB object
+  ## + force sort attributes, otherwise we get different default attribute orders for different clients
   my $dbinfo = $cli->dbinfo();
   my $coldb  = DiaColloDB->new(ddcServer=>$cli->{ddcServer},
-                               attrs=>[map {$_->{name}} @{$dbinfo->{attrs}}],
+                               attrs=>[sort map {$_->{name}} @{$dbinfo->{attrs}}],
                               )
     or $cli->logconfess("ddcMeta(): failed to create DiaColloDB wrapper object");
   $coldb->{ddc} = DiaColloDB::Relation::DDC->create($coldb);
