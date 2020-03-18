@@ -352,7 +352,7 @@ sub profile {
   ##-- query clients
   my @mps = $cli->subcall(sub {
 			    my $sub = $_[0]->client($_[1]);
-			    $sub->profile($rel,%opts,strings=>1,kbest=>$kfudge,cutoff=>0,fill=>1)
+			    $sub->profile($rel,%opts,strings=>1,kbest=>$kfudge,cutoff=>'',fill=>1)
 			      or $_[0]->logconfess("profile() failed for client URL $sub->{url}: $sub->{error}");
 			  });
 
@@ -369,7 +369,7 @@ sub profile {
     my @mpx = $cli->subcall(sub {
 			      #return undef if (!$xkeys->[$_[1]] || !grep {@$_} values(%{$xkeys->[$_[1]]})); ##-- don't need extend here
 			      my $sub = $_[0]->client($_[1]);
-			      $sub->extend($rel,%opts,strings=>1,score=>'f',cutoff=>0,fill=>1,slice2keys=>JSON::to_json($xkeys->[$_[1]], {allow_nonref=>1}))
+			      $sub->extend($rel,%opts,strings=>1,score=>'f',cutoff=>'',fill=>1,slice2keys=>JSON::to_json($xkeys->[$_[1]], {allow_nonref=>1}))
 				or $_[0]->logconfess("extend() failed for client url $sub->{url}: $sub->{error}");
 			    });
 
