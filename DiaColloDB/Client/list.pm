@@ -359,7 +359,17 @@ sub profile {
   if ($cli->{extend} && @mps > 1) {
     $cli->vlog($cli->{logFudge}, "profile(): extending sub-profiles");
 
-    ##-- fill-out multi-profiles (ensure compatible slice-partitioning & find "missing" keys)
+    ##-- extend: delayed fudge-coefficient for DDC profiles
+    if ($rel eq 'ddc' && ($cli->{fudge}//0) > 0) {
+      $cli->vlog($cli->{logFudge}, "profile(): fudging DDC sub-profiles");
+      $fudge  = $cli->{fudge}//0;
+      $kfudge = ($fudge == 0 ? $kbest : ($fudge * $kbest));
+      foreach my $mp (@mps) {
+	$mp->compile($opts{score}, eps=>$opts{eps})->trim(global=>$opts{global}, drop=>[''], kbest=>$kfudge, cutoff=>$opts{cutoff}, empty=>0);
+      }
+    }
+
+    ##-- extend: fill-out multi-profiles (ensure compatible slice-partitioning & find "missing" keys)
     DiaColloDB::Profile::Multi->xfill(\@mps);
     my $xkeys = DiaColloDB::Profile::Multi->xkeys(\@mps);
     #$cli->trace("extend(): xkeys=", DiaColloDB::Utils::saveJsonString($xkeys, utf8=>0));
