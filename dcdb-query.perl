@@ -167,7 +167,7 @@ $query{bquery} = @ARGV ? shift : $query{query};
 $rel  = "d$rel" if ($isDiff);
 
 ##-- DEBUG queries
-if (1 && $query{query} eq 'debug') {
+if (0 && $query{query} eq 'debug') {
   $query{query}  = 'Mann|Frau';
   #$query{query} = '$p=NN !#has[textClass,/politik/i]';
   #$query{query} = 'Mann #has[textClass,/zeitung/i]';

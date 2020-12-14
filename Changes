@@ -2,7 +2,7 @@
 ##
 ## Change log for perl distribution DiaColloDB
 
-v0.12.018 UNRELEASED
+v0.12.018 Mon, 14 Dec 2020 09:39:44 +0100 moocow
 	* fixed parsing of bare |-separated values (qnc_value, $valre) for native syntax queries
 	  + problem was dual use of DiaColloDB::queryAttributes for BOTH query and groupby-requests
             - query requests: barewords are VALUES (-> use default attribute)
