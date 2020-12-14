@@ -471,6 +471,7 @@ sub qcanon {
   my ($rel,$coldb,%opts) = @_;
   my $q = $opts{qcanon} // $opts{qobj};
   $q = $q->toStringFull if (ref($q) && UNIVERSAL::can($q,'toStringFull'));
+  utf8::decode($q) if (!utf8::is_utf8($q));
   return $q;
 }
 
