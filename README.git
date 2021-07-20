@@ -1,0 +1,29 @@
+This project began its existence as an SVN repository at:
+
+  svn+ssh://svn.dwds.de/home/svn/dev/DiaColloDB
+
+As of 2021-07-20, the SVN repository has been migrated to a pair
+of github projects:
+
+  https://github.com/moocow-the-bovine/DiaColloDB
+  https://github.com/moocow-the-bovine/DiaColloDB-private
+
+The "DiaColloDB" github repository contains the full DiaCollo code base,
+but no langugage-specific resources or otherwise sensitive project-specific
+data.
+
+The DiaColloDB-private project contains "internal" data which is probably
+only useful for primary development or debugging of DiaCollo itself, as
+well as potentially sensitive data and configurations as used by the
+DWDS and ZDL projects at the Berlin-Brandenburgische Akademie der
+Wissenschaften.
+
+For best simulation of the original SVN project, you should clone
+the "DiaColloDB-private" project into the "private" subdirectory of your
+"DiaColloDB" working copy:
+
+ $ git clone git@github.com:moocow-the-bovine/DiaColloDB.git DiaColloDB
+ $ cd DiaColloDB
+ $ git clone git@github.com:moocow-the-bovine/DiaColloDB-private.git private
+
+-- moocow, 2021-07-20
