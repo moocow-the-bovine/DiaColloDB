@@ -1,2 +1,5 @@
-svntags=svn+ssh://svn.dwds.de/home/svn/dev/DiaColloDB/tags
-tagprefix=DiaColloDB
+#svntags=svn+ssh://svn.dwds.de/home/svn/dev/DiaColloDB/tags
+#tagprefix=DiaColloDB
+
+scm=git
+tagprefix=DiaColloDB-
